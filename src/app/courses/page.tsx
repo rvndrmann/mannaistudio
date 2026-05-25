@@ -2,12 +2,50 @@
 
 import Navbar from "@/components/Navbar"
 import { motion } from "framer-motion"
-import { Play, Clock, Sparkles, BookOpen } from "lucide-react"
+import { Play, Clock, Sparkles, Loader2 } from "lucide-react"
 import Link from "next/link"
-import { courses } from "@/lib/data"
-import { cn } from "@/lib/utils"
+import { courses as mockCourses } from "@/lib/data"
+import { useState, useEffect } from "react"
+import { createClient } from "@/lib/supabase/client"
+
+interface Course {
+    id: string
+    title: string
+    description: string
+    thumbnail: string
+    xp: number
+    duration: string
+    level: string
+    chapters: number
+    instructor: string
+    price: string
+}
 
 export default function CoursesPage() {
+    const [courses, setCourses] = useState<Course[]>([])
+    const [loading, setLoading] = useState(true)
+
+    useEffect(() => {
+        const load = async () => {
+            try {
+                const supabase = createClient()
+                const { data, error } = await supabase
+                    .from('courses')
+                    .select('*')
+                    .order('created_at', { ascending: true })
+                if (error || !data || data.length === 0) {
+                    setCourses(mockCourses)
+                } else {
+                    setCourses(data)
+                }
+            } catch {
+                setCourses(mockCourses)
+            }
+            setLoading(false)
+        }
+        load()
+    }, [])
+
     return (
         <main className="min-h-screen pb-20">
             <Navbar />
@@ -31,6 +69,11 @@ export default function CoursesPage() {
                     </motion.p>
                 </header>
 
+                {loading ? (
+                    <div className="flex justify-center py-20">
+                        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                    </div>
+                ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                     {courses.map((course, i) => (
                         <motion.div
@@ -87,6 +130,7 @@ export default function CoursesPage() {
                         </motion.div>
                     ))}
                 </div>
+                )}
             </section>
         </main>
     )

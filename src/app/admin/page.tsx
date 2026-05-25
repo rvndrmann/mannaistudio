@@ -411,6 +411,34 @@ function AdminDashboardContent() {
             const supabase = await getServiceRequestClient()
             if (!supabase) return
 
+            // Fetch courses from Supabase
+            const { data: dbCourses } = await supabase
+                .from('courses')
+                .select('*')
+                .order('created_at', { ascending: true })
+            if (dbCourses && dbCourses.length > 0) {
+                setMockCourses(dbCourses)
+            }
+
+            // Fetch challenges from Supabase
+            const { data: dbChallenges } = await supabase
+                .from('challenges')
+                .select('*')
+                .order('created_at', { ascending: true })
+            if (dbChallenges && dbChallenges.length > 0) {
+                setMockChallenges(dbChallenges.map((c: any) => ({
+                    id: c.id,
+                    title: c.title,
+                    description: c.description,
+                    prize: c.prize,
+                    deadline: c.deadline || '',
+                    participants: c.participants,
+                    difficulty: c.difficulty,
+                    winnerId: c.winner_id || null,
+                    submissions: [],
+                })))
+            }
+
             // Fetch all enrollments with profile info
             const { data: enrollments } = await supabase
                 .from('enrollments')

@@ -3,8 +3,9 @@
 import Navbar from "@/components/Navbar"
 import { motion } from "framer-motion"
 import { Zap, Trophy, Clock, Users, ArrowUpRight, Send, Star, ExternalLink, Play, X } from "lucide-react"
-import { challenges } from "@/lib/data"
-import { useState } from "react"
+import { challenges as mockChallenges } from "@/lib/data"
+import { useState, useEffect } from "react"
+import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 import { AnimatePresence } from "framer-motion"
 
@@ -12,6 +13,34 @@ export default function ChallengesPage() {
     const [activeTab, setActiveTab] = useState("active")
     const [watchingVideoUrl, setWatchingVideoUrl] = useState<string | null>(null)
     const [watchingStudentName, setWatchingStudentName] = useState<string | null>(null)
+    const [challenges, setChallenges] = useState(mockChallenges)
+
+    useEffect(() => {
+        const load = async () => {
+            try {
+                const supabase = createClient()
+                const { data, error } = await supabase
+                    .from('challenges')
+                    .select('*')
+                    .order('created_at', { ascending: true })
+                if (!error && data && data.length > 0) {
+                    const mapped = data.map((c: any) => ({
+                        id: c.id,
+                        title: c.title,
+                        description: c.description,
+                        prize: c.prize,
+                        deadline: c.deadline ? new Date(c.deadline).toLocaleDateString() : '',
+                        participants: c.participants,
+                        difficulty: c.difficulty,
+                        winnerId: c.winner_id || null,
+                        submissions: [],
+                    }))
+                    setChallenges(mapped)
+                }
+            } catch {}
+        }
+        load()
+    }, [])
 
     return (
         <main className="min-h-screen pb-20">
