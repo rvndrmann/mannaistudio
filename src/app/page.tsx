@@ -157,12 +157,12 @@ export default function LandingPage() {
                             viewport={{ once: true }}
                             className="glass-card group overflow-hidden"
                         >
-                            <div className="relative aspect-video">
-                                <img
+                            <div className="relative aspect-video bg-white/5">
+                                {item.thumbnail && <img
                                     src={item.thumbnail}
                                     alt={item.title}
                                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                                />
+                                />}
                                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                     <div className="bg-primary p-5 rounded-full shadow-2xl scale-75 group-hover:scale-100 transition-transform">
                                         <Play className="w-8 h-8 fill-white" />
