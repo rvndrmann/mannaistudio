@@ -34,7 +34,7 @@ export default function Navbar() {
 
                 {/* Desktop Nav */}
                 <div className="hidden md:flex items-center gap-8">
-                    {navLinks.map((link) => (
+                    {user && navLinks.map((link) => (
                         <Link
                             key={link.name}
                             href={link.href}
@@ -90,7 +90,7 @@ export default function Navbar() {
                     animate={{ opacity: 1, scale: 1 }}
                     className="md:hidden absolute top-20 left-4 right-4 glass p-6 rounded-2xl border border-white/10 flex flex-col gap-4"
                 >
-                    {navLinks.map((link) => (
+                    {user && navLinks.map((link) => (
                         <Link
                             key={link.name}
                             href={link.href}

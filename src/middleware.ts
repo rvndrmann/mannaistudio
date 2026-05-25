@@ -1,6 +1,13 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+// Routes that require authentication (everything except home and auth routes)
+const protectedPaths = ['/courses', '/challenges', '/services', '/admin', '/profile', '/portfolio']
+
+function isProtectedRoute(pathname: string): boolean {
+    return protectedPaths.some(path => pathname === path || pathname.startsWith(path + '/'))
+}
+
 export async function middleware(request: NextRequest) {
     let response = NextResponse.next({
         request: {
@@ -44,9 +51,19 @@ export async function middleware(request: NextRequest) {
         )
 
         // Refresh the auth token
-        await supabase.auth.getUser()
+        const { data: { user } } = await supabase.auth.getUser()
+
+        // Redirect unauthenticated users away from protected routes
+        if (!user && isProtectedRoute(request.nextUrl.pathname)) {
+            const redirectUrl = new URL('/', request.url)
+            redirectUrl.searchParams.set('login', 'required')
+            return NextResponse.redirect(redirectUrl)
+        }
     } catch (error) {
-        // Silently fail if Supabase is not configured
+        // If Supabase errors on a protected route, redirect to home
+        if (isProtectedRoute(request.nextUrl.pathname)) {
+            return NextResponse.redirect(new URL('/', request.url))
+        }
     }
 
     return response

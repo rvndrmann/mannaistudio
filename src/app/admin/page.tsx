@@ -8,7 +8,8 @@ import {
     ArrowUpRight, LayoutDashboard, BookOpen,
     Tv, Settings, LogOut, Plus, Edit2, Trash2,
     Save, X, Download, FileText, Video, Trophy,
-    Inbox, Mail, Clock, DollarSign
+    Inbox, Mail, Clock, DollarSign, Loader2,
+    ChevronLeft, ChevronRight, Calendar
 } from "lucide-react"
 import { courses, adminShowcase, challenges } from "@/lib/data"
 import { useEffect, useState } from "react"
@@ -26,21 +27,40 @@ import {
     type ServiceRequestStatus,
 } from "@/lib/service-requests"
 
-const data = [
-    { name: 'Mon', joins: 4 },
-    { name: 'Tue', joins: 7 },
-    { name: 'Wed', joins: 5 },
-    { name: 'Thu', joins: 12 },
-    { name: 'Fri', joins: 9 },
-    { name: 'Sat', joins: 15 },
-    { name: 'Sun', joins: 11 },
-]
+type EnrolledStudent = {
+    profile_id: string
+    course_id: string
+    status: string
+    created_at: string
+    full_name: string
+    email: string
+    avatar_url: string
+}
+
+type AdminStats = {
+    totalStudents: number
+    totalEnrollments: number
+    activeChallenges: number
+    courseEnrollments: Record<string, number>
+}
+
+const defaultStats: AdminStats = {
+    totalStudents: 0,
+    totalEnrollments: 0,
+    activeChallenges: 0,
+    courseEnrollments: {},
+}
 
 export default function AdminDashboard() {
     const [activeTab, setActiveTab] = useState("overview")
     const [isChartReady, setIsChartReady] = useState(false)
     const [mockCourses, setMockCourses] = useState<Course[]>(courses)
-    const [mockShowcase, setMockShowcase] = useState<ShowcaseItem[]>(adminShowcase)
+    const [mockShowcase, setMockShowcase] = useState<ShowcaseItem[]>([])
+    const [isLoadingShowcase, setIsLoadingShowcase] = useState(false)
+    const [showcaseVideoFile, setShowcaseVideoFile] = useState<File | null>(null)
+    const [showcaseThumbnailFile, setShowcaseThumbnailFile] = useState<File | null>(null)
+    const [showcaseSaving, setShowcaseSaving] = useState(false)
+    const [showcaseMessage, setShowcaseMessage] = useState("")
     const [mockChallenges, setMockChallenges] = useState<Challenge[]>(challenges)
     const [editingId, setEditingId] = useState<string | null>(null)
     const [editingChaptersId, setEditingChaptersId] = useState<string | null>(null)
@@ -55,6 +75,17 @@ export default function AdminDashboard() {
     const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([])
     const [serviceRequestsMessage, setServiceRequestsMessage] = useState("")
     const [isLoadingServiceRequests, setIsLoadingServiceRequests] = useState(false)
+    const [adminStats, setAdminStats] = useState<AdminStats>(defaultStats)
+    const [enrolledStudents, setEnrolledStudents] = useState<EnrolledStudent[]>([])
+    const [isLoadingStudents, setIsLoadingStudents] = useState(false)
+    const [growthData, setGrowthData] = useState<{ name: string; joins: number }[]>([])
+    const [allEnrollments, setAllEnrollments] = useState<any[]>([])
+    const [analyticsMode, setAnalyticsMode] = useState<'daily' | 'weekly' | 'monthly'>('daily')
+    const [analyticsDate, setAnalyticsDate] = useState(new Date())
+    const [totalRevenue, setTotalRevenue] = useState(0)
+    const [todayRevenue, setTodayRevenue] = useState(0)
+
+    const PRICE_PER_ENROLLMENT = 999
 
     const editingCourseForChapters = mockCourses.find(c => c.id === editingChaptersId)
 
@@ -95,34 +126,123 @@ export default function AdminDashboard() {
         }
     }
 
+    const loadShowcaseItems = async () => {
+        setIsLoadingShowcase(true)
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) { setMockShowcase(adminShowcase); setIsLoadingShowcase(false); return }
+            const { data, error } = await supabase
+                .from('showcase_items')
+                .select('*')
+                .order('created_at', { ascending: false })
+            if (error || !data) { setMockShowcase(adminShowcase); }
+            else {
+                setMockShowcase(data.map((r: any) => ({
+                    id: r.id,
+                    title: r.title,
+                    description: r.description,
+                    thumbnail: r.thumbnail,
+                    videoUrl: r.video_url,
+                })))
+            }
+        } catch { setMockShowcase(adminShowcase) }
+        setIsLoadingShowcase(false)
+    }
+
+    const uploadShowcaseFile = async (file: File, folder: string): Promise<string> => {
+        const supabase = await getServiceRequestClient()
+        if (!supabase) throw new Error('No client')
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-')
+        const path = `${folder}/${Date.now()}-${safeName}`
+        const { error } = await supabase.storage.from('showcase-videos').upload(path, file, { upsert: false })
+        if (error) throw error
+        const { data } = supabase.storage.from('showcase-videos').getPublicUrl(path)
+        return data.publicUrl
+    }
+
     const handleAddShowcase = () => {
-        const newItem = {
-            id: `showcase-${Date.now()}`,
+        const newItem: ShowcaseItem = {
+            id: `new-${Date.now()}`,
             title: "New Showcase Video",
             description: "Describe this featured work...",
-            thumbnail: "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?auto=format&fit=crop&q=80&w=800",
-            videoUrl: "#"
+            thumbnail: "",
+            videoUrl: ""
         }
-        setMockShowcase([newItem, ...mockShowcase])
-        handleEditShowcase(newItem)
+        setShowcaseEditForm(newItem)
+        setEditingShowcaseId(newItem.id)
+        setShowcaseVideoFile(null)
+        setShowcaseThumbnailFile(null)
+        setShowcaseMessage("")
+        // Don't add to list yet — only after save
     }
 
     const handleEditShowcase = (item: ShowcaseItem) => {
         setEditingShowcaseId(item.id)
         setShowcaseEditForm({ ...item })
+        setShowcaseVideoFile(null)
+        setShowcaseThumbnailFile(null)
+        setShowcaseMessage("")
     }
 
-    const handleSaveShowcase = () => {
-        if (!showcaseEditForm) {
-            return
+    const handleSaveShowcase = async () => {
+        if (!showcaseEditForm) return
+        setShowcaseSaving(true)
+        setShowcaseMessage("")
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) { setShowcaseMessage("Supabase not configured"); setShowcaseSaving(false); return }
+
+            let videoUrl = showcaseEditForm.videoUrl
+            let thumbnailUrl = showcaseEditForm.thumbnail
+
+            // Upload video file if selected
+            if (showcaseVideoFile) {
+                videoUrl = await uploadShowcaseFile(showcaseVideoFile, 'videos')
+            }
+            // Upload thumbnail file if selected
+            if (showcaseThumbnailFile) {
+                thumbnailUrl = await uploadShowcaseFile(showcaseThumbnailFile, 'thumbnails')
+            }
+
+            const isNew = showcaseEditForm.id.startsWith('new-')
+
+            if (isNew) {
+                const { data, error } = await supabase
+                    .from('showcase_items')
+                    .insert({ title: showcaseEditForm.title, description: showcaseEditForm.description, thumbnail: thumbnailUrl, video_url: videoUrl })
+                    .select('*')
+                    .single()
+                if (error) throw error
+                setMockShowcase(prev => [{ id: data.id, title: data.title, description: data.description, thumbnail: data.thumbnail, videoUrl: data.video_url }, ...prev])
+            } else {
+                const { error } = await supabase
+                    .from('showcase_items')
+                    .update({ title: showcaseEditForm.title, description: showcaseEditForm.description, thumbnail: thumbnailUrl, video_url: videoUrl })
+                    .eq('id', showcaseEditForm.id)
+                if (error) throw error
+                setMockShowcase(prev => prev.map(s => s.id === showcaseEditForm.id ? { ...showcaseEditForm, thumbnail: thumbnailUrl, videoUrl } : s))
+            }
+
+            setEditingShowcaseId(null)
+            setShowcaseVideoFile(null)
+            setShowcaseThumbnailFile(null)
+            setShowcaseMessage("Saved to Supabase!")
+        } catch (e: any) {
+            setShowcaseMessage(`Error: ${e.message || 'Could not save'}`)
         }
-        setMockShowcase(mockShowcase.map(s => s.id === editingShowcaseId ? showcaseEditForm : s))
-        setEditingShowcaseId(null)
+        setShowcaseSaving(false)
     }
 
-    const handleDeleteShowcase = (id: string) => {
-        if (confirm("Are you sure you want to remove this from showcase?")) {
-            setMockShowcase(mockShowcase.filter(s => s.id !== id))
+    const handleDeleteShowcase = async (id: string) => {
+        if (!confirm("Are you sure you want to remove this from showcase?")) return
+        try {
+            const supabase = await getServiceRequestClient()
+            if (supabase) {
+                await supabase.from('showcase_items').delete().eq('id', id)
+            }
+            setMockShowcase(prev => prev.filter(s => s.id !== id))
+        } catch {
+            setShowcaseMessage("Could not delete item.")
         }
     }
 
@@ -208,9 +328,190 @@ export default function AdminDashboard() {
         }
     }
 
+    const loadAdminData = async () => {
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) return
+
+            // Fetch all enrollments with profile info
+            const { data: enrollments } = await supabase
+                .from('enrollments')
+                .select('profile_id, course_id, status, created_at')
+                .order('created_at', { ascending: false })
+
+            // Fetch unique student profiles who are enrolled
+            const profileIds = [...new Set((enrollments || []).map((e: any) => e.profile_id))]
+            let profiles: any[] = []
+            if (profileIds.length > 0) {
+                const { data: profileData } = await supabase
+                    .from('profiles')
+                    .select('id, full_name, email, avatar_url')
+                    .in('id', profileIds)
+                profiles = profileData || []
+            }
+
+            // Build enrolled students list
+            const profileMap = new Map(profiles.map((p: any) => [p.id, p]))
+            const students: EnrolledStudent[] = (enrollments || []).map((e: any) => {
+                const p = profileMap.get(e.profile_id) || {}
+                return {
+                    profile_id: e.profile_id,
+                    course_id: e.course_id,
+                    status: e.status,
+                    created_at: e.created_at,
+                    full_name: p.full_name || 'Unknown',
+                    email: p.email || '',
+                    avatar_url: p.avatar_url || '',
+                }
+            })
+            setEnrolledStudents(students)
+
+            // Count enrollments per course
+            const courseEnrollments: Record<string, number> = {}
+            ;(enrollments || []).forEach((e: any) => {
+                courseEnrollments[e.course_id] = (courseEnrollments[e.course_id] || 0) + 1
+            })
+
+            // Count active challenges
+            const { count: challengeCount } = await supabase
+                .from('challenges')
+                .select('*', { count: 'exact', head: true })
+
+            // Build growth chart from enrollment dates (last 7 days)
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+            const last7 = Array.from({ length: 7 }, (_, i) => {
+                const d = new Date()
+                d.setDate(d.getDate() - (6 - i))
+                return d
+            })
+            const growth = last7.map(d => ({
+                name: days[d.getDay()],
+                joins: (enrollments || []).filter((e: any) => {
+                    const ed = new Date(e.created_at)
+                    return ed.toDateString() === d.toDateString()
+                }).length,
+            }))
+            setGrowthData(growth)
+
+            // Store all enrollments for analytics
+            setAllEnrollments(enrollments || [])
+            const today = new Date().toDateString()
+            const todayEnrollments = (enrollments || []).filter((e: any) => new Date(e.created_at).toDateString() === today).length
+            setTodayRevenue(todayEnrollments * PRICE_PER_ENROLLMENT)
+            setTotalRevenue((enrollments || []).length * PRICE_PER_ENROLLMENT)
+
+            setAdminStats({
+                totalStudents: profileIds.length,
+                totalEnrollments: (enrollments || []).length,
+                activeChallenges: challengeCount || 0,
+                courseEnrollments,
+            })
+        } catch (e) {
+            // Stats remain at defaults
+        }
+    }
+
+    const loadStudents = async () => {
+        setIsLoadingStudents(true)
+        await loadAdminData()
+        setIsLoadingStudents(false)
+    }
+
+    // Analytics: compute chart data based on mode + date
+    const getAnalyticsData = () => {
+        const base = new Date(analyticsDate)
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+        if (analyticsMode === 'daily') {
+            // Show 7 days ending on analyticsDate
+            const slots = Array.from({ length: 7 }, (_, i) => {
+                const d = new Date(base)
+                d.setDate(d.getDate() - (6 - i))
+                return d
+            })
+            return slots.map(d => {
+                const count = allEnrollments.filter(e => new Date(e.created_at).toDateString() === d.toDateString()).length
+                return {
+                    name: `${d.getDate()} ${months[d.getMonth()]}`,
+                    enrollments: count,
+                    revenue: count * PRICE_PER_ENROLLMENT,
+                }
+            })
+        }
+
+        if (analyticsMode === 'weekly') {
+            // Show 4 weeks ending on the week of analyticsDate
+            const slots = Array.from({ length: 4 }, (_, i) => {
+                const weekStart = new Date(base)
+                weekStart.setDate(weekStart.getDate() - weekStart.getDay() - (3 - i) * 7)
+                const weekEnd = new Date(weekStart)
+                weekEnd.setDate(weekEnd.getDate() + 6)
+                return { start: weekStart, end: weekEnd }
+            })
+            return slots.map(({ start, end }) => {
+                const count = allEnrollments.filter(e => {
+                    const d = new Date(e.created_at)
+                    return d >= start && d <= new Date(end.getTime() + 86400000)
+                }).length
+                return {
+                    name: `${start.getDate()} ${months[start.getMonth()]} - ${end.getDate()} ${months[end.getMonth()]}`,
+                    enrollments: count,
+                    revenue: count * PRICE_PER_ENROLLMENT,
+                }
+            })
+        }
+
+        // monthly — show 6 months ending on analyticsDate's month
+        const slots = Array.from({ length: 6 }, (_, i) => {
+            const d = new Date(base.getFullYear(), base.getMonth() - (5 - i), 1)
+            return d
+        })
+        return slots.map(d => {
+            const count = allEnrollments.filter(e => {
+                const ed = new Date(e.created_at)
+                return ed.getMonth() === d.getMonth() && ed.getFullYear() === d.getFullYear()
+            }).length
+            return {
+                name: `${months[d.getMonth()]} ${d.getFullYear().toString().slice(2)}`,
+                enrollments: count,
+                revenue: count * PRICE_PER_ENROLLMENT,
+            }
+        })
+    }
+
+    const analyticsChartData = getAnalyticsData()
+    const analyticsPeriodRevenue = analyticsChartData.reduce((sum, d) => sum + d.revenue, 0)
+    const analyticsPeriodEnrollments = analyticsChartData.reduce((sum, d) => sum + d.enrollments, 0)
+
+    const navigateAnalytics = (direction: number) => {
+        const d = new Date(analyticsDate)
+        if (analyticsMode === 'daily') d.setDate(d.getDate() + direction * 7)
+        else if (analyticsMode === 'weekly') d.setDate(d.getDate() + direction * 28)
+        else d.setMonth(d.getMonth() + direction * 6)
+        setAnalyticsDate(d)
+    }
+
+    const getAnalyticsLabel = () => {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        const d = analyticsDate
+        if (analyticsMode === 'daily') {
+            const start = new Date(d); start.setDate(start.getDate() - 6)
+            return `${start.getDate()} ${months[start.getMonth()]} — ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`
+        }
+        if (analyticsMode === 'weekly') {
+            const start = new Date(d); start.setDate(start.getDate() - 21)
+            return `${start.getDate()} ${months[start.getMonth()]} — ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`
+        }
+        const start = new Date(d.getFullYear(), d.getMonth() - 5, 1)
+        return `${months[start.getMonth()]} ${start.getFullYear()} — ${months[d.getMonth()]} ${d.getFullYear()}`
+    }
+
     useEffect(() => {
         setIsChartReady(true)
         loadServiceRequests()
+        loadAdminData()
+        loadShowcaseItems()
     }, [])
 
     return (
@@ -267,7 +568,13 @@ export default function AdminDashboard() {
                             >
                                 <Inbox className="w-4 h-4" /> Service Requests
                             </button>
-                            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium text-white/40 hover:bg-white/5 hover:text-white">
+                            <button
+                                onClick={() => { setActiveTab("students"); loadStudents(); }}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    activeTab === "students" ? "bg-primary text-white" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                )}
+                            >
                                 <Users className="w-4 h-4" /> Students
                             </button>
                             <div className="pt-4 mt-4 border-t border-white/5">
@@ -296,60 +603,138 @@ export default function AdminDashboard() {
                                 </header>
 
                                 {/* Stats Grid */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                                    <StatCard label="Total Students" value="1,284" change="+12%" icon={Users} color="text-violet-400" />
-                                    <StatCard label="Course Completion" value="68%" change="+5%" icon={CheckCircle2} color="text-emerald-400" />
-                                    <StatCard label="Active Challenges" value="4" change="Stable" icon={Play} color="text-amber-400" />
-                                    <StatCard label="Reports/Flagged" value="12" change="-2" icon={ShieldAlert} color="text-red-400" />
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                                    <StatCard label="Total Students" value={String(adminStats.totalStudents)} change="Live" icon={Users} color="text-violet-400" />
+                                    <StatCard label="Total Enrollments" value={String(adminStats.totalEnrollments)} change="Live" icon={CheckCircle2} color="text-emerald-400" />
+                                    <StatCard label="Total Revenue" value={`₹${totalRevenue.toLocaleString('en-IN')}`} change="₹999/mo each" icon={DollarSign} color="text-cyan-400" />
+                                    <StatCard label="Today's Sales" value={`₹${todayRevenue.toLocaleString('en-IN')}`} change="Live" icon={TrendingUp} color="text-amber-400" />
+                                    <StatCard label="Active Challenges" value={String(adminStats.activeChallenges)} change="Live" icon={Play} color="text-red-400" />
                                 </div>
 
-                                {/* Charts */}
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                    <div className="glass-card p-6 rounded-2xl border-white/10">
-                                        <h3 className="font-bold mb-6">Student Growth</h3>
-                                        <div className="h-[250px] w-full">
-                                            {isChartReady ? (
-                                                <ResponsiveContainer width="100%" height="100%">
-                                                    <AreaChart data={data}>
-                                                        <defs>
-                                                            <linearGradient id="colorJoins" x1="0" y1="0" x2="0" y2="1">
-                                                                <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.3} />
-                                                                <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
-                                                            </linearGradient>
-                                                        </defs>
-                                                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
-                                                        <XAxis dataKey="name" stroke="#ffffff20" fontSize={10} axisLine={false} tickLine={false} />
-                                                        <Tooltip
-                                                            contentStyle={{ backgroundColor: '#1a1a24', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
-                                                            itemStyle={{ color: '#fff' }}
-                                                        />
-                                                        <Area type="monotone" dataKey="joins" stroke="#7c3aed" fillOpacity={1} fill="url(#colorJoins)" strokeWidth={3} />
-                                                    </AreaChart>
-                                                </ResponsiveContainer>
-                                            ) : (
-                                                <div className="h-full w-full rounded-2xl border border-white/5 bg-white/[0.02]" />
-                                            )}
+                                {/* Analytics Panel */}
+                                <div className="glass-card p-6 rounded-2xl border-white/10 space-y-6">
+                                    {/* Header: mode toggle + date navigation */}
+                                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                                        <div>
+                                            <h3 className="font-bold text-lg">Revenue Analytics</h3>
+                                            <p className="text-xs text-white/30">₹999 per enrollment • {getAnalyticsLabel()}</p>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            {/* Mode Toggle */}
+                                            <div className="flex bg-white/5 rounded-xl p-1">
+                                                {(['daily', 'weekly', 'monthly'] as const).map(mode => (
+                                                    <button
+                                                        key={mode}
+                                                        onClick={() => { setAnalyticsMode(mode); setAnalyticsDate(new Date()) }}
+                                                        className={cn(
+                                                            "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
+                                                            analyticsMode === mode ? "bg-primary text-white" : "text-white/40 hover:text-white"
+                                                        )}
+                                                    >
+                                                        {mode}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            {/* Date Navigation */}
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    onClick={() => navigateAnalytics(-1)}
+                                                    className="p-2 bg-white/5 rounded-lg hover:bg-white/10 transition-colors"
+                                                    title="Previous period"
+                                                >
+                                                    <ChevronLeft className="w-4 h-4 text-white/60" />
+                                                </button>
+                                                <button
+                                                    onClick={() => setAnalyticsDate(new Date())}
+                                                    className="p-2 bg-white/5 rounded-lg hover:bg-white/10 transition-colors"
+                                                    title="Today"
+                                                >
+                                                    <Calendar className="w-4 h-4 text-white/60" />
+                                                </button>
+                                                <button
+                                                    onClick={() => navigateAnalytics(1)}
+                                                    className="p-2 bg-white/5 rounded-lg hover:bg-white/10 transition-colors"
+                                                    title="Next period"
+                                                >
+                                                    <ChevronRight className="w-4 h-4 text-white/60" />
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="glass-card p-6 rounded-2xl border-white/10">
-                                        <h3 className="font-bold mb-6">Recent Reports</h3>
-                                        <div className="space-y-4">
-                                            {[1, 2, 3].map((i) => (
-                                                <div key={i} className="flex items-center justify-between p-4 bg-white/[0.02] rounded-xl border border-white/5">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-10 h-10 rounded-full bg-red-400/10 flex items-center justify-center">
-                                                            <Ban className="w-4 h-4 text-red-400" />
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-sm font-bold text-white/90 truncate max-w-[150px]">Illicit Content Flag</p>
-                                                            <p className="text-[10px] text-white/30">User ID: #5821 • 2 hours ago</p>
-                                                        </div>
-                                                    </div>
-                                                    <button className="text-[10px] font-bold text-red-400 bg-red-400/10 px-3 py-1.5 rounded-lg border border-red-400/20 hover:bg-red-400/20 transition-all uppercase tracking-wider">
-                                                        Ban Student
-                                                    </button>
-                                                </div>
-                                            ))}
+
+                                    {/* Period Summary */}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
+                                            <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Period Revenue</p>
+                                            <p className="text-xl font-bold text-cyan-400">₹{analyticsPeriodRevenue.toLocaleString('en-IN')}</p>
+                                        </div>
+                                        <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
+                                            <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Enrollments</p>
+                                            <p className="text-xl font-bold text-emerald-400">{analyticsPeriodEnrollments}</p>
+                                        </div>
+                                        <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
+                                            <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Avg / {analyticsMode === 'daily' ? 'Day' : analyticsMode === 'weekly' ? 'Week' : 'Month'}</p>
+                                            <p className="text-xl font-bold text-amber-400">₹{Math.round(analyticsPeriodRevenue / analyticsChartData.length || 0).toLocaleString('en-IN')}</p>
+                                        </div>
+                                        <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
+                                            <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Best {analyticsMode === 'daily' ? 'Day' : analyticsMode === 'weekly' ? 'Week' : 'Month'}</p>
+                                            <p className="text-xl font-bold text-violet-400">₹{Math.max(...analyticsChartData.map(d => d.revenue), 0).toLocaleString('en-IN')}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Charts side by side */}
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        {/* Revenue Bar Chart */}
+                                        <div>
+                                            <p className="text-xs font-bold text-white/30 uppercase tracking-widest mb-4">Revenue</p>
+                                            <div className="h-[250px] w-full">
+                                                {isChartReady ? (
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <BarChart data={analyticsChartData}>
+                                                            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                                                            <XAxis dataKey="name" stroke="#ffffff20" fontSize={9} axisLine={false} tickLine={false} angle={analyticsMode === 'weekly' ? -20 : 0} textAnchor={analyticsMode === 'weekly' ? 'end' : 'middle'} />
+                                                            <YAxis stroke="#ffffff20" fontSize={10} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${v}`} />
+                                                            <Tooltip
+                                                                contentStyle={{ backgroundColor: '#1a1a24', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                                                                itemStyle={{ color: '#fff' }}
+                                                                formatter={(value: any) => [`₹${Number(value).toLocaleString('en-IN')}`, 'Revenue']}
+                                                            />
+                                                            <Bar dataKey="revenue" fill="#06b6d4" radius={[6, 6, 0, 0]} />
+                                                        </BarChart>
+                                                    </ResponsiveContainer>
+                                                ) : (
+                                                    <div className="h-full w-full rounded-2xl border border-white/5 bg-white/[0.02]" />
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Enrollments Area Chart */}
+                                        <div>
+                                            <p className="text-xs font-bold text-white/30 uppercase tracking-widest mb-4">Enrollments</p>
+                                            <div className="h-[250px] w-full">
+                                                {isChartReady ? (
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <AreaChart data={analyticsChartData}>
+                                                            <defs>
+                                                                <linearGradient id="colorEnroll" x1="0" y1="0" x2="0" y2="1">
+                                                                    <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.3} />
+                                                                    <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
+                                                                </linearGradient>
+                                                            </defs>
+                                                            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                                                            <XAxis dataKey="name" stroke="#ffffff20" fontSize={9} axisLine={false} tickLine={false} angle={analyticsMode === 'weekly' ? -20 : 0} textAnchor={analyticsMode === 'weekly' ? 'end' : 'middle'} />
+                                                            <YAxis stroke="#ffffff20" fontSize={10} axisLine={false} tickLine={false} />
+                                                            <Tooltip
+                                                                contentStyle={{ backgroundColor: '#1a1a24', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                                                                itemStyle={{ color: '#fff' }}
+                                                            />
+                                                            <Area type="monotone" dataKey="enrollments" stroke="#7c3aed" fillOpacity={1} fill="url(#colorEnroll)" strokeWidth={3} />
+                                                        </AreaChart>
+                                                    </ResponsiveContainer>
+                                                ) : (
+                                                    <div className="h-full w-full rounded-2xl border border-white/5 bg-white/[0.02]" />
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -434,7 +819,7 @@ export default function AdminDashboard() {
                                                                     <p className="text-sm text-white/40 line-clamp-2">{course.description}</p>
                                                                 </div>
                                                                 <div className="flex flex-wrap items-center gap-4 text-[10px] font-bold tracking-widest uppercase text-white/30">
-                                                                    <span className="flex items-center gap-1"><Users className="w-3 h-3" /> 452 Enrolled</span>
+                                                                    <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {adminStats.courseEnrollments[course.id] || 0} Enrolled</span>
                                                                     <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" /> {course.chapters} Chapters</span>
                                                                     <span className="flex items-center gap-1 text-primary"><FileText className="w-3 h-3 " /> {course.lessons?.length || 0} Lessons with resources</span>
                                                                 </div>
@@ -487,6 +872,39 @@ export default function AdminDashboard() {
                                     </button>
                                 </div>
 
+                                {isLoadingShowcase && <div className="text-white/40 text-sm">Loading showcase items...</div>}
+                                {showcaseMessage && !editingShowcaseId && <p className="text-xs text-white/50">{showcaseMessage}</p>}
+
+                                {/* New item form */}
+                                {editingShowcaseId?.startsWith('new-') && showcaseEditForm && (
+                                    <div className="glass-card overflow-hidden p-6 space-y-4">
+                                        <h3 className="font-bold text-lg mb-2">Add New Showcase Video</h3>
+                                        <div className="space-y-4">
+                                            <input value={showcaseEditForm.title} onChange={(e) => setShowcaseEditForm(prev => prev ? { ...prev, title: e.target.value } : prev)} className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full" placeholder="Video Title" />
+                                            <textarea value={showcaseEditForm.description} onChange={(e) => setShowcaseEditForm(prev => prev ? { ...prev, description: e.target.value } : prev)} className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full h-24" placeholder="Short Description" />
+                                            <div>
+                                                <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1 block">Upload Video</label>
+                                                <input type="file" accept="video/*" onChange={(e) => setShowcaseVideoFile(e.target.files?.[0] || null)} className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-primary/20 file:px-3 file:py-1 file:text-primary file:text-xs file:font-bold" />
+                                            </div>
+                                            <input value={showcaseEditForm.videoUrl} onChange={(e) => setShowcaseEditForm(prev => prev ? { ...prev, videoUrl: e.target.value } : prev)} className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full" placeholder="Or paste Video URL" />
+                                            <div>
+                                                <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1 block">Upload Thumbnail</label>
+                                                <input type="file" accept="image/*" onChange={(e) => setShowcaseThumbnailFile(e.target.files?.[0] || null)} className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-primary/20 file:px-3 file:py-1 file:text-primary file:text-xs file:font-bold" />
+                                            </div>
+                                            <input value={showcaseEditForm.thumbnail} onChange={(e) => setShowcaseEditForm(prev => prev ? { ...prev, thumbnail: e.target.value } : prev)} className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full" placeholder="Or paste Thumbnail URL" />
+                                        </div>
+                                        {showcaseMessage && <p className="text-xs text-white/50">{showcaseMessage}</p>}
+                                        <div className="flex items-center gap-3">
+                                            <button onClick={handleSaveShowcase} disabled={showcaseSaving} className="px-4 py-2 bg-emerald-500 rounded-lg text-xs font-bold flex items-center gap-2 disabled:opacity-50">
+                                                {showcaseSaving ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading...</> : <><Save className="w-3.5 h-3.5" /> Save & Publish</>}
+                                            </button>
+                                            <button onClick={() => { setEditingShowcaseId(null); setShowcaseVideoFile(null); setShowcaseThumbnailFile(null) }} className="px-4 py-2 bg-white/5 rounded-lg text-xs font-bold flex items-center gap-2">
+                                                <X className="w-3.5 h-3.5" /> Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                     {mockShowcase.map((item) => (
                                         <div key={item.id} className="glass-card overflow-hidden group">
@@ -505,22 +923,59 @@ export default function AdminDashboard() {
                                                             className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full h-24"
                                                             placeholder="Short Description"
                                                         />
-                                                        <input
-                                                            value={showcaseEditForm?.thumbnail ?? ""}
-                                                            onChange={(e) => setShowcaseEditForm(prev => prev ? { ...prev, thumbnail: e.target.value } : prev)}
-                                                            className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full"
-                                                            placeholder="Thumbnail URL"
-                                                        />
+                                                        <div>
+                                                            <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1 block">Video File</label>
+                                                            <input
+                                                                type="file"
+                                                                accept="video/*"
+                                                                onChange={(e) => setShowcaseVideoFile(e.target.files?.[0] || null)}
+                                                                className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-primary/20 file:px-3 file:py-1 file:text-primary file:text-xs file:font-bold"
+                                                            />
+                                                            {showcaseEditForm?.videoUrl && !showcaseVideoFile && (
+                                                                <p className="text-[10px] text-white/30 mt-1 truncate">Current: {showcaseEditForm.videoUrl}</p>
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1 block">Video URL (or use upload above)</label>
+                                                            <input
+                                                                value={showcaseEditForm?.videoUrl ?? ""}
+                                                                onChange={(e) => setShowcaseEditForm(prev => prev ? { ...prev, videoUrl: e.target.value } : prev)}
+                                                                className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full"
+                                                                placeholder="https://youtube.com/... or leave blank to upload"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1 block">Thumbnail Image</label>
+                                                            <input
+                                                                type="file"
+                                                                accept="image/*"
+                                                                onChange={(e) => setShowcaseThumbnailFile(e.target.files?.[0] || null)}
+                                                                className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-primary/20 file:px-3 file:py-1 file:text-primary file:text-xs file:font-bold"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1 block">Thumbnail URL (or use upload above)</label>
+                                                            <input
+                                                                value={showcaseEditForm?.thumbnail ?? ""}
+                                                                onChange={(e) => setShowcaseEditForm(prev => prev ? { ...prev, thumbnail: e.target.value } : prev)}
+                                                                className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full"
+                                                                placeholder="https://... or leave blank to upload"
+                                                            />
+                                                        </div>
                                                     </div>
+                                                    {showcaseMessage && (
+                                                        <p className="text-xs text-white/50">{showcaseMessage}</p>
+                                                    )}
                                                     <div className="flex items-center gap-3">
                                                         <button
                                                             onClick={handleSaveShowcase}
-                                                            className="px-4 py-2 bg-emerald-500 rounded-lg text-xs font-bold flex items-center gap-2"
+                                                            disabled={showcaseSaving}
+                                                            className="px-4 py-2 bg-emerald-500 rounded-lg text-xs font-bold flex items-center gap-2 disabled:opacity-50"
                                                         >
-                                                            <Save className="w-3.5 h-3.5" /> Save Changes
+                                                            {showcaseSaving ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading...</> : <><Save className="w-3.5 h-3.5" /> Save Changes</>}
                                                         </button>
                                                         <button
-                                                            onClick={() => setEditingShowcaseId(null)}
+                                                            onClick={() => { setEditingShowcaseId(null); setShowcaseVideoFile(null); setShowcaseThumbnailFile(null) }}
                                                             className="px-4 py-2 bg-white/5 rounded-lg text-xs font-bold flex items-center gap-2"
                                                         >
                                                             <X className="w-3.5 h-3.5" /> Cancel
@@ -861,6 +1316,90 @@ export default function AdminDashboard() {
                                         ))
                                     )}
                                 </div>
+                            </motion.div>
+                        )}
+
+                        {activeTab === "students" && (
+                            <motion.div
+                                key="students"
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                className="space-y-8"
+                            >
+                                <div className="flex items-center justify-between">
+                                    <header>
+                                        <h1 className="text-3xl font-bold tracking-tight mb-2">Enrolled Students</h1>
+                                        <p className="text-white/40 text-sm">{adminStats.totalStudents} unique students across {adminStats.totalEnrollments} enrollments.</p>
+                                    </header>
+                                    <button
+                                        onClick={loadStudents}
+                                        className="px-5 py-2.5 bg-white/10 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-white/20 transition-colors"
+                                    >
+                                        <Download className="w-4 h-4" /> Refresh
+                                    </button>
+                                </div>
+
+                                {isLoadingStudents ? (
+                                    <div className="glass-card p-8 text-center text-white/40">Loading students...</div>
+                                ) : enrolledStudents.length === 0 ? (
+                                    <div className="glass-card p-12 text-center">
+                                        <Users className="w-12 h-12 text-white/20 mx-auto mb-4" />
+                                        <h2 className="text-2xl font-bold mb-2">No Enrollments Yet</h2>
+                                        <p className="text-white/40">Students will appear here once they enroll in courses.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {/* Group by student */}
+                                        {(() => {
+                                            const grouped = new Map<string, EnrolledStudent[]>()
+                                            enrolledStudents.forEach(s => {
+                                                const existing = grouped.get(s.profile_id) || []
+                                                existing.push(s)
+                                                grouped.set(s.profile_id, existing)
+                                            })
+                                            return Array.from(grouped.entries()).map(([profileId, entries]) => {
+                                                const student = entries[0]
+                                                return (
+                                                    <div key={profileId} className="glass-card p-6 rounded-2xl border-white/10">
+                                                        <div className="flex items-center gap-4 mb-4">
+                                                            <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center overflow-hidden">
+                                                                {student.avatar_url ? (
+                                                                    <img src={student.avatar_url} alt="" className="w-full h-full object-cover" />
+                                                                ) : (
+                                                                    <Users className="w-5 h-5 text-primary" />
+                                                                )}
+                                                            </div>
+                                                            <div>
+                                                                <h3 className="text-lg font-bold">{student.full_name}</h3>
+                                                                <p className="text-sm text-white/40">{student.email}</p>
+                                                            </div>
+                                                            <div className="ml-auto text-right">
+                                                                <span className="text-xs font-bold text-primary">{entries.length} course{entries.length > 1 ? 's' : ''}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {entries.map((e, i) => {
+                                                                const courseName = mockCourses.find(c => c.id === e.course_id)?.title || e.course_id
+                                                                return (
+                                                                    <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs">
+                                                                        <BookOpen className="w-3 h-3 text-primary" />
+                                                                        <span className="font-medium">{courseName}</span>
+                                                                        <span className={cn(
+                                                                            "px-1.5 py-0.5 rounded text-[9px] font-bold uppercase",
+                                                                            e.status === 'active' ? "bg-emerald-400/10 text-emerald-400" : "bg-white/5 text-white/40"
+                                                                        )}>{e.status}</span>
+                                                                        <span className="text-white/20">{new Date(e.created_at).toLocaleDateString()}</span>
+                                                                    </div>
+                                                                )
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })
+                                        })()}
+                                    </div>
+                                )}
                             </motion.div>
                         )}
                     </AnimatePresence>
