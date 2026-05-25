@@ -510,7 +510,27 @@ function AdminDashboardContent() {
                 .select('*')
                 .order('created_at', { ascending: true })
             if (dbCourses) {
-                setMockCourses(dbCourses)
+                // Fetch lessons for all courses
+                const { data: dbLessons } = await supabase
+                    .from('lessons')
+                    .select('*')
+                    .order('order', { ascending: true })
+                const lessonsByCourse: Record<string, any[]> = {}
+                for (const l of (dbLessons || [])) {
+                    if (!lessonsByCourse[l.course_id]) lessonsByCourse[l.course_id] = []
+                    lessonsByCourse[l.course_id].push({
+                        id: l.id,
+                        title: l.title,
+                        duration: l.duration,
+                        videoUrl: l.video_url,
+                        resources: l.resources || [],
+                    })
+                }
+                setMockCourses(dbCourses.map((c: any) => ({
+                    ...c,
+                    lessons: lessonsByCourse[c.id] || [],
+                    chapters: (lessonsByCourse[c.id] || []).length,
+                })))
             }
 
             // Fetch challenges from Supabase
