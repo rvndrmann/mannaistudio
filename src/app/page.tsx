@@ -161,11 +161,20 @@ export default function LandingPage() {
                             onClick={() => item.videoUrl && setPlayingVideo({ url: item.videoUrl, title: item.title })}
                         >
                             <div className="relative aspect-video bg-white/5">
-                                {item.thumbnail && <img
-                                    src={item.thumbnail}
-                                    alt={item.title}
-                                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                                />}
+                                {item.thumbnail ? (
+                                    <img
+                                        src={item.thumbnail}
+                                        alt={item.title}
+                                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                                    />
+                                ) : item.videoUrl ? (
+                                    <video
+                                        src={item.videoUrl}
+                                        muted
+                                        preload="metadata"
+                                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                                    />
+                                ) : null}
                                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                     <div className="bg-primary p-5 rounded-full shadow-2xl scale-75 group-hover:scale-100 transition-transform">
                                         <Play className="w-8 h-8 fill-white" />
