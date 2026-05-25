@@ -185,12 +185,13 @@ function AdminDashboardContent() {
         try {
             const supabase = await getServiceRequestClient()
             if (!supabase) return
-            const { error } = await supabase.from('courses').delete().eq('id', id)
+            const { error, count } = await supabase.from('courses').delete({ count: 'exact' }).eq('id', id)
             if (error) throw error
-            setMockCourses(mockCourses.filter(c => c.id !== id))
-        } catch (err) {
+            if (count === 0) throw new Error('No rows deleted — check admin permissions')
+            setMockCourses(prev => prev.filter(c => c.id !== id))
+        } catch (err: any) {
             console.error('Delete course error:', err)
-            alert('Failed to delete course.')
+            alert('Failed to delete course: ' + (err.message || 'Unknown error'))
         }
     }
 
@@ -340,9 +341,10 @@ function AdminDashboardContent() {
         try {
             const supabase = await getServiceRequestClient()
             if (!supabase) return
-            const { error } = await supabase.from('challenges').delete().eq('id', id)
+            const { error, count } = await supabase.from('challenges').delete({ count: 'exact' }).eq('id', id)
             if (error) throw error
-            setMockChallenges(mockChallenges.filter(c => c.id !== id))
+            if (count === 0) throw new Error('No rows deleted — check admin permissions')
+            setMockChallenges(prev => prev.filter(c => c.id !== id))
         } catch (err) {
             console.error('Delete challenge error:', err)
             alert('Failed to delete challenge.')
