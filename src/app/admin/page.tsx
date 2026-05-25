@@ -1659,6 +1659,8 @@ function AdminDashboardContent() {
 
 function ChapterEditor({ course, onBack, onUpdate }: any) {
     const [lessons, setLessons] = useState(course?.lessons || [])
+    const [uploadingLessonId, setUploadingLessonId] = useState<number | null>(null)
+    const [lessonUploadStatus, setLessonUploadStatus] = useState("")
 
     const handleAddLesson = () => {
         const newLesson = {
@@ -1746,20 +1748,42 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
                                             </div>
                                             <div className="flex items-center gap-1">
                                                 <span className="text-[10px] font-bold text-white/10 uppercase">or</span>
-                                                <label className="cursor-pointer group/upload">
+                                                <label className={cn("cursor-pointer group/upload", uploadingLessonId === lesson.id && "pointer-events-none opacity-50")}>
                                                     <input
                                                         type="file"
                                                         accept="video/*"
                                                         className="hidden"
-                                                        onChange={(e: any) => {
+                                                        onChange={async (e: any) => {
                                                             const file = e.target.files?.[0]
-                                                            if (file) {
-                                                                handleUpdateLesson(lesson.id, "videoUrl", `Local: ${file.name} (uploaded)`)
+                                                            if (!file) return
+                                                            setUploadingLessonId(lesson.id)
+                                                            setLessonUploadStatus(`Uploading ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)...`)
+                                                            try {
+                                                                const { getServiceRequestClient } = await import('@/lib/service-requests')
+                                                                const supabase = await getServiceRequestClient()
+                                                                if (!supabase) throw new Error('No client')
+                                                                const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-')
+                                                                const path = `lessons/${Date.now()}-${safeName}`
+                                                                const { error } = await supabase.storage.from('videos').upload(path, file, { upsert: false })
+                                                                if (error) throw error
+                                                                const { data } = supabase.storage.from('videos').getPublicUrl(path)
+                                                                handleUpdateLesson(lesson.id, "videoUrl", data.publicUrl)
+                                                                setLessonUploadStatus("✓ Video uploaded!")
+                                                                setTimeout(() => setLessonUploadStatus(""), 3000)
+                                                            } catch (err: any) {
+                                                                setLessonUploadStatus(`✗ Upload failed: ${err.message || 'Unknown error'}`)
+                                                                setTimeout(() => setLessonUploadStatus(""), 5000)
                                                             }
+                                                            setUploadingLessonId(null)
+                                                            e.target.value = ''
                                                         }}
                                                     />
                                                     <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold text-white/40 group-hover/upload:bg-primary/20 group-hover/upload:text-primary transition-all whitespace-nowrap">
-                                                        <Video className="w-3 h-3" /> Upload
+                                                        {uploadingLessonId === lesson.id ? (
+                                                            <><Loader2 className="w-3 h-3 animate-spin" /> Uploading...</>
+                                                        ) : (
+                                                            <><Video className="w-3 h-3" /> Upload</>
+                                                        )}
                                                     </div>
                                                 </label>
                                             </div>
@@ -1777,6 +1801,23 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
                                 <Trash2 className="w-4 h-4" />
                             </button>
                         </div>
+
+                        {uploadingLessonId === lesson.id && lessonUploadStatus && (
+                            <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="ml-12 flex items-center gap-3 p-3 bg-primary/10 border border-primary/20 rounded-xl">
+                                <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
+                                <span className="text-xs font-medium text-primary">{lessonUploadStatus}</span>
+                            </motion.div>
+                        )}
+                        {uploadingLessonId === null && lessonUploadStatus && lessonUploadStatus.startsWith('✓') && (
+                            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="ml-12 flex items-center gap-3 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                                <span className="text-xs font-medium text-emerald-400">{lessonUploadStatus}</span>
+                            </motion.div>
+                        )}
+                        {uploadingLessonId === null && lessonUploadStatus && lessonUploadStatus.startsWith('✗') && (
+                            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="ml-12 flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+                                <span className="text-xs font-medium text-red-400">{lessonUploadStatus}</span>
+                            </motion.div>
+                        )}
 
                         <div className="pl-12 space-y-3">
                             <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Downloadable Resources</p>
