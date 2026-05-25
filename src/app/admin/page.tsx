@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 import { courses, adminShowcase, challenges } from "@/lib/data"
 import { useEffect, useState } from "react"
+import { useAuth } from "@/components/auth/auth-provider"
 import { cn } from "@/lib/utils"
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -51,7 +52,66 @@ const defaultStats: AdminStats = {
     courseEnrollments: {},
 }
 
+function AdminGate({ children }: { children: React.ReactNode }) {
+    const { user, loading } = useAuth()
+    const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
+
+    useEffect(() => {
+        const checkAdmin = async () => {
+            if (!user) { setIsAdmin(false); return }
+            try {
+                const supabase = await getServiceRequestClient()
+                if (!supabase) { setIsAdmin(false); return }
+                const { data } = await supabase
+                    .from('admin_users')
+                    .select('id')
+                    .eq('id', user.id)
+                    .single()
+                setIsAdmin(!!data)
+            } catch {
+                setIsAdmin(false)
+            }
+        }
+        if (!loading) checkAdmin()
+    }, [user, loading])
+
+    if (loading || isAdmin === null) {
+        return (
+            <main className="min-h-screen pb-20 bg-[#0a0a0f]">
+                <Navbar />
+                <div className="pt-32 flex items-center justify-center">
+                    <div className="glass-card p-12 text-center">
+                        <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto mb-4" />
+                        <p className="text-white/50">Verifying access...</p>
+                    </div>
+                </div>
+            </main>
+        )
+    }
+
+    if (!isAdmin) {
+        return (
+            <main className="min-h-screen pb-20 bg-[#0a0a0f]">
+                <Navbar />
+                <div className="pt-32 flex items-center justify-center">
+                    <div className="glass-card p-12 text-center max-w-md">
+                        <ShieldAlert className="w-12 h-12 text-red-400 mx-auto mb-4" />
+                        <h1 className="text-2xl font-bold mb-2">Access Denied</h1>
+                        <p className="text-white/40">This page is restricted to administrators only.</p>
+                    </div>
+                </div>
+            </main>
+        )
+    }
+
+    return <>{children}</>
+}
+
 export default function AdminDashboard() {
+    return <AdminGate><AdminDashboardContent /></AdminGate>
+}
+
+function AdminDashboardContent() {
     const [activeTab, setActiveTab] = useState("overview")
     const [isChartReady, setIsChartReady] = useState(false)
     const [mockCourses, setMockCourses] = useState<Course[]>(courses)

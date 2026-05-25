@@ -3,20 +3,32 @@
 import Link from "next/link"
 import { motion } from "framer-motion"
 import { Play, Award, Zap, User, Menu, X, ShieldCheck, LogIn, LogOut, Loader2 } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
+import { createClient } from "@/lib/supabase/client"
 
-const navLinks = [
+const baseNavLinks = [
     { name: "Courses", href: "/courses", icon: Play },
     { name: "Challenges", href: "/challenges", icon: Zap },
     { name: "AI Services", href: "/services", icon: ShieldCheck },
-    { name: "Admin", href: "/admin", icon: ShieldCheck },
 ]
+
+const adminLink = { name: "Admin", href: "/admin", icon: ShieldCheck }
 
 export default function Navbar() {
     const [isOpen, setIsOpen] = useState(false)
+    const [isAdmin, setIsAdmin] = useState(false)
     const { user, loading, signInWithGoogle, signOut } = useAuth()
+
+    useEffect(() => {
+        if (!user) { setIsAdmin(false); return }
+        const supabase = createClient()
+        supabase.from('admin_users').select('id').eq('id', user.id).single()
+            .then(({ data }) => setIsAdmin(!!data))
+    }, [user])
+
+    const navLinks = isAdmin ? [...baseNavLinks, adminLink] : baseNavLinks
 
     return (
         <nav className="fixed top-0 left-0 right-0 z-50 flex justify-center p-4">
