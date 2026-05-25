@@ -418,7 +418,7 @@ function AdminDashboardContent() {
                 .order('created_at', { ascending: false })
 
             // Fetch unique student profiles who are enrolled
-            const profileIds = [...new Set((enrollments || []).map((e: any) => e.profile_id))]
+            const profileIds = Array.from(new Set((enrollments || []).map((e: any) => e.profile_id)))
             let profiles: any[] = []
             if (profileIds.length > 0) {
                 const { data: profileData } = await supabase
