@@ -5,9 +5,35 @@ import { motion } from "framer-motion"
 import { ArrowRight, Play, Zap, Award, Share2, ShieldCheck, ChevronRight, ArrowUpRight } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
-import { adminShowcase } from "@/lib/data"
+import { adminShowcase as mockShowcase } from "@/lib/data"
+import { useState, useEffect } from "react"
+import { createClient } from "@/lib/supabase/client"
 
 export default function LandingPage() {
+    const [adminShowcase, setAdminShowcase] = useState(mockShowcase)
+
+    useEffect(() => {
+        const load = async () => {
+            try {
+                const supabase = createClient()
+                const { data, error } = await supabase
+                    .from('showcase_items')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                if (!error && data) {
+                    setAdminShowcase(data.map((s: any) => ({
+                        id: s.id,
+                        title: s.title,
+                        description: s.description,
+                        thumbnail: s.thumbnail || '',
+                        videoUrl: s.video_url || '',
+                    })))
+                }
+            } catch {}
+        }
+        load()
+    }, [])
+
     return (
         <main className="min-h-screen">
             <Navbar />
