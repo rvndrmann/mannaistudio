@@ -180,9 +180,17 @@ function AdminDashboardContent() {
         handleEditCourse(newCourse)
     }
 
-    const handleDeleteCourse = (id: string) => {
-        if (confirm("Are you sure you want to delete this course?")) {
+    const handleDeleteCourse = async (id: string) => {
+        if (!confirm("Are you sure you want to delete this course?")) return
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) return
+            const { error } = await supabase.from('courses').delete().eq('id', id)
+            if (error) throw error
             setMockCourses(mockCourses.filter(c => c.id !== id))
+        } catch (err) {
+            console.error('Delete course error:', err)
+            alert('Failed to delete course.')
         }
     }
 
@@ -297,12 +305,14 @@ function AdminDashboardContent() {
         if (!confirm("Are you sure you want to remove this from showcase?")) return
         try {
             const supabase = await getServiceRequestClient()
-            if (supabase) {
-                await supabase.from('showcase_items').delete().eq('id', id)
-            }
+            if (!supabase) return
+            const { error } = await supabase.from('showcase_items').delete().eq('id', id)
+            if (error) throw error
             setMockShowcase(prev => prev.filter(s => s.id !== id))
-        } catch {
-            setShowcaseMessage("Could not delete item.")
+            setShowcaseMessage("Deleted successfully.")
+        } catch (e: any) {
+            console.error('Delete showcase error:', e)
+            setShowcaseMessage(`Could not delete item: ${e.message || 'Unknown error'}`)
         }
     }
 
@@ -325,9 +335,17 @@ function AdminDashboardContent() {
         setEditingChallengeId(null)
     }
 
-    const handleDeleteChallenge = (id: string) => {
-        if (confirm("Are you sure you want to delete this challenge?")) {
+    const handleDeleteChallenge = async (id: string) => {
+        if (!confirm("Are you sure you want to delete this challenge?")) return
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) return
+            const { error } = await supabase.from('challenges').delete().eq('id', id)
+            if (error) throw error
             setMockChallenges(mockChallenges.filter(c => c.id !== id))
+        } catch (err) {
+            console.error('Delete challenge error:', err)
+            alert('Failed to delete challenge.')
         }
     }
 
