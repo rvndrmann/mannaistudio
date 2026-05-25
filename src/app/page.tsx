@@ -2,7 +2,8 @@
 
 import Navbar from "@/components/Navbar"
 import { motion } from "framer-motion"
-import { ArrowRight, Play, Zap, Award, Share2, ShieldCheck, ChevronRight, ArrowUpRight } from "lucide-react"
+import { ArrowRight, Play, Zap, Award, Share2, ShieldCheck, ChevronRight, ArrowUpRight, X } from "lucide-react"
+import { AnimatePresence } from "framer-motion"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { adminShowcase as mockShowcase } from "@/lib/data"
@@ -11,6 +12,7 @@ import { createClient } from "@/lib/supabase/client"
 
 export default function LandingPage() {
     const [adminShowcase, setAdminShowcase] = useState(mockShowcase)
+    const [playingVideo, setPlayingVideo] = useState<{ url: string; title: string } | null>(null)
 
     useEffect(() => {
         const load = async () => {
@@ -155,7 +157,8 @@ export default function LandingPage() {
                             whileInView={{ opacity: 1, y: 0 }}
                             transition={{ delay: i * 0.1 }}
                             viewport={{ once: true }}
-                            className="glass-card group overflow-hidden"
+                            className="glass-card group overflow-hidden cursor-pointer"
+                            onClick={() => item.videoUrl && setPlayingVideo({ url: item.videoUrl, title: item.title })}
                         >
                             <div className="relative aspect-video bg-white/5">
                                 {item.thumbnail && <img
@@ -195,6 +198,44 @@ export default function LandingPage() {
                     <span className="text-xl font-bold italic tracking-widest">OPENAI</span>
                 </div>
             </section>
+            {/* Video Player Modal */}
+            <AnimatePresence>
+                {playingVideo && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8 bg-black/95 backdrop-blur-xl"
+                        onClick={() => setPlayingVideo(null)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-[#0f0f15] rounded-3xl border border-white/10 overflow-hidden w-full max-w-5xl shadow-2xl"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="p-5 border-b border-white/5 flex items-center justify-between">
+                                <h3 className="text-xl font-bold">{playingVideo.title}</h3>
+                                <button
+                                    onClick={() => setPlayingVideo(null)}
+                                    className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition-all"
+                                >
+                                    <X className="w-7 h-7" />
+                                </button>
+                            </div>
+                            <div className="aspect-video bg-black">
+                                <video
+                                    src={playingVideo.url}
+                                    controls
+                                    autoPlay
+                                    className="w-full h-full"
+                                />
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </main>
     )
 }
