@@ -124,7 +124,7 @@ export default function ProfilePage() {
                 setVideos(JSON.parse(savedVideos))
             }
         } catch (e) {
-            setVideos(defaultPortfolioVideos)
+            setVideos([])
         }
     }, [backendReady])
 
