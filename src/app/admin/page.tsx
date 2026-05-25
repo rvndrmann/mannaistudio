@@ -350,10 +350,45 @@ function AdminDashboardContent() {
         }
     }
 
-    const handleUpdateChapters = (courseId: string, updatedLessons: CourseLesson[]) => {
-        setMockCourses(mockCourses.map(c =>
-            c.id === courseId ? { ...c, lessons: updatedLessons, chapters: updatedLessons.length } : c
-        ))
+    const handleUpdateChapters = async (courseId: string, updatedLessons: CourseLesson[]) => {
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) throw new Error('No Supabase client')
+            const lessonsPayload = updatedLessons.map((l, i) => ({
+                title: l.title,
+                duration: l.duration || '',
+                video_url: l.videoUrl || '',
+                order: i + 1,
+                resources: l.resources || [],
+            }))
+            console.log('Saving lessons for course:', courseId, lessonsPayload)
+            const { error } = await supabase.rpc('admin_upsert_lessons', {
+                p_course_id: courseId,
+                p_lessons: lessonsPayload,
+            })
+            if (error) throw error
+
+            // Also update chapter count on the course
+            await supabase.rpc('admin_upsert_course', {
+                p_id: courseId,
+                p_title: mockCourses.find(c => c.id === courseId)?.title || '',
+                p_description: mockCourses.find(c => c.id === courseId)?.description || '',
+                p_thumbnail: mockCourses.find(c => c.id === courseId)?.thumbnail || '',
+                p_xp: mockCourses.find(c => c.id === courseId)?.xp || 0,
+                p_duration: mockCourses.find(c => c.id === courseId)?.duration || '',
+                p_level: mockCourses.find(c => c.id === courseId)?.level || 'Beginner',
+                p_chapters: updatedLessons.length,
+                p_instructor: mockCourses.find(c => c.id === courseId)?.instructor || '',
+                p_price: mockCourses.find(c => c.id === courseId)?.price || 0,
+            })
+
+            setMockCourses(prev => prev.map(c =>
+                c.id === courseId ? { ...c, lessons: updatedLessons, chapters: updatedLessons.length } : c
+            ))
+        } catch (err: any) {
+            console.error('Failed to save lessons:', err)
+            alert('Failed to save lessons: ' + (err.message || 'Unknown error'))
+        }
     }
 
     const handleEditChallenge = (challenge: Challenge) => {
@@ -1712,9 +1747,13 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
             <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold">Curriculum: {course?.title}</h2>
                 <button
-                    onClick={() => {
-                        onUpdate(lessons)
-                        onBack()
+                    onClick={async () => {
+                        try {
+                            await onUpdate(lessons)
+                            onBack()
+                        } catch (err) {
+                            // error already alerted in handleUpdateChapters
+                        }
                     }}
                     className="px-4 py-2 bg-emerald-500 rounded-lg text-xs font-bold flex items-center gap-2"
                 >

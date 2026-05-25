@@ -137,7 +137,7 @@ export default function PortfolioPage() {
                                     {video.thumbnail ? (
                                         <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover opacity-70 group-hover:scale-105 transition-transform duration-500" />
                                     ) : video.url ? (
-                                        <video src={video.url} muted preload="metadata" className="w-full h-full object-cover opacity-70 group-hover:scale-105 transition-transform duration-500" />
+                                        <video src={`${video.url}#t=0.1`} muted preload="metadata" playsInline className="w-full h-full object-cover opacity-70 group-hover:scale-105 transition-transform duration-500" />
                                     ) : null}
                                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                         <div className="p-4 rounded-full bg-primary shadow-2xl">

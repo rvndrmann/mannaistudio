@@ -24,28 +24,28 @@ A Next.js 16 (App Router, Turbopack) course platform called "AI Mastery" for AI 
 ```
 src/
 ├── app/
-│   ├── page.tsx                    # Landing page
+│   ├── page.tsx                    # Landing page (fetches showcase from Supabase)
 │   ├── layout.tsx                  # Root layout (wraps AuthProvider)
-│   ├── courses/page.tsx            # Course listing
-│   ├── courses/[id]/page.tsx       # Individual course + lessons
+│   ├── courses/page.tsx            # Course listing (fetches from Supabase)
+│   ├── courses/[id]/page.tsx       # Individual course + lessons (fetches from Supabase, video playback)
 │   ├── courses/[id]/certificate/   # Certificate page
-│   ├── challenges/page.tsx         # Weekly challenges
+│   ├── challenges/page.tsx         # Weekly challenges (fetches from Supabase)
 │   ├── services/page.tsx           # AI Services request form
-│   ├── admin/page.tsx              # Admin dashboard
+│   ├── admin/page.tsx              # Admin dashboard (admin-gated, full CRUD via RPC)
 │   ├── profile/page.tsx            # Student profile
-│   ├── portfolio/page.tsx          # Portfolio page
+│   ├── portfolio/page.tsx          # Portfolio page (video player modal, share link copy)
 │   ├── auth/callback/route.ts      # OAuth callback handler
 │   ├── api/checkout/route.ts       # PayU checkout API
 │   └── api/payu/webhook/route.ts   # PayU payment webhook
 ├── components/
-│   ├── Navbar.tsx
+│   ├── Navbar.tsx                  # Hides Admin link for non-admin users
 │   └── auth/auth-provider.tsx      # AuthContext with signInWithGoogle/signOut
 ├── lib/
-│   ├── data.ts                     # Mock/seed data (courses, challenges, showcase, studentStats)
+│   ├── data.ts                     # Mock/seed data (fallback only)
 │   ├── supabase-helpers.ts         # fetchCourses, fetchCourseWithLessons, checkEnrollment, enrollFreeCourse
 │   ├── portfolio.ts                # Portfolio CRUD, file upload, public portfolio fetch
 │   ├── service-requests.ts         # Service request CRUD
-│   ├── supabase/client.ts          # Browser Supabase client
+│   ├── supabase/client.ts          # Browser Supabase client (singleton pattern)
 │   ├── supabase/server.ts          # Server Supabase client
 │   └── utils.ts                    # cn() utility
 ├── types/
@@ -53,67 +53,65 @@ src/
 └── middleware.ts                    # Auth token refresh middleware
 ```
 
-## What's Already Done
+## What's Been Completed
+
+### Authentication & Authorization
 1. **Google Auth** — Fully working. AuthProvider, OAuth callback, middleware all set up.
-2. **SQL migrations created** (in `supabase/migrations/`):
-   - `20260525162000_portfolio.sql` — profiles table extensions, portfolio_items table, RLS, portfolio-media storage bucket
-   - `20260525162500_service_requests.sql` — service_requests table, RLS
-3. **Standalone SQL files** (same content as migrations, for reference):
-   - `supabase-portfolio.sql`
-   - `supabase-service-requests.sql`
+2. **Admin gate** — `admin_users` table controls admin access. Admin page wrapped in `AdminGate` component that checks the table. Navbar hides Admin link for non-admins.
+3. **Supabase client** — Singleton pattern (`src/lib/supabase/client.ts`) prevents session corruption from multiple instances.
 
-## What Still Needs To Be Done — Supabase Backend Tables & Storage
+### Database Tables (all created in Supabase)
+| Table | Status | Notes |
+|-------|--------|-------|
+| `profiles` | ✅ Done | Base table + portfolio columns (slug, xp, level, is_portfolio_public) |
+| `admin_users` | ✅ Done | id (FK→auth.users), role. RLS: authenticated users can SELECT. |
+| `courses` | ✅ Done | id, title, description, thumbnail, xp, duration, level, chapters, instructor, price |
+| `lessons` | ✅ Done | id, course_id (FK→courses), title, duration, video_url, order, resources (jsonb) |
+| `enrollments` | ✅ Done | profile_id, course_id, status, payment_id. Unique on (profile_id, course_id) |
+| `portfolio_items` | ✅ Done | Via portfolio migration |
+| `service_requests` | ✅ Done | Via service_requests migration |
+| `challenges` | ✅ Done | id, title, description, prize, deadline, participants, difficulty, winner_id |
+| `showcase_items` | ✅ Done | id, title, description, thumbnail, video_url |
 
-The code references these Supabase tables/buckets. Some have migrations, some do NOT yet:
+### Storage Buckets
+| Bucket | Status | Used In |
+|--------|--------|---------|
+| `portfolio-media` | ✅ Done | portfolio.ts (file uploads) |
+| `videos` | ✅ Done | Course lesson videos, uploaded via admin ChapterEditor |
 
-### Tables Needed (derived from code)
+### SECURITY DEFINER RPC Functions (bypass RLS, check admin internally)
+All admin write operations use these to avoid nested RLS policy issues:
+- `admin_delete_course(course_id text)` — Deletes course by id
+- `admin_delete_challenge(challenge_id text)` — Deletes challenge by id
+- `admin_delete_showcase(item_id uuid)` — Deletes showcase item by id
+- `admin_upsert_course(p_id, p_title, p_description, p_thumbnail, p_xp, p_duration, p_level, p_chapters, p_instructor, p_price)` — Insert or update course
+- `admin_upsert_challenge(p_id, p_title, p_description, p_prize, p_deadline, p_participants, p_difficulty, p_winner_id)` — Insert or update challenge
+- `admin_upsert_lessons(p_course_id text, p_lessons jsonb)` — Replaces all lessons for a course (delete + insert)
 
-| Table | Has Migration? | Referenced In | Notes |
-|-------|---------------|---------------|-------|
-| `profiles` | Partial (portfolio.sql adds columns) | portfolio.ts, supabase-helpers.ts | Base table needs creating first (id uuid PK references auth.users, full_name, avatar_url, email). Portfolio migration adds portfolio_slug, is_portfolio_public, xp, level columns. |
-| `courses` | **NO** | supabase-helpers.ts | Fields: id, title, description, thumbnail, xp, duration, level, chapters, instructor, price, created_at. See `data.ts` for schema shape. |
-| `lessons` | **NO** | supabase-helpers.ts | Fields: id, course_id (FK→courses), title, duration, video_url, order, resources (jsonb). |
-| `enrollments` | **NO** | supabase-helpers.ts | Fields: profile_id (FK→profiles), course_id (FK→courses), status, payment_id. Unique on (profile_id, course_id). |
-| `portfolio_items` | YES | portfolio.ts | Done in portfolio migration. |
-| `service_requests` | YES | service-requests.ts | Done in service_requests migration. |
-| `challenges` | **NO** | data.ts (mock only) | Fields: id, title, description, prize, deadline, participants, difficulty, winner_id, created_at. |
-| `challenge_submissions` | **NO** | data.ts (mock only) | Fields: id, challenge_id (FK→challenges), student_name/profile_id, video_url, thumbnail, created_at. |
-| `showcase_items` | **NO** | data.ts (mock only, adminShowcase) | Fields: id, title, description, thumbnail, video_url. For admin showcase. |
+### Pages — All Fetch from Supabase
+- **Home page** (`page.tsx`) — Fetches showcase_items from Supabase, video player modal, "Start Learning Now" triggers sign-in for unauthenticated users
+- **Courses listing** (`courses/page.tsx`) — Fetches courses from Supabase
+- **Course detail** (`courses/[id]/page.tsx`) — Fetches course + lessons from Supabase, actual `<video>` playback
+- **Challenges** (`challenges/page.tsx`) — Fetches challenges from Supabase
+- **Portfolio** (`portfolio/page.tsx`) — Video player modal, share button copies link with "✓ Link copied!" feedback
+- **Admin** (`admin/page.tsx`) — Full CRUD for courses/challenges/showcase via RPC functions, upload progress animations, ChapterEditor persists lessons to Supabase
 
-### Storage Buckets Needed
+### UI Features
+- Upload progress animations (Framer Motion) for video uploads in admin and portfolio
+- Video player modals on home page, portfolio page, and course detail page
+- Videos show first frame as thumbnail when no thumbnail image is set (`<video>` with `preload="metadata"`)
 
-| Bucket | Has Migration? | Used In |
-|--------|---------------|---------|
-| `portfolio-media` | YES | portfolio.ts (file uploads) |
-| `videos` | **NO** | supabase-helpers.ts (`getVideoUrl`) — for course lesson videos |
-| `thumbnails` | **NO** | Likely needed for course/challenge thumbnails |
+## SQL Migrations
+Located in `supabase/migrations/`:
+- `20260525162000_portfolio.sql` — profiles extensions, portfolio_items, RLS, portfolio-media bucket
+- `20260525162500_service_requests.sql` — service_requests table, RLS
 
-### RLS Policies Still Needed
-- `courses` — public read, admin write
-- `lessons` — public read (or enrolled-only read), admin write
-- `enrollments` — users can read/insert their own, admin can read all
-- `challenges` — public read, admin write
-- `challenge_submissions` — public read, authenticated insert
-- `showcase_items` — public read, admin write
-- `videos` bucket — public read, admin upload
-- `thumbnails` bucket — public read, admin upload
-
-### Recommended Execution Order
-1. Create base `profiles` table (before portfolio migration runs)
-2. Run portfolio migration (`20260525162000_portfolio.sql`)
-3. Run service_requests migration (`20260525162500_service_requests.sql`)
-4. Create `courses` table + RLS
-5. Create `lessons` table + RLS
-6. Create `enrollments` table + RLS
-7. Create `challenges` table + RLS
-8. Create `challenge_submissions` table + RLS
-9. Create `showcase_items` table + RLS
-10. Create `videos` storage bucket + policies
-11. Create `thumbnails` storage bucket + policies
-12. Seed courses/challenges from `data.ts` mock data
-
-### Admin Role
-Currently there is no admin role system. The admin page (`src/app/admin/page.tsx`) and service_requests RLS are open. An `admin_users` table or role column on `profiles` should be added to gate admin access.
+## What Still Needs Work
+- `challenge_submissions` table — Not yet created (only mock data exists)
+- `thumbnails` storage bucket — Not yet created
+- Course enrollment payment flow — PayU routes exist but untested end-to-end
+- RLS policies for `enrollments` — users read/insert own, admin read all
+- Seeding initial data from `data.ts` into Supabase tables (if desired)
 
 ## Dev Server
 - Run: `npm run dev`
@@ -130,5 +128,8 @@ npx supabase link --project-ref cytkucdnllicnmljixwd
 npx supabase db push
 
 # Run SQL directly
-npx supabase db execute --sql "SELECT 1"
+npx supabase db query --linked "SELECT 1"
 ```
+
+## Deployment
+- **Netlify** — Build deployed. Note: use `Array.from(new Set(...))` instead of `[...new Set(...)]` for compatibility.

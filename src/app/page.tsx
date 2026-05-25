@@ -177,9 +177,10 @@ export default function LandingPage() {
                                     />
                                 ) : item.videoUrl ? (
                                     <video
-                                        src={item.videoUrl}
+                                        src={`${item.videoUrl}#t=0.1`}
                                         muted
                                         preload="metadata"
+                                        playsInline
                                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                                     />
                                 ) : null}

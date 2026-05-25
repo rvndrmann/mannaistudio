@@ -20,15 +20,9 @@ import {
     uploadPortfolioFile,
 } from "@/lib/portfolio"
 
-const defaultPortfolioVideos: PortfolioVideo[] = studentStats.videos.map((video, i) => ({
-    id: `starter-${i}`,
-    ...video,
-    thumbnail: `https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=800&sig=${i}`,
-}))
-
 export default function ProfilePage() {
     const { user, loading, signInWithGoogle } = useAuth()
-    const [videos, setVideos] = useState<PortfolioVideo[]>(defaultPortfolioVideos)
+    const [videos, setVideos] = useState<PortfolioVideo[]>([])
     const [isPublic, setIsPublic] = useState(true)
     const [profile, setProfile] = useState<any>(null)
     const [isAddingVideo, setIsAddingVideo] = useState(false)
@@ -567,44 +561,46 @@ export default function ProfilePage() {
                                     className="glass-card group overflow-hidden"
                                 >
                                     <div className="relative aspect-video bg-black/50">
-                                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 z-10">
-                                            <div className="flex gap-4 scale-75 group-hover:scale-100 transition-transform">
-                                                <a
-                                                    href={video.url}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="p-3 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
-                                                    aria-label={`Open ${video.title}`}
-                                                >
-                                                    <ExternalLink className="w-5 h-5" />
-                                                </a>
-                                                <button
-                                                    onClick={() => handleRemoveVideo(video.id)}
-                                                    className="p-3 bg-destructive/10 rounded-full hover:bg-destructive/20 text-destructive transition-colors"
-                                                    aria-label={`Remove ${video.title}`}
-                                                >
-                                                    <Trash2 className="w-5 h-5" />
-                                                </button>
+                                        {video.thumbnail ? (
+                                            <img
+                                                src={video.thumbnail}
+                                                alt={video.title}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : video.url ? (
+                                            <video
+                                                src={`${video.url}#t=0.1`}
+                                                muted
+                                                preload="metadata"
+                                                playsInline
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : null}
+                                        <div className="absolute inset-0 flex items-center justify-center">
+                                            <div className="p-4 rounded-full bg-primary/80 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity scale-75 group-hover:scale-100 transition-transform">
+                                                <Play className="w-7 h-7 fill-white" />
                                             </div>
-                                        </div>
-                                        <img
-                                            src={video.thumbnail}
-                                            alt={video.title}
-                                            className="w-full h-full object-cover opacity-60"
-                                        />
-                                        <div className="absolute bottom-3 left-3 flex items-center gap-3">
-                                            <div className="p-2 bg-primary rounded-lg text-white">
-                                                <Play className="w-3 h-3 fill-white" />
-                                            </div>
-                                            <span className="text-xs font-bold text-white shadow-sm">{video.title}</span>
                                         </div>
                                     </div>
-                                    <div className="p-4 flex items-center justify-between text-[10px] font-bold text-white/30 uppercase tracking-widest">
-                                        <div className="flex items-center gap-4">
-                                            <span>{video.views} Views</span>
-                                            <span>{video.likes} Likes</span>
+                                    <div className="p-4 space-y-3">
+                                        <div className="flex items-center gap-3">
+                                            <Play className="w-3 h-3 fill-white text-white/40" />
+                                            <span className="text-sm font-bold">{video.title}</span>
                                         </div>
-                                        <span className="text-emerald-500">Active</span>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-4 text-[10px] font-bold text-white/30 uppercase tracking-widest">
+                                                <span>{video.views} Views</span>
+                                                <span>{video.likes} Likes</span>
+                                                <span className="text-emerald-500">Active</span>
+                                            </div>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleRemoveVideo(video.id) }}
+                                                className="p-2 rounded-lg hover:bg-destructive/10 text-white/30 hover:text-destructive transition-colors"
+                                                aria-label={`Remove ${video.title}`}
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     </div>
                                 </motion.div>
                             ))}
