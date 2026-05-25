@@ -1,7 +1,8 @@
 "use client"
 
 import Navbar from "@/components/Navbar"
-import { Award, BarChart3, ExternalLink, Play, Share2, User, Video } from "lucide-react"
+import { Award, BarChart3, ExternalLink, Play, Share2, User, Video, X } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
 import { useEffect, useState } from "react"
 import { fetchPublicPortfolio, getPortfolioClient, type PublicPortfolio } from "@/lib/portfolio"
 
@@ -37,6 +38,7 @@ export default function PortfolioPage() {
     const [portfolio, setPortfolio] = useState<PublicPortfolio>(fallbackPortfolio)
     const [shareMessage, setShareMessage] = useState("")
     const [isLoading, setIsLoading] = useState(true)
+    const [playingVideo, setPlayingVideo] = useState<{ url: string; title: string } | null>(null)
 
     useEffect(() => {
         const loadPortfolio = async () => {
@@ -130,27 +132,26 @@ export default function PortfolioPage() {
                 {portfolio.videos.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {portfolio.videos.map((video) => (
-                            <article key={video.id} className="glass-card group overflow-hidden">
-                                <a href={video.url} target="_blank" rel="noreferrer" className="block">
-                                    <div className="relative aspect-video bg-black/50">
+                            <article key={video.id} className="glass-card group overflow-hidden cursor-pointer" onClick={() => setPlayingVideo({ url: video.url, title: video.title })}>
+                                <div className="relative aspect-video bg-black/50">
+                                    {video.thumbnail ? (
                                         <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover opacity-70 group-hover:scale-105 transition-transform duration-500" />
-                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                            <div className="p-4 rounded-full bg-primary shadow-2xl">
-                                                <Play className="w-7 h-7 fill-white" />
-                                            </div>
+                                    ) : video.url ? (
+                                        <video src={video.url} muted preload="metadata" className="w-full h-full object-cover opacity-70 group-hover:scale-105 transition-transform duration-500" />
+                                    ) : null}
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <div className="p-4 rounded-full bg-primary shadow-2xl">
+                                            <Play className="w-7 h-7 fill-white" />
                                         </div>
                                     </div>
-                                    <div className="p-5">
-                                        <div className="flex items-start justify-between gap-4">
-                                            <h2 className="font-bold text-lg group-hover:text-primary transition-colors">{video.title}</h2>
-                                            <ExternalLink className="w-4 h-4 text-white/30 shrink-0 mt-1" />
-                                        </div>
-                                        <div className="flex items-center gap-4 mt-4 text-[10px] font-bold text-white/30 uppercase tracking-widest">
-                                            <span>{video.views} Views</span>
-                                            <span>{video.likes} Likes</span>
-                                        </div>
+                                </div>
+                                <div className="p-5">
+                                    <h2 className="font-bold text-lg group-hover:text-primary transition-colors">{video.title}</h2>
+                                    <div className="flex items-center gap-4 mt-4 text-[10px] font-bold text-white/30 uppercase tracking-widest">
+                                        <span>{video.views} Views</span>
+                                        <span>{video.likes} Likes</span>
                                     </div>
-                                </a>
+                                </div>
                             </article>
                         ))}
                     </div>
@@ -162,6 +163,37 @@ export default function PortfolioPage() {
                     </div>
                 )}
             </section>
+
+            {/* Video Player Modal */}
+            <AnimatePresence>
+                {playingVideo && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8 bg-black/95 backdrop-blur-xl"
+                        onClick={() => setPlayingVideo(null)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-[#0f0f15] rounded-3xl border border-white/10 overflow-hidden w-full max-w-5xl shadow-2xl"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="p-5 border-b border-white/5 flex items-center justify-between">
+                                <h3 className="text-xl font-bold">{playingVideo.title}</h3>
+                                <button onClick={() => setPlayingVideo(null)} className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition-all">
+                                    <X className="w-7 h-7" />
+                                </button>
+                            </div>
+                            <div className="aspect-video bg-black">
+                                <video src={playingVideo.url} controls autoPlay className="w-full h-full" />
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </main>
     )
 }

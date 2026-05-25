@@ -190,7 +190,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Main Content: Video Player */}
                     <div className="lg:col-span-2 space-y-6">
-                        <div className="relative aspect-video glass-card rounded-2xl border-white/10 overflow-hidden shadow-2xl">
+                        <div className="relative aspect-video glass-card rounded-2xl border-white/10 overflow-hidden shadow-2xl bg-black">
                             {!isEnrolled && !isFree && !checkingEnrollment ? (
                                 /* Locked overlay for non-enrolled paid courses */
                                 <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-6 z-10">
@@ -214,11 +214,17 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                         {enrollLoading ? 'Processing...' : `Buy for ${course.price}`}
                                     </button>
                                 </div>
+                            ) : activeLesson?.videoUrl ? (
+                                <video
+                                    key={activeLesson.videoUrl}
+                                    src={activeLesson.videoUrl}
+                                    controls
+                                    className="w-full h-full"
+                                />
                             ) : (
-                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center group cursor-pointer">
-                                    <div className="bg-white/10 p-6 rounded-full backdrop-blur-md border border-white/20 group-hover:scale-110 transition-transform">
-                                        <Play className="w-12 h-12 fill-white text-white" />
-                                    </div>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-white/40">
+                                    <Play className="w-16 h-16" />
+                                    <p className="text-sm">No video available for this lesson</p>
                                 </div>
                             )}
                             <div className="absolute bottom-6 left-6 right-6 flex items-center justify-between">
