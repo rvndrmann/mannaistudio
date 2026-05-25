@@ -186,6 +186,7 @@ function AdminDashboardContent() {
             chapters: 0,
             instructor: "Admin",
             price: "Free",
+            lessons: [],
         }
         try {
             const supabase = await getServiceRequestClient()
