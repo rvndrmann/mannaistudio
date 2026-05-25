@@ -416,7 +416,7 @@ function AdminDashboardContent() {
                 .from('courses')
                 .select('*')
                 .order('created_at', { ascending: true })
-            if (dbCourses && dbCourses.length > 0) {
+            if (dbCourses) {
                 setMockCourses(dbCourses)
             }
 
@@ -425,7 +425,7 @@ function AdminDashboardContent() {
                 .from('challenges')
                 .select('*')
                 .order('created_at', { ascending: true })
-            if (dbChallenges && dbChallenges.length > 0) {
+            if (dbChallenges) {
                 setMockChallenges(dbChallenges.map((c: any) => ({
                     id: c.id,
                     title: c.title,

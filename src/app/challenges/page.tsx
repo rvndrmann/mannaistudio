@@ -23,7 +23,7 @@ export default function ChallengesPage() {
                     .from('challenges')
                     .select('*')
                     .order('created_at', { ascending: true })
-                if (!error && data && data.length > 0) {
+                if (!error && data) {
                     const mapped = data.map((c: any) => ({
                         id: c.id,
                         title: c.title,

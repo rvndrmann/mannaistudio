@@ -33,7 +33,7 @@ export default function CoursesPage() {
                     .from('courses')
                     .select('*')
                     .order('created_at', { ascending: true })
-                if (error || !data || data.length === 0) {
+                if (error || !data) {
                     setCourses(mockCourses)
                 } else {
                     setCourses(data)
