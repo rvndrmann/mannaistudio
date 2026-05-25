@@ -343,9 +343,9 @@ function AdminDashboardContent() {
             const { error } = await supabase.rpc('admin_delete_challenge', { challenge_id: id })
             if (error) throw error
             setMockChallenges(prev => prev.filter(c => c.id !== id))
-        } catch (err) {
+        } catch (err: any) {
             console.error('Delete challenge error:', err)
-            alert('Failed to delete challenge.')
+            alert('Failed to delete challenge: ' + (err.message || JSON.stringify(err)))
         }
     }
 
