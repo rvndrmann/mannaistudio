@@ -68,20 +68,13 @@ export default function PortfolioPage() {
 
     const handleShare = async () => {
         try {
-            if (navigator.share) {
-                await navigator.share({
-                    title: `${portfolio.name}'s AI Video Portfolio`,
-                    text: `View ${portfolio.name}'s AI video portfolio.`,
-                    url: window.location.href,
-                })
-                setShareMessage("Portfolio shared.")
-                return
-            }
-
-            await navigator.clipboard.writeText(window.location.href)
-            setShareMessage("Share link copied.")
+            const link = window.location.href
+            await navigator.clipboard.writeText(link)
+            setShareMessage("✓ Link copied!")
+            setTimeout(() => setShareMessage(""), 3000)
         } catch (e) {
             setShareMessage("Could not copy link.")
+            setTimeout(() => setShareMessage(""), 3000)
         }
     }
 
@@ -130,7 +123,7 @@ export default function PortfolioPage() {
                             <Share2 className="w-4 h-4" />
                             Share
                         </button>
-                        {shareMessage && <p className="text-xs text-white/40">{shareMessage}</p>}
+                        {shareMessage && <p className="text-xs font-medium text-green-400 animate-pulse">{shareMessage}</p>}
                     </div>
                 </div>
 
