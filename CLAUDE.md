@@ -66,7 +66,7 @@ src/
 | `profiles` | ✅ Done | Base table + portfolio columns (slug, xp, level, is_portfolio_public) |
 | `admin_users` | ✅ Done | id (FK→auth.users), role. RLS: authenticated users can SELECT. |
 | `courses` | ✅ Done | id, title, description, thumbnail, xp, duration, level, chapters, instructor, price |
-| `lessons` | ✅ Done | id, course_id (FK→courses), title, duration, video_url, order, resources (jsonb) |
+| `lessons` | ✅ Done | id (uuid), course_id, title, duration, video_url, order, resources (jsonb), description (text), takeaways (jsonb) |
 | `enrollments` | ✅ Done | profile_id, course_id, status, payment_id. Unique on (profile_id, course_id) |
 | `portfolio_items` | ✅ Done | Via portfolio migration |
 | `service_requests` | ✅ Done | Via service_requests migration |
@@ -86,20 +86,24 @@ All admin write operations use these to avoid nested RLS policy issues:
 - `admin_delete_showcase(item_id uuid)` — Deletes showcase item by id
 - `admin_upsert_course(p_id, p_title, p_description, p_thumbnail, p_xp, p_duration, p_level, p_chapters, p_instructor, p_price)` — Insert or update course
 - `admin_upsert_challenge(p_id, p_title, p_description, p_prize, p_deadline, p_participants, p_difficulty, p_winner_id)` — Insert or update challenge
-- `admin_upsert_lessons(p_course_id text, p_lessons jsonb)` — Replaces all lessons for a course (delete + insert)
+- `admin_upsert_lessons(p_course_id text, p_lessons jsonb)` — Replaces all lessons for a course (delete + insert). Includes description, takeaways fields.
 
 ### Pages — All Fetch from Supabase
 - **Home page** (`page.tsx`) — Fetches showcase_items from Supabase, video player modal, "Start Learning Now" triggers sign-in for unauthenticated users
 - **Courses listing** (`courses/page.tsx`) — Fetches courses from Supabase
-- **Course detail** (`courses/[id]/page.tsx`) — Fetches course + lessons from Supabase, actual `<video>` playback
+- **Course detail** (`courses/[id]/page.tsx`) — Fetches course + lessons from Supabase, actual `<video>` playback, dynamic "About this Lesson" and "Key Takeaways" per lesson, auto-completes chapter when video ends (no manual button)
+- **Certificate** (`courses/[id]/certificate/page.tsx`) — Asks user for full name before generating certificate, fetches course from Supabase
 - **Challenges** (`challenges/page.tsx`) — Fetches challenges from Supabase
-- **Portfolio** (`portfolio/page.tsx`) — Video player modal, share button copies link with "✓ Link copied!" feedback
-- **Admin** (`admin/page.tsx`) — Full CRUD for courses/challenges/showcase via RPC functions, upload progress animations, ChapterEditor persists lessons to Supabase
+- **Portfolio** (`portfolio/page.tsx`) — Video player modal with onCanPlay auto-play, share button copies link with "✓ Link copied!" feedback
+- **Profile** (`profile/page.tsx`) — Portfolio videos from Supabase (no mock data), video first-frame thumbnails, delete button at bottom of card
+- **Admin** (`admin/page.tsx`) — Full CRUD for courses/challenges/showcase via RPC functions, upload progress animations, ChapterEditor persists lessons to Supabase with description and key takeaways editing
 
 ### UI Features
 - Upload progress animations (Framer Motion) for video uploads in admin and portfolio
-- Video player modals on home page, portfolio page, and course detail page
-- Videos show first frame as thumbnail when no thumbnail image is set (`<video>` with `preload="metadata"`)
+- Video player modals on home page, portfolio page, and course detail page with onCanPlay handler
+- Videos show first frame as thumbnail when no thumbnail image is set (`<video>` with `#t=0.1` and `preload="metadata"`)
+- Chapter auto-completion on video end (no manual "Mark as Complete" button)
+- Certificate name prompt before generation
 
 ## SQL Migrations
 Located in `supabase/migrations/`:
