@@ -154,15 +154,24 @@ function AdminDashboardContent() {
         setEditForm({ ...course })
     }
 
-    const handleSaveCourse = () => {
-        if (!editForm) {
-            return
+    const handleSaveCourse = async () => {
+        if (!editForm) return
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) return
+            const { lessons, ...courseData } = editForm as any
+            const { error } = await supabase
+                .from('courses')
+                .upsert(courseData, { onConflict: 'id' })
+            if (error) throw error
+            setMockCourses(prev => prev.map(c => c.id === editingId ? editForm : c))
+            setEditingId(null)
+        } catch (err: any) {
+            alert('Failed to save course: ' + (err.message || 'Unknown error'))
         }
-        setMockCourses(mockCourses.map(c => c.id === editingId ? editForm : c))
-        setEditingId(null)
     }
 
-    const handleAddCourse = () => {
+    const handleAddCourse = async () => {
         const newCourse = {
             id: `course-${Date.now()}`,
             title: "New AI Course",
@@ -174,10 +183,17 @@ function AdminDashboardContent() {
             chapters: 0,
             instructor: "Admin",
             price: "Free",
-            lessons: []
         }
-        setMockCourses([newCourse, ...mockCourses])
-        handleEditCourse(newCourse)
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) return
+            const { error } = await supabase.from('courses').insert(newCourse)
+            if (error) throw error
+            setMockCourses(prev => [newCourse, ...prev])
+            handleEditCourse(newCourse)
+        } catch (err: any) {
+            alert('Failed to add course: ' + (err.message || 'Unknown error'))
+        }
     }
 
     const handleDeleteCourse = async (id: string) => {
@@ -327,12 +343,22 @@ function AdminDashboardContent() {
         setChallengeEditForm({ ...challenge })
     }
 
-    const handleSaveChallenge = () => {
-        if (!challengeEditForm) {
-            return
+    const handleSaveChallenge = async () => {
+        if (!challengeEditForm) return
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) return
+            const { submissions, winnerId, ...rest } = challengeEditForm as any
+            const dbData = { ...rest, winner_id: winnerId || null }
+            const { error } = await supabase
+                .from('challenges')
+                .upsert(dbData, { onConflict: 'id' })
+            if (error) throw error
+            setMockChallenges(prev => prev.map(c => c.id === editingChallengeId ? challengeEditForm : c))
+            setEditingChallengeId(null)
+        } catch (err: any) {
+            alert('Failed to save challenge: ' + (err.message || 'Unknown error'))
         }
-        setMockChallenges(mockChallenges.map(c => c.id === editingChallengeId ? challengeEditForm : c))
-        setEditingChallengeId(null)
     }
 
     const handleDeleteChallenge = async (id: string) => {
@@ -349,7 +375,7 @@ function AdminDashboardContent() {
         }
     }
 
-    const handleAddChallenge = () => {
+    const handleAddChallenge = async () => {
         const newChallenge = {
             id: `challenge-${Date.now()}`,
             title: "New AI Challenge",
@@ -361,8 +387,17 @@ function AdminDashboardContent() {
             winnerId: null,
             submissions: []
         }
-        setMockChallenges([newChallenge, ...mockChallenges])
-        handleEditChallenge(newChallenge)
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) return
+            const { submissions, winnerId, ...rest } = newChallenge
+            const { error } = await supabase.from('challenges').insert({ ...rest, winner_id: null })
+            if (error) throw error
+            setMockChallenges(prev => [newChallenge, ...prev])
+            handleEditChallenge(newChallenge)
+        } catch (err: any) {
+            alert('Failed to add challenge: ' + (err.message || 'Unknown error'))
+        }
     }
 
     const handleSelectWinner = (challengeId: string, submissionId: string) => {
