@@ -35,6 +35,7 @@ export default function ProfilePage() {
     const [shareMessage, setShareMessage] = useState("")
     const [portfolioMessage, setPortfolioMessage] = useState("")
     const [isSavingVideo, setIsSavingVideo] = useState(false)
+    const [uploadProgress, setUploadProgress] = useState("")
     const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(false)
     const [backendReady, setBackendReady] = useState(isSupabaseConfigured())
     const [newVideo, setNewVideo] = useState({
@@ -148,6 +149,7 @@ export default function ProfilePage() {
 
         setIsSavingVideo(true)
         setPortfolioMessage("")
+        setUploadProgress("")
 
         try {
             const supabase = await getPortfolioClient()
@@ -157,11 +159,16 @@ export default function ProfilePage() {
 
             if (supabase && backendReady) {
                 if (newVideo.videoFile) {
+                    setUploadProgress(`Uploading video (${(newVideo.videoFile.size / 1024 / 1024).toFixed(1)} MB)...`)
                     videoUrl = await uploadPortfolioFile(supabase, user.id, newVideo.videoFile)
+                    setUploadProgress("Video uploaded ✓")
                 }
                 if (newVideo.thumbnailFile) {
+                    setUploadProgress("Uploading thumbnail...")
                     thumbnailUrl = await uploadPortfolioFile(supabase, user.id, newVideo.thumbnailFile)
+                    setUploadProgress("Thumbnail uploaded ✓")
                 }
+                setUploadProgress("Saving to portfolio...")
 
                 const savedVideo = await addPortfolioItem(supabase, {
                     userId: user.id,
@@ -187,7 +194,10 @@ export default function ProfilePage() {
 
             setNewVideo({ title: "", url: "", thumbnail: "", videoFile: null, thumbnailFile: null })
             setIsAddingVideo(false)
+            setUploadProgress("✓ Upload complete!")
+            setTimeout(() => setUploadProgress(""), 3000)
         } catch (e) {
+            setUploadProgress("")
             setPortfolioMessage("Could not save to Supabase. Check the portfolio SQL setup and storage bucket.")
         } finally {
             setIsSavingVideo(false)
@@ -533,6 +543,17 @@ export default function ProfilePage() {
                                         {isSavingVideo ? "Saving..." : "Add to Portfolio"}
                                     </button>
                                 </div>
+                                {uploadProgress && isSavingVideo && (
+                                    <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3 p-3 bg-primary/10 border border-primary/20 rounded-xl">
+                                        <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
+                                        <span className="text-xs font-medium text-primary">{uploadProgress}</span>
+                                    </motion.div>
+                                )}
+                                {uploadProgress && !isSavingVideo && uploadProgress.includes('✓') && (
+                                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="flex items-center gap-3 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                                        <span className="text-xs font-medium text-emerald-400">{uploadProgress}</span>
+                                    </motion.div>
+                                )}
                             </motion.form>
                         )}
 

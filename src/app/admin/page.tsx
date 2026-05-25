@@ -121,6 +121,7 @@ function AdminDashboardContent() {
     const [showcaseThumbnailFile, setShowcaseThumbnailFile] = useState<File | null>(null)
     const [showcaseSaving, setShowcaseSaving] = useState(false)
     const [showcaseMessage, setShowcaseMessage] = useState("")
+    const [uploadStatus, setUploadStatus] = useState<string>("")
     const [mockChallenges, setMockChallenges] = useState<Challenge[]>(challenges)
     const [editingId, setEditingId] = useState<string | null>(null)
     const [editingChaptersId, setEditingChaptersId] = useState<string | null>(null)
@@ -279,21 +280,27 @@ function AdminDashboardContent() {
         if (!showcaseEditForm) return
         setShowcaseSaving(true)
         setShowcaseMessage("")
+        setUploadStatus("Preparing...")
         try {
             const supabase = await getServiceRequestClient()
-            if (!supabase) { setShowcaseMessage("Supabase not configured"); setShowcaseSaving(false); return }
+            if (!supabase) { setShowcaseMessage("Supabase not configured"); setShowcaseSaving(false); setUploadStatus(""); return }
 
             let videoUrl = showcaseEditForm.videoUrl
             let thumbnailUrl = showcaseEditForm.thumbnail
 
             // Upload video file if selected
             if (showcaseVideoFile) {
+                setUploadStatus(`Uploading video (${(showcaseVideoFile.size / 1024 / 1024).toFixed(1)} MB)...`)
                 videoUrl = await uploadShowcaseFile(showcaseVideoFile, 'videos')
+                setUploadStatus("Video uploaded ✓")
             }
             // Upload thumbnail file if selected
             if (showcaseThumbnailFile) {
+                setUploadStatus("Uploading thumbnail...")
                 thumbnailUrl = await uploadShowcaseFile(showcaseThumbnailFile, 'thumbnails')
+                setUploadStatus("Thumbnail uploaded ✓")
             }
+            setUploadStatus("Saving to database...")
 
             const isNew = showcaseEditForm.id.startsWith('new-')
 
@@ -317,8 +324,11 @@ function AdminDashboardContent() {
             setEditingShowcaseId(null)
             setShowcaseVideoFile(null)
             setShowcaseThumbnailFile(null)
+            setUploadStatus("✓ Upload complete!")
             setShowcaseMessage("Saved to Supabase!")
+            setTimeout(() => setUploadStatus(""), 3000)
         } catch (e: any) {
+            setUploadStatus("")
             setShowcaseMessage(`Error: ${e.message || 'Could not save'}`)
         }
         setShowcaseSaving(false)
@@ -1046,6 +1056,17 @@ function AdminDashboardContent() {
                                             </div>
                                             <input value={showcaseEditForm.thumbnail} onChange={(e) => setShowcaseEditForm(prev => prev ? { ...prev, thumbnail: e.target.value } : prev)} className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full" placeholder="Or paste Thumbnail URL" />
                                         </div>
+                                        {uploadStatus && showcaseSaving && (
+                                            <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3 p-3 bg-primary/10 border border-primary/20 rounded-xl">
+                                                <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
+                                                <span className="text-xs font-medium text-primary">{uploadStatus}</span>
+                                            </motion.div>
+                                        )}
+                                        {uploadStatus && !showcaseSaving && uploadStatus.includes('✓') && (
+                                            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="flex items-center gap-3 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                                                <span className="text-xs font-medium text-emerald-400">{uploadStatus}</span>
+                                            </motion.div>
+                                        )}
                                         {showcaseMessage && <p className="text-xs text-white/50">{showcaseMessage}</p>}
                                         <div className="flex items-center gap-3">
                                             <button onClick={handleSaveShowcase} disabled={showcaseSaving} className="px-4 py-2 bg-emerald-500 rounded-lg text-xs font-bold flex items-center gap-2 disabled:opacity-50">
@@ -1116,6 +1137,17 @@ function AdminDashboardContent() {
                                                             />
                                                         </div>
                                                     </div>
+                                                    {uploadStatus && showcaseSaving && (
+                                                        <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3 p-3 bg-primary/10 border border-primary/20 rounded-xl">
+                                                            <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
+                                                            <span className="text-xs font-medium text-primary">{uploadStatus}</span>
+                                                        </motion.div>
+                                                    )}
+                                                    {uploadStatus && !showcaseSaving && uploadStatus.includes('✓') && (
+                                                        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="flex items-center gap-3 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                                                            <span className="text-xs font-medium text-emerald-400">{uploadStatus}</span>
+                                                        </motion.div>
+                                                    )}
                                                     {showcaseMessage && (
                                                         <p className="text-xs text-white/50">{showcaseMessage}</p>
                                                     )}
