@@ -159,10 +159,12 @@ function AdminDashboardContent() {
         try {
             const supabase = await getServiceRequestClient()
             if (!supabase) return
-            const { lessons, ...courseData } = editForm as any
-            const { error } = await supabase
-                .from('courses')
-                .upsert(courseData, { onConflict: 'id' })
+            const { error } = await supabase.rpc('admin_upsert_course', {
+                p_id: editForm.id, p_title: editForm.title, p_description: editForm.description,
+                p_thumbnail: editForm.thumbnail, p_xp: editForm.xp, p_duration: editForm.duration,
+                p_level: editForm.level, p_chapters: editForm.chapters, p_instructor: editForm.instructor,
+                p_price: editForm.price,
+            })
             if (error) throw error
             setMockCourses(prev => prev.map(c => c.id === editingId ? editForm : c))
             setEditingId(null)
@@ -187,7 +189,12 @@ function AdminDashboardContent() {
         try {
             const supabase = await getServiceRequestClient()
             if (!supabase) return
-            const { error } = await supabase.from('courses').insert(newCourse)
+            const { error } = await supabase.rpc('admin_upsert_course', {
+                p_id: newCourse.id, p_title: newCourse.title, p_description: newCourse.description,
+                p_thumbnail: newCourse.thumbnail, p_xp: newCourse.xp, p_duration: newCourse.duration,
+                p_level: newCourse.level, p_chapters: newCourse.chapters, p_instructor: newCourse.instructor,
+                p_price: newCourse.price,
+            })
             if (error) throw error
             setMockCourses(prev => [newCourse, ...prev])
             handleEditCourse(newCourse)
@@ -348,11 +355,12 @@ function AdminDashboardContent() {
         try {
             const supabase = await getServiceRequestClient()
             if (!supabase) return
-            const { submissions, winnerId, ...rest } = challengeEditForm as any
-            const dbData = { ...rest, winner_id: winnerId || null }
-            const { error } = await supabase
-                .from('challenges')
-                .upsert(dbData, { onConflict: 'id' })
+            const { error } = await supabase.rpc('admin_upsert_challenge', {
+                p_id: challengeEditForm.id, p_title: challengeEditForm.title,
+                p_description: challengeEditForm.description, p_prize: challengeEditForm.prize,
+                p_deadline: challengeEditForm.deadline || null, p_participants: challengeEditForm.participants,
+                p_difficulty: challengeEditForm.difficulty, p_winner_id: challengeEditForm.winnerId || null,
+            })
             if (error) throw error
             setMockChallenges(prev => prev.map(c => c.id === editingChallengeId ? challengeEditForm : c))
             setEditingChallengeId(null)
@@ -390,8 +398,12 @@ function AdminDashboardContent() {
         try {
             const supabase = await getServiceRequestClient()
             if (!supabase) return
-            const { submissions, winnerId, ...rest } = newChallenge
-            const { error } = await supabase.from('challenges').insert({ ...rest, winner_id: null })
+            const { error } = await supabase.rpc('admin_upsert_challenge', {
+                p_id: newChallenge.id, p_title: newChallenge.title,
+                p_description: newChallenge.description, p_prize: newChallenge.prize,
+                p_deadline: newChallenge.deadline, p_participants: newChallenge.participants,
+                p_difficulty: newChallenge.difficulty, p_winner_id: null,
+            })
             if (error) throw error
             setMockChallenges(prev => [newChallenge, ...prev])
             handleEditChallenge(newChallenge)
