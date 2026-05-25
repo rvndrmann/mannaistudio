@@ -185,9 +185,13 @@ function AdminDashboardContent() {
         try {
             const supabase = await getServiceRequestClient()
             if (!supabase) return
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) throw new Error('Not authenticated — please sign in again')
+            const { data: adminCheck } = await supabase.from('admin_users').select('id').eq('id', user.id).single()
+            if (!adminCheck) throw new Error('You are not in admin_users table (uid: ' + user.id + ')')
             const { error, count } = await supabase.from('courses').delete({ count: 'exact' }).eq('id', id)
             if (error) throw error
-            if (count === 0) throw new Error('No rows deleted — check admin permissions')
+            if (count === 0) throw new Error('Delete returned 0 rows for id: ' + id + ' (uid: ' + user.id + ')')
             setMockCourses(prev => prev.filter(c => c.id !== id))
         } catch (err: any) {
             console.error('Delete course error:', err)
