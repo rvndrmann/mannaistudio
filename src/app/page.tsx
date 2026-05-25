@@ -9,8 +9,10 @@ import { cn } from "@/lib/utils"
 import { adminShowcase as mockShowcase } from "@/lib/data"
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/components/auth/auth-provider"
 
 export default function LandingPage() {
+    const { user, signInWithGoogle } = useAuth()
     const [adminShowcase, setAdminShowcase] = useState(mockShowcase)
     const [playingVideo, setPlayingVideo] = useState<{ url: string; title: string } | null>(null)
 
@@ -83,9 +85,15 @@ export default function LandingPage() {
                         transition={{ delay: 0.3 }}
                         className="flex flex-col sm:flex-row items-center justify-center gap-4"
                     >
-                        <Link href="/courses" className="btn-primary flex items-center gap-2 px-8 py-4 text-lg">
-                            Start Learning Now <ArrowRight className="w-5 h-5" />
-                        </Link>
+                        {user ? (
+                            <Link href="/courses" className="btn-primary flex items-center gap-2 px-8 py-4 text-lg">
+                                Start Learning Now <ArrowRight className="w-5 h-5" />
+                            </Link>
+                        ) : (
+                            <button onClick={signInWithGoogle} className="btn-primary flex items-center gap-2 px-8 py-4 text-lg">
+                                Start Learning Now <ArrowRight className="w-5 h-5" />
+                            </button>
+                        )}
                         <Link href="/services" className="px-8 py-4 text-lg font-medium text-white hover:text-primary transition-colors flex items-center gap-2">
                             Our AI Services <ShieldCheck className="w-5 h-5 text-primary" />
                         </Link>
