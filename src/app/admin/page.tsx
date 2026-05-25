@@ -354,12 +354,14 @@ function AdminDashboardContent() {
         try {
             const supabase = await getServiceRequestClient()
             if (!supabase) throw new Error('No Supabase client')
-            const lessonsPayload = updatedLessons.map((l, i) => ({
+            const lessonsPayload = updatedLessons.map((l: any, i: number) => ({
                 title: l.title,
                 duration: l.duration || '',
                 video_url: l.videoUrl || '',
                 order: i + 1,
                 resources: l.resources || [],
+                description: l.description || '',
+                takeaways: l.takeaways || [],
             }))
             console.log('Saving lessons for course:', courseId, lessonsPayload)
             const { error } = await supabase.rpc('admin_upsert_lessons', {
@@ -524,6 +526,8 @@ function AdminDashboardContent() {
                         duration: l.duration,
                         videoUrl: l.video_url,
                         resources: l.resources || [],
+                        description: l.description || '',
+                        takeaways: l.takeaways || [],
                     })
                 }
                 setMockCourses(dbCourses.map((c: any) => ({
@@ -1723,7 +1727,9 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
             title: "New Lesson",
             duration: "10:00",
             videoUrl: "",
-            resources: []
+            resources: [],
+            description: "",
+            takeaways: [] as string[],
         }
         setLessons([...lessons, newLesson])
     }
@@ -1903,6 +1909,56 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
                                     className="flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-lg px-3 py-1.5 text-[10px] font-bold text-primary hover:bg-primary/20 transition-all"
                                 >
                                     <Plus className="w-3 h-3" /> Add Material
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* About this Lesson */}
+                        <div className="pl-12 space-y-2">
+                            <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">About this Lesson</p>
+                            <textarea
+                                value={lesson.description || ''}
+                                onChange={(e) => handleUpdateLesson(lesson.id, "description", e.target.value)}
+                                className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-xs focus:outline-none focus:border-primary resize-none"
+                                rows={3}
+                                placeholder="Describe what students will learn in this lesson..."
+                            />
+                        </div>
+
+                        {/* Key Takeaways */}
+                        <div className="pl-12 space-y-2">
+                            <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Key Takeaways</p>
+                            <div className="space-y-2">
+                                {(lesson.takeaways || []).map((t: string, tIdx: number) => (
+                                    <div key={tIdx} className="flex items-center gap-2">
+                                        <CheckCircle2 className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                                        <input
+                                            value={t}
+                                            onChange={(e) => {
+                                                const updated = [...(lesson.takeaways || [])]
+                                                updated[tIdx] = e.target.value
+                                                handleUpdateLesson(lesson.id, "takeaways", updated)
+                                            }}
+                                            className="flex-grow bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] focus:outline-none focus:border-primary"
+                                            placeholder="Takeaway point"
+                                        />
+                                        <button
+                                            onClick={() => {
+                                                const updated = [...(lesson.takeaways || [])]
+                                                updated.splice(tIdx, 1)
+                                                handleUpdateLesson(lesson.id, "takeaways", updated)
+                                            }}
+                                            className="text-white/20 hover:text-red-400"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ))}
+                                <button
+                                    onClick={() => handleUpdateLesson(lesson.id, "takeaways", [...(lesson.takeaways || []), ""])}
+                                    className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-1.5 text-[10px] font-bold text-emerald-400 hover:bg-emerald-500/20 transition-all"
+                                >
+                                    <Plus className="w-3 h-3" /> Add Takeaway
                                 </button>
                             </div>
                         </div>

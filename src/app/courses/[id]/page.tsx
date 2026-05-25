@@ -47,6 +47,8 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                         duration: l.duration,
                         videoUrl: l.video_url,
                         resources: l.resources || [],
+                        description: l.description || '',
+                        takeaways: l.takeaways || [],
                     }))
                     setCourse({ ...courseData, lessons })
                 } else {
@@ -220,6 +222,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     src={activeLesson.videoUrl}
                                     controls
                                     className="w-full h-full"
+                                    onEnded={handleCompleteChapter}
                                 />
                             ) : (
                                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-white/40">
@@ -272,20 +275,14 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                         <p className="text-xs text-white/40">{completedChapters.length} / {course.chapters} Chapters Completed</p>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={handleCompleteChapter}
-                                    disabled={completedChapters.includes(activeChapter) || !isEnrolled}
-                                    className={cn(
-                                        "px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg active:scale-95",
-                                        completedChapters.includes(activeChapter)
-                                            ? "bg-emerald-500/20 text-emerald-500 border border-emerald-500/30 cursor-default"
-                                            : !isEnrolled
-                                                ? "bg-white/5 text-white/30 cursor-not-allowed"
-                                                : "bg-primary text-white hover:opacity-90 shadow-primary/25"
-                                    )}
-                                >
-                                    {completedChapters.includes(activeChapter) ? "Chapter Completed" : "Mark as Complete"}
-                                </button>
+                                <div className={cn(
+                                    "px-6 py-2.5 rounded-xl font-bold text-sm",
+                                    completedChapters.includes(activeChapter)
+                                        ? "bg-emerald-500/20 text-emerald-500 border border-emerald-500/30"
+                                        : "bg-white/5 text-white/40 border border-white/10"
+                                )}>
+                                    {completedChapters.includes(activeChapter) ? "✓ Chapter Completed" : "Watch full video to complete"}
+                                </div>
                             </div>
 
                             {/* Progress Bar */}
@@ -297,26 +294,32 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                 />
                             </div>
 
+                            {(activeLesson?.description || activeLesson?.takeaways?.length > 0) && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8 border-t border-white/5">
+                                {activeLesson?.description && (
                                 <div className="space-y-4">
                                     <h4 className="flex items-center gap-2 font-bold text-white/90">
                                         <Info className="w-4 h-4 text-primary" /> About this Lesson
                                     </h4>
                                     <p className="text-sm text-white/60 leading-relaxed">
-                                        In this lesson, you'll learn everything you need to know about the professional workflow for creating high-end cinematic AI videos. Master the advanced interface settings and set up your first professional-grade generation parameters.
+                                        {activeLesson.description}
                                     </p>
                                 </div>
+                                )}
+                                {activeLesson?.takeaways?.length > 0 && (
                                 <div className="space-y-4">
                                     <h4 className="flex items-center gap-2 font-bold text-white/90">
                                         <Star className="w-4 h-4 text-amber-400" /> Key Takeaways
                                     </h4>
                                     <ul className="text-sm text-white/60 space-y-2">
-                                        <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Workflow setup</li>
-                                        <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Tool integration</li>
-                                        <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Optimized prompt structure</li>
+                                        {activeLesson.takeaways.map((t: string, i: number) => (
+                                            <li key={i} className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> {t}</li>
+                                        ))}
                                     </ul>
                                 </div>
+                                )}
                             </div>
+                            )}
 
                             {/* Downloadable Resources Section */}
                             {Boolean(activeLesson?.resources.length) && (
