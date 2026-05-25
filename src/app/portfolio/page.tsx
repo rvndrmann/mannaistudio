@@ -188,7 +188,16 @@ export default function PortfolioPage() {
                                 </button>
                             </div>
                             <div className="aspect-video bg-black">
-                                <video src={playingVideo.url} controls autoPlay className="w-full h-full" />
+                                <video
+                                    key={playingVideo.url}
+                                    src={playingVideo.url}
+                                    controls
+                                    autoPlay
+                                    playsInline
+                                    preload="auto"
+                                    className="w-full h-full"
+                                    onCanPlay={(e) => { (e.target as HTMLVideoElement).play().catch(() => {}) }}
+                                />
                             </div>
                         </motion.div>
                     </motion.div>
