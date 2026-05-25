@@ -5,38 +5,79 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Play, CheckCircle2, Trophy, ArrowLeft, Star, Clock, User, Share2, Info, Download, FileText, Sparkles, ShoppingCart, Loader2, Lock } from "lucide-react"
 import Link from "next/link"
 import { useState, useEffect, use } from "react"
-import { courses } from "@/lib/data"
+import { courses as mockCourses } from "@/lib/data"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
 import { checkEnrollment, enrollFreeCourse } from "@/lib/supabase-helpers"
+import { createClient } from "@/lib/supabase/client"
 // @ts-ignore
 import confetti from "canvas-confetti"
 
 export default function CourseDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
-    const course = courses.find((c) => c.id === id) || courses[0]
     const { user, signInWithGoogle } = useAuth()
-    const [completedChapters, setCompletedChapters] = useState<number[]>([1, 2])
+    const [course, setCourse] = useState<any>(null)
+    const [courseLoading, setCourseLoading] = useState(true)
+    const [completedChapters, setCompletedChapters] = useState<number[]>([])
     const [activeChapter, setActiveChapter] = useState(1)
     const [showXPAlert, setShowXPAlert] = useState(false)
     const [isEnrolled, setIsEnrolled] = useState(false)
     const [enrollLoading, setEnrollLoading] = useState(false)
     const [checkingEnrollment, setCheckingEnrollment] = useState(true)
 
-    const isFree = course.price === "Free" || course.price === "$0"
-    const progress = (completedChapters.length / (course.chapters || 1)) * 100
-    const activeLesson = course.lessons.find((lesson) => lesson.id === activeChapter)
+    // Fetch course + lessons from Supabase
+    useEffect(() => {
+        const load = async () => {
+            try {
+                const supabase = createClient()
+                const { data: courseData } = await supabase
+                    .from('courses')
+                    .select('*')
+                    .eq('id', id)
+                    .single()
+                if (courseData) {
+                    const { data: lessonData } = await supabase
+                        .from('lessons')
+                        .select('*')
+                        .eq('course_id', id)
+                        .order('order', { ascending: true })
+                    const lessons = (lessonData || []).map((l: any, i: number) => ({
+                        id: i + 1,
+                        title: l.title,
+                        duration: l.duration,
+                        videoUrl: l.video_url,
+                        resources: l.resources || [],
+                    }))
+                    setCourse({ ...courseData, lessons })
+                } else {
+                    // Fallback to mock
+                    const mock = mockCourses.find(c => c.id === id) || mockCourses[0]
+                    setCourse(mock)
+                }
+            } catch {
+                const mock = mockCourses.find(c => c.id === id) || mockCourses[0]
+                setCourse(mock)
+            }
+            setCourseLoading(false)
+        }
+        load()
+    }, [id])
+
+    const isFree = course?.price === "Free" || course?.price === "$0"
+    const progress = course ? (completedChapters.length / (course.chapters || 1)) * 100 : 0
+    const activeLesson = course?.lessons?.find((lesson: any) => lesson.id === activeChapter)
 
     useEffect(() => {
+        if (!course) return
         const check = async () => {
             if (user) {
                 const enrolled = await checkEnrollment(course.id)
-                setIsEnrolled(enrolled || isFree) // Free courses are always accessible
+                setIsEnrolled(enrolled || isFree)
             }
             setCheckingEnrollment(false)
         }
         check()
-    }, [user, course.id, isFree])
+    }, [user, course?.id, isFree])
 
     const handleCompleteChapter = () => {
         if (!completedChapters.includes(activeChapter)) {
@@ -116,6 +157,17 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
         }
 
         setEnrollLoading(false)
+    }
+
+    if (courseLoading || !course) {
+        return (
+            <main className="min-h-screen pb-20">
+                <Navbar />
+                <div className="pt-32 flex items-center justify-center">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                </div>
+            </main>
+        )
     }
 
     return (
@@ -267,7 +319,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                         <Download className="w-4 h-4 text-primary" /> Downloadable Resources
                                     </h4>
                                     <div className="flex flex-wrap gap-3">
-                                        {activeLesson?.resources.map((res) => (
+                                        {activeLesson?.resources.map((res: any) => (
                                             <a
                                                 key={res.name}
                                                 href={res.url}
