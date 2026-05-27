@@ -83,7 +83,11 @@ export default function CoursesPage() {
                             transition={{ delay: i * 0.1 }}
                             className="glass-card flex flex-col h-full overflow-hidden group"
                         >
-                            <div className="relative aspect-video overflow-hidden">
+                            <Link
+                                href={`/courses/${course.id}`}
+                                aria-label={`Open ${course.title}`}
+                                className="relative aspect-video overflow-hidden block"
+                            >
                                 <img
                                     src={course.thumbnail}
                                     alt={course.title}
@@ -97,7 +101,7 @@ export default function CoursesPage() {
                                         <Play className="w-6 h-6 fill-white" />
                                     </div>
                                 </div>
-                            </div>
+                            </Link>
 
                             <div className="p-6 flex flex-col flex-grow">
                                 <div className="flex items-center gap-2 mb-3">
@@ -109,7 +113,9 @@ export default function CoursesPage() {
                                     <span className="text-xs text-white/50">{course.chapters} Chapters</span>
                                 </div>
 
-                                <h3 className="text-xl font-bold mb-2 group-hover:text-primary transition-colors line-clamp-1">{course.title}</h3>
+                                <Link href={`/courses/${course.id}`} className="mb-2">
+                                    <h3 className="text-xl font-bold group-hover:text-primary transition-colors line-clamp-1">{course.title}</h3>
+                                </Link>
                                 <p className="text-white/50 text-sm mb-6 line-clamp-2 leading-relaxed">
                                     {course.description}
                                 </p>

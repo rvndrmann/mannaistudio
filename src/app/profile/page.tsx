@@ -3,7 +3,6 @@
 import Navbar from "@/components/Navbar"
 import { motion, AnimatePresence } from "framer-motion"
 import { User, Award, Play, Plus, Trash2, Globe, Lock, Settings, BarChart3, Mail, ExternalLink, Camera, CheckCircle2, LogIn, Loader2, Share2, X } from "lucide-react"
-import { studentStats } from "@/lib/data"
 import { FormEvent, useState, useEffect } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
 import {
@@ -19,6 +18,21 @@ import {
     updatePortfolioVisibility,
     uploadPortfolioFile,
 } from "@/lib/portfolio"
+
+const defaultProfileStats = {
+    level: 1,
+    xp: 0,
+    nextLevelXp: 5000,
+}
+
+function normalizeProfileStats(profile: { xp?: number | null; level?: number | null }) {
+    const isLegacyPlaceholder = profile.xp === 4500 && profile.level === 12
+
+    return {
+        xp: isLegacyPlaceholder ? defaultProfileStats.xp : profile.xp ?? defaultProfileStats.xp,
+        level: isLegacyPlaceholder ? defaultProfileStats.level : profile.level ?? defaultProfileStats.level,
+    }
+}
 
 export default function ProfilePage() {
     const { user, loading, signInWithGoogle } = useAuth()
@@ -57,8 +71,8 @@ export default function ProfilePage() {
                 full_name: user.user_metadata?.full_name || 'Student',
                 avatar_url: user.user_metadata?.avatar_url || '',
                 email: user.email,
-                xp: studentStats.xp,
-                level: studentStats.level,
+                xp: defaultProfileStats.xp,
+                level: defaultProfileStats.level,
                 portfolio_slug: createPortfolioSlug(user.user_metadata?.full_name || 'Student', user.id),
                 is_portfolio_public: true,
             })
@@ -80,17 +94,18 @@ export default function ProfilePage() {
                     full_name: user.user_metadata?.full_name || 'Student',
                     avatar_url: user.user_metadata?.avatar_url || '',
                     email: user.email,
-                    xp: studentStats.xp,
-                    level: studentStats.level,
+                    xp: defaultProfileStats.xp,
+                    level: defaultProfileStats.level,
                 })
                 setProfile(newProfile)
             } else {
+                const stats = normalizeProfileStats(data || {})
                 const nextProfile = await ensurePortfolioProfile(supabase, user.id, {
                     full_name: data?.full_name || user.user_metadata?.full_name || 'Student',
                     avatar_url: data?.avatar_url || user.user_metadata?.avatar_url || '',
                     email: data?.email || user.email,
-                    xp: data?.xp || studentStats.xp,
-                    level: data?.level || studentStats.level,
+                    xp: stats.xp,
+                    level: stats.level,
                 })
                 setProfile(nextProfile)
                 setIsPublic(nextProfile?.is_portfolio_public ?? true)
@@ -105,8 +120,8 @@ export default function ProfilePage() {
                 full_name: user.user_metadata?.full_name || 'Student',
                 avatar_url: user.user_metadata?.avatar_url || '',
                 email: user.email,
-                xp: studentStats.xp,
-                level: studentStats.level,
+                xp: defaultProfileStats.xp,
+                level: defaultProfileStats.level,
                 portfolio_slug: createPortfolioSlug(user.user_metadata?.full_name || 'Student', user.id),
                 is_portfolio_public: true,
             })
@@ -231,7 +246,7 @@ export default function ProfilePage() {
         }
     }
 
-    const progress = ((profile?.xp || studentStats.xp) / studentStats.nextLevelXp) * 100
+    const progress = Math.min(((profile?.xp ?? defaultProfileStats.xp) / defaultProfileStats.nextLevelXp) * 100, 100)
 
     // Show sign-in prompt if not logged in
     if (!loading && !user) {
@@ -275,8 +290,8 @@ export default function ProfilePage() {
     const displayName = profile?.full_name || user?.user_metadata?.full_name || 'Student'
     const displayEmail = profile?.email || user?.email || ''
     const avatarUrl = profile?.avatar_url || user?.user_metadata?.avatar_url || ''
-    const userLevel = profile?.level || studentStats.level
-    const userXp = profile?.xp || studentStats.xp
+    const userLevel = profile?.level ?? defaultProfileStats.level
+    const userXp = profile?.xp ?? defaultProfileStats.xp
     const portfolioSlug = profile?.portfolio_slug || (user ? createPortfolioSlug(displayName, user.id) : "creator")
     const shareUrl = typeof window === "undefined" ? "" : `${window.location.origin}/portfolio?u=${portfolioSlug}`
 
@@ -401,11 +416,6 @@ export default function ProfilePage() {
                                 Earned Badges
                             </h3>
                             <div className="flex flex-wrap gap-3">
-                                {studentStats.badges.map((badge) => (
-                                    <div key={badge} className="px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-lg text-[10px] font-bold text-primary flex items-center gap-1.5 uppercase tracking-wider">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" /> {badge}
-                                    </div>
-                                ))}
                                 <div className="px-3 py-1.5 bg-white/5 border border-dashed border-white/10 rounded-lg text-[10px] font-bold text-white/20 flex items-center gap-1.5 uppercase tracking-wider italic">
                                     ? Next Badge
                                 </div>
@@ -416,19 +426,8 @@ export default function ProfilePage() {
                             <h3 className="font-bold mb-4 uppercase tracking-widest text-xs text-white/40">
                                 Completed Courses
                             </h3>
-                            <div className="space-y-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-                                        <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                                    </div>
-                                    <p className="text-xs font-medium">AI Video Fundamentals</p>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-                                        <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                                    </div>
-                                    <p className="text-xs font-medium">Neon Aesthetic Mastery</p>
-                                </div>
+                            <div className="rounded-xl border border-dashed border-white/10 bg-white/5 p-4 text-xs text-white/30">
+                                No completed courses yet.
                             </div>
                         </div>
                     </div>
