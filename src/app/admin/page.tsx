@@ -1720,6 +1720,7 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
     const [lessons, setLessons] = useState(course?.lessons || [])
     const [uploadingLessonId, setUploadingLessonId] = useState<number | null>(null)
     const [lessonUploadStatus, setLessonUploadStatus] = useState("")
+    const maxLessonVideoSize = 500 * 1024 * 1024
 
     const handleAddLesson = () => {
         const newLesson = {
@@ -1821,6 +1822,12 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
                                                         onChange={async (e: any) => {
                                                             const file = e.target.files?.[0]
                                                             if (!file) return
+                                                            if (file.size > maxLessonVideoSize) {
+                                                                setLessonUploadStatus("✗ Upload failed: videos must be 500 MB or smaller")
+                                                                setTimeout(() => setLessonUploadStatus(""), 5000)
+                                                                e.target.value = ''
+                                                                return
+                                                            }
                                                             setUploadingLessonId(lesson.id)
                                                             setLessonUploadStatus(`Uploading ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)...`)
                                                             try {
