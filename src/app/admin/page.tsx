@@ -1721,6 +1721,7 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
     const [uploadingLessonId, setUploadingLessonId] = useState<number | null>(null)
     const [lessonUploadStatus, setLessonUploadStatus] = useState("")
     const maxLessonVideoSize = 500 * 1024 * 1024
+    const lessonVideoLimitMessage = "Supabase rejected this file. The videos bucket is set to 500 MB, but your project Storage global limit is still lower. In Supabase Dashboard, raise Storage Settings > Global file size limit, or paste a hosted video URL."
 
     const handleAddLesson = () => {
         const newLesson = {
@@ -1843,8 +1844,10 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
                                                                 setLessonUploadStatus("✓ Video uploaded!")
                                                                 setTimeout(() => setLessonUploadStatus(""), 3000)
                                                             } catch (err: any) {
-                                                                setLessonUploadStatus(`✗ Upload failed: ${err.message || 'Unknown error'}`)
-                                                                setTimeout(() => setLessonUploadStatus(""), 5000)
+                                                                const message = String(err.message || 'Unknown error')
+                                                                const isSizeLimitError = message.toLowerCase().includes('maximum allowed size')
+                                                                setLessonUploadStatus(`✗ Upload failed: ${isSizeLimitError ? lessonVideoLimitMessage : message}`)
+                                                                setTimeout(() => setLessonUploadStatus(""), isSizeLimitError ? 12000 : 5000)
                                                             }
                                                             setUploadingLessonId(null)
                                                             e.target.value = ''

@@ -13,6 +13,31 @@ import { createClient } from "@/lib/supabase/client"
 // @ts-ignore
 import confetti from "canvas-confetti"
 
+function getYouTubeEmbedUrl(url: string) {
+    try {
+        const parsedUrl = new URL(url)
+        const hostname = parsedUrl.hostname.replace(/^www\./, "")
+        let videoId = ""
+
+        if (hostname === "youtu.be") {
+            videoId = parsedUrl.pathname.split("/").filter(Boolean)[0] || ""
+        } else if (hostname === "youtube.com" || hostname === "m.youtube.com") {
+            if (parsedUrl.pathname === "/watch") {
+                videoId = parsedUrl.searchParams.get("v") || ""
+            } else {
+                const parts = parsedUrl.pathname.split("/").filter(Boolean)
+                if (["embed", "shorts", "live"].includes(parts[0])) {
+                    videoId = parts[1] || ""
+                }
+            }
+        }
+
+        return videoId ? `https://www.youtube.com/embed/${videoId}` : null
+    } catch {
+        return null
+    }
+}
+
 export default function CourseDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
     const { user, signInWithGoogle } = useAuth()
@@ -68,6 +93,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
     const isFree = course?.price === "Free" || course?.price === "$0"
     const progress = course ? (completedChapters.length / (course.chapters || 1)) * 100 : 0
     const activeLesson = course?.lessons?.find((lesson: any) => lesson.id === activeChapter)
+    const activeLessonYouTubeUrl = activeLesson?.videoUrl ? getYouTubeEmbedUrl(activeLesson.videoUrl) : null
 
     useEffect(() => {
         if (!course) return
@@ -216,6 +242,15 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                         {enrollLoading ? 'Processing...' : `Buy for ${course.price}`}
                                     </button>
                                 </div>
+                            ) : activeLessonYouTubeUrl ? (
+                                <iframe
+                                    key={activeLessonYouTubeUrl}
+                                    src={activeLessonYouTubeUrl}
+                                    title={activeLesson?.title || "Course lesson video"}
+                                    className="w-full h-full"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                    allowFullScreen
+                                />
                             ) : activeLesson?.videoUrl ? (
                                 <video
                                     key={activeLesson.videoUrl}
@@ -230,7 +265,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     <p className="text-sm">No video available for this lesson</p>
                                 </div>
                             )}
-                            <div className="absolute bottom-6 left-6 right-6 flex items-center justify-between">
+                            <div className="pointer-events-none absolute bottom-6 left-6 right-6 flex items-center justify-between">
                                 <div className="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 text-xs font-medium">
                                     Chapter {activeChapter}: {activeLesson?.title || "Lesson"}
                                 </div>
