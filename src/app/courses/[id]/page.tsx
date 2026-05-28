@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
 import { checkEnrollment, enrollFreeCourse } from "@/lib/supabase-helpers"
 import { createClient } from "@/lib/supabase/client"
-import { isMembershipActive, membershipPlan } from "@/lib/membership"
+import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, isMembershipActive } from "@/lib/membership"
 // @ts-ignore
 import confetti from "canvas-confetti"
 
@@ -49,6 +49,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
     const [showXPAlert, setShowXPAlert] = useState(false)
     const [isEnrolled, setIsEnrolled] = useState(false)
     const [isMember, setIsMember] = useState(false)
+    const [billingSettings, setBillingSettings] = useState(defaultBillingSettings)
     const [enrollLoading, setEnrollLoading] = useState(false)
     const [checkingEnrollment, setCheckingEnrollment] = useState(true)
 
@@ -104,11 +105,15 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
             if (user) {
                 const enrolled = await checkEnrollment(course.id)
                 const supabase = createClient()
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('membership_status, membership_expires_at')
-                    .eq('id', user.id)
-                    .single()
+                const [{ data: profile }, nextBillingSettings] = await Promise.all([
+                    supabase
+                        .from('profiles')
+                        .select('membership_status, membership_expires_at')
+                        .eq('id', user.id)
+                        .single(),
+                    fetchBillingSettings(supabase),
+                ])
+                setBillingSettings(nextBillingSettings)
                 setIsMember(isMembershipActive(profile))
                 setIsEnrolled(enrolled || isFree)
             }
@@ -152,6 +157,8 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
         setEnrollLoading(false)
     }
 
+    const activePlanPrice = getActivePlanPrice(billingSettings)
+
     if (courseLoading || !course) {
         return (
             <main className="min-h-screen pb-20">
@@ -192,7 +199,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     </div>
                                     <div className="text-center space-y-2">
                                         <h3 className="text-xl font-bold">Membership Required</h3>
-                                        <p className="text-white/50 text-sm">Start Pro for ₹{membershipPlan.price}/month to unlock paid courses</p>
+                                        <p className="text-white/50 text-sm">Start Pro for ₹{activePlanPrice}/month to unlock paid courses</p>
                                     </div>
                                     <button
                                         onClick={handleEnroll}
@@ -204,7 +211,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                         ) : (
                                             <ShoppingCart className="w-5 h-5" />
                                         )}
-                                        {enrollLoading ? 'Processing...' : `Start Pro ₹${membershipPlan.price}/mo`}
+                                        {enrollLoading ? 'Processing...' : `Start Pro ₹${activePlanPrice}/mo`}
                                     </button>
                                 </div>
                             ) : activeLessonYouTubeUrl ? (
@@ -245,7 +252,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                             <div className="glass-card p-6 rounded-2xl border border-primary/20 bg-primary/5 flex items-center justify-between">
                                 <div className="space-y-1">
                                     <h3 className="font-bold text-lg">Get Full Access with Pro</h3>
-                                    <p className="text-sm text-white/50">₹{membershipPlan.price}/month • paid courses • 10 portfolio videos</p>
+                                    <p className="text-sm text-white/50">₹{activePlanPrice}/month • paid courses • 10 portfolio videos</p>
                                 </div>
                                 <button
                                     onClick={handleEnroll}

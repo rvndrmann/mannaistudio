@@ -7,6 +7,7 @@ import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
 import { createClient } from "@/lib/supabase/client"
+import { defaultBillingSettings, fetchBillingSettings } from "@/lib/membership"
 
 const baseNavLinks = [
     { name: "Courses", href: "/courses", icon: Play },
@@ -20,6 +21,7 @@ const adminLink = { name: "Admin", href: "/admin", icon: ShieldCheck }
 export default function Navbar() {
     const [isOpen, setIsOpen] = useState(false)
     const [isAdmin, setIsAdmin] = useState(false)
+    const [offerText, setOfferText] = useState("")
     const { user, loading, signInWithGoogle, signOut } = useAuth()
 
     useEffect(() => {
@@ -29,14 +31,34 @@ export default function Navbar() {
             .then(({ data }) => setIsAdmin(!!data))
     }, [user])
 
+    useEffect(() => {
+        const loadSettings = async () => {
+            try {
+                const settings = await fetchBillingSettings(createClient())
+                setOfferText(settings.offerEnabled ? settings.offerText : "")
+            } catch {
+                setOfferText(defaultBillingSettings.offerEnabled ? defaultBillingSettings.offerText : "")
+            }
+        }
+        loadSettings()
+    }, [])
+
     const navLinks = isAdmin ? [...baseNavLinks, adminLink] : baseNavLinks
 
     return (
         <nav className="fixed top-0 left-0 right-0 z-50 flex justify-center p-4">
+            {offerText && (
+                <div className="absolute left-0 right-0 top-0 bg-primary px-4 py-1 text-center text-xs font-bold text-white">
+                    {offerText}
+                </div>
+            )}
             <motion.div
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                className="glass flex items-center justify-between w-full max-w-6xl px-6 py-3 rounded-2xl border border-white/10 backdrop-blur-xl bg-white/5"
+                className={cn(
+                    "glass flex items-center justify-between w-full max-w-6xl px-6 py-3 rounded-2xl border border-white/10 backdrop-blur-xl bg-white/5",
+                    offerText && "mt-6"
+                )}
             >
                 <Link href="/" className="flex items-center gap-2 group">
                     <div className="bg-primary/20 p-2 rounded-lg group-hover:bg-primary/30 transition-colors">

@@ -27,10 +27,11 @@ import {
     type ServiceRequest,
     type ServiceRequestStatus,
 } from "@/lib/service-requests"
+import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, type BillingSettings } from "@/lib/membership"
 
 type EnrolledStudent = {
     profile_id: string
-    course_id: string
+    course_id: string | null
     status: string
     created_at: string
     full_name: string
@@ -145,8 +146,11 @@ function AdminDashboardContent() {
     const [analyticsDate, setAnalyticsDate] = useState(new Date())
     const [totalRevenue, setTotalRevenue] = useState(0)
     const [todayRevenue, setTodayRevenue] = useState(0)
+    const [billingSettings, setBillingSettings] = useState<BillingSettings>(defaultBillingSettings)
+    const [billingMessage, setBillingMessage] = useState("")
+    const [isSavingBilling, setIsSavingBilling] = useState(false)
 
-    const PRICE_PER_ENROLLMENT = 999
+    const pricePerEnrollment = getActivePlanPrice(billingSettings)
 
     const editingCourseForChapters = mockCourses.find(c => c.id === editingChaptersId)
 
@@ -216,6 +220,40 @@ function AdminDashboardContent() {
         } catch (err: any) {
             console.error('Delete course error:', err)
             alert('Failed to delete course: ' + (err.message || 'Unknown error'))
+        }
+    }
+
+    const loadBillingSettings = async () => {
+        const supabase = await getServiceRequestClient()
+        if (!supabase) return
+        setBillingSettings(await fetchBillingSettings(supabase))
+    }
+
+    const handleSaveBillingSettings = async () => {
+        setIsSavingBilling(true)
+        setBillingMessage("")
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) throw new Error("No Supabase client")
+            const { data, error } = await supabase.rpc('admin_update_billing_settings', {
+                p_monthly_price: billingSettings.monthlyPrice,
+                p_offer_enabled: billingSettings.offerEnabled,
+                p_offer_price: billingSettings.offerPrice,
+                p_offer_text: billingSettings.offerText,
+            })
+            if (error) throw error
+            setBillingSettings({
+                planName: data?.plan_name || defaultBillingSettings.planName,
+                monthlyPrice: Number(data?.monthly_price || billingSettings.monthlyPrice),
+                offerEnabled: Boolean(data?.offer_enabled),
+                offerPrice: Number(data?.offer_price || billingSettings.offerPrice),
+                offerText: data?.offer_text || billingSettings.offerText,
+            })
+            setBillingMessage("Plan settings saved.")
+        } catch (err: any) {
+            setBillingMessage(`Could not save settings: ${err.message || 'Unknown error'}`)
+        } finally {
+            setIsSavingBilling(false)
         }
     }
 
@@ -562,18 +600,12 @@ function AdminDashboardContent() {
                 .select('profile_id, course_id, status, created_at')
                 .order('created_at', { ascending: false })
 
-            // Fetch unique student profiles who are enrolled
-            const profileIds = Array.from(new Set((enrollments || []).map((e: any) => e.profile_id)))
-            let profiles: any[] = []
-            if (profileIds.length > 0) {
-                const { data: profileData } = await supabase
-                    .from('profiles')
-                    .select('id, full_name, email, avatar_url')
-                    .in('id', profileIds)
-                profiles = profileData || []
-            }
+            const { data: profileData } = await supabase
+                .from('profiles')
+                .select('id, full_name, email, avatar_url, created_at')
+                .order('created_at', { ascending: false })
+            const profiles = profileData || []
 
-            // Build enrolled students list
             const profileMap = new Map(profiles.map((p: any) => [p.id, p]))
             const students: EnrolledStudent[] = (enrollments || []).map((e: any) => {
                 const p = profileMap.get(e.profile_id) || {}
@@ -587,7 +619,19 @@ function AdminDashboardContent() {
                     avatar_url: p.avatar_url || '',
                 }
             })
-            setEnrolledStudents(students)
+            const enrolledProfileIds = new Set(students.map((student) => student.profile_id))
+            const freeStudents: EnrolledStudent[] = profiles
+                .filter((profile: any) => !enrolledProfileIds.has(profile.id))
+                .map((profile: any) => ({
+                    profile_id: profile.id,
+                    course_id: null,
+                    status: 'free',
+                    created_at: profile.created_at,
+                    full_name: profile.full_name || 'Student',
+                    email: profile.email || '',
+                    avatar_url: profile.avatar_url || '',
+                }))
+            setEnrolledStudents([...students, ...freeStudents])
 
             // Count enrollments per course
             const courseEnrollments: Record<string, number> = {}
@@ -620,11 +664,11 @@ function AdminDashboardContent() {
             setAllEnrollments(enrollments || [])
             const today = new Date().toDateString()
             const todayEnrollments = (enrollments || []).filter((e: any) => new Date(e.created_at).toDateString() === today).length
-            setTodayRevenue(todayEnrollments * PRICE_PER_ENROLLMENT)
-            setTotalRevenue((enrollments || []).length * PRICE_PER_ENROLLMENT)
+            setTodayRevenue(todayEnrollments * pricePerEnrollment)
+            setTotalRevenue((enrollments || []).length * pricePerEnrollment)
 
             setAdminStats({
-                totalStudents: profileIds.length,
+                totalStudents: profiles.length,
                 totalEnrollments: (enrollments || []).length,
                 activeChallenges: challengeCount || 0,
                 courseEnrollments,
@@ -658,7 +702,7 @@ function AdminDashboardContent() {
                 return {
                     name: `${d.getDate()} ${months[d.getMonth()]}`,
                     enrollments: count,
-                    revenue: count * PRICE_PER_ENROLLMENT,
+                    revenue: count * pricePerEnrollment,
                 }
             })
         }
@@ -680,7 +724,7 @@ function AdminDashboardContent() {
                 return {
                     name: `${start.getDate()} ${months[start.getMonth()]} - ${end.getDate()} ${months[end.getMonth()]}`,
                     enrollments: count,
-                    revenue: count * PRICE_PER_ENROLLMENT,
+                    revenue: count * pricePerEnrollment,
                 }
             })
         }
@@ -698,7 +742,7 @@ function AdminDashboardContent() {
             return {
                 name: `${months[d.getMonth()]} ${d.getFullYear().toString().slice(2)}`,
                 enrollments: count,
-                revenue: count * PRICE_PER_ENROLLMENT,
+                revenue: count * pricePerEnrollment,
             }
         })
     }
@@ -733,6 +777,7 @@ function AdminDashboardContent() {
     useEffect(() => {
         setIsChartReady(true)
         loadServiceRequests()
+        loadBillingSettings()
         loadAdminData()
         loadShowcaseItems()
     }, [])
@@ -800,6 +845,15 @@ function AdminDashboardContent() {
                             >
                                 <Users className="w-4 h-4" /> Students
                             </button>
+                            <button
+                                onClick={() => setActiveTab("billing")}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    activeTab === "billing" ? "bg-primary text-white" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                )}
+                            >
+                                <DollarSign className="w-4 h-4" /> Plan & Offers
+                            </button>
                             <div className="pt-4 mt-4 border-t border-white/5">
                                 <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium text-red-400 hover:bg-red-400/5">
                                     <LogOut className="w-4 h-4" /> Sign Out
@@ -829,7 +883,7 @@ function AdminDashboardContent() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                                     <StatCard label="Total Students" value={String(adminStats.totalStudents)} change="Live" icon={Users} color="text-violet-400" />
                                     <StatCard label="Total Enrollments" value={String(adminStats.totalEnrollments)} change="Live" icon={CheckCircle2} color="text-emerald-400" />
-                                    <StatCard label="Total Revenue" value={`₹${totalRevenue.toLocaleString('en-IN')}`} change="₹999/mo each" icon={DollarSign} color="text-cyan-400" />
+                                    <StatCard label="Total Revenue" value={`₹${totalRevenue.toLocaleString('en-IN')}`} change={`₹${pricePerEnrollment}/mo each`} icon={DollarSign} color="text-cyan-400" />
                                     <StatCard label="Today's Sales" value={`₹${todayRevenue.toLocaleString('en-IN')}`} change="Live" icon={TrendingUp} color="text-amber-400" />
                                     <StatCard label="Active Challenges" value={String(adminStats.activeChallenges)} change="Live" icon={Play} color="text-red-400" />
                                 </div>
@@ -840,7 +894,7 @@ function AdminDashboardContent() {
                                     <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                                         <div>
                                             <h3 className="font-bold text-lg">Revenue Analytics</h3>
-                                            <p className="text-xs text-white/30">₹999 per enrollment • {getAnalyticsLabel()}</p>
+                                            <p className="text-xs text-white/30">₹{pricePerEnrollment} per enrollment • {getAnalyticsLabel()}</p>
                                         </div>
                                         <div className="flex items-center gap-3">
                                             {/* Mode Toggle */}
@@ -1043,7 +1097,7 @@ function AdminDashboardContent() {
                                                                         ))}
                                                                     </div>
                                                                     <p className="text-xs text-white/30">
-                                                                        Pro Membership courses require the ₹999/month plan.
+                                                                        Pro Membership courses require the current monthly plan.
                                                                     </p>
                                                                 </div>
                                                                 <div className="flex items-center gap-3">
@@ -1608,8 +1662,8 @@ function AdminDashboardContent() {
                             >
                                 <div className="flex items-center justify-between">
                                     <header>
-                                        <h1 className="text-3xl font-bold tracking-tight mb-2">Enrolled Students</h1>
-                                        <p className="text-white/40 text-sm">{adminStats.totalStudents} unique students across {adminStats.totalEnrollments} enrollments.</p>
+                                        <h1 className="text-3xl font-bold tracking-tight mb-2">Students</h1>
+                                        <p className="text-white/40 text-sm">{adminStats.totalStudents} total students across {adminStats.totalEnrollments} enrollments.</p>
                                     </header>
                                     <button
                                         onClick={loadStudents}
@@ -1624,8 +1678,8 @@ function AdminDashboardContent() {
                                 ) : enrolledStudents.length === 0 ? (
                                     <div className="glass-card p-12 text-center">
                                         <Users className="w-12 h-12 text-white/20 mx-auto mb-4" />
-                                        <h2 className="text-2xl font-bold mb-2">No Enrollments Yet</h2>
-                                        <p className="text-white/40">Students will appear here once they enroll in courses.</p>
+                                        <h2 className="text-2xl font-bold mb-2">No Students Yet</h2>
+                                        <p className="text-white/40">Students will appear here after they sign in.</p>
                                     </div>
                                 ) : (
                                     <div className="space-y-4">
@@ -1639,6 +1693,7 @@ function AdminDashboardContent() {
                                             })
                                             return Array.from(grouped.entries()).map(([profileId, entries]) => {
                                                 const student = entries[0]
+                                                const enrolledCourseCount = entries.filter((entry) => entry.course_id !== null).length
                                                 return (
                                                     <div key={profileId} className="glass-card p-6 rounded-2xl border-white/10">
                                                         <div className="flex items-center gap-4 mb-4">
@@ -1654,11 +1709,19 @@ function AdminDashboardContent() {
                                                                 <p className="text-sm text-white/40">{student.email}</p>
                                                             </div>
                                                             <div className="ml-auto text-right">
-                                                                <span className="text-xs font-bold text-primary">{entries.length} course{entries.length > 1 ? 's' : ''}</span>
+                                                                <span className="text-xs font-bold text-primary">{enrolledCourseCount} course{enrolledCourseCount === 1 ? '' : 's'}</span>
                                                             </div>
                                                         </div>
                                                         <div className="flex flex-wrap gap-2">
-                                                            {entries.map((e, i) => {
+                                                            {entries[0]?.course_id === null ? (
+                                                                <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs">
+                                                                    <Users className="w-3 h-3 text-white/40" />
+                                                                    <span className="font-medium">Free student</span>
+                                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-white/5 text-white/40">No enrollment</span>
+                                                                    <span className="text-white/20">Joined {new Date(student.created_at).toLocaleDateString()}</span>
+                                                                </div>
+                                                            ) : entries.map((e, i) => {
+                                                                if (!e.course_id) return null
                                                                 const courseName = mockCourses.find(c => c.id === e.course_id)?.title || e.course_id
                                                                 return (
                                                                     <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs">
@@ -1679,6 +1742,85 @@ function AdminDashboardContent() {
                                         })()}
                                     </div>
                                 )}
+                            </motion.div>
+                        )}
+
+                        {activeTab === "billing" && (
+                            <motion.div
+                                key="billing"
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                className="space-y-8"
+                            >
+                                <header>
+                                    <h1 className="text-3xl font-bold tracking-tight mb-2">Plan & Offer Settings</h1>
+                                    <p className="text-white/40 text-sm">Update the Pro membership price, discount offer, and top header banner.</p>
+                                </header>
+
+                                <div className="glass-card p-6 rounded-2xl border-white/10 space-y-6 max-w-3xl">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <label className="space-y-2">
+                                            <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Monthly Price (₹)</span>
+                                            <input
+                                                type="number"
+                                                min={1}
+                                                value={billingSettings.monthlyPrice}
+                                                onChange={(e) => setBillingSettings(prev => ({ ...prev, monthlyPrice: Number(e.target.value) }))}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
+                                            />
+                                        </label>
+                                        <label className="space-y-2">
+                                            <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Offer Price (₹)</span>
+                                            <input
+                                                type="number"
+                                                min={1}
+                                                value={billingSettings.offerPrice}
+                                                onChange={(e) => setBillingSettings(prev => ({ ...prev, offerPrice: Number(e.target.value) }))}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
+                                            />
+                                        </label>
+                                    </div>
+
+                                    <label className="space-y-2 block">
+                                        <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Offer Banner Text</span>
+                                        <input
+                                            value={billingSettings.offerText}
+                                            onChange={(e) => setBillingSettings(prev => ({ ...prev, offerText: e.target.value }))}
+                                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
+                                            placeholder="Limited offer: AI Mastery Pro for ₹799/month"
+                                        />
+                                    </label>
+
+                                    <label className="flex items-center justify-between gap-4 rounded-xl bg-white/5 border border-white/10 p-4">
+                                        <div>
+                                            <p className="font-bold">Show Offer On Upper Header</p>
+                                            <p className="text-xs text-white/40 mt-1">Displays the offer text above the navigation bar and uses the offer price at checkout.</p>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            checked={billingSettings.offerEnabled}
+                                            onChange={(e) => setBillingSettings(prev => ({ ...prev, offerEnabled: e.target.checked }))}
+                                            className="h-5 w-5 accent-primary"
+                                        />
+                                    </label>
+
+                                    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                                        <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2">Current Checkout Price</p>
+                                        <p className="text-2xl font-bold">₹{pricePerEnrollment}/month</p>
+                                    </div>
+
+                                    {billingMessage && <p className="text-sm text-white/50">{billingMessage}</p>}
+
+                                    <button
+                                        onClick={handleSaveBillingSettings}
+                                        disabled={isSavingBilling}
+                                        className="btn-primary flex items-center gap-2 px-6 py-3 disabled:opacity-60"
+                                    >
+                                        {isSavingBilling ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                        {isSavingBilling ? "Saving..." : "Save Plan Settings"}
+                                    </button>
+                                </div>
                             </motion.div>
                         )}
                     </AnimatePresence>

@@ -3,13 +3,14 @@
 import Navbar from "@/components/Navbar"
 import { useAuth } from "@/components/auth/auth-provider"
 import { createClient } from "@/lib/supabase/client"
-import { fetchMyMembership, isMembershipActive, membershipPlan } from "@/lib/membership"
+import { defaultBillingSettings, fetchBillingSettings, fetchMyMembership, getActivePlanPrice, isMembershipActive, membershipPlan } from "@/lib/membership"
 import { CheckCircle2, CreditCard, Loader2, Lock, Play, Sparkles } from "lucide-react"
 import { useEffect, useState } from "react"
 
 export default function BillingPage() {
     const { user, loading, signInWithGoogle } = useAuth()
     const [membership, setMembership] = useState<any>(null)
+    const [billingSettings, setBillingSettings] = useState(defaultBillingSettings)
     const [isLoadingPlan, setIsLoadingPlan] = useState(true)
     const [isCheckingOut, setIsCheckingOut] = useState(false)
 
@@ -21,7 +22,12 @@ export default function BillingPage() {
             }
 
             const supabase = createClient()
-            setMembership(await fetchMyMembership(supabase, user.id))
+            const [nextMembership, nextSettings] = await Promise.all([
+                fetchMyMembership(supabase, user.id),
+                fetchBillingSettings(supabase),
+            ])
+            setMembership(nextMembership)
+            setBillingSettings(nextSettings)
             setIsLoadingPlan(false)
         }
 
@@ -29,6 +35,7 @@ export default function BillingPage() {
     }, [user, loading])
 
     const active = isMembershipActive(membership)
+    const activePrice = getActivePlanPrice(billingSettings)
     const expiresAt = membership?.membership_expires_at
         ? new Date(membership.membership_expires_at).toLocaleDateString()
         : ""
@@ -46,7 +53,7 @@ export default function BillingPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     productType: 'membership',
-                    price: String(membershipPlan.price),
+                    price: String(activePrice),
                     userEmail: user.email,
                     userName: user.user_metadata?.full_name || 'Student',
                 }),
@@ -87,7 +94,7 @@ export default function BillingPage() {
                 <div className="space-y-6">
                     <div>
                         <p className="text-sm font-bold uppercase tracking-widest text-primary mb-3">Plan & Billing</p>
-                        <h1 className="text-4xl font-bold tracking-tight">AI Mastery Pro</h1>
+                        <h1 className="text-4xl font-bold tracking-tight">{billingSettings.planName}</h1>
                         <p className="text-white/50 mt-3 max-w-2xl">One monthly membership for premium course access and a larger creator portfolio.</p>
                     </div>
 
@@ -109,14 +116,20 @@ export default function BillingPage() {
                 <div className="glass-card p-6 rounded-2xl border-white/10 space-y-6">
                     <div className="flex items-start justify-between gap-4">
                         <div>
-                            <h2 className="text-xl font-bold">{membershipPlan.name}</h2>
+                            <h2 className="text-xl font-bold">{billingSettings.planName}</h2>
                             <p className="text-sm text-white/40 mt-1">Monthly membership</p>
                         </div>
                         <CheckCircle2 className={active ? "w-6 h-6 text-emerald-400" : "w-6 h-6 text-white/30"} />
                     </div>
 
                     <div>
-                        <span className="text-4xl font-bold">₹{membershipPlan.price}</span>
+                        {billingSettings.offerEnabled && (
+                            <div className="mb-2 text-sm font-bold text-emerald-300">{billingSettings.offerText}</div>
+                        )}
+                        {billingSettings.offerEnabled && (
+                            <span className="mr-3 text-xl font-bold text-white/30 line-through">₹{billingSettings.monthlyPrice}</span>
+                        )}
+                        <span className="text-4xl font-bold">₹{activePrice}</span>
                         <span className="text-white/40"> / month</span>
                     </div>
 
