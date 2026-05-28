@@ -19,6 +19,14 @@ export type PublicPortfolio = {
     videos: PortfolioVideo[]
 }
 
+type ProfileInput = {
+    full_name?: string | null
+    avatar_url?: string | null
+    email?: string | null
+    xp?: number | null
+    level?: number | null
+}
+
 export const portfolioStorageKey = "ai-mastery-portfolio"
 
 export function isSupabaseConfigured(): boolean {
@@ -63,7 +71,7 @@ export function mapPortfolioRow(row: any): PortfolioVideo {
 export async function ensurePortfolioProfile(
     supabase: SupabaseClient,
     userId: string,
-    profile: { full_name?: string | null; avatar_url?: string | null; email?: string | null; xp?: number | null; level?: number | null },
+    profile: ProfileInput,
 ) {
     const slug = createPortfolioSlug(profile.full_name || "Student", userId)
 

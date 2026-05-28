@@ -27,10 +27,16 @@ export async function POST(req: Request) {
         }
 
         if (status === 'success') {
-            // Extract course ID from productinfo
-            const courseId = productinfo.replace('Course: ', '')
-
             const supabase = await createClient()
+
+            if (productinfo.startsWith('Membership:')) {
+                await supabase.rpc('activate_membership_by_email', {
+                    p_email: email,
+                    p_payment_id: mihpayid || txnid,
+                })
+
+                return NextResponse.redirect(new URL('/billing?payment=success', req.url))
+            }
 
             // Find the user by email
             const { data: profile } = await supabase
@@ -40,16 +46,16 @@ export async function POST(req: Request) {
                 .single()
 
             if (profile) {
-                // Create active enrollment
+                const courseId = productinfo.replace('Course: ', '')
                 await supabase.from('enrollments').upsert({
                     profile_id: profile.id,
                     course_id: courseId,
                     status: 'active',
                     payment_id: mihpayid || txnid,
                 }, { onConflict: 'profile_id,course_id' })
-            }
 
-            return NextResponse.redirect(new URL(`/courses/${courseId}?payment=success`, req.url))
+                return NextResponse.redirect(new URL(`/courses/${courseId}?payment=success`, req.url))
+            }
         }
 
         return NextResponse.redirect(new URL('/courses?payment=failed', req.url))

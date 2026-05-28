@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
 import { checkEnrollment, enrollFreeCourse } from "@/lib/supabase-helpers"
 import { createClient } from "@/lib/supabase/client"
+import { isMembershipActive, membershipPlan } from "@/lib/membership"
 // @ts-ignore
 import confetti from "canvas-confetti"
 
@@ -47,6 +48,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
     const [activeChapter, setActiveChapter] = useState(1)
     const [showXPAlert, setShowXPAlert] = useState(false)
     const [isEnrolled, setIsEnrolled] = useState(false)
+    const [isMember, setIsMember] = useState(false)
     const [enrollLoading, setEnrollLoading] = useState(false)
     const [checkingEnrollment, setCheckingEnrollment] = useState(true)
 
@@ -91,6 +93,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
     }, [id])
 
     const isFree = course?.price === "Free" || course?.price === "$0"
+    const hasCourseAccess = isFree || isEnrolled || isMember
     const progress = course ? (completedChapters.length / (course.chapters || 1)) * 100 : 0
     const activeLesson = course?.lessons?.find((lesson: any) => lesson.id === activeChapter)
     const activeLessonYouTubeUrl = activeLesson?.videoUrl ? getYouTubeEmbedUrl(activeLesson.videoUrl) : null
@@ -100,6 +103,13 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
         const check = async () => {
             if (user) {
                 const enrolled = await checkEnrollment(course.id)
+                const supabase = createClient()
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('membership_status, membership_expires_at')
+                    .eq('id', user.id)
+                    .single()
+                setIsMember(isMembershipActive(profile))
                 setIsEnrolled(enrolled || isFree)
             }
             setCheckingEnrollment(false)
@@ -136,52 +146,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                 confetti({ particleCount: 50, spread: 60 })
             }
         } else {
-            // Paid course → PayU checkout
-            try {
-                const res = await fetch('/api/checkout', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        courseId: course.id,
-                        price: course.price.replace('$', ''),
-                        userEmail: user.email,
-                        userName: user.user_metadata?.full_name || 'Student',
-                    }),
-                })
-
-                const payuData = await res.json()
-
-                // Create a form and submit to PayU
-                const form = document.createElement('form')
-                form.method = 'POST'
-                form.action = 'https://secure.payu.in/_payment' // Use test.payu.in for sandbox
-
-                Object.entries(payuData).forEach(([key, value]) => {
-                    const input = document.createElement('input')
-                    input.type = 'hidden'
-                    input.name = key
-                    input.value = value as string
-                    form.appendChild(input)
-                })
-
-                // Add success and failure URLs
-                const surl = document.createElement('input')
-                surl.type = 'hidden'
-                surl.name = 'surl'
-                surl.value = `${window.location.origin}/api/payu/webhook`
-                form.appendChild(surl)
-
-                const furl = document.createElement('input')
-                furl.type = 'hidden'
-                furl.name = 'furl'
-                furl.value = `${window.location.origin}/api/payu/webhook`
-                form.appendChild(furl)
-
-                document.body.appendChild(form)
-                form.submit()
-            } catch (error) {
-                console.error('Checkout error:', error)
-            }
+            window.location.href = '/billing'
         }
 
         setEnrollLoading(false)
@@ -219,15 +184,15 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                     {/* Main Content: Video Player */}
                     <div className="lg:col-span-2 space-y-6">
                         <div className="relative aspect-video glass-card rounded-2xl border-white/10 overflow-hidden shadow-2xl bg-black">
-                            {!isEnrolled && !isFree && !checkingEnrollment ? (
+                            {!hasCourseAccess && !checkingEnrollment ? (
                                 /* Locked overlay for non-enrolled paid courses */
                                 <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-6 z-10">
                                     <div className="p-6 bg-white/5 rounded-full border border-white/10">
                                         <Lock className="w-12 h-12 text-white/40" />
                                     </div>
                                     <div className="text-center space-y-2">
-                                        <h3 className="text-xl font-bold">Enroll to Access</h3>
-                                        <p className="text-white/50 text-sm">Purchase this course to unlock all content</p>
+                                        <h3 className="text-xl font-bold">Membership Required</h3>
+                                        <p className="text-white/50 text-sm">Start Pro for ₹{membershipPlan.price}/month to unlock paid courses</p>
                                     </div>
                                     <button
                                         onClick={handleEnroll}
@@ -239,7 +204,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                         ) : (
                                             <ShoppingCart className="w-5 h-5" />
                                         )}
-                                        {enrollLoading ? 'Processing...' : `Buy for ${course.price}`}
+                                        {enrollLoading ? 'Processing...' : `Start Pro ₹${membershipPlan.price}/mo`}
                                     </button>
                                 </div>
                             ) : activeLessonYouTubeUrl ? (
@@ -276,11 +241,11 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                         </div>
 
                         {/* Enrollment CTA for non-enrolled users */}
-                        {!isEnrolled && !checkingEnrollment && (
+                        {!hasCourseAccess && !checkingEnrollment && (
                             <div className="glass-card p-6 rounded-2xl border border-primary/20 bg-primary/5 flex items-center justify-between">
                                 <div className="space-y-1">
-                                    <h3 className="font-bold text-lg">{isFree ? 'Free Course!' : `Get Full Access for ${course.price}`}</h3>
-                                    <p className="text-sm text-white/50">{course.chapters} chapters • {course.duration} of content</p>
+                                    <h3 className="font-bold text-lg">Get Full Access with Pro</h3>
+                                    <p className="text-sm text-white/50">₹{membershipPlan.price}/month • paid courses • 10 portfolio videos</p>
                                 </div>
                                 <button
                                     onClick={handleEnroll}
@@ -294,7 +259,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     ) : (
                                         <ShoppingCart className="w-4 h-4" />
                                     )}
-                                    {enrollLoading ? 'Processing...' : isFree ? 'Enroll Free' : `Buy ${course.price}`}
+                                    {enrollLoading ? 'Processing...' : `Start Pro`}
                                 </button>
                             </div>
                         )}

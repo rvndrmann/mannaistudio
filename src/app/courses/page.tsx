@@ -3,10 +3,12 @@
 import Navbar from "@/components/Navbar"
 import { motion } from "framer-motion"
 import { Play, Clock, Sparkles, Loader2 } from "lucide-react"
-import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { courses as mockCourses } from "@/lib/data"
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/components/auth/auth-provider"
+import { isMembershipActive } from "@/lib/membership"
 
 interface Course {
     id: string
@@ -22,8 +24,11 @@ interface Course {
 }
 
 export default function CoursesPage() {
+    const router = useRouter()
+    const { user, signInWithGoogle } = useAuth()
     const [courses, setCourses] = useState<Course[]>([])
     const [loading, setLoading] = useState(true)
+    const [checkingCourseId, setCheckingCourseId] = useState<string | null>(null)
 
     useEffect(() => {
         const load = async () => {
@@ -45,6 +50,47 @@ export default function CoursesPage() {
         }
         load()
     }, [])
+
+    const handleOpenCourse = async (course: Course) => {
+        if (!user) {
+            signInWithGoogle()
+            return
+        }
+
+        const isFree = course.price === "Free" || course.price === "$0"
+        if (isFree) {
+            router.push(`/courses/${course.id}`)
+            return
+        }
+
+        setCheckingCourseId(course.id)
+        try {
+            const supabase = createClient()
+            const [{ data: enrollment }, { data: profile }] = await Promise.all([
+                supabase
+                    .from('enrollments')
+                    .select('status')
+                    .eq('profile_id', user.id)
+                    .eq('course_id', course.id)
+                    .single(),
+                supabase
+                    .from('profiles')
+                    .select('membership_status, membership_expires_at')
+                    .eq('id', user.id)
+                    .single(),
+            ])
+
+            if (enrollment?.status === 'active' || isMembershipActive(profile)) {
+                router.push(`/courses/${course.id}`)
+            } else {
+                router.push('/billing')
+            }
+        } catch {
+            router.push('/billing')
+        } finally {
+            setCheckingCourseId(null)
+        }
+    }
 
     return (
         <main className="min-h-screen pb-20">
@@ -83,10 +129,11 @@ export default function CoursesPage() {
                             transition={{ delay: i * 0.1 }}
                             className="glass-card flex flex-col h-full overflow-hidden group"
                         >
-                            <Link
-                                href={`/courses/${course.id}`}
+                            <button
+                                type="button"
+                                onClick={() => handleOpenCourse(course)}
                                 aria-label={`Open ${course.title}`}
-                                className="relative aspect-video overflow-hidden block"
+                                className="relative aspect-video overflow-hidden block text-left"
                             >
                                 <img
                                     src={course.thumbnail}
@@ -101,7 +148,7 @@ export default function CoursesPage() {
                                         <Play className="w-6 h-6 fill-white" />
                                     </div>
                                 </div>
-                            </Link>
+                            </button>
 
                             <div className="p-6 flex flex-col flex-grow">
                                 <div className="flex items-center gap-2 mb-3">
@@ -113,9 +160,9 @@ export default function CoursesPage() {
                                     <span className="text-xs text-white/50">{course.chapters} Chapters</span>
                                 </div>
 
-                                <Link href={`/courses/${course.id}`} className="mb-2">
+                                <button type="button" onClick={() => handleOpenCourse(course)} className="mb-2 text-left">
                                     <h3 className="text-xl font-bold group-hover:text-primary transition-colors line-clamp-1">{course.title}</h3>
-                                </Link>
+                                </button>
                                 <p className="text-white/50 text-sm mb-6 line-clamp-2 leading-relaxed">
                                     {course.description}
                                 </p>
@@ -125,12 +172,14 @@ export default function CoursesPage() {
                                         <Clock className="w-4 h-4" />
                                         <span>{course.duration}</span>
                                     </div>
-                                    <Link
-                                        href={`/courses/${course.id}`}
+                                    <button
+                                        type="button"
+                                        onClick={() => handleOpenCourse(course)}
+                                        disabled={checkingCourseId === course.id}
                                         className="text-sm font-medium text-white hover:text-primary transition-colors flex items-center gap-1.5"
                                     >
-                                        Enroll Now <Play className="w-3.5 h-3.5" />
-                                    </Link>
+                                        {checkingCourseId === course.id ? "Checking..." : "Enroll Now"} <Play className="w-3.5 h-3.5" />
+                                    </button>
                                 </div>
                             </div>
                         </motion.div>

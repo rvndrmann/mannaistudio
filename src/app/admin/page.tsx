@@ -1020,6 +1020,32 @@ function AdminDashboardContent() {
                                                                     className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full h-24"
                                                                     placeholder="Description"
                                                                 />
+                                                                <div className="space-y-2">
+                                                                    <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Course Access</p>
+                                                                    <div className="inline-flex rounded-xl border border-white/10 bg-white/5 p-1">
+                                                                        {[
+                                                                            { label: "Free", value: "Free" },
+                                                                            { label: "Pro Membership", value: "Paid" },
+                                                                        ].map((option) => (
+                                                                            <button
+                                                                                key={option.value}
+                                                                                type="button"
+                                                                                onClick={() => setEditForm(prev => prev ? { ...prev, price: option.value } : prev)}
+                                                                                className={cn(
+                                                                                    "px-4 py-2 rounded-lg text-xs font-bold transition-colors",
+                                                                                    editForm?.price === option.value
+                                                                                        ? "bg-primary text-white"
+                                                                                        : "text-white/40 hover:text-white hover:bg-white/5"
+                                                                                )}
+                                                                            >
+                                                                                {option.label}
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                    <p className="text-xs text-white/30">
+                                                                        Pro Membership courses require the ₹999/month plan.
+                                                                    </p>
+                                                                </div>
                                                                 <div className="flex items-center gap-3">
                                                                     <button
                                                                         onClick={handleSaveCourse}
@@ -1044,6 +1070,14 @@ function AdminDashboardContent() {
                                                                 <div className="flex flex-wrap items-center gap-4 text-[10px] font-bold tracking-widest uppercase text-white/30">
                                                                     <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {adminStats.courseEnrollments[course.id] || 0} Enrolled</span>
                                                                     <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" /> {course.chapters} Chapters</span>
+                                                                    <span className={cn(
+                                                                        "px-2 py-1 rounded-md",
+                                                                        course.price === "Free" || course.price === "$0"
+                                                                            ? "bg-emerald-400/10 text-emerald-400"
+                                                                            : "bg-primary/10 text-primary"
+                                                                    )}>
+                                                                        {course.price === "Free" || course.price === "$0" ? "Free" : "Pro Membership"}
+                                                                    </span>
                                                                     <span className="flex items-center gap-1 text-primary"><FileText className="w-3 h-3 " /> {course.lessons?.length || 0} Lessons with resources</span>
                                                                 </div>
                                                                 <div className="flex items-center gap-3 pt-4 border-t border-white/5">

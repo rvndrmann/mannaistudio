@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { motion } from "framer-motion"
-import { Play, Award, Zap, User, Menu, X, ShieldCheck, LogIn, LogOut, Loader2 } from "lucide-react"
+import { Play, Zap, User, Menu, X, ShieldCheck, LogIn, LogOut, Loader2, CreditCard } from "lucide-react"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/client"
 const baseNavLinks = [
     { name: "Courses", href: "/courses", icon: Play },
     { name: "Challenges", href: "/challenges", icon: Zap },
+    { name: "Billing", href: "/billing", icon: CreditCard },
     { name: "AI Services", href: "/services", icon: ShieldCheck },
 ]
 

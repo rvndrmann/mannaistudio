@@ -3,13 +3,13 @@ import crypto from 'crypto'
 
 export async function POST(req: Request) {
     try {
-        const { courseId, price, userEmail, userName } = await req.json()
+        const { courseId, price, userEmail, userName, productType } = await req.json()
 
         const merchantId = process.env.PAYU_MERCHANT_ID!
         const key = process.env.PAYU_KEY!
         const salt = process.env.PAYU_SALT!
         const txnid = `TXN_${Date.now()}`
-        const productInfo = `Course: ${courseId}`
+        const productInfo = productType === 'membership' ? 'Membership: AI Mastery Pro' : `Course: ${courseId}`
 
         // Hash sequence: key|txnid|amount|productinfo|firstname|email|udf1|udf2|udf3|udf4|udf5||||||SALT
         const hashString = `${key}|${txnid}|${price}|${productInfo}|${userName}|${userEmail}|||||||||||${salt}`

@@ -2,7 +2,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 // Routes that require authentication (everything except home and auth routes)
-const protectedPaths = ['/courses', '/challenges', '/services', '/admin', '/profile', '/portfolio']
+const protectedPaths = ['/courses', '/challenges', '/services', '/admin', '/profile', '/portfolio', '/billing']
 
 function isProtectedRoute(pathname: string): boolean {
     return protectedPaths.some(path => pathname === path || pathname.startsWith(path + '/'))

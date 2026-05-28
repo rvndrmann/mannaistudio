@@ -18,6 +18,7 @@ import {
     updatePortfolioVisibility,
     uploadPortfolioFile,
 } from "@/lib/portfolio"
+import { getPortfolioLimit, isMembershipActive } from "@/lib/membership"
 
 const defaultProfileStats = {
     level: 1,
@@ -155,7 +156,8 @@ export default function ProfilePage() {
 
     const handleAddVideo = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
-        if (!newVideo.title.trim() || (!newVideo.url.trim() && !newVideo.videoFile) || videos.length >= 10 || !user) return
+        const portfolioLimit = getPortfolioLimit(profile)
+        if (!newVideo.title.trim() || (!newVideo.url.trim() && !newVideo.videoFile) || videos.length >= portfolioLimit || !user) return
 
         setIsSavingVideo(true)
         setPortfolioMessage("")
@@ -187,7 +189,7 @@ export default function ProfilePage() {
                     thumbnailUrl,
                 })
 
-                setVideos((currentVideos) => [savedVideo, ...currentVideos].slice(0, 10))
+                setVideos((currentVideos) => [savedVideo, ...currentVideos].slice(0, portfolioLimit))
                 setPortfolioMessage("Saved to Supabase.")
             } else {
                 const nextVideo: PortfolioVideo = {
@@ -198,7 +200,7 @@ export default function ProfilePage() {
                     views: "0",
                     likes: 0,
                 }
-                setVideos((currentVideos) => [nextVideo, ...currentVideos].slice(0, 10))
+                setVideos((currentVideos) => [nextVideo, ...currentVideos].slice(0, portfolioLimit))
                 setPortfolioMessage("Saved locally. Supabase setup is pending.")
             }
 
@@ -292,6 +294,8 @@ export default function ProfilePage() {
     const avatarUrl = profile?.avatar_url || user?.user_metadata?.avatar_url || ''
     const userLevel = profile?.level ?? defaultProfileStats.level
     const userXp = profile?.xp ?? defaultProfileStats.xp
+    const portfolioLimit = getPortfolioLimit(profile)
+    const isMember = isMembershipActive(profile)
     const portfolioSlug = profile?.portfolio_slug || (user ? createPortfolioSlug(displayName, user.id) : "creator")
     const shareUrl = typeof window === "undefined" ? "" : `${window.location.origin}/portfolio?u=${portfolioSlug}`
 
@@ -438,15 +442,18 @@ export default function ProfilePage() {
                             <div>
                                 <h2 className="text-2xl font-bold">Showcase Portfolio</h2>
                                 <p className="text-sm text-white/40">
-                                    {isLoadingPortfolio ? "Loading saved work..." : `${videos.length} of 10 slots filled`}
+                                    {isLoadingPortfolio ? "Loading saved work..." : `${videos.length} of ${portfolioLimit} slots filled`}
                                 </p>
+                                {!isMember && (
+                                    <p className="text-xs text-white/30 mt-1">Free accounts can post 2 videos. Pro members can post 10.</p>
+                                )}
                                 {portfolioMessage && (
                                     <p className="text-xs text-white/40 mt-2">{portfolioMessage}</p>
                                 )}
                             </div>
                             <button
                                 onClick={() => setIsAddingVideo(true)}
-                                disabled={videos.length >= 10}
+                                disabled={videos.length >= portfolioLimit}
                                 className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-40 disabled:hover:bg-white/10 rounded-xl transition-all font-bold text-xs"
                             >
                                 <Plus className="w-4 h-4" /> Add New Video
@@ -606,7 +613,7 @@ export default function ProfilePage() {
                                 </motion.div>
                             ))}
 
-                            {videos.length < 10 && (
+                            {videos.length < portfolioLimit && (
                                 <button
                                     onClick={() => setIsAddingVideo(true)}
                                     className="aspect-video glass border-2 border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center gap-4 hover:bg-white/5 hover:border-white/20 transition-all group"
