@@ -95,7 +95,7 @@ export default function LandingPage() {
                             </button>
                         )}
                         <Link href="/services" className="px-8 py-4 text-lg font-medium text-white hover:text-primary transition-colors flex items-center gap-2">
-                            Our AI Services <ShieldCheck className="w-5 h-5 text-primary" />
+                            AI Jobs <ShieldCheck className="w-5 h-5 text-primary" />
                         </Link>
                     </motion.div>
 
@@ -153,7 +153,7 @@ export default function LandingPage() {
                         </p>
                     </div>
                     <Link href="/services" className="text-sm font-bold text-primary hover:underline flex items-center gap-2">
-                        Inquire About Custom Work <ArrowUpRight className="w-4 h-4" />
+                        Browse AI Jobs <ArrowUpRight className="w-4 h-4" />
                     </Link>
                 </div>
 

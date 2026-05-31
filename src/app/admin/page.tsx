@@ -8,7 +8,7 @@ import {
     ArrowUpRight, LayoutDashboard, BookOpen,
     Tv, Settings, LogOut, Plus, Edit2, Trash2,
     Save, X, Download, FileText, Video, Trophy,
-    Inbox, Mail, Clock, DollarSign, Loader2,
+    Inbox, Mail, Clock, DollarSign, Loader2, Phone,
     ChevronLeft, ChevronRight, Calendar
 } from "lucide-react"
 import { courses, adminShowcase, challenges } from "@/lib/data"
@@ -19,7 +19,7 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid,
     Tooltip, ResponsiveContainer, AreaChart, Area
 } from 'recharts'
-import type { Challenge, Course, CourseLesson, ShowcaseItem } from "@/lib/data"
+import type { Challenge, ChallengeSubmission, Course, CourseLesson, ShowcaseItem } from "@/lib/data"
 import {
     fetchServiceRequests,
     getServiceRequestClient,
@@ -51,6 +51,30 @@ const defaultStats: AdminStats = {
     totalEnrollments: 0,
     activeChallenges: 0,
     courseEnrollments: {},
+}
+
+function ImageOrPlaceholder({ src, alt = "", className }: { src?: string | null; alt?: string; className?: string }) {
+    const safeSrc = src?.trim()
+
+    if (safeSrc) {
+        return <img src={safeSrc} className={className} alt={alt} />
+    }
+
+    return (
+        <div className={cn("flex items-center justify-center bg-white/5 text-white/25", className)}>
+            <Video className="w-6 h-6" />
+        </div>
+    )
+}
+
+function mapChallengeSubmissionRow(row: any): ChallengeSubmission {
+    return {
+        id: row.id,
+        studentName: row.student_name || "Student",
+        videoUrl: row.video_url || "",
+        timestamp: row.created_at ? new Date(row.created_at).toLocaleDateString() : "Just now",
+        thumbnail: row.thumbnail || "",
+    }
 }
 
 function AdminGate({ children }: { children: React.ReactNode }) {
@@ -498,10 +522,19 @@ function AdminDashboardContent() {
         }
     }
 
-    const handleSelectWinner = (challengeId: string, submissionId: string) => {
+    const handleSelectWinner = async (challengeId: string, submissionId: string) => {
         setMockChallenges(mockChallenges.map(c =>
             c.id === challengeId ? { ...c, winnerId: submissionId } : c
         ))
+        try {
+            const supabase = await getServiceRequestClient()
+            if (supabase) {
+                await supabase
+                    .from('challenges')
+                    .update({ winner_id: submissionId })
+                    .eq('id', challengeId)
+            }
+        } catch {}
         // Auto-close submissions view after picking winner
         setViewingSubmissionsId(null)
     }
@@ -581,16 +614,27 @@ function AdminDashboardContent() {
                 .select('*')
                 .order('created_at', { ascending: true })
             if (dbChallenges) {
+                const { data: dbSubmissions } = await supabase
+                    .from('challenge_submissions')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                const submissionsByChallenge = new Map<string, ChallengeSubmission[]>()
+                ;(dbSubmissions || []).forEach((submission: any) => {
+                    const current = submissionsByChallenge.get(submission.challenge_id) || []
+                    current.push(mapChallengeSubmissionRow(submission))
+                    submissionsByChallenge.set(submission.challenge_id, current)
+                })
+
                 setMockChallenges(dbChallenges.map((c: any) => ({
                     id: c.id,
                     title: c.title,
                     description: c.description,
                     prize: c.prize,
                     deadline: c.deadline || '',
-                    participants: c.participants,
+                    participants: Math.max(c.participants || 0, submissionsByChallenge.get(c.id)?.length || 0),
                     difficulty: c.difficulty,
                     winnerId: c.winner_id || null,
-                    submissions: [],
+                    submissions: submissionsByChallenge.get(c.id) || [],
                 })))
             }
 
@@ -834,7 +878,7 @@ function AdminDashboardContent() {
                                     activeTab === "service-requests" ? "bg-primary text-white" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
-                                <Inbox className="w-4 h-4" /> Service Requests
+                                <Inbox className="w-4 h-4" /> Job Posts
                             </button>
                             <button
                                 onClick={() => { setActiveTab("students"); loadStudents(); }}
@@ -1050,7 +1094,7 @@ function AdminDashboardContent() {
                                         <div className="grid grid-cols-1 gap-6">
                                             {mockCourses.map((course) => (
                                                 <div key={course.id} className="glass-card p-6 rounded-2xl border-white/10 flex flex-col md:flex-row gap-6">
-                                                    <img src={course.thumbnail} className="w-full md:w-48 aspect-video object-cover rounded-xl" alt="" />
+                                                    <ImageOrPlaceholder src={course.thumbnail} className="w-full md:w-48 aspect-video object-cover rounded-xl" />
                                                     <div className="flex-grow space-y-4">
                                                         {editingId === course.id ? (
                                                             <div className="space-y-4">
@@ -1318,7 +1362,7 @@ function AdminDashboardContent() {
                                             ) : (
                                                 <>
                                                     <div className="relative aspect-video">
-                                                        <img src={item.thumbnail} className="w-full h-full object-cover" alt="" />
+                                                        <ImageOrPlaceholder src={item.thumbnail} className="w-full h-full object-cover" />
                                                         <div className="absolute top-4 right-4 flex gap-2">
                                                             <button
                                                                 onClick={() => handleEditShowcase(item)}
@@ -1496,7 +1540,7 @@ function AdminDashboardContent() {
                                                                         )}
                                                                         <div className="flex gap-3">
                                                                             <div className="relative group/thumb w-16 aspect-video shrink-0">
-                                                                                <img src={sub.thumbnail} className="w-full h-full object-cover rounded-lg" alt="" />
+                                                                                <ImageOrPlaceholder src={sub.thumbnail} className="w-full h-full object-cover rounded-lg" />
                                                                                 <button
                                                                                     onClick={() => {
                                                                                         setWatchingSubmissionId(sub.id)
@@ -1556,8 +1600,8 @@ function AdminDashboardContent() {
                             >
                                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <header>
-                                        <h1 className="text-3xl font-bold tracking-tight mb-2">Service Requests</h1>
-                                        <p className="text-white/40 text-sm">Requests submitted from the AI Services project form.</p>
+                                        <h1 className="text-3xl font-bold tracking-tight mb-2">Job Posts</h1>
+                                        <p className="text-white/40 text-sm">Approve AI video jobs before they appear in the marketplace.</p>
                                     </header>
                                     <button
                                         onClick={loadServiceRequests}
@@ -1568,9 +1612,9 @@ function AdminDashboardContent() {
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    <StatCard label="New Requests" value={String(serviceRequests.filter(request => request.status === "new").length)} change="Live" icon={Inbox} color="text-cyan-400" />
-                                    <StatCard label="Contacted" value={String(serviceRequests.filter(request => request.status === "contacted").length)} change="Live" icon={Mail} color="text-amber-400" />
-                                    <StatCard label="Closed" value={String(serviceRequests.filter(request => request.status === "closed").length)} change="Live" icon={CheckCircle2} color="text-emerald-400" />
+                                    <StatCard label="Pending Review" value={String(serviceRequests.filter(request => request.status === "pending").length)} change="Approve before live" icon={Inbox} color="text-cyan-400" />
+                                    <StatCard label="Live Jobs" value={String(serviceRequests.filter(request => request.status === "approved").length)} change="Open for bids" icon={Mail} color="text-amber-400" />
+                                    <StatCard label="Awarded" value={String(serviceRequests.filter(request => request.status === "awarded").length)} change="Creator selected" icon={CheckCircle2} color="text-emerald-400" />
                                 </div>
 
                                 {serviceRequestsMessage && (
@@ -1581,12 +1625,12 @@ function AdminDashboardContent() {
 
                                 <div className="space-y-4">
                                     {isLoadingServiceRequests ? (
-                                        <div className="glass-card p-8 text-center text-white/40">Loading requests...</div>
+                                        <div className="glass-card p-8 text-center text-white/40">Loading jobs...</div>
                                     ) : serviceRequests.length === 0 ? (
                                         <div className="glass-card p-12 text-center">
                                             <Inbox className="w-12 h-12 text-white/20 mx-auto mb-4" />
-                                            <h2 className="text-2xl font-bold mb-2">No Requests Yet</h2>
-                                            <p className="text-white/40">New AI Services submissions will appear here.</p>
+                                            <h2 className="text-2xl font-bold mb-2">No Jobs Yet</h2>
+                                            <p className="text-white/40">New job posts will appear here for approval.</p>
                                         </div>
                                     ) : (
                                         serviceRequests.map((request) => (
@@ -1594,18 +1638,23 @@ function AdminDashboardContent() {
                                                 <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
                                                     <div className="space-y-2">
                                                         <div className="flex flex-wrap items-center gap-3">
-                                                            <h3 className="text-xl font-bold">{request.fullName}</h3>
+                                                            <h3 className="text-xl font-bold">{request.title}</h3>
                                                             <span className={cn(
                                                                 "px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider",
-                                                                request.status === "new" ? "bg-cyan-400/10 text-cyan-300" :
-                                                                    request.status === "contacted" ? "bg-amber-400/10 text-amber-300" : "bg-emerald-400/10 text-emerald-300"
+                                                                request.status === "pending" ? "bg-cyan-400/10 text-cyan-300" :
+                                                                    request.status === "approved" ? "bg-amber-400/10 text-amber-300" :
+                                                                        request.status === "awarded" ? "bg-emerald-400/10 text-emerald-300" : "bg-white/10 text-white/50"
                                                             )}>
                                                                 {request.status}
                                                             </span>
                                                         </div>
-                                                        <a href={`mailto:${request.email}`} className="text-sm text-primary hover:underline flex items-center gap-2">
-                                                            <Mail className="w-4 h-4" /> {request.email}
-                                                        </a>
+                                                        <p className="text-sm text-white/50">Posted by {request.fullName}</p>
+                                                        <div className="flex flex-wrap gap-3 text-sm text-primary">
+                                                            <a href={`mailto:${request.email}`} className="hover:underline flex items-center gap-2">
+                                                                <Mail className="w-4 h-4" /> {request.email}
+                                                            </a>
+                                                            {request.phone && <span className="flex items-center gap-2"><Phone className="w-4 h-4" /> {request.phone}</span>}
+                                                        </div>
                                                         <p className="text-xs text-white/30">
                                                             Submitted {new Date(request.createdAt).toLocaleString()}
                                                         </p>
@@ -1616,8 +1665,10 @@ function AdminDashboardContent() {
                                                         onChange={(event) => handleServiceStatusChange(request.id, event.target.value as ServiceRequestStatus)}
                                                         className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm text-white/70 outline-none focus:border-primary"
                                                     >
-                                                        <option value="new" className="bg-[#1a1a2e]">New</option>
-                                                        <option value="contacted" className="bg-[#1a1a2e]">Contacted</option>
+                                                        <option value="pending" className="bg-[#1a1a2e]">Pending</option>
+                                                        <option value="approved" className="bg-[#1a1a2e]">Approved</option>
+                                                        <option value="rejected" className="bg-[#1a1a2e]">Rejected</option>
+                                                        <option value="awarded" className="bg-[#1a1a2e]">Awarded</option>
                                                         <option value="closed" className="bg-[#1a1a2e]">Closed</option>
                                                     </select>
                                                 </div>
@@ -1644,6 +1695,40 @@ function AdminDashboardContent() {
                                                 <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
                                                     <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2">Project Description</p>
                                                     <p className="text-sm text-white/60 leading-relaxed whitespace-pre-wrap">{request.projectDescription}</p>
+                                                </div>
+                                                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
+                                                    <div className="flex items-center justify-between gap-4 mb-4">
+                                                        <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Bids</p>
+                                                        <span className="text-xs text-white/40">{request.bids.length} offer{request.bids.length === 1 ? "" : "s"}</span>
+                                                    </div>
+                                                    {request.bids.length === 0 ? (
+                                                        <p className="text-sm text-white/35">No creator bids yet.</p>
+                                                    ) : (
+                                                        <div className="space-y-3">
+                                                            {request.bids.map((bid) => (
+                                                                <div key={bid.id} className="rounded-xl border border-white/5 bg-black/10 p-4 space-y-2">
+                                                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                                                                        <div>
+                                                                            <p className="font-bold">{bid.bidderName}</p>
+                                                                            <p className="text-xs text-white/40">{bid.offerAmount}</p>
+                                                                        </div>
+                                                                        <span className={cn(
+                                                                            "px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider w-fit",
+                                                                            bid.status === "selected" ? "bg-emerald-400/10 text-emerald-300" :
+                                                                                bid.status === "rejected" ? "bg-red-400/10 text-red-300" : "bg-white/5 text-white/40"
+                                                                        )}>{bid.status}</span>
+                                                                    </div>
+                                                                    <p className="text-sm text-white/60 whitespace-pre-wrap">{bid.message}</p>
+                                                                    {bid.status === "selected" && (
+                                                                        <div className="flex flex-wrap gap-3 text-xs text-emerald-300">
+                                                                            <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {bid.bidderEmail}</span>
+                                                                            {bid.bidderPhone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {bid.bidderPhone}</span>}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </article>
                                         ))
@@ -1857,12 +1942,19 @@ function AdminDashboardContent() {
                                         </button>
                                     </div>
                                     <div className="aspect-video bg-black flex items-center justify-center border-b border-white/5">
-                                        <video
-                                            src={mockChallenges.find(c => c.id === watchingChallengeId)?.submissions.find(s => s.id === watchingSubmissionId)?.videoUrl}
-                                            controls
-                                            autoPlay
-                                            className="w-full h-full"
-                                        />
+                                        {mockChallenges.find(c => c.id === watchingChallengeId)?.submissions.find(s => s.id === watchingSubmissionId)?.videoUrl ? (
+                                            <video
+                                                src={mockChallenges.find(c => c.id === watchingChallengeId)?.submissions.find(s => s.id === watchingSubmissionId)?.videoUrl}
+                                                controls
+                                                autoPlay
+                                                className="w-full h-full"
+                                            />
+                                        ) : (
+                                            <div className="flex flex-col items-center gap-3 text-white/30">
+                                                <Video className="w-10 h-10" />
+                                                <p className="text-sm">No submission video available</p>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="p-4 flex items-center justify-between bg-white/[0.02]">
                                         <div className="flex items-center gap-4 text-xs font-bold text-white/40 uppercase tracking-widest">

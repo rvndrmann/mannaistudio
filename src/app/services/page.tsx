@@ -2,293 +2,706 @@
 
 import Navbar from "@/components/Navbar"
 import { motion, AnimatePresence } from "framer-motion"
-import { ShieldCheck, Zap, Sparkles, Send, Clock, DollarSign, MessageSquare, CheckCircle2, ChevronRight, FileText } from "lucide-react"
-import { useState } from "react"
+import { BriefcaseBusiness, Send, Clock, DollarSign, MessageSquare, CheckCircle2, Loader2, UserCheck, Mail, Phone, Bell, Trophy, X, Search, SlidersHorizontal } from "lucide-react"
+import { FormEvent, useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
-import { createServiceRequest, getServiceRequestClient } from "@/lib/service-requests"
+import { useAuth } from "@/components/auth/auth-provider"
+import {
+    createServiceBid,
+    createServiceRequest,
+    fetchApprovedJobs,
+    fetchMyServiceJobs,
+    getServiceRequestClient,
+    selectServiceBid,
+    updateServiceBid,
+    type ServiceBid,
+    type ServiceRequest,
+} from "@/lib/service-requests"
+// @ts-ignore
+import confetti from "canvas-confetti"
 
-const services = [
-    {
-        title: "AI Video Production",
-        desc: "End-to-end AI video creation for commercials, social media, and film.",
-        icon: Zap,
-        features: ["4K Resolution", "Custom Style", "Fast Turnaround"]
-    },
-    {
-        title: "AI Scripting & Storyboarding",
-        desc: "Generate compelling narratives and visual storyboards using advanced LLMs.",
-        icon: FileText,
-        features: ["Creative Synergy", "Beat Sheets", "Visual Hooks"]
-    },
-    {
-        title: "AI Character Creation",
-        desc: "Consistent 3D or 2D characters for your brand's digital presence.",
-        icon: Sparkles,
-        features: ["Consistency", "Expression Mapping", "Unique ID"]
-    }
-]
+const jobTypes = ["AI Video Production", "AI Ad Creative", "AI Music Video", "AI Short Film", "AI Storyboard"]
+
+const emptyJobForm = {
+    title: "",
+    fullName: "",
+    email: "",
+    phone: "",
+    serviceType: "AI Video Production",
+    projectDescription: "",
+    budgetRange: "",
+    timeline: "",
+}
+
+const emptyBidForm = {
+    bidderName: "",
+    bidderEmail: "",
+    bidderPhone: "",
+    offerAmount: "",
+    message: "",
+}
 
 export default function ServicesPage() {
-    const [step, setStep] = useState(1)
-    const [isSubmitted, setIsSubmitted] = useState(false)
-    const [isSubmitting, setIsSubmitting] = useState(false)
-    const [submitMessage, setSubmitMessage] = useState("")
-    const [formData, setFormData] = useState({
-        fullName: "",
-        email: "",
-        serviceType: "AI Video Production",
-        projectDescription: "",
-        budgetRange: "",
-        timeline: "",
-    })
+    const { user, signInWithGoogle } = useAuth()
+    const [jobs, setJobs] = useState<ServiceRequest[]>([])
+    const [myPostedJobs, setMyPostedJobs] = useState<ServiceRequest[]>([])
+    const [jobForm, setJobForm] = useState(emptyJobForm)
+    const [bidForm, setBidForm] = useState(emptyBidForm)
+    const [selectedJob, setSelectedJob] = useState<ServiceRequest | null>(null)
+    const [editingBid, setEditingBid] = useState<ServiceBid | null>(null)
+    const [showJobForm, setShowJobForm] = useState(false)
+    const [isLoadingJobs, setIsLoadingJobs] = useState(true)
+    const [isPostingJob, setIsPostingJob] = useState(false)
+    const [isSubmittingBid, setIsSubmittingBid] = useState(false)
+    const [showBidSuccess, setShowBidSuccess] = useState(false)
+    const [message, setMessage] = useState("")
+    const [searchQuery, setSearchQuery] = useState("")
+    const [activeFeedTab, setActiveFeedTab] = useState<"best" | "recent" | "proposals" | "posted">("best")
+    const knownJobIdsRef = useRef<Set<string>>(new Set())
+    const hasLoadedJobsRef = useRef(false)
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault()
-        setIsSubmitting(true)
-        setSubmitMessage("")
+    useEffect(() => {
+        loadJobs()
+        const interval = window.setInterval(() => loadJobs(true), 30000)
+        return () => window.clearInterval(interval)
+    }, [])
+
+    useEffect(() => {
+        if (!user) return
+        setJobForm((current) => ({
+            ...current,
+            fullName: current.fullName || user.user_metadata?.full_name || "",
+            email: current.email || user.email || "",
+        }))
+        setBidForm((current) => ({
+            ...current,
+            bidderName: current.bidderName || user.user_metadata?.full_name || "",
+            bidderEmail: current.bidderEmail || user.email || "",
+        }))
+        loadJobs()
+        loadMyPostedJobs(user.id)
+    }, [user])
+
+    const loadJobs = async (silent = false) => {
+        if (!silent) setIsLoadingJobs(true)
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) return
+            const nextJobs = await fetchApprovedJobs(supabase)
+            const nextIds = new Set(nextJobs.map((job) => job.id))
+            const hasNewJobs = hasLoadedJobsRef.current && nextJobs.some((job) => !knownJobIdsRef.current.has(job.id))
+
+            knownJobIdsRef.current = nextIds
+            hasLoadedJobsRef.current = true
+            setJobs(nextJobs)
+            if (hasNewJobs) {
+                setMessage("New approved job posted.")
+            }
+        } finally {
+            if (!silent) setIsLoadingJobs(false)
+        }
+    }
+
+    const loadMyPostedJobs = async (userId: string) => {
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) return
+            setMyPostedJobs(await fetchMyServiceJobs(supabase, userId))
+        } catch {
+            setMyPostedJobs([])
+        }
+    }
+
+    const handlePostJob = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        if (!user) {
+            signInWithGoogle()
+            return
+        }
+
+        setIsPostingJob(true)
+        setMessage("")
 
         try {
             const supabase = await getServiceRequestClient()
-            if (!supabase) {
-                setSubmitMessage("Supabase is not configured yet. Please try again later.")
-                return
-            }
+            if (!supabase) throw new Error("Supabase unavailable")
+            const fullName = jobForm.fullName.trim() || user.user_metadata?.full_name || "Student"
+            const email = jobForm.email.trim() || user.email || ""
 
-            await createServiceRequest(supabase, formData)
-            setIsSubmitted(true)
-            setFormData({
-                fullName: "",
-                email: "",
-                serviceType: "AI Video Production",
-                projectDescription: "",
-                budgetRange: "",
-                timeline: "",
+            await supabase.from("profiles").upsert({
+                id: user.id,
+                full_name: fullName,
+                avatar_url: user.user_metadata?.avatar_url || "",
+                email,
+            }, { onConflict: "id" })
+
+            const postedJob = await createServiceRequest(supabase, {
+                posterId: user.id,
+                ...jobForm,
+                fullName,
+                email,
             })
-            setStep(1)
-        } catch (error) {
-            setSubmitMessage("Could not save your request. Please check Supabase setup.")
+            setMyPostedJobs((current) => [postedJob, ...current])
+            setJobForm({
+                ...emptyJobForm,
+                fullName: user.user_metadata?.full_name || "",
+                email: user.email || "",
+            })
+            setShowJobForm(false)
+            setMessage("Job submitted for admin approval.")
+        } catch {
+            setMessage("Could not post this job. Please try again.")
         } finally {
-            setIsSubmitting(false)
+            setIsPostingJob(false)
         }
     }
+
+    const openBid = (job: ServiceRequest) => {
+        if (!user) {
+            signInWithGoogle()
+            return
+        }
+        const existingBid = job.bids.find((bid) => bid.bidderId === user.id) || null
+        if (existingBid) {
+            setEditingBid(existingBid)
+            setBidForm({
+                bidderName: existingBid.bidderName,
+                bidderEmail: existingBid.bidderEmail,
+                bidderPhone: existingBid.bidderPhone,
+                offerAmount: existingBid.offerAmount,
+                message: existingBid.message,
+            })
+        } else {
+            setEditingBid(null)
+            setBidForm({
+                ...emptyBidForm,
+                bidderName: user.user_metadata?.full_name || "",
+                bidderEmail: user.email || "",
+            })
+        }
+        setSelectedJob(job)
+        setMessage("")
+    }
+
+    const handleSubmitBid = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        if (!user || !selectedJob) return
+
+        setIsSubmittingBid(true)
+        setMessage("")
+
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) throw new Error("Supabase unavailable")
+            const bidderName = bidForm.bidderName.trim() || user.user_metadata?.full_name || "Creator"
+            const bidderEmail = bidForm.bidderEmail.trim() || user.email || ""
+
+            await supabase.from("profiles").upsert({
+                id: user.id,
+                full_name: bidderName,
+                avatar_url: user.user_metadata?.avatar_url || "",
+                email: bidderEmail,
+            }, { onConflict: "id" })
+
+            const bid = editingBid
+                ? await updateServiceBid(supabase, editingBid.id, {
+                    ...bidForm,
+                    bidderName,
+                    bidderEmail,
+                })
+                : await createServiceBid(supabase, {
+                    jobId: selectedJob.id,
+                    bidderId: user.id,
+                    ...bidForm,
+                    bidderName,
+                    bidderEmail,
+                })
+            setJobs((current) => current.map((job) => (
+                job.id === selectedJob.id
+                    ? {
+                        ...job,
+                        bids: editingBid
+                            ? job.bids.map((currentBid) => currentBid.id === bid.id ? bid : currentBid)
+                            : [bid, ...job.bids],
+                    }
+                    : job
+            )))
+            setSelectedJob(null)
+            setEditingBid(null)
+            setBidForm({
+                ...emptyBidForm,
+                bidderName: user.user_metadata?.full_name || "",
+                bidderEmail: user.email || "",
+            })
+            setMessage(editingBid ? "Bid proposal updated." : "Bid sent to the job poster.")
+            setShowBidSuccess(true)
+            confetti({
+                particleCount: 80,
+                spread: 60,
+                origin: { y: 0.72 },
+                colors: ['#7c3aed', '#06b6d4', '#22c55e']
+            })
+            setTimeout(() => setShowBidSuccess(false), 2400)
+        } catch {
+            setMessage(editingBid ? "Could not update your bid. Please try again." : "Could not send your bid. Please try again.")
+        } finally {
+            setIsSubmittingBid(false)
+        }
+    }
+
+    const handleSelectBid = async (job: ServiceRequest, bid: ServiceBid) => {
+        if (!user || user.id !== job.posterId) return
+
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) throw new Error("Supabase unavailable")
+
+            await selectServiceBid(supabase, job.id, bid.id)
+            const markAwarded = (currentJob: ServiceRequest): ServiceRequest => (
+                currentJob.id === job.id
+                    ? {
+                        ...currentJob,
+                        status: "awarded",
+                        selectedBidId: bid.id,
+                        bids: currentJob.bids.map((currentBid) => ({
+                            ...currentBid,
+                            status: currentBid.id === bid.id ? "selected" as const : "rejected" as const,
+                        })),
+                    }
+                    : currentJob
+            )
+
+            setJobs((current) => current.map(markAwarded))
+            setMyPostedJobs((current) => current.map(markAwarded))
+            setMessage("Creator selected. Contact details are now visible on the job.")
+        } catch {
+            setMessage("Could not select this creator.")
+        }
+    }
+
+    const myBidProposals = user
+        ? jobs.flatMap((job) => job.bids
+            .filter((bid) => bid.bidderId === user.id)
+            .map((bid) => ({ job, bid })))
+        : []
+
+    const searchedJobs = jobs.filter((job) => {
+        const query = searchQuery.trim().toLowerCase()
+        if (!query) return true
+        return [
+            job.title,
+            job.serviceType,
+            job.projectDescription,
+            job.budgetRange,
+            job.timeline,
+        ].some((value) => value.toLowerCase().includes(query))
+    })
+    const recentJobs = [...searchedJobs].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    const proposalJobs = user ? searchedJobs.filter((job) => job.bids.some((bid) => bid.bidderId === user.id)) : []
+    const postedFeedJobs = user ? myPostedJobs.filter((job) => {
+        const query = searchQuery.trim().toLowerCase()
+        if (!query) return true
+        return [job.title, job.serviceType, job.projectDescription, job.budgetRange, job.timeline].some((value) => value.toLowerCase().includes(query))
+    }) : []
+    const feedJobs = activeFeedTab === "recent"
+        ? recentJobs
+        : activeFeedTab === "proposals"
+            ? proposalJobs
+            : activeFeedTab === "posted"
+                ? postedFeedJobs
+                : searchedJobs
 
     return (
         <main className="min-h-screen pb-20">
             <Navbar />
 
             <section className="pt-32 px-6 max-w-7xl mx-auto">
-                <div className="text-center mb-16 space-y-4">
-                    <motion.h1
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="text-4xl md:text-6xl font-bold tracking-tight"
-                    >
-                        Premium AI <span className="text-primary">Services</span>
-                    </motion.h1>
-                    <motion.p
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 }}
-                        className="text-white/60 max-w-2xl mx-auto"
-                    >
-                        Elevate your brand with cutting-edge AI video solutions. Whether it's a 15-second ad or a short film, our experts deliver results that wow.
-                    </motion.p>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-20">
-                    {services.map((service, i) => (
+                <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-10">
+                    <div className="space-y-4 max-w-2xl">
                         <motion.div
-                            key={service.title}
-                            initial={{ opacity: 0, y: 20 }}
+                            initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.1 }}
-                            className="glass-card p-8 group border-white/5 hover:border-primary/20"
+                            className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full border border-primary/20 text-xs font-bold text-primary uppercase tracking-widest"
                         >
-                            <div className="p-3 bg-primary/10 rounded-2xl w-fit mb-6 text-primary group-hover:bg-primary group-hover:text-white transition-all">
-                                <service.icon className="w-6 h-6" />
-                            </div>
-                            <h3 className="text-xl font-bold mb-3">{service.title}</h3>
-                            <p className="text-sm text-white/50 mb-6 leading-relaxed">{service.desc}</p>
-                            <ul className="space-y-3 mb-8">
-                                {service.features.map(f => (
-                                    <li key={f} className="flex items-center gap-2 text-xs font-medium text-white/70">
-                                        <CheckCircle2 className="w-3.5 h-3.5 text-primary" /> {f}
-                                    </li>
-                                ))}
-                            </ul>
-                            <button
-                                onClick={() => {
-                                    setStep(1)
-                                    document.getElementById('request-form')?.scrollIntoView({ behavior: 'smooth' })
-                                }}
-                                className="w-full py-3 bg-white/5 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-white/10 transition-colors border border-white/10"
-                            >
-                                Inquire Now
-                            </button>
+                            <Bell className="w-3.5 h-3.5" /> New approved jobs appear here
                         </motion.div>
-                    ))}
-                </div>
-
-                {/* Request Form Section */}
-                <div id="request-form" className="max-w-3xl mx-auto">
-                    <div className="glass-card p-8 md:p-12 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 blur-3xl -z-10" />
-
-                        <AnimatePresence mode="wait">
-                            {!isSubmitted ? (
-                                <motion.div
-                                    key="form"
-                                    initial={{ opacity: 0, x: 20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -20 }}
-                                >
-                                    <div className="flex items-center justify-between mb-8">
-                                        <div>
-                                            <h2 className="text-2xl font-bold">Start Your Project</h2>
-                                            <p className="text-xs text-white/40 uppercase tracking-widest mt-1">Step {step} of 2</p>
-                                        </div>
-                                        <ShieldCheck className="w-8 h-8 text-primary/40" />
-                                    </div>
-
-                                    <form onSubmit={handleSubmit} className="space-y-6">
-                                        {step === 1 ? (
-                                            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-                                                <div className="space-y-2">
-                                                    <label className="text-xs font-bold text-white/40 uppercase tracking-widest">Full Name</label>
-                                                    <input
-                                                        required
-                                                        type="text"
-                                                        value={formData.fullName}
-                                                        onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                                                        placeholder="John Doe"
-                                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 focus:outline-none focus:border-primary/50 transition-colors"
-                                                    />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <label className="text-xs font-bold text-white/40 uppercase tracking-widest">Email Address</label>
-                                                    <input
-                                                        required
-                                                        type="email"
-                                                        value={formData.email}
-                                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                                        placeholder="john@example.com"
-                                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 focus:outline-none focus:border-primary/50 transition-colors"
-                                                    />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <label className="text-xs font-bold text-white/40 uppercase tracking-widest">Service Type</label>
-                                                    <select
-                                                        value={formData.serviceType}
-                                                        onChange={(e) => setFormData({ ...formData, serviceType: e.target.value })}
-                                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 focus:outline-none focus:border-primary/50 transition-colors appearance-none"
-                                                    >
-                                                        <option className="bg-[#1a1a2e]">AI Video Production</option>
-                                                        <option className="bg-[#1a1a2e]">AI Scripting</option>
-                                                        <option className="bg-[#1a1a2e]">Character Creation</option>
-                                                    </select>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        if (formData.fullName.trim() && formData.email.trim()) {
-                                                            setStep(2)
-                                                        }
-                                                    }}
-                                                    className="w-full btn-primary py-4 flex items-center justify-center gap-2 group"
-                                                >
-                                                    Next Step <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-                                                <div className="space-y-2">
-                                                    <label className="text-xs font-bold text-white/40 uppercase tracking-widest">Project Description</label>
-                                                    <textarea
-                                                        required
-                                                        rows={4}
-                                                        value={formData.projectDescription}
-                                                        onChange={(e) => setFormData({ ...formData, projectDescription: e.target.value })}
-                                                        placeholder="Tell us about your creative vision..."
-                                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 focus:outline-none focus:border-primary/50 transition-colors resize-none"
-                                                    />
-                                                </div>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                    <div className="space-y-2">
-                                                        <label className="text-xs font-bold text-white/40 uppercase tracking-widest flex items-center gap-2">
-                                                            <DollarSign className="w-3 h-3" /> Budget Range
-                                                        </label>
-                                                        <input
-                                                            type="text"
-                                                            value={formData.budgetRange}
-                                                            onChange={(e) => setFormData({ ...formData, budgetRange: e.target.value })}
-                                                            placeholder="$1k - $5k"
-                                                            className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 focus:outline-none focus:border-primary/50 transition-colors"
-                                                        />
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        <label className="text-xs font-bold text-white/40 uppercase tracking-widest flex items-center gap-2">
-                                                            <Clock className="w-3 h-3" /> Timeline
-                                                        </label>
-                                                        <input
-                                                            type="text"
-                                                            value={formData.timeline}
-                                                            onChange={(e) => setFormData({ ...formData, timeline: e.target.value })}
-                                                            placeholder="2-4 Weeks"
-                                                            className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 focus:outline-none focus:border-primary/50 transition-colors"
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <div className="flex gap-4">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setStep(1)}
-                                                        className="px-6 bg-white/5 hover:bg-white/10 rounded-xl font-medium transition-colors"
-                                                    >
-                                                        Back
-                                                    </button>
-                                                    <button
-                                                        type="submit"
-                                                        disabled={isSubmitting}
-                                                        className="flex-grow btn-primary py-4 flex items-center justify-center gap-2 disabled:opacity-60"
-                                                    >
-                                                        {isSubmitting ? "Saving Request..." : "Send Request"} <Send className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                                {submitMessage && (
-                                                    <p className="text-xs text-white/40 text-center">{submitMessage}</p>
-                                                )}
-                                            </div>
-                                        )}
-                                    </form>
-                                </motion.div>
-                            ) : (
-                                <motion.div
-                                    key="success"
-                                    initial={{ opacity: 0, scale: 0.95 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    className="text-center py-12 space-y-6"
-                                >
-                                    <div className="inline-flex p-6 bg-emerald-500/10 rounded-full border border-emerald-500/20 text-emerald-500 mb-4">
-                                        <CheckCircle2 className="w-12 h-12" />
-                                    </div>
-                                    <h2 className="text-3xl font-bold">Request Received!</h2>
-                                    <p className="text-white/60 max-w-sm mx-auto leading-relaxed">
-                                        Thank you for your inquiry. Our creative director will review your project and get back to you within 24 hours.
-                                    </p>
-                                    <div className="pt-8 border-t border-white/5">
-                                        <button
-                                            onClick={() => setIsSubmitted(false)}
-                                            className="text-sm font-bold text-primary hover:underline flex items-center gap-2 mx-auto"
-                                        >
-                                            <MessageSquare className="w-4 h-4" /> Send another request
-                                        </button>
-                                    </div>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
+                        <motion.h1
+                            initial={{ opacity: 0, y: 16 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="text-4xl md:text-5xl font-bold tracking-tight"
+                        >
+                            AI Video <span className="text-primary">Jobs</span>
+                        </motion.h1>
+                        <p className="text-white/60 leading-relaxed">
+                            Post AI video projects, review creator bids, and pick the right person to work with. Admins approve every job before it goes live.
+                        </p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-center">
+                        <div className="glass-card px-5 py-4 rounded-xl border-white/10">
+                            <p className="text-2xl font-black">{jobs.length}</p>
+                            <p className="text-[10px] text-white/35 font-bold uppercase tracking-widest">Live Jobs</p>
+                        </div>
+                        <div className="glass-card px-5 py-4 rounded-xl border-white/10">
+                            <p className="text-2xl font-black">{jobs.reduce((sum, job) => sum + job.bids.length, 0)}</p>
+                            <p className="text-[10px] text-white/35 font-bold uppercase tracking-widest">Bids</p>
+                        </div>
+                        <div className="glass-card px-5 py-4 rounded-xl border-white/10">
+                            <p className="text-2xl font-black">{jobs.filter(job => job.status === "awarded").length}</p>
+                            <p className="text-[10px] text-white/35 font-bold uppercase tracking-widest">Awarded</p>
+                        </div>
                     </div>
                 </div>
+
+                {message && (
+                    <div className="mb-8 glass-card p-4 rounded-xl border-white/10 text-sm text-white/60">
+                        {message}
+                    </div>
+                )}
+
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-8 items-start">
+                    <div className="space-y-5">
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                            <div className="flex flex-col md:flex-row md:items-center gap-3">
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-4 top-1/2 w-5 h-5 -translate-y-1/2 text-white/35" />
+                                    <input
+                                        value={searchQuery}
+                                        onChange={(event) => setSearchQuery(event.target.value)}
+                                        className="w-full rounded-xl border border-white/10 bg-black/20 py-3 pl-12 pr-4 text-sm outline-none transition-colors focus:border-primary/50"
+                                        placeholder="Search AI video jobs"
+                                    />
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        if (!user) {
+                                            signInWithGoogle()
+                                            return
+                                        }
+                                        setShowJobForm(true)
+                                    }}
+                                    className="btn-primary px-5 py-3 flex items-center justify-center gap-2"
+                                >
+                                    <BriefcaseBusiness className="w-4 h-4" /> Post a Job
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-6 border-b border-white/10">
+                            {[
+                                { id: "best", label: "Best matches", count: jobs.length },
+                                { id: "recent", label: "Most recent", count: jobs.length },
+                                { id: "proposals", label: "My proposals", count: myBidProposals.length },
+                                { id: "posted", label: "My posted jobs", count: myPostedJobs.length },
+                            ].map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveFeedTab(tab.id as typeof activeFeedTab)}
+                                    className={cn(
+                                        "relative pb-4 text-sm font-bold transition-colors",
+                                        activeFeedTab === tab.id ? "text-white" : "text-white/35 hover:text-white/70"
+                                    )}
+                                >
+                                    {tab.label}
+                                    {tab.count > 0 && (
+                                        <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-[10px] text-white">{tab.count}</span>
+                                    )}
+                                    {activeFeedTab === tab.id && <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-white" />}
+                                </button>
+                            ))}
+                        </div>
+
+                        {isLoadingJobs ? (
+                            <div className="glass-card p-12 text-center text-white/40">
+                                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
+                                Loading jobs...
+                            </div>
+                        ) : feedJobs.length === 0 ? (
+                            <div className="glass-card p-12 text-center">
+                                <BriefcaseBusiness className="w-12 h-12 text-white/20 mx-auto mb-4" />
+                                <h2 className="text-2xl font-bold mb-2">No Jobs Found</h2>
+                                <p className="text-white/40">Approved AI video projects and your activity will appear here.</p>
+                            </div>
+                        ) : (
+                            feedJobs.map((job) => {
+                                const isOwner = user?.id === job.posterId
+                                const selectedBid = job.bids.find((bid) => bid.id === job.selectedBidId)
+
+                                return (
+                                    <article key={job.id} className="border-b border-white/10 py-7 first:pt-2 last:border-b-0">
+                                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-5">
+                                            <div>
+                                                <p className="mb-3 text-xs text-white/35">Posted {new Date(job.createdAt).toLocaleDateString()}</p>
+                                                <div className="flex flex-wrap items-center gap-2 mb-2">
+                                                    <span className={cn(
+                                                        "px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider",
+                                                        job.status === "pending" ? "bg-cyan-400/10 text-cyan-300" :
+                                                            job.status === "awarded" ? "bg-emerald-400/10 text-emerald-300" :
+                                                                job.status === "approved" ? "bg-primary/10 text-primary" : "bg-white/5 text-white/40"
+                                                    )}>
+                                                        {job.status === "awarded" ? "Awarded" : job.status === "approved" ? "Open" : job.status}
+                                                    </span>
+                                                    <span className="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-white/5 text-white/40">{job.serviceType}</span>
+                                                </div>
+                                                <h3 className="text-2xl font-bold">{job.title}</h3>
+                                            </div>
+                                            <button onClick={() => openBid(job)} disabled={job.status !== "approved" || isOwner} className="btn-primary px-6 py-3 flex items-center justify-center gap-2 disabled:opacity-40">
+                                                <MessageSquare className="w-4 h-4" /> {job.bids.some((bid) => bid.bidderId === user?.id) ? "Edit Bid" : "Bid"}
+                                            </button>
+                                        </div>
+
+                                        <p className="text-white/60 leading-relaxed whitespace-pre-wrap">{job.projectDescription}</p>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
+                                                <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1"><DollarSign className="w-3 h-3" /> Budget</p>
+                                                <p className="font-bold">{job.budgetRange}</p>
+                                            </div>
+                                            <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
+                                                <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1"><Clock className="w-3 h-3" /> Timeline</p>
+                                                <p className="font-bold">{job.timeline}</p>
+                                            </div>
+                                            <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
+                                                <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1"><UserCheck className="w-3 h-3" /> Bids</p>
+                                                <p className="font-bold">{job.bids.length}</p>
+                                            </div>
+                                        </div>
+
+                                        {isOwner && job.bids.length > 0 && (
+                                            <div className="pt-5 border-t border-white/5 space-y-3">
+                                                <h4 className="text-xs font-bold text-white/30 uppercase tracking-widest">Creator Bids</h4>
+                                                {job.bids.map((bid) => (
+                                                    <div key={bid.id} className="p-4 rounded-xl bg-white/[0.03] border border-white/5 space-y-3">
+                                                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                                            <div>
+                                                                <p className="font-bold">{bid.bidderName}</p>
+                                                                <p className="text-xs text-white/40">{bid.offerAmount}</p>
+                                                            </div>
+                                                            <button onClick={() => handleSelectBid(job, bid)} disabled={job.status === "awarded"} className="px-4 py-2 rounded-xl bg-primary text-sm font-bold disabled:opacity-40">
+                                                                {bid.status === "selected" ? "Selected" : "Select Creator"}
+                                                            </button>
+                                                        </div>
+                                                        <p className="text-sm text-white/60 whitespace-pre-wrap">{bid.message}</p>
+                                                        {(bid.status === "selected" || job.selectedBidId === bid.id) && (
+                                                            <div className="flex flex-wrap gap-3 text-xs text-emerald-300">
+                                                                <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {bid.bidderEmail}</span>
+                                                                {bid.bidderPhone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {bid.bidderPhone}</span>}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {!isOwner && selectedBid?.bidderId === user?.id && (
+                                            <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                                                <p className="font-bold text-emerald-300 flex items-center gap-2"><Trophy className="w-4 h-4" /> You were selected</p>
+                                                <div className="flex flex-wrap gap-3 mt-3 text-xs text-emerald-200">
+                                                    <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {job.email}</span>
+                                                    {job.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {job.phone}</span>}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </article>
+                                )
+                            })
+                        )}
+                    </div>
+
+                    <aside className="space-y-6 lg:sticky lg:top-24">
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+                            <div className="mb-5 flex items-center justify-between">
+                                <h3 className="text-xl font-bold">My Work Hub</h3>
+                                <SlidersHorizontal className="w-5 h-5 text-white/35" />
+                            </div>
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between rounded-xl bg-black/15 p-4">
+                                    <div>
+                                        <p className="text-sm font-bold">Active proposals</p>
+                                        <p className="text-xs text-white/35">Bids you sent</p>
+                                    </div>
+                                    <span className="text-2xl font-black">{myBidProposals.length}</span>
+                                </div>
+                                <div className="flex items-center justify-between rounded-xl bg-black/15 p-4">
+                                    <div>
+                                        <p className="text-sm font-bold">Posted jobs</p>
+                                        <p className="text-xs text-white/35">Jobs you created</p>
+                                    </div>
+                                    <span className="text-2xl font-black">{myPostedJobs.length}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+                            <div className="mb-5 flex items-center justify-between">
+                                <h3 className="text-lg font-bold">My Active Bid Proposals</h3>
+                                <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold">{myBidProposals.length}</span>
+                            </div>
+                            {myBidProposals.length === 0 ? (
+                                <p className="text-sm text-white/35">Your submitted bids will appear here.</p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {myBidProposals.slice(0, 4).map(({ job, bid }) => (
+                                        <div key={bid.id} className="rounded-xl border border-white/5 bg-black/15 p-4">
+                                            <div className="mb-2 flex items-start justify-between gap-3">
+                                                <p className="line-clamp-1 text-sm font-bold">{job.title}</p>
+                                                <span className={cn(
+                                                    "shrink-0 rounded-md px-2 py-0.5 text-[9px] font-bold uppercase",
+                                                    bid.status === "selected" ? "bg-emerald-400/10 text-emerald-300" :
+                                                        bid.status === "rejected" ? "bg-red-400/10 text-red-300" : "bg-primary/10 text-primary"
+                                                )}>{bid.status}</span>
+                                            </div>
+                                            <p className="text-xs text-white/45">{bid.offerAmount}</p>
+                                            <button
+                                                onClick={() => openBid(job)}
+                                                disabled={bid.status !== "pending" || job.status !== "approved"}
+                                                className="mt-3 text-xs font-bold text-primary disabled:text-white/25"
+                                            >
+                                                Edit proposal
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+                            <div className="mb-5 flex items-center justify-between">
+                                <h3 className="text-lg font-bold">My Posted Jobs</h3>
+                                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold">{myPostedJobs.length}</span>
+                            </div>
+                            {myPostedJobs.length === 0 ? (
+                                <p className="text-sm text-white/35">Jobs you post will appear here.</p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {myPostedJobs.slice(0, 4).map((job) => (
+                                        <div key={job.id} className="rounded-xl border border-white/5 bg-black/15 p-4">
+                                            <div className="mb-2 flex items-start justify-between gap-3">
+                                                <p className="line-clamp-1 text-sm font-bold">{job.title}</p>
+                                                <span className={cn(
+                                                    "shrink-0 rounded-md px-2 py-0.5 text-[9px] font-bold uppercase",
+                                                    job.status === "pending" ? "bg-cyan-400/10 text-cyan-300" :
+                                                        job.status === "approved" ? "bg-primary/10 text-primary" :
+                                                            job.status === "awarded" ? "bg-emerald-400/10 text-emerald-300" :
+                                                                job.status === "rejected" ? "bg-red-400/10 text-red-300" : "bg-white/5 text-white/40"
+                                                )}>{job.status}</span>
+                                            </div>
+                                            <p className="text-xs text-white/45">{job.bids.length} bid{job.bids.length === 1 ? "" : "s"} • {job.budgetRange || "No budget"}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </aside>
+                </div>
             </section>
+
+            <AnimatePresence>
+                {showJobForm && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl" onClick={() => !isPostingJob && setShowJobForm(false)}>
+                        <motion.form initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} onSubmit={handlePostJob} className="bg-[#0f0f15] rounded-3xl border border-white/10 overflow-hidden w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+                            <div className="p-5 border-b border-white/5 flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xl font-bold">Post a Job</h3>
+                                    <p className="text-xs text-white/40 mt-1">Jobs stay pending until admin approval.</p>
+                                </div>
+                                <button type="button" onClick={() => setShowJobForm(false)} disabled={isPostingJob} className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition-all disabled:opacity-40">
+                                    <X className="w-6 h-6" />
+                                </button>
+                            </div>
+
+                            <div className="p-6 space-y-5">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-white/40 uppercase tracking-widest">Job Title</label>
+                                    <input required value={jobForm.title} onChange={(e) => setJobForm({ ...jobForm, title: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50" placeholder="30-second AI product launch video" />
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <input required value={jobForm.fullName} onChange={(e) => setJobForm({ ...jobForm, fullName: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50" placeholder="Your name" />
+                                    <input required type="email" value={jobForm.email} onChange={(e) => setJobForm({ ...jobForm, email: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50" placeholder="Email" />
+                                </div>
+
+                                <input value={jobForm.phone} onChange={(e) => setJobForm({ ...jobForm, phone: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50" placeholder="Phone number" />
+
+                                <select value={jobForm.serviceType} onChange={(e) => setJobForm({ ...jobForm, serviceType: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50">
+                                    {jobTypes.map((type) => <option key={type} className="bg-[#1a1a2e]">{type}</option>)}
+                                </select>
+
+                                <textarea required rows={5} value={jobForm.projectDescription} onChange={(e) => setJobForm({ ...jobForm, projectDescription: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50 resize-none" placeholder="Project brief, references, deliverables..." />
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <input required value={jobForm.budgetRange} onChange={(e) => setJobForm({ ...jobForm, budgetRange: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50" placeholder="Budget, e.g. ₹10,000" />
+                                    <input required value={jobForm.timeline} onChange={(e) => setJobForm({ ...jobForm, timeline: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50" placeholder="Timeline, e.g. 7 days" />
+                                </div>
+                            </div>
+
+                            <div className="p-6 border-t border-white/5 bg-white/[0.02] flex flex-col sm:flex-row justify-end gap-3">
+                                <button type="button" onClick={() => setShowJobForm(false)} disabled={isPostingJob} className="px-5 py-3 bg-white/5 rounded-xl text-sm font-bold hover:bg-white/10 transition-colors disabled:opacity-40">Cancel</button>
+                                <button type="submit" disabled={isPostingJob} className="btn-primary py-3 px-6 flex items-center justify-center gap-2 disabled:opacity-60">
+                                    {isPostingJob ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                    {isPostingJob ? "Submitting..." : "Submit for Approval"}
+                                </button>
+                            </div>
+                        </motion.form>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {showBidSuccess && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 20, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 20, scale: 0.96 }}
+                        className="fixed bottom-6 left-1/2 z-[120] -translate-x-1/2 rounded-2xl border border-emerald-400/30 bg-emerald-500/15 px-6 py-4 shadow-2xl shadow-emerald-500/10 backdrop-blur-xl"
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="rounded-full bg-emerald-400/20 p-2 text-emerald-300">
+                                <CheckCircle2 className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <p className="font-bold text-emerald-200">Bid submitted</p>
+                                <p className="text-xs text-emerald-100/70">Your proposal is now saved in active bids.</p>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {selectedJob && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl" onClick={() => !isSubmittingBid && setSelectedJob(null)}>
+                        <motion.form initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} onSubmit={handleSubmitBid} className="bg-[#0f0f15] rounded-3xl border border-white/10 overflow-hidden w-full max-w-xl shadow-2xl" onClick={e => e.stopPropagation()}>
+                            <div className="p-5 border-b border-white/5 flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xl font-bold">{editingBid ? "Edit Bid Proposal" : "Bid for Job"}</h3>
+                                    <p className="text-xs text-white/40 mt-1">{selectedJob.title}</p>
+                                </div>
+                                <button type="button" onClick={() => { setSelectedJob(null); setEditingBid(null) }} disabled={isSubmittingBid} className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition-all disabled:opacity-40">
+                                    <X className="w-6 h-6" />
+                                </button>
+                            </div>
+
+                            <div className="p-6 space-y-4">
+                                <input required value={bidForm.bidderName} onChange={(e) => setBidForm({ ...bidForm, bidderName: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50" placeholder="Your name" />
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <input required type="email" value={bidForm.bidderEmail} onChange={(e) => setBidForm({ ...bidForm, bidderEmail: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50" placeholder="Email" />
+                                    <input value={bidForm.bidderPhone} onChange={(e) => setBidForm({ ...bidForm, bidderPhone: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50" placeholder="Phone" />
+                                </div>
+                                <input required value={bidForm.offerAmount} onChange={(e) => setBidForm({ ...bidForm, offerAmount: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50" placeholder="Your offer, e.g. ₹8,000 in 5 days" />
+                                <textarea required rows={5} value={bidForm.message} onChange={(e) => setBidForm({ ...bidForm, message: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50 resize-none" placeholder="Custom message, portfolio links, approach..." />
+                            </div>
+
+                            <div className="p-6 border-t border-white/5 bg-white/[0.02] flex justify-end gap-3">
+                                <button type="button" onClick={() => { setSelectedJob(null); setEditingBid(null) }} disabled={isSubmittingBid} className="px-5 py-3 bg-white/5 rounded-xl text-sm font-bold hover:bg-white/10 transition-colors disabled:opacity-40">Cancel</button>
+                                <button type="submit" disabled={isSubmittingBid} className="btn-primary flex items-center justify-center gap-2 px-6 py-3 disabled:opacity-60">
+                                    {isSubmittingBid ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                    {isSubmittingBid ? "Saving..." : editingBid ? "Save Changes" : "Send Bid"}
+                                </button>
+                            </div>
+                        </motion.form>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </main>
     )
 }

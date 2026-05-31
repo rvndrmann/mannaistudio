@@ -18,7 +18,7 @@ import {
     updatePortfolioVisibility,
     uploadPortfolioFile,
 } from "@/lib/portfolio"
-import { getPortfolioLimit, isMembershipActive } from "@/lib/membership"
+import { getPortfolioLimit, hasPremiumAccess, isAdminUser } from "@/lib/membership"
 
 const defaultProfileStats = {
     level: 1,
@@ -40,6 +40,7 @@ export default function ProfilePage() {
     const [videos, setVideos] = useState<PortfolioVideo[]>([])
     const [isPublic, setIsPublic] = useState(true)
     const [profile, setProfile] = useState<any>(null)
+    const [isAdmin, setIsAdmin] = useState(false)
     const [isAddingVideo, setIsAddingVideo] = useState(false)
     const [shareMessage, setShareMessage] = useState("")
     const [portfolioMessage, setPortfolioMessage] = useState("")
@@ -68,6 +69,7 @@ export default function ProfilePage() {
         const supabase = await getPortfolioClient()
         if (!supabase) {
             // Supabase not configured, use fallback data
+            setIsAdmin(false)
             setProfile({
                 full_name: user.user_metadata?.full_name || 'Student',
                 avatar_url: user.user_metadata?.avatar_url || '',
@@ -82,6 +84,9 @@ export default function ProfilePage() {
         }
 
         try {
+            const nextIsAdmin = await isAdminUser(supabase, user.id)
+            setIsAdmin(nextIsAdmin)
+
             // Try to get existing profile
             const { data, error } = await supabase
                 .from('profiles')
@@ -117,6 +122,7 @@ export default function ProfilePage() {
             setVideos(portfolioItems)
         } catch (e) {
             // Fallback to user metadata if Supabase fails
+            setIsAdmin(false)
             setProfile({
                 full_name: user.user_metadata?.full_name || 'Student',
                 avatar_url: user.user_metadata?.avatar_url || '',
@@ -156,7 +162,7 @@ export default function ProfilePage() {
 
     const handleAddVideo = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
-        const portfolioLimit = getPortfolioLimit(profile)
+        const portfolioLimit = getPortfolioLimit(profile, isAdmin)
         if (!newVideo.title.trim() || (!newVideo.url.trim() && !newVideo.videoFile) || videos.length >= portfolioLimit || !user) return
 
         setIsSavingVideo(true)
@@ -294,8 +300,8 @@ export default function ProfilePage() {
     const avatarUrl = profile?.avatar_url || user?.user_metadata?.avatar_url || ''
     const userLevel = profile?.level ?? defaultProfileStats.level
     const userXp = profile?.xp ?? defaultProfileStats.xp
-    const portfolioLimit = getPortfolioLimit(profile)
-    const isMember = isMembershipActive(profile)
+    const portfolioLimit = getPortfolioLimit(profile, isAdmin)
+    const isMember = hasPremiumAccess(profile, isAdmin)
     const portfolioSlug = profile?.portfolio_slug || (user ? createPortfolioSlug(displayName, user.id) : "creator")
     const shareUrl = typeof window === "undefined" ? "" : `${window.location.origin}/portfolio?u=${portfolioSlug}`
 

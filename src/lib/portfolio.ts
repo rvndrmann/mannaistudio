@@ -19,6 +19,17 @@ export type PublicPortfolio = {
     videos: PortfolioVideo[]
 }
 
+export type PortfolioFeedItem = PortfolioVideo & {
+    createdAt: string
+    creator: {
+        name: string
+        avatarUrl: string
+        level: number
+        xp: number
+        slug: string
+    }
+}
+
 type ProfileInput = {
     full_name?: string | null
     avatar_url?: string | null
@@ -181,4 +192,48 @@ export async function fetchPublicPortfolio(supabase: SupabaseClient, slug: strin
         slug: profile.portfolio_slug,
         videos: (items || []).map(mapPortfolioRow),
     }
+}
+
+export async function fetchPublicPortfolioFeed(supabase: SupabaseClient, limit = 30): Promise<PortfolioFeedItem[]> {
+    const { data: items, error } = await supabase
+        .from("portfolio_items")
+        .select("id, profile_id, title, video_url, thumbnail_url, views, likes, created_at")
+        .order("created_at", { ascending: false })
+        .limit(limit)
+
+    if (error) throw error
+    if (!items?.length) return []
+
+    const profileIds = Array.from(new Set(items.map((item: any) => item.profile_id).filter(Boolean)))
+    const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url, level, xp, portfolio_slug, is_portfolio_public")
+        .in("id", profileIds)
+        .eq("is_portfolio_public", true)
+
+    const profileMap = new Map((profiles || []).map((profile: any) => [profile.id, profile]))
+
+    return items
+        .map((item: any) => {
+            const profile: any = profileMap.get(item.profile_id)
+            if (!profile) return null
+
+            return {
+                id: item.id,
+                title: item.title,
+                views: item.views || "0",
+                likes: item.likes || 0,
+                url: item.video_url,
+                thumbnail: item.thumbnail_url,
+                createdAt: item.created_at,
+                creator: {
+                    name: profile.full_name || "AI Video Creator",
+                    avatarUrl: profile.avatar_url || "",
+                    level: profile.level || 1,
+                    xp: profile.xp || 0,
+                    slug: profile.portfolio_slug || "",
+                },
+            }
+        })
+        .filter(Boolean) as PortfolioFeedItem[]
 }

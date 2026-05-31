@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
 import { checkEnrollment, enrollFreeCourse } from "@/lib/supabase-helpers"
 import { createClient } from "@/lib/supabase/client"
-import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, isMembershipActive } from "@/lib/membership"
+import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, hasPremiumAccess, isAdminUser } from "@/lib/membership"
 // @ts-ignore
 import confetti from "canvas-confetti"
 
@@ -49,6 +49,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
     const [showXPAlert, setShowXPAlert] = useState(false)
     const [isEnrolled, setIsEnrolled] = useState(false)
     const [isMember, setIsMember] = useState(false)
+    const [isAdmin, setIsAdmin] = useState(false)
     const [billingSettings, setBillingSettings] = useState(defaultBillingSettings)
     const [enrollLoading, setEnrollLoading] = useState(false)
     const [checkingEnrollment, setCheckingEnrollment] = useState(true)
@@ -94,7 +95,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
     }, [id])
 
     const isFree = course?.price === "Free" || course?.price === "$0"
-    const hasCourseAccess = isFree || isEnrolled || isMember
+    const hasCourseAccess = isFree || isEnrolled || isMember || isAdmin
     const progress = course ? (completedChapters.length / (course.chapters || 1)) * 100 : 0
     const activeLesson = course?.lessons?.find((lesson: any) => lesson.id === activeChapter)
     const activeLessonYouTubeUrl = activeLesson?.videoUrl ? getYouTubeEmbedUrl(activeLesson.videoUrl) : null
@@ -105,16 +106,18 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
             if (user) {
                 const enrolled = await checkEnrollment(course.id)
                 const supabase = createClient()
-                const [{ data: profile }, nextBillingSettings] = await Promise.all([
+                const [{ data: profile }, nextBillingSettings, nextIsAdmin] = await Promise.all([
                     supabase
                         .from('profiles')
                         .select('membership_status, membership_expires_at')
                         .eq('id', user.id)
                         .single(),
                     fetchBillingSettings(supabase),
+                    isAdminUser(supabase, user.id),
                 ])
                 setBillingSettings(nextBillingSettings)
-                setIsMember(isMembershipActive(profile))
+                setIsAdmin(nextIsAdmin)
+                setIsMember(hasPremiumAccess(profile, nextIsAdmin))
                 setIsEnrolled(enrolled || isFree)
             }
             setCheckingEnrollment(false)

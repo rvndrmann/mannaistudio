@@ -8,7 +8,7 @@ import { courses as mockCourses } from "@/lib/data"
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/components/auth/auth-provider"
-import { isMembershipActive } from "@/lib/membership"
+import { hasPremiumAccess, isAdminUser } from "@/lib/membership"
 
 interface Course {
     id: string
@@ -66,7 +66,7 @@ export default function CoursesPage() {
         setCheckingCourseId(course.id)
         try {
             const supabase = createClient()
-            const [{ data: enrollment }, { data: profile }] = await Promise.all([
+            const [{ data: enrollment }, { data: profile }, isAdmin] = await Promise.all([
                 supabase
                     .from('enrollments')
                     .select('status')
@@ -78,9 +78,10 @@ export default function CoursesPage() {
                     .select('membership_status, membership_expires_at')
                     .eq('id', user.id)
                     .single(),
+                isAdminUser(supabase, user.id),
             ])
 
-            if (enrollment?.status === 'active' || isMembershipActive(profile)) {
+            if (enrollment?.status === 'active' || hasPremiumAccess(profile, isAdmin)) {
                 router.push(`/courses/${course.id}`)
             } else {
                 router.push('/billing')

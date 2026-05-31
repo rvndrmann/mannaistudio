@@ -44,8 +44,22 @@ export function isMembershipActive(profile: any) {
     return new Date(profile.membership_expires_at).getTime() > Date.now()
 }
 
-export function getPortfolioLimit(profile: any) {
-    return isMembershipActive(profile) ? membershipPlan.portfolioLimit : membershipPlan.freePortfolioLimit
+export function hasPremiumAccess(profile: any, isAdmin = false) {
+    return isAdmin || isMembershipActive(profile)
+}
+
+export function getPortfolioLimit(profile: any, isAdmin = false) {
+    return hasPremiumAccess(profile, isAdmin) ? membershipPlan.portfolioLimit : membershipPlan.freePortfolioLimit
+}
+
+export async function isAdminUser(supabase: SupabaseClient, userId: string) {
+    const { data, error } = await supabase
+        .from("admin_users")
+        .select("id")
+        .eq("id", userId)
+        .maybeSingle()
+
+    return !error && !!data
 }
 
 export async function fetchMyMembership(supabase: SupabaseClient, userId: string) {

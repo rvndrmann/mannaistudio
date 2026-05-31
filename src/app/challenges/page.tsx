@@ -2,18 +2,67 @@
 
 import Navbar from "@/components/Navbar"
 import { motion } from "framer-motion"
-import { Zap, Trophy, Clock, Users, ArrowUpRight, Send, Star, ExternalLink, Play, X } from "lucide-react"
-import { challenges as mockChallenges } from "@/lib/data"
+import { Zap, Trophy, Clock, Users, ArrowUpRight, Send, Star, ExternalLink, Play, X, Loader2, Upload, Video } from "lucide-react"
+import { challenges as mockChallenges, type Challenge, type ChallengeSubmission } from "@/lib/data"
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 import { AnimatePresence } from "framer-motion"
+import { useAuth } from "@/components/auth/auth-provider"
+
+function mapSubmissionRow(row: any): ChallengeSubmission {
+    return {
+        id: row.id,
+        studentName: row.student_name || "Student",
+        videoUrl: row.video_url || "",
+        timestamp: row.created_at ? new Date(row.created_at).toLocaleDateString() : "Just now",
+        thumbnail: row.thumbnail || "",
+    }
+}
+
+function ImageOrPlaceholder({ src, alt = "", className }: { src?: string | null; alt?: string; className?: string }) {
+    const safeSrc = src?.trim()
+
+    if (safeSrc) {
+        return <img src={safeSrc} className={className} alt={alt} />
+    }
+
+    return (
+        <div className={cn("flex items-center justify-center bg-white/5 text-white/25", className)}>
+            <Video className="w-6 h-6" />
+        </div>
+    )
+}
+
+async function uploadChallengeFile(supabase: ReturnType<typeof createClient>, userId: string, file: File) {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-")
+    const path = `${userId}/challenge-submissions/${Date.now()}-${safeName}`
+
+    const { error } = await supabase.storage
+        .from("portfolio-media")
+        .upload(path, file, { upsert: false })
+
+    if (error) throw error
+
+    const { data } = supabase.storage.from("portfolio-media").getPublicUrl(path)
+    return data.publicUrl
+}
 
 export default function ChallengesPage() {
+    const { user, signInWithGoogle } = useAuth()
     const [activeTab, setActiveTab] = useState("active")
     const [watchingVideoUrl, setWatchingVideoUrl] = useState<string | null>(null)
     const [watchingStudentName, setWatchingStudentName] = useState<string | null>(null)
-    const [challenges, setChallenges] = useState(mockChallenges)
+    const [challenges, setChallenges] = useState<Challenge[]>(mockChallenges)
+    const [submittingChallenge, setSubmittingChallenge] = useState<Challenge | null>(null)
+    const [isSubmittingEntry, setIsSubmittingEntry] = useState(false)
+    const [submitMessage, setSubmitMessage] = useState("")
+    const [entryForm, setEntryForm] = useState({
+        videoUrl: "",
+        thumbnailUrl: "",
+        videoFile: null as File | null,
+        thumbnailFile: null as File | null,
+    })
 
     useEffect(() => {
         const load = async () => {
@@ -24,16 +73,28 @@ export default function ChallengesPage() {
                     .select('*')
                     .order('created_at', { ascending: true })
                 if (!error && data) {
+                    const { data: submissions } = await supabase
+                        .from('challenge_submissions')
+                        .select('*')
+                        .order('created_at', { ascending: false })
+
+                    const submissionsByChallenge = new Map<string, ChallengeSubmission[]>()
+                    ;(submissions || []).forEach((submission: any) => {
+                        const current = submissionsByChallenge.get(submission.challenge_id) || []
+                        current.push(mapSubmissionRow(submission))
+                        submissionsByChallenge.set(submission.challenge_id, current)
+                    })
+
                     const mapped = data.map((c: any) => ({
                         id: c.id,
                         title: c.title,
                         description: c.description,
                         prize: c.prize,
                         deadline: c.deadline ? new Date(c.deadline).toLocaleDateString() : '',
-                        participants: c.participants,
+                        participants: Math.max(c.participants || 0, submissionsByChallenge.get(c.id)?.length || 0),
                         difficulty: c.difficulty,
                         winnerId: c.winner_id || null,
-                        submissions: [],
+                        submissions: submissionsByChallenge.get(c.id) || [],
                     }))
                     setChallenges(mapped)
                 }
@@ -41,6 +102,87 @@ export default function ChallengesPage() {
         }
         load()
     }, [])
+
+    const resetEntryForm = () => {
+        setEntryForm({ videoUrl: "", thumbnailUrl: "", videoFile: null, thumbnailFile: null })
+        setSubmitMessage("")
+    }
+
+    const openSubmitEntry = (challenge: Challenge) => {
+        if (!user) {
+            signInWithGoogle()
+            return
+        }
+
+        resetEntryForm()
+        setSubmittingChallenge(challenge)
+    }
+
+    const handleSubmitEntry = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        if (!user || !submittingChallenge) return
+        if (!entryForm.videoUrl.trim() && !entryForm.videoFile) {
+            setSubmitMessage("Add a video URL or upload an MP4 file.")
+            return
+        }
+
+        setIsSubmittingEntry(true)
+        setSubmitMessage("")
+
+        try {
+            const supabase = createClient()
+            const studentName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Student"
+
+            await supabase.from("profiles").upsert({
+                id: user.id,
+                full_name: studentName,
+                avatar_url: user.user_metadata?.avatar_url || "",
+                email: user.email || "",
+            }, { onConflict: "id" })
+
+            const videoUrl = entryForm.videoFile
+                ? await uploadChallengeFile(supabase, user.id, entryForm.videoFile)
+                : entryForm.videoUrl.trim()
+
+            const thumbnail = entryForm.thumbnailFile
+                ? await uploadChallengeFile(supabase, user.id, entryForm.thumbnailFile)
+                : entryForm.thumbnailUrl.trim()
+
+            const { data, error } = await supabase
+                .from("challenge_submissions")
+                .insert({
+                    challenge_id: submittingChallenge.id,
+                    profile_id: user.id,
+                    student_name: studentName,
+                    video_url: videoUrl,
+                    thumbnail,
+                })
+                .select("*")
+                .single()
+
+            if (error) throw error
+
+            const nextSubmission = mapSubmissionRow(data)
+            setChallenges((current) => current.map((challenge) => (
+                challenge.id === submittingChallenge.id
+                    ? {
+                        ...challenge,
+                        participants: Math.max(challenge.participants + 1, challenge.submissions.length + 1),
+                        submissions: [nextSubmission, ...challenge.submissions],
+                    }
+                    : challenge
+            )))
+            setSubmitMessage("Entry submitted.")
+            setTimeout(() => {
+                setSubmittingChallenge(null)
+                resetEntryForm()
+            }, 700)
+        } catch {
+            setSubmitMessage("Could not submit your entry. Check Supabase setup and try again.")
+        } finally {
+            setIsSubmittingEntry(false)
+        }
+    }
 
     return (
         <main className="min-h-screen pb-20">
@@ -135,7 +277,7 @@ export default function ChallengesPage() {
                                                             setWatchingStudentName(winnerSub.studentName);
                                                         }
                                                     }}>
-                                                    <img
+                                                    <ImageOrPlaceholder
                                                         src={challenge.submissions.find(s => s.id === challenge.winnerId)?.thumbnail}
                                                         className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-500"
                                                         alt="Winner"
@@ -185,7 +327,7 @@ export default function ChallengesPage() {
                                                             setWatchingVideoUrl(sub.videoUrl);
                                                             setWatchingStudentName(sub.studentName);
                                                         }}>
-                                                        <img src={sub.thumbnail} className="w-full h-full object-cover group-hover/sub:scale-110 transition-transform duration-500" alt={sub.studentName} />
+                                                        <ImageOrPlaceholder src={sub.thumbnail} className="w-full h-full object-cover group-hover/sub:scale-110 transition-transform duration-500" alt={sub.studentName} />
                                                         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/sub:opacity-100 transition-opacity flex flex-col items-center justify-center p-4">
                                                             <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm mb-2">
                                                                 <ExternalLink className="w-4 h-4 text-white" />
@@ -231,7 +373,7 @@ export default function ChallengesPage() {
                                     </div>
 
                                     <div className="flex flex-col sm:flex-row items-center gap-4 mt-8">
-                                        <button className="w-full sm:w-auto btn-primary flex items-center justify-center gap-2 px-10 py-3.5">
+                                        <button onClick={() => openSubmitEntry(challenge)} className="w-full sm:w-auto btn-primary flex items-center justify-center gap-2 px-10 py-3.5">
                                             Submit Entry <Send className="w-4 h-4" />
                                         </button>
                                         <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3.5 glass rounded-xl hover:bg-white/10 transition-colors text-sm font-medium">
@@ -308,6 +450,109 @@ export default function ChallengesPage() {
                     </div>
                 </div>
             </section>
+
+            {/* Submit Entry Modal */}
+            <AnimatePresence>
+                {submittingChallenge && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8 bg-black/90 backdrop-blur-xl"
+                        onClick={() => !isSubmittingEntry && setSubmittingChallenge(null)}
+                    >
+                        <motion.form
+                            initial={{ scale: 0.94, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.94, opacity: 0 }}
+                            onSubmit={handleSubmitEntry}
+                            className="bg-[#0f0f15] rounded-3xl border border-white/10 overflow-hidden w-full max-w-2xl shadow-2xl"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="p-5 border-b border-white/5 flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xl font-bold">Submit Entry</h3>
+                                    <p className="text-xs text-white/40 mt-1">{submittingChallenge.title}</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setSubmittingChallenge(null)}
+                                    disabled={isSubmittingEntry}
+                                    className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition-all disabled:opacity-40"
+                                >
+                                    <X className="w-6 h-6" />
+                                </button>
+                            </div>
+
+                            <div className="p-6 space-y-5">
+                                <div>
+                                    <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2 block">Video File</label>
+                                    <input
+                                        type="file"
+                                        accept="video/*"
+                                        onChange={(e) => setEntryForm(prev => ({ ...prev, videoFile: e.target.files?.[0] || null }))}
+                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-primary/20 file:px-3 file:py-1.5 file:text-primary file:text-xs file:font-bold"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2 block">Video URL</label>
+                                    <input
+                                        value={entryForm.videoUrl}
+                                        onChange={(e) => setEntryForm(prev => ({ ...prev, videoUrl: e.target.value }))}
+                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
+                                        placeholder="https://..."
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2 block">Thumbnail File</label>
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={(e) => setEntryForm(prev => ({ ...prev, thumbnailFile: e.target.files?.[0] || null }))}
+                                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-primary/20 file:px-3 file:py-1.5 file:text-primary file:text-xs file:font-bold"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2 block">Thumbnail URL</label>
+                                        <input
+                                            value={entryForm.thumbnailUrl}
+                                            onChange={(e) => setEntryForm(prev => ({ ...prev, thumbnailUrl: e.target.value }))}
+                                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
+                                            placeholder="Optional"
+                                        />
+                                    </div>
+                                </div>
+
+                                {submitMessage && (
+                                    <p className={cn("text-sm", submitMessage.includes("submitted") ? "text-emerald-400" : "text-white/50")}>{submitMessage}</p>
+                                )}
+                            </div>
+
+                            <div className="p-6 border-t border-white/5 bg-white/[0.02] flex flex-col sm:flex-row gap-3 sm:justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => setSubmittingChallenge(null)}
+                                    disabled={isSubmittingEntry}
+                                    className="px-5 py-3 bg-white/5 rounded-xl text-sm font-bold hover:bg-white/10 transition-colors disabled:opacity-40"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSubmittingEntry}
+                                    className="btn-primary flex items-center justify-center gap-2 px-6 py-3 disabled:opacity-60"
+                                >
+                                    {isSubmittingEntry ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                    {isSubmittingEntry ? "Submitting..." : "Submit Entry"}
+                                </button>
+                            </div>
+                        </motion.form>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Video Player Modal */}
             <AnimatePresence>
