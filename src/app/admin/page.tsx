@@ -1118,6 +1118,12 @@ function AdminDashboardContent() {
                                                                     className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full h-24"
                                                                     placeholder="Description"
                                                                 />
+                                                                <input
+                                                                    value={editForm?.thumbnail ?? ""}
+                                                                    onChange={(e) => setEditForm(prev => prev ? { ...prev, thumbnail: e.target.value } : prev)}
+                                                                    className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full"
+                                                                    placeholder="Thumbnail Image URL"
+                                                                />
                                                                 <div className="space-y-2">
                                                                     <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Course Access</p>
                                                                     <div className="inline-flex rounded-xl border border-white/10 bg-white/5 p-1">
@@ -1988,6 +1994,7 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
     const [lessons, setLessons] = useState(course?.lessons || [])
     const [uploadingLessonId, setUploadingLessonId] = useState<number | null>(null)
     const [lessonUploadStatus, setLessonUploadStatus] = useState("")
+    const [uploadingResourceLessonId, setUploadingResourceLessonId] = useState<number | null>(null)
     const maxLessonVideoSize = 500 * 1024 * 1024
     const lessonVideoLimitMessage = "Supabase rejected this file. The videos bucket is set to 500 MB, but your project Storage global limit is still lower. In Supabase Dashboard, raise Storage Settings > Global file size limit, or paste a hosted video URL."
 
@@ -2022,6 +2029,31 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
             }
             return l
         }))
+    }
+
+    const handleUploadResource = async (lessonId: number, file: File) => {
+        if (!file) return
+        setUploadingResourceLessonId(lessonId)
+        setLessonUploadStatus(`Uploading ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)...`)
+        try {
+            const { getServiceRequestClient } = await import('@/lib/service-requests')
+            const supabase = await getServiceRequestClient()
+            if (!supabase) throw new Error('No client')
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-')
+            const path = `resources/${Date.now()}-${safeName}`
+            const { error } = await supabase.storage.from('materials').upload(path, file, { upsert: false })
+            if (error) throw error
+            const { data } = supabase.storage.from('materials').getPublicUrl(path)
+            setLessons((prev: any[]) => prev.map((l: any) => l.id === lessonId
+                ? { ...l, resources: [...l.resources, { name: file.name, url: data.publicUrl }] }
+                : l))
+            setLessonUploadStatus("✓ Material uploaded!")
+            setTimeout(() => setLessonUploadStatus(""), 3000)
+        } catch (err: any) {
+            setLessonUploadStatus(`✗ Upload failed: ${String(err.message || 'Unknown error')}`)
+            setTimeout(() => setLessonUploadStatus(""), 5000)
+        }
+        setUploadingResourceLessonId(null)
     }
 
     const handleDeleteResource = (lessonId: number, resourceIndex: number) => {
@@ -2176,17 +2208,47 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
                                                 handleUpdateLesson(lesson.id, "resources", newResources)
                                             }}
                                             className="bg-transparent border-none text-[10px] font-bold focus:outline-none min-w-[100px]"
+                                            placeholder="File name"
+                                        />
+                                        <input
+                                            value={resource.url === "#" ? "" : resource.url}
+                                            onChange={(e) => {
+                                                const newResources = [...lesson.resources]
+                                                newResources[rIndex] = { ...resource, url: e.target.value || "#" }
+                                                handleUpdateLesson(lesson.id, "resources", newResources)
+                                            }}
+                                            className="bg-transparent border-l border-white/10 pl-2 text-[10px] text-white/50 focus:outline-none focus:text-white min-w-[120px]"
+                                            placeholder="Paste link / URL"
                                         />
                                         <button onClick={() => handleDeleteResource(lesson.id, rIndex)} className="text-white/20 hover:text-red-400">
                                             <X className="w-3 h-3" />
                                         </button>
                                     </div>
                                 ))}
+                                <label className={cn("cursor-pointer", uploadingResourceLessonId === lesson.id && "pointer-events-none opacity-50")}>
+                                    <input
+                                        type="file"
+                                        accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip,.csv,image/*"
+                                        className="hidden"
+                                        onChange={async (e: any) => {
+                                            const file = e.target.files?.[0]
+                                            if (file) await handleUploadResource(lesson.id, file)
+                                            e.target.value = ''
+                                        }}
+                                    />
+                                    <div className="flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-lg px-3 py-1.5 text-[10px] font-bold text-primary hover:bg-primary/20 transition-all">
+                                        {uploadingResourceLessonId === lesson.id ? (
+                                            <><Loader2 className="w-3 h-3 animate-spin" /> Uploading...</>
+                                        ) : (
+                                            <><Plus className="w-3 h-3" /> Add Material</>
+                                        )}
+                                    </div>
+                                </label>
                                 <button
                                     onClick={() => handleAddResource(lesson.id)}
-                                    className="flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-lg px-3 py-1.5 text-[10px] font-bold text-primary hover:bg-primary/20 transition-all"
+                                    className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] font-bold text-white/40 hover:text-white hover:bg-white/10 transition-all"
                                 >
-                                    <Plus className="w-3 h-3" /> Add Material
+                                    <Plus className="w-3 h-3" /> Add link
                                 </button>
                             </div>
                         </div>
