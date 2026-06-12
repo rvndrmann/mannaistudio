@@ -39,13 +39,37 @@ function getYouTubeEmbedUrl(url: string) {
     }
 }
 
+function renderTextWithLinks(text: string) {
+    // Supports [Title](https://url) markdown links and bare URLs
+    const parts = text.split(/(\[[^\]]+\]\(https?:\/\/[^\s)]+\)|https?:\/\/[^\s]+)/g)
+    return parts.map((part, i) => {
+        const mdMatch = part.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/)
+        const href = mdMatch ? mdMatch[2] : /^https?:\/\//.test(part) ? part : null
+        if (!href) return part
+        return (
+            <a
+                key={i}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline underline-offset-2 hover:text-primary/80 break-all"
+            >
+                {mdMatch ? mdMatch[1] : part}
+            </a>
+        )
+    })
+}
+
 function getGoogleDriveEmbedUrl(url: string) {
     try {
         const parsedUrl = new URL(url)
         const hostname = parsedUrl.hostname.replace(/^www\./, "")
         if (hostname !== "drive.google.com") return null
-        const match = parsedUrl.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)
-        return match ? `https://drive.google.com/file/d/${match[1]}/preview` : null
+        const pathMatch = parsedUrl.pathname.match(/\/file\/d\/([\w-]+)/)
+        if (pathMatch) return `https://drive.google.com/file/d/${pathMatch[1]}/preview`
+        const paramMatch = url.match(/[?&]id=([\w-]+)/)
+        if (paramMatch) return `https://drive.google.com/file/d/${paramMatch[1]}/preview`
+        return null
     } catch {
         return null
     }
@@ -245,7 +269,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     src={activeLessonDriveUrl}
                                     title={activeLesson?.title || "Course lesson video"}
                                     className="w-full h-full"
-                                    allow="autoplay; encrypted-media"
+                                    allow="autoplay"
                                     allowFullScreen
                                 />
                             ) : activeLesson?.videoUrl ? (
@@ -334,7 +358,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                         <Info className="w-4 h-4 text-primary" /> About this Lesson
                                     </h4>
                                     <p className="text-sm text-white/60 leading-relaxed">
-                                        {activeLesson.description}
+                                        {renderTextWithLinks(activeLesson.description)}
                                     </p>
                                 </div>
                                 )}
@@ -345,7 +369,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     </h4>
                                     <ul className="text-sm text-white/60 space-y-2">
                                         {activeLesson.takeaways.map((t: string, i: number) => (
-                                            <li key={i} className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> {t}</li>
+                                            <li key={i} className="flex items-start gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" /> <span>{renderTextWithLinks(t)}</span></li>
                                         ))}
                                     </ul>
                                 </div>
