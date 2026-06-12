@@ -2,7 +2,7 @@
 
 import Navbar from "@/components/Navbar"
 import { motion } from "framer-motion"
-import { ArrowRight, Play, Zap, Award, Share2, ShieldCheck, ChevronRight, ArrowUpRight, X } from "lucide-react"
+import { ArrowRight, Play, Zap, Trophy, Briefcase, Clapperboard, PenLine, Wand2, Film, ShieldCheck, ChevronRight, ArrowUpRight, X } from "lucide-react"
 import { AnimatePresence } from "framer-motion"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
@@ -65,8 +65,8 @@ export default function LandingPage() {
                         transition={{ delay: 0.1 }}
                         className="text-5xl md:text-7xl font-bold tracking-tight mb-6"
                     >
-                        Master the Art of <br />
-                        <span className="text-gradient">AI Video Creation</span>
+                        Become an <br />
+                        <span className="text-gradient">AI Video Director</span>
                     </motion.h1>
 
                     <motion.p
@@ -75,8 +75,10 @@ export default function LandingPage() {
                         transition={{ delay: 0.2 }}
                         className="text-lg md:text-xl text-white/60 max-w-2xl mx-auto mb-10 leading-relaxed"
                     >
-                        The ultimate platform to learn, create, and showcase your AI-powered videos.
-                        Get certified, win rewards, and build your professional portfolio.
+                        AI Director Hub teaches you the complete AI filmmaking workflow — from writing
+                        scripts with AI agents to generating characters, scenes, and final edits.
+                        Learn with real project-based courses, practice in weekly challenges with paid
+                        rewards, and turn your skills into income through AI jobs.
                     </motion.p>
 
                     <motion.div
@@ -103,21 +105,21 @@ export default function LandingPage() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-24">
                         {[
                             {
-                                title: "Gamified Experience",
-                                desc: "Earn XP, unlock level badges, and climb the leaderboard as you complete chapters.",
-                                icon: Zap,
-                                color: "text-amber-400"
-                            },
-                            {
-                                title: "Official Certificates",
-                                desc: "Get industry-recognized certificates upon course completion to showcase your skills.",
-                                icon: Award,
+                                title: "Project-Based Courses",
+                                desc: "Step-by-step video courses where you build real AI films — scriptwriting agents, prompt engineering, character & scene generation, and editing. Every chapter comes with prompt docs and downloadable resources.",
+                                icon: Clapperboard,
                                 color: "text-primary"
                             },
                             {
-                                title: "Video Portfolios",
-                                desc: "Upload up to 10 of your best AI videos to build a professional creator portfolio.",
-                                icon: Play,
+                                title: "Weekly Challenges & Rewards",
+                                desc: "Put your skills to the test in weekly creation challenges with paid prizes. Earn XP, level up, and climb the leaderboard as you complete chapters.",
+                                icon: Trophy,
+                                color: "text-amber-400"
+                            },
+                            {
+                                title: "Portfolio & AI Jobs",
+                                desc: "Upload your best AI videos to a shareable creator portfolio, then land paid work through our AI jobs marketplace built for AI video creators.",
+                                icon: Briefcase,
                                 color: "text-cyan-400"
                             }
                         ].map((feature, i) => (
@@ -138,6 +140,64 @@ export default function LandingPage() {
                             </motion.div>
                         ))}
                     </div>
+                </div>
+            </section>
+
+            {/* What You'll Learn Section */}
+            <section className="py-24 px-6 max-w-7xl mx-auto">
+                <div className="text-center mb-16 space-y-4">
+                    <h2 className="text-3xl md:text-5xl font-bold tracking-tight">
+                        Learn the Complete <span className="text-primary">AI Filmmaking Workflow</span>
+                    </h2>
+                    <p className="text-white/60 max-w-2xl mx-auto">
+                        No film school. No expensive gear. Just you, AI tools, and a proven step-by-step
+                        process — the same workflow we use to produce our own agency films.
+                    </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {[
+                        {
+                            step: "01",
+                            title: "Write with AI Agents",
+                            desc: "Turn ideas into shoot-ready scripts using AI scriptwriter agents and master prompts that structure your story scene by scene.",
+                            icon: PenLine,
+                        },
+                        {
+                            step: "02",
+                            title: "Master Prompt Engineering",
+                            desc: "Learn the exact prompting techniques for tools like Seedance to control camera, lighting, mood, and motion in every shot.",
+                            icon: Wand2,
+                        },
+                        {
+                            step: "03",
+                            title: "Generate Characters & Scenes",
+                            desc: "Build consistent characters, environments, and assets across an entire film so your story looks like one production, not random clips.",
+                            icon: Clapperboard,
+                        },
+                        {
+                            step: "04",
+                            title: "Edit & Publish",
+                            desc: "Assemble your generated shots into a finished film — pacing, sound, and final polish — then publish it to your portfolio.",
+                            icon: Film,
+                        },
+                    ].map((item, i) => (
+                        <motion.div
+                            key={item.step}
+                            initial={{ opacity: 0, y: 30 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.1 }}
+                            viewport={{ once: true }}
+                            className="glass-card p-8 relative overflow-hidden group"
+                        >
+                            <span className="absolute -top-2 -right-2 text-7xl font-black text-white/5 group-hover:text-primary/10 transition-colors">{item.step}</span>
+                            <div className="inline-flex p-3 rounded-xl bg-primary/10 text-primary mb-6">
+                                <item.icon className="w-6 h-6" />
+                            </div>
+                            <h3 className="text-lg font-bold mb-3">{item.title}</h3>
+                            <p className="text-white/60 leading-relaxed text-sm">{item.desc}</p>
+                        </motion.div>
+                    ))}
                 </div>
             </section>
 

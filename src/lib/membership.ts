@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 export const membershipPlan = {
-    name: "AI Mastery Pro",
+    name: "AI Director Hub Pro",
     price: 999,
     currency: "INR",
     portfolioLimit: 10,
@@ -21,7 +21,7 @@ export const defaultBillingSettings: BillingSettings = {
     monthlyPrice: membershipPlan.price,
     offerEnabled: false,
     offerPrice: 799,
-    offerText: "Limited offer: AI Mastery Pro for ₹799/month",
+    offerText: "Limited offer: AI Director Hub Pro for ₹799/month",
 }
 
 export function normalizeBillingSettings(value: any): BillingSettings {
@@ -82,4 +82,34 @@ export async function fetchBillingSettings(supabase: SupabaseClient) {
 
     if (error) return defaultBillingSettings
     return normalizeBillingSettings(data?.value)
+}
+
+export type PaymentRecord = {
+    id: string
+    txnid: string
+    paymentId: string
+    amount: string
+    productInfo: string
+    status: "success" | "failed"
+    createdAt: string
+}
+
+export async function fetchMyPayments(supabase: SupabaseClient, userId: string): Promise<PaymentRecord[]> {
+    const { data, error } = await supabase
+        .from("payments")
+        .select("*")
+        .eq("profile_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(50)
+
+    if (error) return []
+    return (data || []).map((row: any) => ({
+        id: row.id,
+        txnid: row.txnid,
+        paymentId: row.payment_id,
+        amount: row.amount,
+        productInfo: row.product_info,
+        status: row.status,
+        createdAt: row.created_at,
+    }))
 }

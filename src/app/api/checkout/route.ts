@@ -5,8 +5,9 @@ import { fetchBillingSettings, getActivePlanPrice } from '@/lib/membership'
 
 export async function POST(req: Request) {
     try {
-        const { courseId, price, userEmail, userName, productType } = await req.json()
+        const { courseId, price, userEmail, userName, productType, userId } = await req.json()
         let amount = price
+        const udf1 = userId || ''
 
         const merchantId = process.env.PAYU_MERCHANT_ID!
         const key = process.env.PAYU_KEY!
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
         }
 
         // Hash sequence: key|txnid|amount|productinfo|firstname|email|udf1|udf2|udf3|udf4|udf5||||||SALT
-        const hashString = `${key}|${txnid}|${amount}|${productInfo}|${userName}|${userEmail}|||||||||||${salt}`
+        const hashString = `${key}|${txnid}|${amount}|${productInfo}|${userName}|${userEmail}|${udf1}||||||||||${salt}`
         const hash = crypto.createHash('sha512').update(hashString).digest('hex')
 
         // In a real scenario, you'd send this to PayU or return the hash to the frontend
@@ -32,6 +33,7 @@ export async function POST(req: Request) {
             productinfo: productInfo,
             firstname: userName,
             email: userEmail,
+            udf1,
             hash,
             // surl: `${process.env.NEXT_PUBLIC_BASE_URL}/api/payu/success`,
             // furl: `${process.env.NEXT_PUBLIC_BASE_URL}/api/payu/failure`,

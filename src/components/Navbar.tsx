@@ -6,6 +6,7 @@ import { Clapperboard, Play, Zap, User, Menu, X, ShieldCheck, LogIn, LogOut, Loa
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
+import NotificationBell from "@/components/NotificationBell"
 import { createClient } from "@/lib/supabase/client"
 import { defaultBillingSettings, fetchBillingSettings, isAdminUser } from "@/lib/membership"
 
@@ -64,7 +65,7 @@ export default function Navbar() {
                     <div className="bg-primary/20 p-2 rounded-lg group-hover:bg-primary/30 transition-colors">
                         <Zap className="w-6 h-6 text-primary fill-primary/20" />
                     </div>
-                    <span className="text-xl font-bold tracking-tight text-white">AI<span className="text-primary">Mastery</span></span>
+                    <span className="text-xl font-bold tracking-tight text-white">AI Director <span className="text-primary">Hub</span></span>
                 </Link>
 
                 {/* Desktop Nav */}
@@ -85,6 +86,7 @@ export default function Navbar() {
                         </div>
                     ) : user ? (
                         <div className="flex items-center gap-3">
+                            <NotificationBell />
                             <Link href="/profile" className="flex items-center gap-2 px-4 py-2 bg-white/10 rounded-xl hover:bg-white/20 transition-all group">
                                 {user.user_metadata?.avatar_url ? (
                                     <img src={user.user_metadata.avatar_url} alt="Avatar" className="w-5 h-5 rounded-full" />

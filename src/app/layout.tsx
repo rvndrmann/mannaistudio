@@ -6,8 +6,8 @@ import { AuthProvider } from "@/components/auth/auth-provider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-    title: "AI Video Mastery | Learn. Create. Earn.",
-    description: "The ultimate platform for AI video creators. Gamified learning, weekly challenges, and professional portfolios.",
+    title: "AI Director Hub | Learn AI Video Creation",
+    description: "Learn AI video creation step by step — scriptwriting with AI agents, prompt engineering, character and scene generation, and editing. Practice with weekly challenges, build your portfolio, and earn through AI jobs.",
 };
 
 export default function RootLayout({

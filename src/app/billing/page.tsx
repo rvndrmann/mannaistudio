@@ -3,8 +3,8 @@
 import Navbar from "@/components/Navbar"
 import { useAuth } from "@/components/auth/auth-provider"
 import { createClient } from "@/lib/supabase/client"
-import { defaultBillingSettings, fetchBillingSettings, fetchMyMembership, getActivePlanPrice, isMembershipActive, membershipPlan } from "@/lib/membership"
-import { CheckCircle2, CreditCard, Loader2, Lock, Play, Sparkles } from "lucide-react"
+import { defaultBillingSettings, fetchBillingSettings, fetchMyMembership, fetchMyPayments, getActivePlanPrice, isMembershipActive, membershipPlan, type PaymentRecord } from "@/lib/membership"
+import { CheckCircle2, CreditCard, Loader2, Lock, Play, Receipt, Sparkles, XCircle } from "lucide-react"
 import { useEffect, useState } from "react"
 
 export default function BillingPage() {
@@ -13,6 +13,7 @@ export default function BillingPage() {
     const [billingSettings, setBillingSettings] = useState(defaultBillingSettings)
     const [isLoadingPlan, setIsLoadingPlan] = useState(true)
     const [isCheckingOut, setIsCheckingOut] = useState(false)
+    const [payments, setPayments] = useState<PaymentRecord[]>([])
 
     useEffect(() => {
         const load = async () => {
@@ -22,12 +23,14 @@ export default function BillingPage() {
             }
 
             const supabase = createClient()
-            const [nextMembership, nextSettings] = await Promise.all([
+            const [nextMembership, nextSettings, nextPayments] = await Promise.all([
                 fetchMyMembership(supabase, user.id),
                 fetchBillingSettings(supabase),
+                fetchMyPayments(supabase, user.id),
             ])
             setMembership(nextMembership)
             setBillingSettings(nextSettings)
+            setPayments(nextPayments)
             setIsLoadingPlan(false)
         }
 
@@ -56,13 +59,14 @@ export default function BillingPage() {
                     price: String(activePrice),
                     userEmail: user.email,
                     userName: user.user_metadata?.full_name || 'Student',
+                    userId: user.id,
                 }),
             })
 
             const payuData = await res.json()
             const form = document.createElement('form')
             form.method = 'POST'
-            form.action = 'https://secure.payu.in/_payment'
+            form.action = process.env.NEXT_PUBLIC_PAYU_BASE_URL || 'https://secure.payu.in/_payment'
 
             Object.entries(payuData).forEach(([key, value]) => {
                 const input = document.createElement('input')
@@ -110,6 +114,42 @@ export default function BillingPage() {
                                 <p className="text-sm text-white/40 mt-2">{item.text}</p>
                             </div>
                         ))}
+                    </div>
+
+                    <div className="glass-card rounded-2xl border-white/10 overflow-hidden">
+                        <div className="p-5 border-b border-white/5 flex items-center gap-2">
+                            <Receipt className="w-4 h-4 text-primary" />
+                            <h2 className="font-bold">Payment History</h2>
+                        </div>
+                        {payments.length === 0 ? (
+                            <p className="p-6 text-sm text-white/35">No payments yet. Your membership and course payments will appear here.</p>
+                        ) : (
+                            <div className="divide-y divide-white/5">
+                                {payments.map((payment) => (
+                                    <div key={payment.id} className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                        <div className="flex items-start gap-3">
+                                            {payment.status === "success" ? (
+                                                <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+                                            ) : (
+                                                <XCircle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                                            )}
+                                            <div>
+                                                <p className="text-sm font-bold">{payment.productInfo}</p>
+                                                <p className="text-xs text-white/35 mt-0.5">
+                                                    {new Date(payment.createdAt).toLocaleDateString()} • Txn {payment.txnid}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3 md:text-right">
+                                            <span className={payment.status === "success" ? "text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-emerald-400/10 text-emerald-300" : "text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-red-400/10 text-red-300"}>
+                                                {payment.status === "success" ? "Paid" : "Failed"}
+                                            </span>
+                                            <p className="font-bold">₹{payment.amount}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
 
