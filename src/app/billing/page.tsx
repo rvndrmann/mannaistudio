@@ -1,6 +1,7 @@
 "use client"
 
 import Navbar from "@/components/Navbar"
+import Footer from "@/components/Footer"
 import { useAuth } from "@/components/auth/auth-provider"
 import { createClient } from "@/lib/supabase/client"
 import { defaultBillingSettings, fetchBillingSettings, fetchMyMembership, fetchMyPayments, getActivePlanPrice, isMembershipActive, membershipPlan, type PaymentRecord } from "@/lib/membership"
@@ -195,6 +196,7 @@ export default function BillingPage() {
                     </button>
                 </div>
             </section>
+            <Footer />
         </main>
     )
 }

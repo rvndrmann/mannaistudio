@@ -1,6 +1,7 @@
 "use client"
 
 import Navbar from "@/components/Navbar"
+import Footer from "@/components/Footer"
 import { motion } from "framer-motion"
 import { ArrowRight, Play, Zap, Trophy, Briefcase, Clapperboard, PenLine, Wand2, Film, ShieldCheck, ChevronRight, ArrowUpRight, X } from "lucide-react"
 import { AnimatePresence } from "framer-motion"
@@ -318,6 +319,7 @@ export default function LandingPage() {
                     </motion.div>
                 )}
             </AnimatePresence>
+            <Footer />
         </main>
     )
 }
