@@ -39,6 +39,18 @@ function getYouTubeEmbedUrl(url: string) {
     }
 }
 
+function getGoogleDriveEmbedUrl(url: string) {
+    try {
+        const parsedUrl = new URL(url)
+        const hostname = parsedUrl.hostname.replace(/^www\./, "")
+        if (hostname !== "drive.google.com") return null
+        const match = parsedUrl.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)
+        return match ? `https://drive.google.com/file/d/${match[1]}/preview` : null
+    } catch {
+        return null
+    }
+}
+
 export default function CourseDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
     const { user, signInWithGoogle } = useAuth()
@@ -99,6 +111,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
     const progress = course ? (completedChapters.length / (course.chapters || 1)) * 100 : 0
     const activeLesson = course?.lessons?.find((lesson: any) => lesson.id === activeChapter)
     const activeLessonYouTubeUrl = activeLesson?.videoUrl ? getYouTubeEmbedUrl(activeLesson.videoUrl) : null
+    const activeLessonDriveUrl = activeLesson?.videoUrl ? getGoogleDriveEmbedUrl(activeLesson.videoUrl) : null
 
     useEffect(() => {
         if (!course) return
@@ -224,6 +237,15 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     title={activeLesson?.title || "Course lesson video"}
                                     className="w-full h-full"
                                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                    allowFullScreen
+                                />
+                            ) : activeLessonDriveUrl ? (
+                                <iframe
+                                    key={activeLessonDriveUrl}
+                                    src={activeLessonDriveUrl}
+                                    title={activeLesson?.title || "Course lesson video"}
+                                    className="w-full h-full"
+                                    allow="autoplay; encrypted-media"
                                     allowFullScreen
                                 />
                             ) : activeLesson?.videoUrl ? (
