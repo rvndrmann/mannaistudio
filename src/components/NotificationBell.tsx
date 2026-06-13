@@ -66,7 +66,11 @@ export default function NotificationBell() {
     const openNotification = (notification: Notification) => {
         setOpen(false)
         if (notification.jobId) {
-            router.push(`/services?job=${notification.jobId}${notification.type === "job_message" || notification.type === "job_won" ? "&chat=1" : ""}`)
+            if (notification.type === "job_message" || notification.type === "job_won") {
+                router.push(`/messages?job=${notification.jobId}`)
+            } else {
+                router.push(`/services?job=${notification.jobId}`)
+            }
         }
     }
 

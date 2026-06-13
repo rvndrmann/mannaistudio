@@ -17,7 +17,7 @@ import {
     type ServiceBid,
     type ServiceRequest,
 } from "@/lib/service-requests"
-import { fetchJobMessages, sendJobMessage, type JobMessage } from "@/lib/job-chat"
+import Link from "next/link"
 // @ts-ignore
 import confetti from "canvas-confetti"
 
@@ -60,80 +60,6 @@ export default function ServicesPage() {
     const [activeFeedTab, setActiveFeedTab] = useState<"best" | "recent" | "proposals" | "posted">("best")
     const knownJobIdsRef = useRef<Set<string>>(new Set())
     const hasLoadedJobsRef = useRef(false)
-    const [chatJob, setChatJob] = useState<ServiceRequest | null>(null)
-    const [chatMessages, setChatMessages] = useState<JobMessage[]>([])
-    const [chatInput, setChatInput] = useState("")
-    const [isSendingMessage, setIsSendingMessage] = useState(false)
-    const chatEndRef = useRef<HTMLDivElement>(null)
-    const pendingChatJobRef = useRef<string | null>(null)
-
-    // Open chat from notification links (?job=...&chat=1)
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search)
-        const jobId = params.get("job")
-        if (jobId && params.get("chat") === "1") {
-            pendingChatJobRef.current = jobId
-        }
-    }, [])
-
-    useEffect(() => {
-        if (!pendingChatJobRef.current || !user) return
-        const target = [...jobs, ...myPostedJobs].find((job) => job.id === pendingChatJobRef.current)
-        if (target && target.status === "awarded") {
-            pendingChatJobRef.current = null
-            openChat(target)
-        }
-    }, [jobs, myPostedJobs, user])
-
-    // Poll chat messages while the chat modal is open
-    useEffect(() => {
-        if (!chatJob) return
-        let active = true
-        const load = async () => {
-            try {
-                const supabase = await getServiceRequestClient()
-                if (!supabase) return
-                const messages = await fetchJobMessages(supabase, chatJob.id)
-                if (active) setChatMessages(messages)
-            } catch {}
-        }
-        load()
-        const interval = window.setInterval(load, 5000)
-        return () => { active = false; window.clearInterval(interval) }
-    }, [chatJob])
-
-    useEffect(() => {
-        chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
-    }, [chatMessages])
-
-    const openChat = (job: ServiceRequest) => {
-        setChatMessages([])
-        setChatInput("")
-        setChatJob(job)
-    }
-
-    const handleSendMessage = async (event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault()
-        if (!user || !chatJob || !chatInput.trim()) return
-        setIsSendingMessage(true)
-        try {
-            const supabase = await getServiceRequestClient()
-            if (!supabase) throw new Error("Supabase unavailable")
-            const sent = await sendJobMessage(supabase, {
-                jobId: chatJob.id,
-                senderId: user.id,
-                senderName: user.user_metadata?.full_name || user.email || "User",
-                content: chatInput.trim(),
-            })
-            setChatMessages((current) => [...current, sent])
-            setChatInput("")
-        } catch {
-            setMessage("Could not send the message. Please try again.")
-        } finally {
-            setIsSendingMessage(false)
-        }
-    }
-
     useEffect(() => {
         loadJobs()
         const interval = window.setInterval(() => loadJobs(true), 30000)
@@ -573,16 +499,16 @@ export default function ServicesPage() {
                                                     <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {job.email}</span>
                                                     {job.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {job.phone}</span>}
                                                 </div>
-                                                <button onClick={() => openChat(job)} className="mt-4 btn-primary px-5 py-2.5 text-sm flex items-center gap-2">
+                                                <Link href={`/messages?job=${job.id}`} className="mt-4 btn-primary px-5 py-2.5 text-sm inline-flex items-center gap-2">
                                                     <MessageSquare className="w-4 h-4" /> Chat with Client
-                                                </button>
+                                                </Link>
                                             </div>
                                         )}
 
                                         {isOwner && job.status === "awarded" && selectedBid && (
-                                            <button onClick={() => openChat(job)} className="btn-primary px-5 py-2.5 text-sm flex items-center gap-2">
+                                            <Link href={`/messages?job=${job.id}`} className="btn-primary px-5 py-2.5 text-sm inline-flex items-center gap-2">
                                                 <MessageSquare className="w-4 h-4" /> Chat with {selectedBid.bidderName}
-                                            </button>
+                                            </Link>
                                         )}
                                     </article>
                                 )
@@ -782,60 +708,6 @@ export default function ServicesPage() {
                                 </button>
                             </div>
                         </motion.form>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-            <AnimatePresence>
-                {chatJob && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl" onClick={() => setChatJob(null)}>
-                        <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-[#0f0f15] rounded-3xl border border-white/10 overflow-hidden w-full max-w-xl shadow-2xl flex flex-col h-[70vh]" onClick={e => e.stopPropagation()}>
-                            <div className="p-5 border-b border-white/5 flex items-center justify-between shrink-0">
-                                <div>
-                                    <h3 className="text-lg font-bold flex items-center gap-2"><MessageSquare className="w-4 h-4 text-primary" /> Job Chat</h3>
-                                    <p className="text-xs text-white/40 mt-1">{chatJob.title}</p>
-                                </div>
-                                <button onClick={() => setChatJob(null)} className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition-all">
-                                    <X className="w-6 h-6" />
-                                </button>
-                            </div>
-
-                            <div className="flex-1 overflow-y-auto p-5 space-y-3">
-                                {chatMessages.length === 0 ? (
-                                    <p className="text-center text-sm text-white/30 mt-10">No messages yet. Say hello and discuss the project details.</p>
-                                ) : (
-                                    chatMessages.map((msg) => {
-                                        const isMine = msg.senderId === user?.id
-                                        return (
-                                            <div key={msg.id} className={cn("flex", isMine ? "justify-end" : "justify-start")}>
-                                                <div className={cn(
-                                                    "max-w-[80%] rounded-2xl px-4 py-2.5",
-                                                    isMine ? "bg-primary text-white rounded-br-md" : "bg-white/10 text-white/90 rounded-bl-md"
-                                                )}>
-                                                    {!isMine && <p className="text-[10px] font-bold text-white/40 mb-0.5">{msg.senderName}</p>}
-                                                    <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
-                                                    <p className={cn("text-[9px] mt-1", isMine ? "text-white/60" : "text-white/30")}>
-                                                        {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        )
-                                    })
-                                )}
-                                <div ref={chatEndRef} />
-                            </div>
-
-                            <form onSubmit={handleSendMessage} className="p-4 border-t border-white/5 bg-white/[0.02] flex gap-3 shrink-0">
-                                <input
-                                    value={chatInput}
-                                    onChange={(e) => setChatInput(e.target.value)}
-                                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/50"
-                                    placeholder="Type a message..."
-                                />
-                                <button type="submit" disabled={isSendingMessage || !chatInput.trim()} className="btn-primary px-5 py-3 flex items-center gap-2 disabled:opacity-40">
-                                    {isSendingMessage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                                </button>
-                            </form>
-                        </motion.div>
                     </motion.div>
                 )}
             </AnimatePresence>

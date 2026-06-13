@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { motion } from "framer-motion"
-import { Clapperboard, Play, Zap, User, Menu, X, ShieldCheck, LogIn, LogOut, Loader2, CreditCard } from "lucide-react"
+import { Clapperboard, Play, Zap, User, Menu, X, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, MessageSquare } from "lucide-react"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -16,6 +16,7 @@ const baseNavLinks = [
     { name: "Challenges", href: "/challenges", icon: Zap },
     { name: "Billing", href: "/billing", icon: CreditCard },
     { name: "AI Jobs", href: "/services", icon: ShieldCheck },
+    { name: "Messages", href: "/messages", icon: MessageSquare },
 ]
 
 const adminLink = { name: "Admin", href: "/admin", icon: ShieldCheck }
