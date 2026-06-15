@@ -10,6 +10,19 @@ export async function GET(request: Request) {
         const supabase = await createClient()
         const { error } = await supabase.auth.exchangeCodeForSession(code)
         if (!error) {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+                // Ensure profile exists
+                await supabase.from('profiles').upsert({
+                    id: user.id,
+                    full_name: user.user_metadata?.full_name || '',
+                    avatar_url: user.user_metadata?.avatar_url || '',
+                    email: user.email || '',
+                }, { onConflict: 'id' })
+
+                // Grant free trial for new users
+                await supabase.rpc('grant_free_trial', { p_user_id: user.id })
+            }
             return NextResponse.redirect(`${origin}${next}`)
         }
     }

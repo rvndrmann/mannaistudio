@@ -180,7 +180,10 @@ export default function BillingPage() {
                                 <Loader2 className="w-4 h-4 animate-spin" /> Checking plan
                             </div>
                         ) : active ? (
-                            <p className="text-sm text-emerald-300">Active membership{expiresAt ? ` until ${expiresAt}` : ""}.</p>
+                            <p className="text-sm text-emerald-300">
+                                {membership?.is_trial ? "Free trial" : "Active membership"}{expiresAt ? ` until ${expiresAt}` : ""}.
+                                {membership?.is_trial && " Upgrade to keep access after your trial ends."}
+                            </p>
                         ) : (
                             <p className="text-sm text-white/50">You are on the free plan. Portfolio limit is {membershipPlan.freePortfolioLimit} videos.</p>
                         )}
