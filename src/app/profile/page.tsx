@@ -2,7 +2,7 @@
 
 import Navbar from "@/components/Navbar"
 import { motion, AnimatePresence } from "framer-motion"
-import { User, Award, Play, Plus, Trash2, Globe, Lock, Settings, BarChart3, Mail, ExternalLink, Camera, CheckCircle2, LogIn, Loader2, Share2, X } from "lucide-react"
+import { User, Award, Play, Plus, Trash2, Globe, Lock, Settings, BarChart3, Mail, ExternalLink, Camera, CheckCircle2, LogIn, Loader2, Share2, X, Copy, Link as LinkIcon } from "lucide-react"
 import { FormEvent, useState, useEffect } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
 import {
@@ -305,28 +305,39 @@ export default function ProfilePage() {
     const portfolioSlug = profile?.portfolio_slug || (user ? createPortfolioSlug(displayName, user.id) : "creator")
     const shareUrl = typeof window === "undefined" ? "" : `${window.location.origin}/portfolio?u=${portfolioSlug}`
 
+    const copyToClipboard = async (text: string) => {
+        try {
+            await navigator.clipboard.writeText(text)
+            return true
+        } catch {
+            const textarea = document.createElement('textarea')
+            textarea.value = text
+            textarea.style.position = 'fixed'
+            textarea.style.opacity = '0'
+            document.body.appendChild(textarea)
+            textarea.select()
+            document.execCommand('copy')
+            document.body.removeChild(textarea)
+            return true
+        }
+    }
+
     const handleSharePortfolio = async () => {
         if (!isPublic) {
             setShareMessage("Make your portfolio public before sharing.")
             return
         }
 
-        try {
-            if (navigator.share) {
-                await navigator.share({
-                    title: `${displayName}'s AI Video Portfolio`,
-                    text: `View ${displayName}'s AI video portfolio.`,
-                    url: shareUrl,
-                })
-                setShareMessage("Portfolio shared.")
-                return
-            }
+        await copyToClipboard(shareUrl)
+        setShareMessage("✓ Portfolio link copied!")
+        setTimeout(() => setShareMessage(""), 3000)
+    }
 
-            await navigator.clipboard.writeText(shareUrl)
-            setShareMessage("Share link copied.")
-        } catch (e) {
-            setShareMessage("Copy failed. Use the public portfolio button.")
-        }
+    const handleCopyProfileLink = async () => {
+        const profileUrl = typeof window === "undefined" ? "" : `${window.location.origin}/profile`
+        await copyToClipboard(profileUrl)
+        setShareMessage("✓ Profile link copied!")
+        setTimeout(() => setShareMessage(""), 3000)
     }
 
     return (
@@ -411,9 +422,27 @@ export default function ProfilePage() {
                                 <Share2 className="w-4 h-4 text-cyan-300" />
                                 Share Portfolio
                             </button>
-                            {shareMessage && (
-                                <p className="text-xs text-white/40 text-center">{shareMessage}</p>
-                            )}
+                            <div
+                                onClick={handleCopyProfileLink}
+                                className="flex items-center gap-2 w-full px-3 py-2 bg-white/5 rounded-xl border border-white/10 cursor-pointer hover:bg-white/10 transition-colors group"
+                                title="Click to copy profile link"
+                            >
+                                <LinkIcon className="w-3.5 h-3.5 text-white/30 shrink-0" />
+                                <span className="text-xs text-white/40 truncate flex-1">{typeof window !== "undefined" ? `${window.location.origin}/portfolio?u=${portfolioSlug}` : ""}</span>
+                                <Copy className="w-3.5 h-3.5 text-white/30 group-hover:text-primary shrink-0" />
+                            </div>
+                            <AnimatePresence>
+                                {shareMessage && (
+                                    <motion.p
+                                        initial={{ opacity: 0, y: -5 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -5 }}
+                                        className={`text-xs text-center font-medium ${shareMessage.startsWith("✓") ? "text-emerald-400" : "text-white/40"}`}
+                                    >
+                                        {shareMessage}
+                                    </motion.p>
+                                )}
+                            </AnimatePresence>
                         </div>
                     </div>
                 </div>

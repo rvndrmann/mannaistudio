@@ -270,11 +270,11 @@ export default function LandingPage() {
             {/* Trust Bar */}
             <section className="py-12 border-y border-white/5 bg-white/[0.02]">
                 <div className="max-w-6xl mx-auto px-6 flex flex-wrap justify-between items-center gap-8 opacity-40">
-                    <span className="text-xl font-bold italic tracking-widest">LUMALABS</span>
-                    <span className="text-xl font-bold italic tracking-widest">RUNWAY</span>
-                    <span className="text-xl font-bold italic tracking-widest">HEYGEN</span>
-                    <span className="text-xl font-bold italic tracking-widest">PABS</span>
-                    <span className="text-xl font-bold italic tracking-widest">OPENAI</span>
+                    <span className="text-xl font-bold italic tracking-widest">CHATGPT IMAGE 2</span>
+                    <span className="text-xl font-bold italic tracking-widest">SEEDANCE 2.0</span>
+                    <span className="text-xl font-bold italic tracking-widest">KLING 3.0</span>
+                    <span className="text-xl font-bold italic tracking-widest">NANO BANANA 2</span>
+                    <span className="text-xl font-bold italic tracking-widest">CLAUDE AI</span>
                 </div>
             </section>
             {/* Video Player Modal */}

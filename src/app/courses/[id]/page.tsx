@@ -185,7 +185,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
 
         setEnrollLoading(true)
 
-        if (isFree) {
+        if (isFree || paymentsDisabled) {
             const success = await enrollFreeCourse(course.id)
             if (success) {
                 setIsEnrolled(true)
