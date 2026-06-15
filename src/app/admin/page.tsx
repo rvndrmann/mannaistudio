@@ -272,6 +272,7 @@ function AdminDashboardContent() {
                 offerEnabled: Boolean(data?.offer_enabled),
                 offerPrice: Number(data?.offer_price || billingSettings.offerPrice),
                 offerText: data?.offer_text || billingSettings.offerText,
+                paymentsEnabled: data?.payments_enabled !== undefined ? Boolean(data.payments_enabled) : billingSettings.paymentsEnabled,
             })
             setBillingMessage("Plan settings saved.")
         } catch (err: any) {

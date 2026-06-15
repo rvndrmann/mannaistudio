@@ -189,14 +189,21 @@ export default function BillingPage() {
                         )}
                     </div>
 
-                    <button
-                        onClick={handleCheckout}
-                        disabled={isCheckingOut || loading || isLoadingPlan}
-                        className="btn-primary w-full flex items-center justify-center gap-2 py-3 disabled:opacity-60"
-                    >
-                        {isCheckingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
-                        {active ? "Renew Membership" : user ? "Start Membership" : "Sign In to Subscribe"}
-                    </button>
+                    {billingSettings.paymentsEnabled ? (
+                        <button
+                            onClick={handleCheckout}
+                            disabled={isCheckingOut || loading || isLoadingPlan}
+                            className="btn-primary w-full flex items-center justify-center gap-2 py-3 disabled:opacity-60"
+                        >
+                            {isCheckingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+                            {active ? "Renew Membership" : user ? "Start Membership" : "Sign In to Subscribe"}
+                        </button>
+                    ) : (
+                        <div className="rounded-xl bg-primary/10 border border-primary/20 p-4 text-center">
+                            <p className="text-sm font-bold text-primary">Early Access — Free Pro!</p>
+                            <p className="text-xs text-white/40 mt-1">Sign up now and enjoy free Pro access. Paid plans coming soon.</p>
+                        </div>
+                    )}
                 </div>
             </section>
             <Footer />

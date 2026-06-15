@@ -14,6 +14,7 @@ export type BillingSettings = {
     offerEnabled: boolean
     offerPrice: number
     offerText: string
+    paymentsEnabled: boolean
 }
 
 export const defaultBillingSettings: BillingSettings = {
@@ -22,6 +23,7 @@ export const defaultBillingSettings: BillingSettings = {
     offerEnabled: false,
     offerPrice: 799,
     offerText: "Limited offer: AI Director Hub Pro for ₹799/month",
+    paymentsEnabled: false,
 }
 
 export function normalizeBillingSettings(value: any): BillingSettings {
@@ -31,6 +33,7 @@ export function normalizeBillingSettings(value: any): BillingSettings {
         offerEnabled: Boolean(value?.offer_enabled),
         offerPrice: Number(value?.offer_price || defaultBillingSettings.offerPrice),
         offerText: value?.offer_text || defaultBillingSettings.offerText,
+        paymentsEnabled: value?.payments_enabled !== undefined ? Boolean(value.payments_enabled) : defaultBillingSettings.paymentsEnabled,
     }
 }
 
