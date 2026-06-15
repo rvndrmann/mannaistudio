@@ -173,6 +173,9 @@ function AdminDashboardContent() {
     const [billingSettings, setBillingSettings] = useState<BillingSettings>(defaultBillingSettings)
     const [billingMessage, setBillingMessage] = useState("")
     const [isSavingBilling, setIsSavingBilling] = useState(false)
+    const [trialSettings, setTrialSettings] = useState({ enabled: true, trialDays: 4, promoEndDate: "2026-07-01" })
+    const [isSavingTrial, setIsSavingTrial] = useState(false)
+    const [trialMessage, setTrialMessage] = useState("")
 
     const pricePerEnrollment = getActivePlanPrice(billingSettings)
 
@@ -264,6 +267,7 @@ function AdminDashboardContent() {
                 p_offer_enabled: billingSettings.offerEnabled,
                 p_offer_price: billingSettings.offerPrice,
                 p_offer_text: billingSettings.offerText,
+                p_payments_enabled: billingSettings.paymentsEnabled,
             })
             if (error) throw error
             setBillingSettings({
@@ -279,6 +283,39 @@ function AdminDashboardContent() {
             setBillingMessage(`Could not save settings: ${err.message || 'Unknown error'}`)
         } finally {
             setIsSavingBilling(false)
+        }
+    }
+
+    const loadTrialSettings = async () => {
+        const supabase = await getServiceRequestClient()
+        if (!supabase) return
+        const { data } = await supabase.from("site_settings").select("value").eq("key", "free_trial").single()
+        if (data?.value) {
+            setTrialSettings({
+                enabled: Boolean(data.value.enabled),
+                trialDays: Number(data.value.trial_days) || 4,
+                promoEndDate: data.value.promo_end_date ? data.value.promo_end_date.split("T")[0] : "2026-07-01",
+            })
+        }
+    }
+
+    const handleSaveTrialSettings = async () => {
+        setIsSavingTrial(true)
+        setTrialMessage("")
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) throw new Error("No Supabase client")
+            const { data, error } = await supabase.rpc('admin_update_free_trial', {
+                p_enabled: trialSettings.enabled,
+                p_trial_days: trialSettings.trialDays,
+                p_promo_end_date: trialSettings.promoEndDate + "T23:59:59Z",
+            })
+            if (error) throw error
+            setTrialMessage("Free trial settings saved.")
+        } catch (err: any) {
+            setTrialMessage(`Could not save: ${err.message || 'Unknown error'}`)
+        } finally {
+            setIsSavingTrial(false)
         }
     }
 
@@ -823,6 +860,7 @@ function AdminDashboardContent() {
         setIsChartReady(true)
         loadServiceRequests()
         loadBillingSettings()
+        loadTrialSettings()
         loadAdminData()
         loadShowcaseItems()
     }, [])
@@ -1897,9 +1935,25 @@ function AdminDashboardContent() {
                                         />
                                     </label>
 
+                                    <label className="flex items-center justify-between gap-4 rounded-xl bg-white/5 border border-white/10 p-4">
+                                        <div>
+                                            <p className="font-bold">Enable Payments (PayU)</p>
+                                            <p className="text-xs text-white/40 mt-1">When OFF, the billing page hides the checkout button and shows "Early Access — Free Pro!" instead.</p>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            checked={billingSettings.paymentsEnabled}
+                                            onChange={(e) => setBillingSettings(prev => ({ ...prev, paymentsEnabled: e.target.checked }))}
+                                            className="h-5 w-5 accent-primary"
+                                        />
+                                    </label>
+
                                     <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
                                         <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2">Current Checkout Price</p>
                                         <p className="text-2xl font-bold">₹{pricePerEnrollment}/month</p>
+                                        {!billingSettings.paymentsEnabled && (
+                                            <p className="text-xs text-amber-400 mt-2">Payments are currently disabled. Users see the free access message.</p>
+                                        )}
                                     </div>
 
                                     {billingMessage && <p className="text-sm text-white/50">{billingMessage}</p>}
@@ -1911,6 +1965,67 @@ function AdminDashboardContent() {
                                     >
                                         {isSavingBilling ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                                         {isSavingBilling ? "Saving..." : "Save Plan Settings"}
+                                    </button>
+                                </div>
+
+                                <header className="pt-4">
+                                    <h2 className="text-2xl font-bold tracking-tight mb-2">Free Trial Settings</h2>
+                                    <p className="text-white/40 text-sm">Control the free Pro trial given to new signups.</p>
+                                </header>
+
+                                <div className="glass-card p-6 rounded-2xl border-white/10 space-y-6 max-w-3xl">
+                                    <label className="flex items-center justify-between gap-4 rounded-xl bg-white/5 border border-white/10 p-4">
+                                        <div>
+                                            <p className="font-bold">Enable Free Trial</p>
+                                            <p className="text-xs text-white/40 mt-1">New signups automatically get Pro access for the trial period.</p>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            checked={trialSettings.enabled}
+                                            onChange={(e) => setTrialSettings(prev => ({ ...prev, enabled: e.target.checked }))}
+                                            className="h-5 w-5 accent-primary"
+                                        />
+                                    </label>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <label className="space-y-2">
+                                            <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Trial Duration (days)</span>
+                                            <input
+                                                type="number"
+                                                min={1}
+                                                max={90}
+                                                value={trialSettings.trialDays}
+                                                onChange={(e) => setTrialSettings(prev => ({ ...prev, trialDays: Number(e.target.value) }))}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
+                                            />
+                                        </label>
+                                        <label className="space-y-2">
+                                            <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Promotion End Date</span>
+                                            <input
+                                                type="date"
+                                                value={trialSettings.promoEndDate}
+                                                onChange={(e) => setTrialSettings(prev => ({ ...prev, promoEndDate: e.target.value }))}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
+                                            />
+                                        </label>
+                                    </div>
+
+                                    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/50">
+                                        {trialSettings.enabled
+                                            ? <>New users get <strong className="text-white">{trialSettings.trialDays} days</strong> free Pro until <strong className="text-white">{trialSettings.promoEndDate}</strong>. After that date, new signups won&apos;t get a trial.</>
+                                            : <span className="text-amber-400">Free trial is disabled. New signups start on the free plan.</span>
+                                        }
+                                    </div>
+
+                                    {trialMessage && <p className="text-sm text-white/50">{trialMessage}</p>}
+
+                                    <button
+                                        onClick={handleSaveTrialSettings}
+                                        disabled={isSavingTrial}
+                                        className="btn-primary flex items-center gap-2 px-6 py-3 disabled:opacity-60"
+                                    >
+                                        {isSavingTrial ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                        {isSavingTrial ? "Saving..." : "Save Trial Settings"}
                                     </button>
                                 </div>
                             </motion.div>
