@@ -130,8 +130,9 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
         load()
     }, [id])
 
-    const isFree = course?.price === "Free" || course?.price === "$0"
-    const hasCourseAccess = isFree || isEnrolled || isMember || isAdmin
+    const isFree = course?.price === "Free" || course?.price === "$0" || course?.price === 0 || course?.price === "0" || !course?.price
+    const paymentsDisabled = !billingSettings.paymentsEnabled
+    const hasCourseAccess = isFree || isEnrolled || isMember || isAdmin || (paymentsDisabled && !!user)
     const progress = course ? (completedChapters.length / (course.chapters || 1)) * 100 : 0
     const activeLesson = course?.lessons?.find((lesson: any) => lesson.id === activeChapter)
     const activeLessonYouTubeUrl = activeLesson?.videoUrl ? getYouTubeEmbedUrl(activeLesson.videoUrl) : null
