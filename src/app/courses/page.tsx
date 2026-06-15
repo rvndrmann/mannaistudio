@@ -8,7 +8,7 @@ import { courses as mockCourses } from "@/lib/data"
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/components/auth/auth-provider"
-import { hasPremiumAccess, isAdminUser } from "@/lib/membership"
+import { fetchBillingSettings, hasPremiumAccess, isAdminUser } from "@/lib/membership"
 
 interface Course {
     id: string
@@ -20,7 +20,7 @@ interface Course {
     level: string
     chapters: number
     instructor: string
-    price: string
+    price: string | number
 }
 
 export default function CoursesPage() {
@@ -57,7 +57,7 @@ export default function CoursesPage() {
             return
         }
 
-        const isFree = course.price === "Free" || course.price === "$0"
+        const isFree = course.price === "Free" || course.price === "$0" || course.price === 0 || course.price === "0" || !course.price
         if (isFree) {
             router.push(`/courses/${course.id}`)
             return
@@ -66,7 +66,7 @@ export default function CoursesPage() {
         setCheckingCourseId(course.id)
         try {
             const supabase = createClient()
-            const [{ data: enrollment }, { data: profile }, isAdmin] = await Promise.all([
+            const [{ data: enrollment }, { data: profile }, isAdmin, billingSettings] = await Promise.all([
                 supabase
                     .from('enrollments')
                     .select('status')
@@ -79,15 +79,16 @@ export default function CoursesPage() {
                     .eq('id', user.id)
                     .single(),
                 isAdminUser(supabase, user.id),
+                fetchBillingSettings(supabase),
             ])
 
-            if (enrollment?.status === 'active' || hasPremiumAccess(profile, isAdmin)) {
+            if (enrollment?.status === 'active' || hasPremiumAccess(profile, isAdmin) || !billingSettings.paymentsEnabled) {
                 router.push(`/courses/${course.id}`)
             } else {
                 router.push('/billing')
             }
         } catch {
-            router.push('/billing')
+            router.push(`/courses/${course.id}`)
         } finally {
             setCheckingCourseId(null)
         }
