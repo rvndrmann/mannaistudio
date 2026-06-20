@@ -15,24 +15,35 @@ import { useAuth } from "@/components/auth/auth-provider"
 export default function LandingPage() {
     const { user, signInWithGoogle } = useAuth()
     const [adminShowcase, setAdminShowcase] = useState(mockShowcase)
+    const [courses, setCourses] = useState<any[]>([])
     const [playingVideo, setPlayingVideo] = useState<{ url: string; title: string } | null>(null)
 
     useEffect(() => {
         const load = async () => {
             try {
                 const supabase = createClient()
-                const { data, error } = await supabase
-                    .from('showcase_items')
-                    .select('*')
-                    .order('created_at', { ascending: false })
-                if (!error && data) {
-                    setAdminShowcase(data.map((s: any) => ({
+                const [showcaseRes, coursesRes] = await Promise.all([
+                    supabase
+                        .from('showcase_items')
+                        .select('*')
+                        .order('created_at', { ascending: false }),
+                    supabase
+                        .from('courses')
+                        .select('*')
+                        .order('created_at', { ascending: true })
+                        .limit(3),
+                ])
+                if (!showcaseRes.error && showcaseRes.data) {
+                    setAdminShowcase(showcaseRes.data.map((s: any) => ({
                         id: s.id,
                         title: s.title,
                         description: s.description,
                         thumbnail: s.thumbnail || '',
                         videoUrl: s.video_url || '',
                     })))
+                }
+                if (!coursesRes.error && coursesRes.data) {
+                    setCourses(coursesRes.data)
                 }
             } catch {}
         }
@@ -266,6 +277,74 @@ export default function LandingPage() {
                     ))}
                 </div>
             </section>
+
+            {/* Featured Courses Section */}
+            {courses.length > 0 && (
+            <section className="py-24 px-6 max-w-7xl mx-auto">
+                <div className="flex flex-col md:flex-row items-end justify-between gap-6 mb-12">
+                    <div className="space-y-4">
+                        <h2 className="text-3xl md:text-5xl font-bold tracking-tight">
+                            Explore <span className="text-primary">Courses</span>
+                        </h2>
+                        <p className="text-white/60 max-w-xl">
+                            Project-based AI video courses with clear, fixed pricing. Learn at your own pace with downloadable resources.
+                        </p>
+                    </div>
+                    <Link href="/courses" className="text-sm font-bold text-primary hover:underline flex items-center gap-2">
+                        View All Courses <ArrowUpRight className="w-4 h-4" />
+                    </Link>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    {courses.map((course, i) => {
+                        const isFree = course.price === "Free" || course.price === "$0" || course.price === 0 || course.price === "0" || !course.price
+                        return (
+                        <motion.div
+                            key={course.id}
+                            initial={{ opacity: 0, y: 30 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.1 }}
+                            viewport={{ once: true }}
+                            className="glass-card group overflow-hidden flex flex-col"
+                        >
+                            <Link href={`/courses/${course.id}`} className="relative aspect-video bg-white/5 block overflow-hidden">
+                                {course.thumbnail && (
+                                    <img
+                                        src={course.thumbnail}
+                                        alt={course.title}
+                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                    />
+                                )}
+                                <div className="absolute top-3 right-3 px-3 py-1 glass rounded-full text-[10px] font-bold tracking-widest uppercase">
+                                    {course.level}
+                                </div>
+                            </Link>
+                            <div className="p-6 flex flex-col flex-grow">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-400">
+                                        <Zap className="w-3.5 h-3.5" /> +{course.xp} XP
+                                    </span>
+                                    <span className="text-white/20">|</span>
+                                    <span className="text-xs text-white/50">{course.chapters} Chapters</span>
+                                </div>
+                                <Link href={`/courses/${course.id}`}>
+                                    <h3 className="text-xl font-bold group-hover:text-primary transition-colors line-clamp-1">{course.title}</h3>
+                                </Link>
+                                <p className="text-white/50 text-sm mt-2 mb-6 line-clamp-2 leading-relaxed">{course.description}</p>
+                                <div className="mt-auto pt-6 border-t border-white/5 flex items-center justify-between">
+                                    <span className="text-lg font-bold text-emerald-400">
+                                        {isFree ? "Free" : isNaN(Number(course.price)) ? course.price : `₹${course.price}`}
+                                    </span>
+                                    <Link href={`/courses/${course.id}`} className="text-sm font-medium text-white hover:text-primary transition-colors flex items-center gap-1.5">
+                                        Enroll Now <Play className="w-3.5 h-3.5" />
+                                    </Link>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )})}
+                </div>
+            </section>
+            )}
 
             {/* Trust Bar */}
             <section className="py-12 border-y border-white/5 bg-white/[0.02]">

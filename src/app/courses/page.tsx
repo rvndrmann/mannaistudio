@@ -178,7 +178,7 @@ export default function CoursesPage() {
                                         <span className="text-sm font-bold text-emerald-400">
                                             {course.price === "Free" || course.price === "$0" || course.price === 0 || course.price === "0" || !course.price
                                                 ? "Free"
-                                                : `₹${course.price}`}
+                                                : isNaN(Number(course.price)) ? course.price : `₹${course.price}`}
                                         </span>
                                     </div>
                                     <button
