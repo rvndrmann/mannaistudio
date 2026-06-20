@@ -9,8 +9,9 @@ export default function PrivacyPage() {
             <Navbar />
             <article className="pt-32 pb-20 px-6 max-w-3xl mx-auto prose prose-invert prose-sm prose-headings:font-bold prose-p:text-white/60 prose-li:text-white/60 prose-strong:text-white">
                 <h1>Privacy Policy</h1>
-                <p><strong>Effective Date:</strong> June 13, 2026</p>
-                <p>AI Director Hub ("we", "us") respects your privacy. This policy explains what data we collect, why, and how we protect it.</p>
+                <p><strong>Effective Date:</strong> June 20, 2026</p>
+                <p><strong>Business:</strong> AIDIRECTORHUB | Proprietor: Ravinder Mann | Udyam Reg: UDYAM-HR-13-0038483</p>
+                <p>AI Director Hub, operated by AIDIRECTORHUB (Proprietor: Ravinder Mann), respects your privacy. This policy explains what data we collect, why, and how we protect it.</p>
 
                 <h2>1. Information We Collect</h2>
                 <h3>a) Account Information</h3>
@@ -62,7 +63,12 @@ export default function PrivacyPage() {
                 <p>We may update this policy. We will notify users of material changes via the platform.</p>
 
                 <h2>9. Contact</h2>
-                <p>For privacy-related questions, email us at <a href="mailto:rvndr.mann@gmail.com">rvndr.mann@gmail.com</a>.</p>
+                <p>For privacy-related questions, contact us:</p>
+                <ul>
+                    <li><strong>Email:</strong> <a href="mailto:rvndr.mann@gmail.com">rvndr.mann@gmail.com</a></li>
+                    <li><strong>Phone:</strong> +91 8168157635</li>
+                    <li><strong>Address:</strong> Flat/Door/Block No. 597, Panchkula, Block – Barwala, City – Panchkula, District – Panchkula, Haryana – 134118, India</li>
+                </ul>
             </article>
             <Footer />
         </main>

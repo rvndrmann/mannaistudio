@@ -335,6 +335,12 @@ export default function ServicesPage() {
                         <p className="text-white/60 leading-relaxed">
                             Post AI video projects, review creator bids, and pick the right person to work with. Admins approve every job before it goes live.
                         </p>
+                        <div className="mt-4 p-4 bg-primary/10 border border-primary/20 rounded-xl">
+                            <p className="text-sm text-white/70"><strong className="text-primary">Need professional AI video services?</strong> Our AI services are priced on a custom-quote basis — pricing varies per project scope and requirements.</p>
+                            <Link href="/contact" className="inline-flex items-center gap-2 mt-3 px-5 py-2 bg-primary rounded-lg text-sm font-bold hover:bg-primary/80 transition-colors">
+                                Request a Quote
+                            </Link>
+                        </div>
                     </div>
                     <div className="grid grid-cols-3 gap-3 text-center">
                         <div className="glass-card px-5 py-4 rounded-xl border-white/10">

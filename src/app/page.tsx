@@ -76,10 +76,10 @@ export default function LandingPage() {
                         transition={{ delay: 0.2 }}
                         className="text-lg md:text-xl text-white/60 max-w-2xl mx-auto mb-10 leading-relaxed"
                     >
-                        AI Director Hub teaches you the complete AI filmmaking workflow — from writing
-                        scripts with AI agents to generating characters, scenes, and final edits.
-                        Learn with real project-based courses, practice in weekly challenges with paid
-                        rewards, and turn your skills into income through AI jobs.
+                        AI Director Hub sells AI courses, digital products, and professional AI services
+                        including AI video creation, scriptwriting, and post-production.
+                        Learn the complete AI filmmaking workflow with project-based courses, practice
+                        in weekly challenges with paid rewards, and turn your skills into income through AI jobs.
                     </motion.p>
 
                     <motion.div

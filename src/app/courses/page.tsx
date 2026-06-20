@@ -170,9 +170,16 @@ export default function CoursesPage() {
                                 </p>
 
                                 <div className="mt-auto pt-6 border-t border-white/5 flex items-center justify-between">
-                                    <div className="flex items-center gap-2 text-white/40 text-xs">
-                                        <Clock className="w-4 h-4" />
-                                        <span>{course.duration}</span>
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex items-center gap-2 text-white/40 text-xs">
+                                            <Clock className="w-4 h-4" />
+                                            <span>{course.duration}</span>
+                                        </div>
+                                        <span className="text-sm font-bold text-emerald-400">
+                                            {course.price === "Free" || course.price === "$0" || course.price === 0 || course.price === "0" || !course.price
+                                                ? "Free"
+                                                : `₹${course.price}`}
+                                        </span>
                                     </div>
                                     <button
                                         type="button"

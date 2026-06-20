@@ -9,11 +9,13 @@ export default function TermsPage() {
             <Navbar />
             <article className="pt-32 pb-20 px-6 max-w-3xl mx-auto prose prose-invert prose-sm prose-headings:font-bold prose-p:text-white/60 prose-li:text-white/60 prose-strong:text-white">
                 <h1>Terms & Conditions</h1>
-                <p><strong>Effective Date:</strong> June 13, 2026</p>
-                <p>Welcome to AI Director Hub ("we", "us", "our"), accessible at aidirectorhub.com. By accessing or using our platform, you agree to be bound by these Terms & Conditions.</p>
+                <p><strong>Effective Date:</strong> June 20, 2026</p>
+                <p><strong>Business:</strong> AIDIRECTORHUB | Proprietor: Ravinder Mann | Udyam Reg: UDYAM-HR-13-0038483</p>
+                <p>Welcome to AI Director Hub ("we", "us", "our"), accessible at aidirectorhub.com, operated by AIDIRECTORHUB (Proprietor: Ravinder Mann). By accessing or using our platform, you agree to be bound by these Terms & Conditions.</p>
 
                 <h2>1. Services</h2>
-                <p>AI Director Hub is an online education platform offering courses, challenges, portfolio tools, and an AI jobs marketplace related to AI video creation. Some features require a paid membership ("AI Director Hub Pro").</p>
+                <p>AI Director Hub is an online platform that sells AI courses and digital products for AI video creation, and offers professional AI services including AI video creation, scriptwriting, and post-production. We also operate an AI jobs marketplace connecting creators with clients. Some features require a paid membership ("AI Director Hub Pro").</p>
+                <p>All products are digital and delivered electronically via in-app access. AI services are priced on a custom-quote basis per project.</p>
 
                 <h2>2. Eligibility</h2>
                 <p>You must be at least 18 years old or have parental consent to use our services. By creating an account, you represent that the information you provide is accurate and complete.</p>
@@ -54,7 +56,12 @@ export default function TermsPage() {
                 <p>We may update these terms from time to time. Continued use of the platform after changes constitutes acceptance.</p>
 
                 <h2>11. Contact</h2>
-                <p>For questions about these terms, contact us at <a href="mailto:rvndr.mann@gmail.com">rvndr.mann@gmail.com</a>.</p>
+                <p>For questions about these terms, contact us:</p>
+                <ul>
+                    <li><strong>Email:</strong> <a href="mailto:rvndr.mann@gmail.com">rvndr.mann@gmail.com</a></li>
+                    <li><strong>Phone:</strong> +91 8168157635</li>
+                    <li><strong>Address:</strong> Flat/Door/Block No. 597, Panchkula, Block – Barwala, City – Panchkula, District – Panchkula, Haryana – 134118, India</li>
+                </ul>
             </article>
             <Footer />
         </main>

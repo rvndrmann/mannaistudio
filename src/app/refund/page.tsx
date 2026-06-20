@@ -9,7 +9,8 @@ export default function RefundPage() {
             <Navbar />
             <article className="pt-32 pb-20 px-6 max-w-3xl mx-auto prose prose-invert prose-sm prose-headings:font-bold prose-p:text-white/60 prose-li:text-white/60 prose-strong:text-white">
                 <h1>Refund & Cancellation Policy</h1>
-                <p><strong>Effective Date:</strong> June 13, 2026</p>
+                <p><strong>Effective Date:</strong> June 20, 2026</p>
+                <p><strong>Business:</strong> AIDIRECTORHUB | Proprietor: Ravinder Mann | Udyam Reg: UDYAM-HR-13-0038483</p>
 
                 <h2>1. Membership Refunds</h2>
                 <p>AI Director Hub Pro is a monthly membership. Since membership grants immediate access to premium content upon payment:</p>
@@ -42,7 +43,12 @@ export default function RefundPage() {
                 <p>If a payment fails or is debited but membership is not activated, contact us immediately. We will verify with PayU and either activate your membership or initiate a refund.</p>
 
                 <h2>6. Contact</h2>
-                <p>For refund or cancellation queries, reach us at <a href="mailto:rvndr.mann@gmail.com">rvndr.mann@gmail.com</a>.</p>
+                <p>For refund or cancellation queries, contact us:</p>
+                <ul>
+                    <li><strong>Email:</strong> <a href="mailto:rvndr.mann@gmail.com">rvndr.mann@gmail.com</a></li>
+                    <li><strong>Phone:</strong> +91 8168157635</li>
+                    <li><strong>Address:</strong> Flat/Door/Block No. 597, Panchkula, Block – Barwala, City – Panchkula, District – Panchkula, Haryana – 134118, India</li>
+                </ul>
             </article>
             <Footer />
         </main>
