@@ -11,11 +11,14 @@ import { adminShowcase as mockShowcase } from "@/lib/data"
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/components/auth/auth-provider"
+import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, membershipPlan } from "@/lib/membership"
+import { CheckCircle2 } from "lucide-react"
 
 export default function LandingPage() {
     const { user, signInWithGoogle } = useAuth()
     const [adminShowcase, setAdminShowcase] = useState(mockShowcase)
     const [courses, setCourses] = useState<any[]>([])
+    const [billingSettings, setBillingSettings] = useState(defaultBillingSettings)
     const [playingVideo, setPlayingVideo] = useState<{ url: string; title: string } | null>(null)
 
     useEffect(() => {
@@ -45,6 +48,7 @@ export default function LandingPage() {
                 if (!coursesRes.error && coursesRes.data) {
                     setCourses(coursesRes.data)
                 }
+                setBillingSettings(await fetchBillingSettings(supabase))
             } catch {}
         }
         load()
@@ -345,6 +349,51 @@ export default function LandingPage() {
                 </div>
             </section>
             )}
+
+            {/* Membership Pricing Section */}
+            <section className="py-24 px-6 max-w-3xl mx-auto">
+                <div className="text-center mb-10 space-y-3">
+                    <h2 className="text-3xl md:text-5xl font-bold tracking-tight">
+                        Simple <span className="text-primary">Pricing</span>
+                    </h2>
+                    <p className="text-white/60">One membership unlocks all premium courses and creator tools.</p>
+                </div>
+
+                <div className="glass-card rounded-3xl border-white/10 p-8 md:p-10 max-w-md mx-auto text-center relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-48 h-48 bg-primary/10 blur-[80px] rounded-full -z-10" />
+                    <h3 className="text-xl font-bold">{billingSettings.planName}</h3>
+                    <p className="text-sm text-white/40 mt-1">Monthly membership</p>
+
+                    <div className="my-6">
+                        {billingSettings.offerEnabled && (
+                            <div className="mb-2 text-sm font-bold text-emerald-300">{billingSettings.offerText}</div>
+                        )}
+                        {billingSettings.offerEnabled && (
+                            <span className="mr-3 text-2xl font-bold text-white/30 line-through">₹{billingSettings.monthlyPrice}</span>
+                        )}
+                        <span className="text-5xl font-bold">₹{getActivePlanPrice(billingSettings)}</span>
+                        <span className="text-white/40"> / month</span>
+                    </div>
+
+                    <ul className="text-left space-y-3 mb-8 max-w-xs mx-auto">
+                        {[
+                            "Access to all premium courses",
+                            `Showcase up to ${membershipPlan.portfolioLimit} portfolio videos`,
+                            "Weekly challenges with paid rewards",
+                            "AI jobs marketplace access",
+                        ].map((feature) => (
+                            <li key={feature} className="flex items-start gap-2 text-sm text-white/70">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+                                <span>{feature}</span>
+                            </li>
+                        ))}
+                    </ul>
+
+                    <Link href="/billing" className="btn-primary w-full flex items-center justify-center gap-2 py-3">
+                        View Plan Details <ArrowRight className="w-4 h-4" />
+                    </Link>
+                </div>
+            </section>
 
             {/* Trust Bar */}
             <section className="py-12 border-y border-white/5 bg-white/[0.02]">
