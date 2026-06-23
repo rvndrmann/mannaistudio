@@ -8,48 +8,23 @@ export default function RefundPage() {
         <main className="min-h-screen">
             <Navbar />
             <article className="pt-32 pb-20 px-6 max-w-3xl mx-auto prose prose-invert prose-sm prose-headings:font-bold prose-p:text-white/60 prose-li:text-white/60 prose-strong:text-white">
-                <h1>Refund & Cancellation Policy</h1>
-                <p><strong>Effective Date:</strong> June 20, 2026</p>
-                <p><strong>Business:</strong> AIDIRECTORHUB | Proprietor: Ravinder Deep Singh | Udyam Reg: UDYAM-HR-13-0038483</p>
+                <h1>Refund and Cancellation Policy</h1>
+                <p>This refund and cancellation policy outlines how you can cancel or seek a refund for a product / service that you have purchased through the Platform. Under this policy:</p>
+                <ol>
+                    <li>Cancellations will only be considered if the request is made within <strong>7 days</strong> of placing the order. However, cancellation requests may not be entertained if the orders have been communicated to such sellers / merchant(s) listed on the Platform and they have initiated the process of shipping them, or the product is out for delivery. In such an event, you may choose to reject the product at the doorstep.</li>
+                    <li>Ravinder Deep Singh does not accept cancellation requests for perishable items like flowers, eatables, etc. However, the refund / replacement can be made if the user establishes that the quality of the product delivered is not good.</li>
+                    <li>In case of receipt of damaged or defective items, please report to our customer service team. The request would be entertained once the seller / merchant listed on the Platform has checked and determined the same at its own end. This should be reported within <strong>7 days</strong> of receipt of products.</li>
+                    <li>In case you feel that the product received is not as shown on the site or as per your expectations, you must bring it to the notice of our customer service within <strong>7 days</strong> of receiving the product. The customer service team after looking into your complaint will take an appropriate decision.</li>
+                    <li>In case of complaints regarding the products that come with a warranty from the manufacturers, please refer the issue to them.</li>
+                    <li>In case of any refunds approved by Ravinder Deep Singh, it will take <strong>7 days</strong> for the refund to be processed to you.</li>
+                </ol>
 
-                <p><strong>Refund timeline:</strong> All approved refunds are processed within <strong>5–7 business days</strong> to the original payment method.</p>
-
-                <h2>1. Membership Refunds</h2>
-                <p>AI Director Hub Pro is a monthly membership. Since membership grants immediate access to premium content upon payment:</p>
-                <ul>
-                    <li>Refund requests made within <strong>7 days</strong> of purchase are eligible for a full refund, provided you have not completed more than 25% of any premium course.</li>
-                    <li>Requests made after the 7-day window, or after substantial course consumption (more than 25% completed), are reviewed on a case-by-case basis at our discretion.</li>
-                </ul>
-
-                <h2>2. Cancellation</h2>
-                <p>Membership does not auto-renew. Each month requires a manual payment. If you choose not to renew, your membership will simply expire at the end of the current billing period. No cancellation action is needed.</p>
-                <p>You will retain access to premium content until your membership expiry date, even if you decide not to renew.</p>
-
-                <h2>3. Course Purchases</h2>
-                <p>If individual course purchases are offered separately from the membership:</p>
-                <ul>
-                    <li>Refund requests within <strong>7 days</strong> of purchase are eligible if you have not completed more than 25% of the course.</li>
-                    <li>Requests after the 7-day window or after significant progress are reviewed on a case-by-case basis.</li>
-                </ul>
-
-                <h2>4. How to Request a Refund</h2>
-                <p>To request a refund, email us at <a href="mailto:rvndr.mann@gmail.com">rvndr.mann@gmail.com</a> with:</p>
-                <ul>
-                    <li>Your registered email address</li>
-                    <li>Transaction ID (found in your billing page under Payment History)</li>
-                    <li>Reason for refund</li>
-                </ul>
-                <p>We will process eligible refunds within <strong>7–10 business days</strong> to the original payment method.</p>
-
-                <h2>5. Failed Transactions</h2>
-                <p>If a payment fails or is debited but membership is not activated, contact us immediately. We will verify with our payment gateway partner and either activate your membership or initiate a refund.</p>
-
-                <h2>6. Contact</h2>
+                <h2>Contact</h2>
                 <p>For refund or cancellation queries, contact us:</p>
                 <ul>
                     <li><strong>Email:</strong> <a href="mailto:rvndr.mann@gmail.com">rvndr.mann@gmail.com</a></li>
                     <li><strong>Phone:</strong> +91 8168157635</li>
-                    <li><strong>Address:</strong> 597, VPO Barwala, Panchkula, Haryana – 134118, India</li>
+                    <li><strong>Address:</strong> 597, VPO Barwala, Panchkula, Haryana 134118, India</li>
                 </ul>
             </article>
             <Footer />
