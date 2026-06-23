@@ -5,7 +5,6 @@ const legalLinks = [
     { href: "/terms", label: "Terms & Conditions" },
     { href: "/privacy", label: "Privacy Policy" },
     { href: "/refund", label: "Refund & Cancellation Policy" },
-    { href: "/shipping", label: "Shipping & Delivery Policy" },
     { href: "/contact", label: "Contact Us" },
     { href: "/contact#grievance", label: "Grievance Redressal" },
 ]
