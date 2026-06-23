@@ -18,7 +18,7 @@ export default function PrivacyPage() {
                 <p>When you sign in with Google, we receive your name, email address, and profile picture from Google. We store this in your user profile.</p>
 
                 <h3>b) Payment Information</h3>
-                <p>Payments are processed by PayU. We receive transaction confirmation details (transaction ID, amount, status) but do not store your card number, CVV, or bank credentials.</p>
+                <p>Payments are processed by our authorized third-party payment gateway partner. We receive transaction confirmation details (transaction ID, amount, status) but do not store your card number, CVV, or bank credentials.</p>
 
                 <h3>c) Usage Data</h3>
                 <p>We may collect basic analytics such as pages visited, course progress, and feature usage to improve the platform.</p>
@@ -38,7 +38,7 @@ export default function PrivacyPage() {
                 <h2>3. Data Sharing</h2>
                 <p>We do not sell your personal data. We share data only with:</p>
                 <ul>
-                    <li><strong>PayU</strong> — for payment processing.</li>
+                    <li><strong>Our payment gateway partner</strong> — for secure payment processing.</li>
                     <li><strong>Supabase</strong> — our database and authentication provider.</li>
                     <li><strong>Google</strong> — for OAuth authentication.</li>
                 </ul>

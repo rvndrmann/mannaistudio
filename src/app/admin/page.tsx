@@ -1937,7 +1937,7 @@ function AdminDashboardContent() {
 
                                     <label className="flex items-center justify-between gap-4 rounded-xl bg-white/5 border border-white/10 p-4">
                                         <div>
-                                            <p className="font-bold">Enable Payments (PayU)</p>
+                                            <p className="font-bold">Enable Payments</p>
                                             <p className="text-xs text-white/40 mt-1">When OFF, the billing page hides the checkout button and shows "Early Access — Free Pro!" instead.</p>
                                         </div>
                                         <input

@@ -26,7 +26,7 @@ export default function TermsPage() {
                 <h2>4. Membership & Payments</h2>
                 <ul>
                     <li>AI Director Hub Pro membership is billed monthly at the price displayed on the billing page.</li>
-                    <li>Payments are processed securely through PayU. We do not store your payment card details.</li>
+                    <li>Payments are processed securely through our authorized third-party payment gateway partner. We do not store your payment card details.</li>
                     <li>Membership grants access to premium courses and an increased portfolio limit for the billing period.</li>
                     <li>Membership does not auto-renew. You must manually renew each month.</li>
                 </ul>

@@ -40,7 +40,7 @@ export default function RefundPage() {
                 <p>We will process eligible refunds within <strong>7–10 business days</strong> to the original payment method.</p>
 
                 <h2>5. Failed Transactions</h2>
-                <p>If a payment fails or is debited but membership is not activated, contact us immediately. We will verify with PayU and either activate your membership or initiate a refund.</p>
+                <p>If a payment fails or is debited but membership is not activated, contact us immediately. We will verify with our payment gateway partner and either activate your membership or initiate a refund.</p>
 
                 <h2>6. Contact</h2>
                 <p>For refund or cancellation queries, contact us:</p>
