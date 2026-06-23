@@ -82,13 +82,13 @@ export default function CoursesPage() {
                 fetchBillingSettings(supabase),
             ])
 
-            if (enrollment?.status === 'active' || hasPremiumAccess(profile, isAdmin) || !billingSettings.paymentsEnabled) {
+            if (enrollment?.status === 'active' || hasPremiumAccess(profile, isAdmin)) {
                 router.push(`/courses/${course.id}`)
             } else {
                 router.push('/billing')
             }
         } catch {
-            router.push(`/courses/${course.id}`)
+            router.push('/billing')
         } finally {
             setCheckingCourseId(null)
         }

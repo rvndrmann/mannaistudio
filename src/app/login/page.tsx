@@ -3,12 +3,14 @@
 import Navbar from "@/components/Navbar"
 import { useAuth } from "@/components/auth/auth-provider"
 import { Loader2, Mail, Lock, User, LogIn, CheckCircle2 } from "lucide-react"
-import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Suspense, useEffect, useState } from "react"
 
-export default function LoginPage() {
+function LoginInner() {
     const { user, loading, signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth()
     const router = useRouter()
+    const searchParams = useSearchParams()
+    const next = searchParams.get("next") || "/courses"
     const [mode, setMode] = useState<"signin" | "signup">("signin")
     const [fullName, setFullName] = useState("")
     const [email, setEmail] = useState("")
@@ -18,7 +20,7 @@ export default function LoginPage() {
     const [confirmSent, setConfirmSent] = useState(false)
 
     useEffect(() => {
-        if (!loading && user) router.replace("/courses")
+        if (!loading && user) router.replace(next)
     }, [user, loading, router])
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -32,7 +34,7 @@ export default function LoginPage() {
         if (mode === "signin") {
             const { error } = await signInWithEmail(email, password)
             if (error) setError(error)
-            else router.replace("/courses")
+            else router.replace(next)
         } else {
             if (!fullName.trim()) {
                 setError("Please enter your name.")
@@ -42,7 +44,7 @@ export default function LoginPage() {
             const { error, needsConfirmation } = await signUpWithEmail(email, password, fullName)
             if (error) setError(error)
             else if (needsConfirmation) setConfirmSent(true)
-            else router.replace("/courses")
+            else router.replace(next)
         }
         setSubmitting(false)
     }
@@ -143,5 +145,13 @@ export default function LoginPage() {
                 )}
             </section>
         </main>
+    )
+}
+
+export default function LoginPage() {
+    return (
+        <Suspense fallback={<main className="min-h-screen"><Navbar /></main>}>
+            <LoginInner />
+        </Suspense>
     )
 }
