@@ -105,13 +105,13 @@ export default function Navbar() {
                             </button>
                         </div>
                     ) : (
-                        <button
-                            onClick={signInWithGoogle}
+                        <Link
+                            href="/login"
                             className="flex items-center gap-2 px-4 py-2 bg-primary/20 border border-primary/30 rounded-xl hover:bg-primary/30 transition-all group"
                         >
                             <LogIn className="w-4 h-4 text-primary group-hover:text-white" />
                             <span className="text-sm font-medium text-primary group-hover:text-white">Sign In</span>
-                        </button>
+                        </Link>
                     )}
                 </div>
 
@@ -152,10 +152,10 @@ export default function Navbar() {
                                 </button>
                             </div>
                         ) : (
-                            <button onClick={() => { signInWithGoogle(); setIsOpen(false); }} className="flex items-center gap-3 text-lg font-medium text-primary">
+                            <Link href="/login" onClick={() => setIsOpen(false)} className="flex items-center gap-3 text-lg font-medium text-primary">
                                 <LogIn className="w-5 h-5" />
-                                Sign In with Google
-                            </button>
+                                Sign In
+                            </Link>
                         )}
                     </div>
                 </motion.div>
