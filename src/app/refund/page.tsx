@@ -12,11 +12,13 @@ export default function RefundPage() {
                 <p><strong>Effective Date:</strong> June 20, 2026</p>
                 <p><strong>Business:</strong> AIDIRECTORHUB | Proprietor: Ravinder Mann | Udyam Reg: UDYAM-HR-13-0038483</p>
 
+                <p><strong>Refund timeline:</strong> All approved refunds are processed within <strong>5–7 business days</strong> to the original payment method.</p>
+
                 <h2>1. Membership Refunds</h2>
                 <p>AI Director Hub Pro is a monthly membership. Since membership grants immediate access to premium content upon payment:</p>
                 <ul>
-                    <li>Refund requests made within <strong>7 days</strong> of purchase will be processed in full, provided you have not completed more than 25% of any premium course.</li>
-                    <li>Refund requests after 7 days or after substantial course consumption will not be eligible for a refund.</li>
+                    <li>Refund requests made within <strong>7 days</strong> of purchase are eligible for a full refund, provided you have not completed more than 25% of any premium course.</li>
+                    <li>Requests made after the 7-day window, or after substantial course consumption (more than 25% completed), are reviewed on a case-by-case basis at our discretion.</li>
                 </ul>
 
                 <h2>2. Cancellation</h2>
@@ -27,7 +29,7 @@ export default function RefundPage() {
                 <p>If individual course purchases are offered separately from the membership:</p>
                 <ul>
                     <li>Refund requests within <strong>7 days</strong> of purchase are eligible if you have not completed more than 25% of the course.</li>
-                    <li>After 7 days or significant progress, no refund will be issued.</li>
+                    <li>Requests after the 7-day window or after significant progress are reviewed on a case-by-case basis.</li>
                 </ul>
 
                 <h2>4. How to Request a Refund</h2>

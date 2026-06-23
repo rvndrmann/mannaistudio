@@ -55,7 +55,18 @@ export default function TermsPage() {
                 <h2>10. Changes</h2>
                 <p>We may update these terms from time to time. Continued use of the platform after changes constitutes acceptance.</p>
 
-                <h2>11. Contact</h2>
+                <h2>11. Governing Law</h2>
+                <p>These Terms are governed by the laws of India. Any disputes are subject to the exclusive jurisdiction of the courts at Panchkula, Haryana, India.</p>
+
+                <h2>12. Grievance Redressal</h2>
+                <p>In accordance with the Consumer Protection (E-Commerce) Rules, 2020 and applicable RBI guidelines, complaints may be addressed to our Grievance Officer, who will acknowledge complaints within 48 hours and resolve them within 30 days:</p>
+                <ul>
+                    <li><strong>Grievance Officer:</strong> Ravinder Mann (Proprietor)</li>
+                    <li><strong>Email:</strong> <a href="mailto:rvndr.mann@gmail.com">rvndr.mann@gmail.com</a></li>
+                    <li><strong>Phone:</strong> +91 8168157635</li>
+                </ul>
+
+                <h2>13. Contact</h2>
                 <p>For questions about these terms, contact us:</p>
                 <ul>
                     <li><strong>Email:</strong> <a href="mailto:rvndr.mann@gmail.com">rvndr.mann@gmail.com</a></li>

@@ -118,6 +118,45 @@ export default function ContactPage() {
                         </div>
                     </div>
                 </div>
+
+                {/* Grievance Redressal — required for payment gateway / RBI compliance */}
+                <div id="grievance" className="glass-card p-6 md:p-8 rounded-2xl border-white/10 mt-8">
+                    <h2 className="text-xl font-bold mb-2">Grievance Redressal</h2>
+                    <p className="text-sm text-white/50 mb-5 max-w-2xl">
+                        In accordance with the Consumer Protection (E-Commerce) Rules, 2020 and applicable RBI guidelines,
+                        the details of our Grievance Officer are provided below. Any complaint regarding payments, refunds,
+                        services, or content can be addressed to the Grievance Officer, who will acknowledge your complaint
+                        within 48 hours and resolve it within 30 days of receipt.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+                        <div className="flex items-center gap-2">
+                            <span className="text-white/40">Name:</span>
+                            <span className="font-bold text-white/80">Ravinder Mann</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-white/40">Designation:</span>
+                            <span className="font-bold text-white/80">Grievance Officer / Proprietor</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Mail className="w-3.5 h-3.5 text-white/30" />
+                            <a href="mailto:rvndr.mann@gmail.com" className="hover:text-white transition-colors">rvndr.mann@gmail.com</a>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Phone className="w-3.5 h-3.5 text-white/30" />
+                            <a href="tel:+918168157635" className="hover:text-white transition-colors">+91 8168157635</a>
+                        </div>
+                        <div className="flex items-start gap-2 sm:col-span-2">
+                            <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-white/30" />
+                            <span className="text-white/60 text-xs leading-relaxed">
+                                Flat/Door/Block No. 597, Panchkula, Block – Barwala, City – Panchkula, District – Panchkula, Haryana – 134118, India
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2 sm:col-span-2">
+                            <Clock className="w-3.5 h-3.5 text-white/30" />
+                            <span className="text-white/60 text-xs">Business hours: Monday – Saturday, 10:00 AM – 6:00 PM IST</span>
+                        </div>
+                    </div>
+                </div>
             </section>
             <Footer />
         </main>
