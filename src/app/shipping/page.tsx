@@ -10,7 +10,7 @@ export default function ShippingPage() {
             <article className="pt-32 pb-20 px-6 max-w-3xl mx-auto prose prose-invert prose-sm prose-headings:font-bold prose-p:text-white/60 prose-li:text-white/60 prose-strong:text-white">
                 <h1>Shipping & Delivery Policy</h1>
                 <p><strong>Effective Date:</strong> June 20, 2026</p>
-                <p><strong>Business:</strong> AIDIRECTORHUB | Proprietor: Ravinder Mann</p>
+                <p><strong>Business:</strong> AIDIRECTORHUB | Proprietor: Ravinder Deep Singh</p>
 
                 <h2>1. Digital Products Only</h2>
                 <p>

@@ -96,14 +96,11 @@ export default function ContactPage() {
                         <h3 className="font-bold mb-4">Registered Business</h3>
                         <div className="space-y-3 text-sm text-white/50">
                             <p className="font-bold text-white/70">AIDIRECTORHUB</p>
-                            <p>Proprietor: Ravinder Mann</p>
+                            <p>Proprietor: Ravinder Deep Singh</p>
                             <div className="flex items-start gap-2">
                                 <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-white/30" />
                                 <p className="leading-relaxed text-xs">
-                                    Flat/Door/Block No. 597, Panchkula,
-                                    Block – Barwala, City – Panchkula,
-                                    District – Panchkula,
-                                    Haryana – 134118, India
+                                    597, VPO Barwala, Panchkula, Haryana – 134118, India
                                 </p>
                             </div>
                             <p className="text-xs text-white/30">Udyam Reg: UDYAM-HR-13-0038483</p>
@@ -131,7 +128,7 @@ export default function ContactPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 text-sm">
                         <div className="flex items-center gap-2">
                             <span className="text-white/40">Name:</span>
-                            <span className="font-bold text-white/80">Ravinder Mann</span>
+                            <span className="font-bold text-white/80">Ravinder Deep Singh</span>
                         </div>
                         <div className="flex items-center gap-2">
                             <span className="text-white/40">Designation:</span>
@@ -148,7 +145,7 @@ export default function ContactPage() {
                         <div className="flex items-start gap-2 sm:col-span-2">
                             <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-white/30" />
                             <span className="text-white/60 text-xs leading-relaxed">
-                                Flat/Door/Block No. 597, Panchkula, Block – Barwala, City – Panchkula, District – Panchkula, Haryana – 134118, India
+                                597, VPO Barwala, Panchkula, Haryana – 134118, India
                             </span>
                         </div>
                         <div className="flex items-center gap-2 sm:col-span-2">

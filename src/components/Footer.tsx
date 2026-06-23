@@ -62,14 +62,11 @@ export default function Footer() {
                     <h3 className="font-bold text-sm uppercase tracking-wider text-white/60 mb-4">Business Info</h3>
                     <div className="space-y-3 text-sm text-white/40">
                         <p className="font-bold text-white/60">AIDIRECTORHUB</p>
-                        <p>Proprietor: Ravinder Mann</p>
+                        <p>Proprietor: Ravinder Deep Singh</p>
                         <div className="flex items-start gap-2">
                             <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-white/30" />
                             <p className="leading-relaxed">
-                                Flat/Door/Block No. 597, Panchkula,
-                                Block – Barwala, City – Panchkula,
-                                District – Panchkula,
-                                Haryana – 134118, India
+                                597, VPO Barwala, Panchkula, Haryana – 134118, India
                             </p>
                         </div>
                         <p className="text-xs text-white/30">Udyam Reg: UDYAM-HR-13-0038483</p>
@@ -86,7 +83,7 @@ export default function Footer() {
             </div>
 
             <div className="border-t border-white/5 py-6 text-center text-xs text-white/25">
-                © {new Date().getFullYear()} AIDIRECTORHUB. All rights reserved. | Proprietor: Ravinder Mann
+                © {new Date().getFullYear()} AIDIRECTORHUB. All rights reserved. | Proprietor: Ravinder Deep Singh
             </div>
         </footer>
     )

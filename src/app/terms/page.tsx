@@ -10,8 +10,8 @@ export default function TermsPage() {
             <article className="pt-32 pb-20 px-6 max-w-3xl mx-auto prose prose-invert prose-sm prose-headings:font-bold prose-p:text-white/60 prose-li:text-white/60 prose-strong:text-white">
                 <h1>Terms & Conditions</h1>
                 <p><strong>Effective Date:</strong> June 20, 2026</p>
-                <p><strong>Business:</strong> AIDIRECTORHUB | Proprietor: Ravinder Mann | Udyam Reg: UDYAM-HR-13-0038483</p>
-                <p>Welcome to AI Director Hub ("we", "us", "our"), accessible at aidirectorhub.com, operated by AIDIRECTORHUB (Proprietor: Ravinder Mann). By accessing or using our platform, you agree to be bound by these Terms & Conditions.</p>
+                <p><strong>Business:</strong> AIDIRECTORHUB | Proprietor: Ravinder Deep Singh | Udyam Reg: UDYAM-HR-13-0038483</p>
+                <p>Welcome to AI Director Hub ("we", "us", "our"), accessible at aidirectorhub.com, operated by AIDIRECTORHUB (Proprietor: Ravinder Deep Singh). By accessing or using our platform, you agree to be bound by these Terms & Conditions.</p>
 
                 <h2>1. Services</h2>
                 <p>AI Director Hub is an online platform that sells AI courses and digital products for AI video creation, and offers professional AI services including AI video creation, scriptwriting, and post-production. We also operate an AI jobs marketplace connecting creators with clients. Some features require a paid membership ("AI Director Hub Pro").</p>
@@ -61,7 +61,7 @@ export default function TermsPage() {
                 <h2>12. Grievance Redressal</h2>
                 <p>In accordance with the Consumer Protection (E-Commerce) Rules, 2020 and applicable RBI guidelines, complaints may be addressed to our Grievance Officer, who will acknowledge complaints within 48 hours and resolve them within 30 days:</p>
                 <ul>
-                    <li><strong>Grievance Officer:</strong> Ravinder Mann (Proprietor)</li>
+                    <li><strong>Grievance Officer:</strong> Ravinder Deep Singh (Proprietor)</li>
                     <li><strong>Email:</strong> <a href="mailto:rvndr.mann@gmail.com">rvndr.mann@gmail.com</a></li>
                     <li><strong>Phone:</strong> +91 8168157635</li>
                 </ul>
@@ -71,7 +71,7 @@ export default function TermsPage() {
                 <ul>
                     <li><strong>Email:</strong> <a href="mailto:rvndr.mann@gmail.com">rvndr.mann@gmail.com</a></li>
                     <li><strong>Phone:</strong> +91 8168157635</li>
-                    <li><strong>Address:</strong> Flat/Door/Block No. 597, Panchkula, Block – Barwala, City – Panchkula, District – Panchkula, Haryana – 134118, India</li>
+                    <li><strong>Address:</strong> 597, VPO Barwala, Panchkula, Haryana – 134118, India</li>
                 </ul>
             </article>
             <Footer />

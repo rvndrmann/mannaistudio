@@ -10,7 +10,7 @@ export default function RefundPage() {
             <article className="pt-32 pb-20 px-6 max-w-3xl mx-auto prose prose-invert prose-sm prose-headings:font-bold prose-p:text-white/60 prose-li:text-white/60 prose-strong:text-white">
                 <h1>Refund & Cancellation Policy</h1>
                 <p><strong>Effective Date:</strong> June 20, 2026</p>
-                <p><strong>Business:</strong> AIDIRECTORHUB | Proprietor: Ravinder Mann | Udyam Reg: UDYAM-HR-13-0038483</p>
+                <p><strong>Business:</strong> AIDIRECTORHUB | Proprietor: Ravinder Deep Singh | Udyam Reg: UDYAM-HR-13-0038483</p>
 
                 <p><strong>Refund timeline:</strong> All approved refunds are processed within <strong>5–7 business days</strong> to the original payment method.</p>
 
@@ -49,7 +49,7 @@ export default function RefundPage() {
                 <ul>
                     <li><strong>Email:</strong> <a href="mailto:rvndr.mann@gmail.com">rvndr.mann@gmail.com</a></li>
                     <li><strong>Phone:</strong> +91 8168157635</li>
-                    <li><strong>Address:</strong> Flat/Door/Block No. 597, Panchkula, Block – Barwala, City – Panchkula, District – Panchkula, Haryana – 134118, India</li>
+                    <li><strong>Address:</strong> 597, VPO Barwala, Panchkula, Haryana – 134118, India</li>
                 </ul>
             </article>
             <Footer />

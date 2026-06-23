@@ -48,13 +48,11 @@ export default function AboutPage() {
                         <h2 className="text-2xl font-bold mb-4">Registered Business Details</h2>
                         <div className="space-y-3 text-sm text-white/60">
                             <p><strong className="text-white">Legal Name:</strong> AIDIRECTORHUB</p>
-                            <p><strong className="text-white">Proprietor:</strong> Ravinder Mann</p>
+                            <p><strong className="text-white">Proprietor:</strong> Ravinder Deep Singh</p>
                             <div className="flex items-start gap-2">
                                 <MapPin className="w-4 h-4 text-white/30 mt-0.5 shrink-0" />
                                 <p>
-                                    Flat/Door/Block No. 597, Panchkula,
-                                    Block – Barwala, City – Panchkula,
-                                    District – Panchkula, Haryana – 134118, India
+                                    597, VPO Barwala, Panchkula, Haryana – 134118, India
                                 </p>
                             </div>
                             <p><strong className="text-white">Udyam Registration No.:</strong> UDYAM-HR-13-0038483</p>
