@@ -16,7 +16,7 @@ export default function RefundPage() {
                     <li>In case of receipt of damaged or defective items, please report to our customer service team. The request would be entertained once the seller / merchant listed on the Platform has checked and determined the same at its own end. This should be reported within <strong>7 days</strong> of receipt of products.</li>
                     <li>In case you feel that the product received is not as shown on the site or as per your expectations, you must bring it to the notice of our customer service within <strong>7 days</strong> of receiving the product. The customer service team after looking into your complaint will take an appropriate decision.</li>
                     <li>In case of complaints regarding the products that come with a warranty from the manufacturers, please refer the issue to them.</li>
-                    <li>In case of any refunds approved by Ravinder Deep Singh, it will take <strong>7 days</strong> for the refund to be processed to you.</li>
+                    <li>In case of any refunds approved by Ravinder Deep Singh, after processing, the refund will be credited to the original mode of payment within <strong>7–10 business days</strong>, depending on the payment provider/bank.</li>
                 </ol>
 
                 <h2>Contact</h2>
