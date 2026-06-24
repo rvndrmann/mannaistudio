@@ -52,17 +52,13 @@ export default function AboutPage() {
                             <div className="flex items-start gap-2">
                                 <MapPin className="w-4 h-4 text-white/30 mt-0.5 shrink-0" />
                                 <p>
-                                    597, VPO Barwala, Panchkula, Haryana – 134118, India
+                                    VPO Barwala, Panchkula, Haryana – 134118, India
                                 </p>
                             </div>
                             <p><strong className="text-white">Udyam Registration No.:</strong> UDYAM-HR-13-0038483</p>
                             <div className="flex items-center gap-2">
                                 <Mail className="w-4 h-4 text-white/30" />
                                 <a href="mailto:rvndr.mann@gmail.com" className="text-primary hover:underline">rvndr.mann@gmail.com</a>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <Phone className="w-4 h-4 text-white/30" />
-                                <a href="tel:+918168157635" className="text-primary hover:underline">+91 8168157635</a>
                             </div>
                         </div>
                     </div>

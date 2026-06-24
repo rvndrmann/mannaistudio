@@ -43,9 +43,8 @@ export default function PrivacyPage() {
                     <li><strong>Name:</strong> Ravinder Deep Singh</li>
                     <li><strong>Designation:</strong> Grievance Officer / Proprietor</li>
                     <li><strong>Company:</strong> AI Director Hub (Proprietor: Ravinder Deep Singh)</li>
-                    <li><strong>Address:</strong> 597, VPO Barwala, Panchkula, Haryana 134118, India</li>
+                    <li><strong>Address:</strong> VPO Barwala, Panchkula, Haryana 134118, India</li>
                     <li><strong>Email:</strong> <a href="mailto:rvndr.mann@gmail.com">rvndr.mann@gmail.com</a></li>
-                    <li><strong>Phone:</strong> +91 8168157635</li>
                     <li><strong>Time:</strong> Monday – Saturday (10:00 – 18:00 IST)</li>
                 </ul>
             </article>

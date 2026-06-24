@@ -28,8 +28,7 @@ export default function RefundPage() {
                 <h2>Contact</h2>
                 <ul>
                     <li><strong>Email:</strong> <a href="mailto:rvndr.mann@gmail.com">rvndr.mann@gmail.com</a></li>
-                    <li><strong>Phone:</strong> +91 8168157635</li>
-                    <li><strong>Address:</strong> 597, VPO Barwala, Panchkula, Haryana 134118, India</li>
+                    <li><strong>Address:</strong> VPO Barwala, Panchkula, Haryana 134118, India</li>
                 </ul>
             </article>
             <Footer />
