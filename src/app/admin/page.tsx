@@ -170,6 +170,7 @@ function AdminDashboardContent() {
     const [isLoadingStudents, setIsLoadingStudents] = useState(false)
     const [growthData, setGrowthData] = useState<{ name: string; joins: number }[]>([])
     const [allEnrollments, setAllEnrollments] = useState<any[]>([])
+    const [allPayments, setAllPayments] = useState<{ amount: number; created_at: string }[]>([])
     const [analyticsMode, setAnalyticsMode] = useState<'daily' | 'weekly' | 'monthly'>('daily')
     const [analyticsDate, setAnalyticsDate] = useState(new Date())
     const [totalRevenue, setTotalRevenue] = useState(0)
@@ -756,10 +757,26 @@ function AdminDashboardContent() {
 
             // Store all enrollments for analytics
             setAllEnrollments(enrollments || [])
+
+            // Revenue comes from real successful payments (subscriptions + bid purchases),
+            // not course enrollments.
+            const { data: paymentsData } = await supabase
+                .from('payments')
+                .select('amount, created_at, status')
+                .eq('status', 'success')
+            const payments = (paymentsData || []).map((p: any) => ({
+                amount: Number(p.amount) || 0,
+                created_at: p.created_at,
+            }))
+            setAllPayments(payments)
+
             const today = new Date().toDateString()
-            const todayEnrollments = (enrollments || []).filter((e: any) => new Date(e.created_at).toDateString() === today).length
-            setTodayRevenue(todayEnrollments * pricePerEnrollment)
-            setTotalRevenue((enrollments || []).length * pricePerEnrollment)
+            setTodayRevenue(
+                payments
+                    .filter((p) => new Date(p.created_at).toDateString() === today)
+                    .reduce((sum, p) => sum + p.amount, 0)
+            )
+            setTotalRevenue(payments.reduce((sum, p) => sum + p.amount, 0))
 
             setAdminStats({
                 totalStudents: profiles.length,
@@ -792,11 +809,11 @@ function AdminDashboardContent() {
                 return d
             })
             return slots.map(d => {
-                const count = allEnrollments.filter(e => new Date(e.created_at).toDateString() === d.toDateString()).length
+                const dayPayments = allPayments.filter(p => new Date(p.created_at).toDateString() === d.toDateString())
                 return {
                     name: `${d.getDate()} ${months[d.getMonth()]}`,
-                    enrollments: count,
-                    revenue: count * pricePerEnrollment,
+                    enrollments: dayPayments.length,
+                    revenue: dayPayments.reduce((s, p) => s + p.amount, 0),
                 }
             })
         }
@@ -811,14 +828,14 @@ function AdminDashboardContent() {
                 return { start: weekStart, end: weekEnd }
             })
             return slots.map(({ start, end }) => {
-                const count = allEnrollments.filter(e => {
-                    const d = new Date(e.created_at)
+                const weekPayments = allPayments.filter(p => {
+                    const d = new Date(p.created_at)
                     return d >= start && d <= new Date(end.getTime() + 86400000)
-                }).length
+                })
                 return {
                     name: `${start.getDate()} ${months[start.getMonth()]} - ${end.getDate()} ${months[end.getMonth()]}`,
-                    enrollments: count,
-                    revenue: count * pricePerEnrollment,
+                    enrollments: weekPayments.length,
+                    revenue: weekPayments.reduce((s, p) => s + p.amount, 0),
                 }
             })
         }
@@ -829,14 +846,14 @@ function AdminDashboardContent() {
             return d
         })
         return slots.map(d => {
-            const count = allEnrollments.filter(e => {
-                const ed = new Date(e.created_at)
+            const monthPayments = allPayments.filter(p => {
+                const ed = new Date(p.created_at)
                 return ed.getMonth() === d.getMonth() && ed.getFullYear() === d.getFullYear()
-            }).length
+            })
             return {
                 name: `${months[d.getMonth()]} ${d.getFullYear().toString().slice(2)}`,
-                enrollments: count,
-                revenue: count * pricePerEnrollment,
+                enrollments: monthPayments.length,
+                revenue: monthPayments.reduce((s, p) => s + p.amount, 0),
             }
         })
     }
@@ -978,7 +995,7 @@ function AdminDashboardContent() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                                     <StatCard label="Total Students" value={String(adminStats.totalStudents)} change="Live" icon={Users} color="text-violet-400" />
                                     <StatCard label="Total Enrollments" value={String(adminStats.totalEnrollments)} change="Live" icon={CheckCircle2} color="text-emerald-400" />
-                                    <StatCard label="Total Revenue" value={`₹${totalRevenue.toLocaleString('en-IN')}`} change={`₹${pricePerEnrollment}/mo each`} icon={DollarSign} color="text-cyan-400" />
+                                    <StatCard label="Total Revenue" value={`₹${totalRevenue.toLocaleString('en-IN')}`} change="Subscriptions + bids" icon={DollarSign} color="text-cyan-400" />
                                     <StatCard label="Today's Sales" value={`₹${todayRevenue.toLocaleString('en-IN')}`} change="Live" icon={TrendingUp} color="text-amber-400" />
                                     <StatCard label="Active Challenges" value={String(adminStats.activeChallenges)} change="Live" icon={Play} color="text-red-400" />
                                 </div>
@@ -989,7 +1006,7 @@ function AdminDashboardContent() {
                                     <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                                         <div>
                                             <h3 className="font-bold text-lg">Revenue Analytics</h3>
-                                            <p className="text-xs text-white/30">₹{pricePerEnrollment} per enrollment • {getAnalyticsLabel()}</p>
+                                            <p className="text-xs text-white/30">Subscriptions + bid purchases • {getAnalyticsLabel()}</p>
                                         </div>
                                         <div className="flex items-center gap-3">
                                             {/* Mode Toggle */}
