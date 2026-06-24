@@ -96,10 +96,20 @@ export async function POST(req: Request) {
                 break
             }
 
+            case 'subscription.pending':
+            case 'subscription.halted': {
+                // A charge failed. Razorpay auto-retries (and emails the customer a
+                // card-update link). We take no action: membership_expires_at simply
+                // is not extended, so access lapses naturally if payment never recovers.
+                // Keep the subscription link intact — these states are recoverable
+                // (a successful card update moves the subscription back to active).
+                break
+            }
+
             case 'subscription.cancelled':
-            case 'subscription.halted':
             case 'subscription.completed': {
-                // Stop auto-renewal. Existing access remains until membership_expires_at.
+                // Terminal states: stop auto-renewal and unlink. Existing access
+                // remains until membership_expires_at.
                 await supabase.rpc('set_razorpay_subscription', {
                     p_profile_id: profileId,
                     p_subscription_id: '',
