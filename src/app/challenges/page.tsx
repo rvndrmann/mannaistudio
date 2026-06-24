@@ -222,7 +222,7 @@ export default function ChallengesPage() {
                                 onClick={() => setActiveTab(tab)}
                                 className={cn(
                                     "px-6 py-2 rounded-xl text-sm font-medium transition-all capitalize",
-                                    activeTab === tab ? "bg-primary text-white shadow-lg shadow-primary/20" : "text-white/40 hover:text-white"
+                                    activeTab === tab ? "bg-primary text-black shadow-lg shadow-primary/20" : "text-white/40 hover:text-white"
                                 )}
                             >
                                 {tab}
@@ -287,7 +287,7 @@ export default function ChallengesPage() {
                                                             <Trophy className="w-6 h-6 text-white fill-white" />
                                                         </div>
                                                     </div>
-                                                    <div className="absolute top-3 left-3 bg-primary text-white font-bold text-[10px] px-3 py-1 rounded-full flex items-center gap-1.5 uppercase tracking-widest shadow-lg">
+                                                    <div className="absolute top-3 left-3 bg-primary text-black font-bold text-[10px] px-3 py-1 rounded-full flex items-center gap-1.5 uppercase tracking-widest shadow-lg">
                                                         <Star className="w-3 h-3 fill-white" /> Winner
                                                     </div>
                                                 </div>
@@ -304,7 +304,7 @@ export default function ChallengesPage() {
                                                                     setWatchingStudentName(winnerSub.studentName);
                                                                 }
                                                             }}
-                                                            className="px-4 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:scale-105 transition-transform"
+                                                            className="px-4 py-2 bg-primary text-black text-xs font-bold rounded-xl hover:scale-105 transition-transform"
                                                         >
                                                             Watch Winner Video
                                                         </button>

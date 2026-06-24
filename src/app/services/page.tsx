@@ -500,7 +500,7 @@ export default function ServicesPage() {
                                 >
                                     {tab.label}
                                     {tab.count > 0 && (
-                                        <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-[10px] text-white">{tab.count}</span>
+                                        <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-[10px] text-black">{tab.count}</span>
                                     )}
                                     {activeFeedTab === tab.id && <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-white" />}
                                 </button>

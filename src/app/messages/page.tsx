@@ -202,7 +202,7 @@ export default function MessagesPage() {
                                                 )}
                                             </div>
                                             {thread.unreadCount > 0 && (
-                                                <span className="shrink-0 mt-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-white">
+                                                <span className="shrink-0 mt-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-black">
                                                     {thread.unreadCount}
                                                 </span>
                                             )}
@@ -255,14 +255,14 @@ export default function MessagesPage() {
                                                     <div className={cn(
                                                         "max-w-[75%] rounded-2xl px-4 py-2.5",
                                                         isMine
-                                                            ? "bg-primary text-white rounded-br-md"
+                                                            ? "bg-primary text-black rounded-br-md"
                                                             : "bg-white/10 text-white/90 rounded-bl-md"
                                                     )}>
                                                         {!isMine && (
                                                             <p className="text-[10px] font-bold text-white/40 mb-0.5">{msg.senderName}</p>
                                                         )}
                                                         <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
-                                                        <p className={cn("text-[9px] mt-1", isMine ? "text-white/60" : "text-white/30")}>
+                                                        <p className={cn("text-[9px] mt-1", isMine ? "text-black/50" : "text-white/30")}>
                                                             {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                                         </p>
                                                     </div>

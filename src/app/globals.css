@@ -3,15 +3,15 @@
 @tailwind utilities;
 
 :root {
-  --background: 0 0% 4%;
+  --background: 0 0% 0%;
   --foreground: 0 0% 98%;
-  --card: 0 0% 5%;
+  --card: 0 0% 3%;
   --card-foreground: 0 0% 98%;
-  --popover: 0 0% 5%;
+  --popover: 0 0% 3%;
   --popover-foreground: 0 0% 98%;
   /* Brand lime green (matches the logo) */
   --primary: 74 89% 56%;
-  --primary-foreground: 0 0% 4%;
+  --primary-foreground: 0 0% 0%;
   --secondary: 0 0% 12%;
   --secondary-foreground: 0 0% 98%;
   --muted: 0 0% 12%;

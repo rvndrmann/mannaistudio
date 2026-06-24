@@ -8,6 +8,10 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
     title: "AI Director Hub | Learn AI Video Creation",
     description: "Learn AI video creation step by step — scriptwriting with AI agents, prompt engineering, character and scene generation, and editing. Practice with weekly challenges, build your portfolio, and earn through AI jobs.",
+    icons: {
+        icon: "/favicon.png",
+        apple: "/favicon.png",
+    },
 };
 
 export default function RootLayout({
@@ -17,8 +21,8 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en" className="dark">
-            <body dir="ltr" className={`${inter.className} bg-[#0a0a0f] text-white selection:bg-primary/30`}>
-                <div className="fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,rgba(124,58,237,0.1),transparent)] transition-all pointer-events-none" />
+            <body dir="ltr" className={`${inter.className} bg-black text-white selection:bg-primary/30`}>
+                <div className="fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,rgba(196,245,43,0.06),transparent)] transition-all pointer-events-none" />
                 <AuthProvider>
                     {children}
                 </AuthProvider>

@@ -50,7 +50,7 @@ export default function Navbar() {
     return (
         <nav className="fixed top-0 left-0 right-0 z-50 flex justify-center p-4">
             {offerText && (
-                <div className="absolute left-0 right-0 top-0 bg-primary px-4 py-1 text-center text-xs font-bold text-white">
+                <div className="absolute left-0 right-0 top-0 bg-primary px-4 py-1 text-center text-xs font-bold text-black">
                     {offerText}
                 </div>
             )}

@@ -907,7 +907,7 @@ function AdminDashboardContent() {
                                 onClick={() => setActiveTab("overview")}
                                 className={cn(
                                     "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
-                                    activeTab === "overview" ? "bg-primary text-white" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                    activeTab === "overview" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
                                 <LayoutDashboard className="w-4 h-4" /> Dashboard
@@ -916,7 +916,7 @@ function AdminDashboardContent() {
                                 onClick={() => setActiveTab("courses")}
                                 className={cn(
                                     "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
-                                    activeTab === "courses" ? "bg-primary text-white" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                    activeTab === "courses" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
                                 <BookOpen className="w-4 h-4" /> Manage Courses
@@ -925,7 +925,7 @@ function AdminDashboardContent() {
                                 onClick={() => setActiveTab("showcase")}
                                 className={cn(
                                     "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
-                                    activeTab === "showcase" ? "bg-primary text-white" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                    activeTab === "showcase" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
                                 <Tv className="w-4 h-4" /> Showcase Manager
@@ -934,7 +934,7 @@ function AdminDashboardContent() {
                                 onClick={() => setActiveTab("challenges")}
                                 className={cn(
                                     "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
-                                    activeTab === "challenges" ? "bg-primary text-white" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                    activeTab === "challenges" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
                                 <Trophy className="w-4 h-4" /> Challenges
@@ -943,7 +943,7 @@ function AdminDashboardContent() {
                                 onClick={() => setActiveTab("service-requests")}
                                 className={cn(
                                     "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
-                                    activeTab === "service-requests" ? "bg-primary text-white" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                    activeTab === "service-requests" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
                                 <Inbox className="w-4 h-4" /> Job Posts
@@ -952,7 +952,7 @@ function AdminDashboardContent() {
                                 onClick={() => { setActiveTab("students"); loadStudents(); }}
                                 className={cn(
                                     "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
-                                    activeTab === "students" ? "bg-primary text-white" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                    activeTab === "students" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
                                 <Users className="w-4 h-4" /> Students
@@ -961,7 +961,7 @@ function AdminDashboardContent() {
                                 onClick={() => setActiveTab("billing")}
                                 className={cn(
                                     "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
-                                    activeTab === "billing" ? "bg-primary text-white" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                    activeTab === "billing" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
                                 <DollarSign className="w-4 h-4" /> Plan & Offers
@@ -1017,7 +1017,7 @@ function AdminDashboardContent() {
                                                         onClick={() => { setAnalyticsMode(mode); setAnalyticsDate(new Date()) }}
                                                         className={cn(
                                                             "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
-                                                            analyticsMode === mode ? "bg-primary text-white" : "text-white/40 hover:text-white"
+                                                            analyticsMode === mode ? "bg-primary text-black" : "text-white/40 hover:text-white"
                                                         )}
                                                     >
                                                         {mode}
@@ -1206,7 +1206,7 @@ function AdminDashboardContent() {
                                                                                 className={cn(
                                                                                     "px-4 py-2 rounded-lg text-xs font-bold transition-colors",
                                                                                     editForm?.price === option.value
-                                                                                        ? "bg-primary text-white"
+                                                                                        ? "bg-primary text-black"
                                                                                         : "text-white/40 hover:text-white hover:bg-white/5"
                                                                                 )}
                                                                             >
@@ -1608,7 +1608,7 @@ function AdminDashboardContent() {
                                                                         challenge.winnerId === sub.id ? "bg-primary/10 border-primary" : "bg-white/[0.02] border-white/5 hover:border-white/10"
                                                                     )}>
                                                                         {challenge.winnerId === sub.id && (
-                                                                            <div className="absolute -top-2 -right-2 bg-primary text-white p-1 rounded-full shadow-lg z-10">
+                                                                            <div className="absolute -top-2 -right-2 bg-primary text-black p-1 rounded-full shadow-lg z-10">
                                                                                 <Trophy className="w-3 h-3" />
                                                                             </div>
                                                                         )}
@@ -1644,7 +1644,7 @@ function AdminDashboardContent() {
                                                                                     onClick={() => handleSelectWinner(challenge.id, sub.id)}
                                                                                     className={cn(
                                                                                         "mt-2 w-full py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
-                                                                                        challenge.winnerId === sub.id ? "bg-primary text-white" : "bg-white/5 text-white/40 hover:bg-primary hover:text-white"
+                                                                                        challenge.winnerId === sub.id ? "bg-primary text-black" : "bg-white/5 text-white/40 hover:bg-primary hover:text-black"
                                                                                     )}
                                                                                 >
                                                                                     {challenge.winnerId === sub.id ? "Winner Selected" : "Choose Winner"}
