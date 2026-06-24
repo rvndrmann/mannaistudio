@@ -52,12 +52,12 @@ export async function POST(req: Request) {
                     p_profile_id: profileId,
                 })
 
-                // Extends membership by one month and marks it active (not a trial).
+                // Extends membership by one month, marks it active, and clears the
+                // trial flag (handled inside the SECURITY DEFINER RPC so it bypasses RLS).
                 await supabase.rpc('activate_membership_by_profile', {
                     p_profile_id: profileId,
                     p_payment_id: paymentId,
                 })
-                await supabase.from('profiles').update({ is_trial: false }).eq('id', profileId)
                 break
             }
 
