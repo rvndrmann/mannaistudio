@@ -37,6 +37,10 @@ type EnrolledStudent = {
     full_name: string
     email: string
     avatar_url: string
+    membership_status?: string | null
+    membership_expires_at?: string | null
+    is_trial?: boolean | null
+    bids?: number | null
 }
 
 type AdminStats = {
@@ -684,13 +688,13 @@ function AdminDashboardContent() {
 
             const { data: profileData } = await supabase
                 .from('profiles')
-                .select('id, full_name, email, avatar_url, created_at')
+                .select('id, full_name, email, avatar_url, created_at, membership_status, membership_expires_at, is_trial, bids')
                 .order('created_at', { ascending: false })
             const profiles = profileData || []
 
             const profileMap = new Map(profiles.map((p: any) => [p.id, p]))
             const students: EnrolledStudent[] = (enrollments || []).map((e: any) => {
-                const p = profileMap.get(e.profile_id) || {}
+                const p: any = profileMap.get(e.profile_id) || {}
                 return {
                     profile_id: e.profile_id,
                     course_id: e.course_id,
@@ -699,6 +703,10 @@ function AdminDashboardContent() {
                     full_name: p.full_name || 'Unknown',
                     email: p.email || '',
                     avatar_url: p.avatar_url || '',
+                    membership_status: p.membership_status,
+                    membership_expires_at: p.membership_expires_at,
+                    is_trial: p.is_trial,
+                    bids: p.bids,
                 }
             })
             const enrolledProfileIds = new Set(students.map((student) => student.profile_id))
@@ -712,6 +720,10 @@ function AdminDashboardContent() {
                     full_name: profile.full_name || 'Student',
                     email: profile.email || '',
                     avatar_url: profile.avatar_url || '',
+                    membership_status: profile.membership_status,
+                    membership_expires_at: profile.membership_expires_at,
+                    is_trial: profile.is_trial,
+                    bids: profile.bids,
                 }))
             setEnrolledStudents([...students, ...freeStudents])
 
@@ -1824,6 +1836,8 @@ function AdminDashboardContent() {
                                             return Array.from(grouped.entries()).map(([profileId, entries]) => {
                                                 const student = entries[0]
                                                 const enrolledCourseCount = entries.filter((entry) => entry.course_id !== null).length
+                                                const memberActive = student.membership_status === 'active' && (!student.membership_expires_at || new Date(student.membership_expires_at).getTime() > Date.now())
+                                                const memberLabel = memberActive ? (student.is_trial ? 'Trial' : 'Pro Member') : 'Free'
                                                 return (
                                                     <div key={profileId} className="glass-card p-6 rounded-2xl border-white/10">
                                                         <div className="flex items-center gap-4 mb-4">
@@ -1838,7 +1852,14 @@ function AdminDashboardContent() {
                                                                 <h3 className="text-lg font-bold">{student.full_name}</h3>
                                                                 <p className="text-sm text-white/40">{student.email}</p>
                                                             </div>
-                                                            <div className="ml-auto text-right">
+                                                            <div className="ml-auto flex items-center gap-2">
+                                                                <span className={cn(
+                                                                    "px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider",
+                                                                    memberActive
+                                                                        ? (student.is_trial ? "bg-amber-400/10 text-amber-400" : "bg-emerald-400/10 text-emerald-400")
+                                                                        : "bg-white/5 text-white/40"
+                                                                )}>{memberLabel}</span>
+                                                                <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-white/5 text-white/50">{student.bids ?? 0} bids</span>
                                                                 <span className="text-xs font-bold text-primary">{enrolledCourseCount} course{enrolledCourseCount === 1 ? '' : 's'}</span>
                                                             </div>
                                                         </div>
@@ -1846,8 +1867,7 @@ function AdminDashboardContent() {
                                                             {entries[0]?.course_id === null ? (
                                                                 <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs">
                                                                     <Users className="w-3 h-3 text-white/40" />
-                                                                    <span className="font-medium">Free student</span>
-                                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-white/5 text-white/40">No enrollment</span>
+                                                                    <span className="font-medium">No course enrollment</span>
                                                                     <span className="text-white/20">Joined {new Date(student.created_at).toLocaleDateString()}</span>
                                                                 </div>
                                                             ) : entries.map((e, i) => {
