@@ -62,10 +62,8 @@ export default function Navbar() {
                     offerText && "mt-6"
                 )}
             >
-                <Link href="/" className="flex items-center gap-2 group">
-                    <div className="bg-primary/20 p-2 rounded-lg group-hover:bg-primary/30 transition-colors">
-                        <Zap className="w-6 h-6 text-primary fill-primary/20" />
-                    </div>
+                <Link href="/" className="flex items-center gap-2.5 group">
+                    <img src="/logo.png" alt="AI Director Hub" className="w-10 h-10 rounded-full group-hover:scale-105 transition-transform" />
                     <span className="text-xl font-bold tracking-tight text-white">AI Director <span className="text-primary">Hub</span></span>
                 </Link>
 

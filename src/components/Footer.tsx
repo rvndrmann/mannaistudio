@@ -22,8 +22,8 @@ export default function Footer() {
         <footer className="border-t border-white/10 mt-20">
             <div className="max-w-6xl mx-auto px-6 py-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
                 <div className="sm:col-span-2 lg:col-span-1">
-                    <Link href="/" className="flex items-center gap-2 font-bold text-lg mb-3">
-                        <Zap className="w-5 h-5 text-primary" />
+                    <Link href="/" className="flex items-center gap-2.5 font-bold text-lg mb-3">
+                        <img src="/logo.png" alt="AI Director Hub" className="w-9 h-9 rounded-full" />
                         <span>AI Director <span className="text-primary">Hub</span></span>
                     </Link>
                     <p className="text-sm text-white/40 leading-relaxed">

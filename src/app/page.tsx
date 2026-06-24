@@ -65,6 +65,13 @@ export default function LandingPage() {
                 <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-lime-400/10 rounded-full blur-[96px] -z-10 animate-pulse-slow delay-1000" />
 
                 <div className="max-w-6xl mx-auto text-center">
+                    <motion.img
+                        src="/logo.png"
+                        alt="AI Director Hub"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="w-28 h-28 md:w-32 md:h-32 rounded-full mx-auto mb-8 shadow-[0_0_60px_-15px] shadow-primary/50"
+                    />
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
