@@ -44,6 +44,16 @@ export default function BillingPage() {
         ? new Date(membership.membership_expires_at).toLocaleDateString()
         : ""
 
+    const loadRazorpayScript = () =>
+        new Promise<boolean>((resolve) => {
+            if (typeof window !== "undefined" && (window as any).Razorpay) return resolve(true)
+            const script = document.createElement("script")
+            script.src = "https://checkout.razorpay.com/v1/checkout.js"
+            script.onload = () => resolve(true)
+            script.onerror = () => resolve(false)
+            document.body.appendChild(script)
+        })
+
     const handleCheckout = async () => {
         if (!user) {
             signInWithGoogle()
@@ -52,41 +62,29 @@ export default function BillingPage() {
 
         setIsCheckingOut(true)
         try {
-            const res = await fetch('/api/checkout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    productType: 'membership',
-                    price: String(activePrice),
-                    userEmail: user.email,
-                    userName: user.user_metadata?.full_name || 'Student',
-                    userId: user.id,
-                }),
+            const ok = await loadRazorpayScript()
+            if (!ok) throw new Error("Failed to load payment gateway.")
+
+            const res = await fetch('/api/razorpay/subscription', { method: 'POST' })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data?.error || "Could not start subscription.")
+
+            const rzp = new (window as any).Razorpay({
+                key: data.keyId,
+                subscription_id: data.subscriptionId,
+                name: billingSettings.planName,
+                description: "Monthly membership",
+                prefill: { name: data.name, email: data.email },
+                theme: { color: "#7C3AED" },
+                handler: () => {
+                    // Subscription authorised. Webhook activates membership; refresh shortly.
+                    window.location.href = "/billing?subscription=success"
+                },
+                modal: {
+                    ondismiss: () => setIsCheckingOut(false),
+                },
             })
-
-            const payuData = await res.json()
-            const form = document.createElement('form')
-            form.method = 'POST'
-            form.action = process.env.NEXT_PUBLIC_PAYU_BASE_URL || 'https://secure.payu.in/_payment'
-
-            Object.entries(payuData).forEach(([key, value]) => {
-                const input = document.createElement('input')
-                input.type = 'hidden'
-                input.name = key
-                input.value = value as string
-                form.appendChild(input)
-            })
-
-            ;['surl', 'furl'].forEach((name) => {
-                const input = document.createElement('input')
-                input.type = 'hidden'
-                input.name = name
-                input.value = `${window.location.origin}/api/payu/webhook`
-                form.appendChild(input)
-            })
-
-            document.body.appendChild(form)
-            form.submit()
+            rzp.open()
         } catch {
             setIsCheckingOut(false)
         }
@@ -196,7 +194,7 @@ export default function BillingPage() {
                             className="btn-primary w-full flex items-center justify-center gap-2 py-3 disabled:opacity-60"
                         >
                             {isCheckingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
-                            {active ? "Renew Membership" : user ? "Start Membership" : "Sign In to Subscribe"}
+                            {active ? "Manage Subscription" : user ? "Subscribe Now" : "Sign In to Subscribe"}
                         </button>
                     ) : (
                         <div className="rounded-xl bg-primary/10 border border-primary/20 p-4 text-center">
