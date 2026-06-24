@@ -171,7 +171,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                 particleCount: 100,
                 spread: 70,
                 origin: { y: 0.6 },
-                colors: ['#7c3aed', '#06b6d4', '#f59e0b']
+                colors: ['#C4F52B', '#06b6d4', '#f59e0b']
             })
             setTimeout(() => setShowXPAlert(false), 3000)
         }
@@ -350,7 +350,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                 <motion.div
                                     initial={{ width: 0 }}
                                     animate={{ width: `${progress}%` }}
-                                    className="absolute inset-0 bg-gradient-to-r from-primary to-cyan-400"
+                                    className="absolute inset-0 bg-gradient-to-r from-primary to-lime-300"
                                 />
                             </div>
 

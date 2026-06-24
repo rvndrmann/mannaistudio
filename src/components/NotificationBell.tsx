@@ -10,7 +10,7 @@ import { fetchNotifications, getJobChatClient, markNotificationsRead, type Notif
 
 function notificationIcon(type: string) {
     if (type === "job_won") return <Trophy className="w-4 h-4 text-amber-400" />
-    if (type === "job_message") return <MessageSquare className="w-4 h-4 text-cyan-400" />
+    if (type === "job_message") return <MessageSquare className="w-4 h-4 text-lime-300" />
     return <Info className="w-4 h-4 text-white/40" />
 }
 

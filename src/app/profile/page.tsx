@@ -352,7 +352,7 @@ export default function ProfilePage() {
 
                     <div className="flex flex-col md:flex-row items-center gap-8 md:gap-12">
                         <div className="relative group">
-                            <div className="w-32 h-32 md:w-40 md:h-40 rounded-3xl bg-gradient-to-br from-primary to-cyan-400 p-1">
+                            <div className="w-32 h-32 md:w-40 md:h-40 rounded-3xl bg-gradient-to-br from-primary to-lime-300 p-1">
                                 <div className="w-full h-full rounded-[20px] bg-[#0a0a0f] flex items-center justify-center overflow-hidden">
                                     {avatarUrl ? (
                                         <img
@@ -398,7 +398,7 @@ export default function ProfilePage() {
                                     <motion.div
                                         initial={{ width: 0 }}
                                         animate={{ width: `${progress}%` }}
-                                        className="h-full bg-gradient-to-r from-primary to-cyan-400"
+                                        className="h-full bg-gradient-to-r from-primary to-lime-300"
                                     />
                                 </div>
                             </div>
@@ -419,7 +419,7 @@ export default function ProfilePage() {
                                 onClick={handleSharePortfolio}
                                 className="flex items-center justify-center gap-2 w-full px-6 py-2.5 bg-white/10 rounded-xl text-sm font-bold hover:bg-white/20 transition-colors"
                             >
-                                <Share2 className="w-4 h-4 text-cyan-300" />
+                                <Share2 className="w-4 h-4 text-lime-200" />
                                 Share Portfolio
                             </button>
                             <div

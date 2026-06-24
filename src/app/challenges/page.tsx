@@ -355,7 +355,7 @@ export default function ChallengesPage() {
                                         <div className="space-y-1">
                                             <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">ENTRIES</p>
                                             <div className="flex items-center gap-2 text-sm font-medium">
-                                                <Users className="w-4 h-4 text-cyan-400" /> {challenge.participants} Joined
+                                                <Users className="w-4 h-4 text-lime-300" /> {challenge.participants} Joined
                                             </div>
                                         </div>
                                         <div className="space-y-1">

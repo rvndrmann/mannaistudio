@@ -75,7 +75,7 @@ export default function BillingPage() {
                 name: billingSettings.planName,
                 description: "Monthly membership",
                 prefill: { name: data.name, email: data.email },
-                theme: { color: "#7C3AED" },
+                theme: { color: "#C4F52B" },
                 handler: () => {
                     // Subscription authorised. Webhook activates membership; refresh shortly.
                     window.location.href = "/billing?subscription=success"

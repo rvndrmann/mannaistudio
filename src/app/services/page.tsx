@@ -128,7 +128,7 @@ export default function ServicesPage() {
                 name: "AI Director Hub",
                 description: `${data.bids} bids`,
                 prefill: { name: data.name, email: data.email },
-                theme: { color: "#7C3AED" },
+                theme: { color: "#C4F52B" },
                 handler: async () => {
                     // Webhook credits the bids; poll a moment then refresh balance.
                     setShowBuyBids(false)
@@ -314,7 +314,7 @@ export default function ServicesPage() {
                 particleCount: 80,
                 spread: 60,
                 origin: { y: 0.72 },
-                colors: ['#7c3aed', '#06b6d4', '#22c55e']
+                colors: ['#C4F52B', '#06b6d4', '#22c55e']
             })
             setTimeout(() => setShowBidSuccess(false), 2400)
         } catch {
@@ -531,7 +531,7 @@ export default function ServicesPage() {
                                                 <div className="flex flex-wrap items-center gap-2 mb-2">
                                                     <span className={cn(
                                                         "px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider",
-                                                        job.status === "pending" ? "bg-cyan-400/10 text-cyan-300" :
+                                                        job.status === "pending" ? "bg-lime-300/10 text-lime-200" :
                                                             job.status === "awarded" ? "bg-emerald-400/10 text-emerald-300" :
                                                                 job.status === "approved" ? "bg-primary/10 text-primary" : "bg-white/5 text-white/40"
                                                     )}>
@@ -685,7 +685,7 @@ export default function ServicesPage() {
                                                 <p className="line-clamp-1 text-sm font-bold">{job.title}</p>
                                                 <span className={cn(
                                                     "shrink-0 rounded-md px-2 py-0.5 text-[9px] font-bold uppercase",
-                                                    job.status === "pending" ? "bg-cyan-400/10 text-cyan-300" :
+                                                    job.status === "pending" ? "bg-lime-300/10 text-lime-200" :
                                                         job.status === "approved" ? "bg-primary/10 text-primary" :
                                                             job.status === "awarded" ? "bg-emerald-400/10 text-emerald-300" :
                                                                 job.status === "rejected" ? "bg-red-400/10 text-red-300" : "bg-white/5 text-white/40"

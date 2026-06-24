@@ -993,9 +993,9 @@ function AdminDashboardContent() {
 
                                 {/* Stats Grid */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-                                    <StatCard label="Total Students" value={String(adminStats.totalStudents)} change="Live" icon={Users} color="text-violet-400" />
+                                    <StatCard label="Total Students" value={String(adminStats.totalStudents)} change="Live" icon={Users} color="text-lime-400" />
                                     <StatCard label="Total Enrollments" value={String(adminStats.totalEnrollments)} change="Live" icon={CheckCircle2} color="text-emerald-400" />
-                                    <StatCard label="Total Revenue" value={`₹${totalRevenue.toLocaleString('en-IN')}`} change="Subscriptions + bids" icon={DollarSign} color="text-cyan-400" />
+                                    <StatCard label="Total Revenue" value={`₹${totalRevenue.toLocaleString('en-IN')}`} change="Subscriptions + bids" icon={DollarSign} color="text-lime-300" />
                                     <StatCard label="Today's Sales" value={`₹${todayRevenue.toLocaleString('en-IN')}`} change="Live" icon={TrendingUp} color="text-amber-400" />
                                     <StatCard label="Active Challenges" value={String(adminStats.activeChallenges)} change="Live" icon={Play} color="text-red-400" />
                                 </div>
@@ -1055,7 +1055,7 @@ function AdminDashboardContent() {
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                         <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
                                             <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Period Revenue</p>
-                                            <p className="text-xl font-bold text-cyan-400">₹{analyticsPeriodRevenue.toLocaleString('en-IN')}</p>
+                                            <p className="text-xl font-bold text-lime-300">₹{analyticsPeriodRevenue.toLocaleString('en-IN')}</p>
                                         </div>
                                         <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
                                             <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Enrollments</p>
@@ -1067,7 +1067,7 @@ function AdminDashboardContent() {
                                         </div>
                                         <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
                                             <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Best {analyticsMode === 'daily' ? 'Day' : analyticsMode === 'weekly' ? 'Week' : 'Month'}</p>
-                                            <p className="text-xl font-bold text-violet-400">₹{Math.max(...analyticsChartData.map(d => d.revenue), 0).toLocaleString('en-IN')}</p>
+                                            <p className="text-xl font-bold text-lime-400">₹{Math.max(...analyticsChartData.map(d => d.revenue), 0).toLocaleString('en-IN')}</p>
                                         </div>
                                     </div>
 
@@ -1106,8 +1106,8 @@ function AdminDashboardContent() {
                                                         <AreaChart data={analyticsChartData}>
                                                             <defs>
                                                                 <linearGradient id="colorEnroll" x1="0" y1="0" x2="0" y2="1">
-                                                                    <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.3} />
-                                                                    <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
+                                                                    <stop offset="5%" stopColor="#C4F52B" stopOpacity={0.3} />
+                                                                    <stop offset="95%" stopColor="#C4F52B" stopOpacity={0} />
                                                                 </linearGradient>
                                                             </defs>
                                                             <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
@@ -1117,7 +1117,7 @@ function AdminDashboardContent() {
                                                                 contentStyle={{ backgroundColor: '#1a1a24', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
                                                                 itemStyle={{ color: '#fff' }}
                                                             />
-                                                            <Area type="monotone" dataKey="enrollments" stroke="#7c3aed" fillOpacity={1} fill="url(#colorEnroll)" strokeWidth={3} />
+                                                            <Area type="monotone" dataKey="enrollments" stroke="#C4F52B" fillOpacity={1} fill="url(#colorEnroll)" strokeWidth={3} />
                                                         </AreaChart>
                                                     </ResponsiveContainer>
                                                 ) : (
@@ -1686,7 +1686,7 @@ function AdminDashboardContent() {
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    <StatCard label="Pending Review" value={String(serviceRequests.filter(request => request.status === "pending").length)} change="Approve before live" icon={Inbox} color="text-cyan-400" />
+                                    <StatCard label="Pending Review" value={String(serviceRequests.filter(request => request.status === "pending").length)} change="Approve before live" icon={Inbox} color="text-lime-300" />
                                     <StatCard label="Live Jobs" value={String(serviceRequests.filter(request => request.status === "approved").length)} change="Open for bids" icon={Mail} color="text-amber-400" />
                                     <StatCard label="Awarded" value={String(serviceRequests.filter(request => request.status === "awarded").length)} change="Creator selected" icon={CheckCircle2} color="text-emerald-400" />
                                 </div>
@@ -1715,7 +1715,7 @@ function AdminDashboardContent() {
                                                             <h3 className="text-xl font-bold">{request.title}</h3>
                                                             <span className={cn(
                                                                 "px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider",
-                                                                request.status === "pending" ? "bg-cyan-400/10 text-cyan-300" :
+                                                                request.status === "pending" ? "bg-lime-300/10 text-lime-200" :
                                                                     request.status === "approved" ? "bg-amber-400/10 text-amber-300" :
                                                                         request.status === "awarded" ? "bg-emerald-400/10 text-emerald-300" : "bg-white/10 text-white/50"
                                                             )}>

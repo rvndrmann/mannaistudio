@@ -87,7 +87,7 @@ export default function PortfolioPage() {
             <section className="pt-32 px-6 max-w-7xl mx-auto">
                 <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-12">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-                        <div className="w-28 h-28 rounded-3xl bg-gradient-to-br from-primary to-cyan-400 p-1">
+                        <div className="w-28 h-28 rounded-3xl bg-gradient-to-br from-primary to-lime-300 p-1">
                             <div className="w-full h-full rounded-[20px] bg-[#0a0a0f] flex items-center justify-center overflow-hidden">
                                 {portfolio.avatarUrl ? (
                                     <img src={portfolio.avatarUrl} alt={portfolio.name} className="w-full h-full object-cover" />
@@ -113,7 +113,7 @@ export default function PortfolioPage() {
                                     <span className="text-sm font-bold">{portfolio.xp} XP</span>
                                 </div>
                                 <div className="px-4 py-2 bg-white/5 rounded-xl border border-white/10 flex items-center gap-2">
-                                    <Video className="w-4 h-4 text-cyan-300" />
+                                    <Video className="w-4 h-4 text-lime-200" />
                                     <span className="text-sm font-bold">{portfolio.videos.length} Works</span>
                                 </div>
                             </div>

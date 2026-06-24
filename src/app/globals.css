@@ -3,30 +3,31 @@
 @tailwind utilities;
 
 :root {
-  --background: 240 10% 3.9%;
+  --background: 0 0% 4%;
   --foreground: 0 0% 98%;
-  --card: 240 10% 3.9%;
+  --card: 0 0% 5%;
   --card-foreground: 0 0% 98%;
-  --popover: 240 10% 3.9%;
+  --popover: 0 0% 5%;
   --popover-foreground: 0 0% 98%;
-  --primary: 263.4 70% 50.4%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 240 3.7% 15.9%;
+  /* Brand lime green (matches the logo) */
+  --primary: 74 89% 56%;
+  --primary-foreground: 0 0% 4%;
+  --secondary: 0 0% 12%;
   --secondary-foreground: 0 0% 98%;
-  --muted: 240 3.7% 15.9%;
-  --muted-foreground: 240 5% 64.9%;
-  --accent: 240 3.7% 15.9%;
+  --muted: 0 0% 12%;
+  --muted-foreground: 0 0% 64%;
+  --accent: 0 0% 12%;
   --accent-foreground: 0 0% 98%;
   --destructive: 0 62.8% 30.6%;
   --destructive-foreground: 0 0% 98%;
-  --border: 240 3.7% 15.9%;
-  --input: 240 3.7% 15.9%;
-  --ring: 263.4 70% 50.4%;
+  --border: 0 0% 14%;
+  --input: 0 0% 14%;
+  --ring: 74 89% 56%;
   --radius: 0.75rem;
 }
 
 .dark {
-  --background: 240 10% 3.9%;
+  --background: 0 0% 4%;
   --foreground: 0 0% 98%;
   /* ... same for dark mode since we're dark by default ... */
 }
@@ -55,7 +56,7 @@
   }
 
   .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-violet-400 via-fuchsia-400 to-amber-300;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-lime-300 via-lime-400 to-emerald-300;
   }
 }
 

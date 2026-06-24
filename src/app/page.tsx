@@ -62,7 +62,7 @@ export default function LandingPage() {
             <section className="relative pt-32 pb-20 px-6 overflow-hidden">
                 {/* Animated Background Orbs */}
                 <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-[128px] -z-10 animate-pulse-slow" />
-                <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-cyan-500/10 rounded-full blur-[96px] -z-10 animate-pulse-slow delay-1000" />
+                <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-lime-400/10 rounded-full blur-[96px] -z-10 animate-pulse-slow delay-1000" />
 
                 <div className="max-w-6xl mx-auto text-center">
                     <motion.div
@@ -136,7 +136,7 @@ export default function LandingPage() {
                                 title: "Portfolio & AI Jobs",
                                 desc: "Upload your best AI videos to a shareable creator portfolio, then land paid work through our AI jobs marketplace built for AI video creators.",
                                 icon: Briefcase,
-                                color: "text-cyan-400"
+                                color: "text-lime-300"
                             }
                         ].map((feature, i) => (
                             <motion.div
