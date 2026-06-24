@@ -2,7 +2,7 @@
 
 import Navbar from "@/components/Navbar"
 import { motion, AnimatePresence } from "framer-motion"
-import { BriefcaseBusiness, Send, Clock, DollarSign, MessageSquare, CheckCircle2, Loader2, UserCheck, Mail, Phone, Bell, Trophy, X, Search, SlidersHorizontal } from "lucide-react"
+import { BriefcaseBusiness, Send, Clock, DollarSign, MessageSquare, CheckCircle2, Loader2, UserCheck, Mail, Phone, Bell, Trophy, X, Search, SlidersHorizontal, Coins, Plus, Minus } from "lucide-react"
 import { FormEvent, useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -42,6 +42,9 @@ const emptyBidForm = {
     message: "",
 }
 
+const BID_COST = 2 // bids charged per job bid
+const PRICE_PER_BID = 10 // ₹ per bid
+
 export default function ServicesPage() {
     const { user, signInWithGoogle } = useAuth()
     const [jobs, setJobs] = useState<ServiceRequest[]>([])
@@ -58,6 +61,10 @@ export default function ServicesPage() {
     const [message, setMessage] = useState("")
     const [searchQuery, setSearchQuery] = useState("")
     const [activeFeedTab, setActiveFeedTab] = useState<"best" | "recent" | "proposals" | "posted">("best")
+    const [bids, setBids] = useState<number | null>(null)
+    const [showBuyBids, setShowBuyBids] = useState(false)
+    const [buyQty, setBuyQty] = useState(10)
+    const [isBuyingBids, setIsBuyingBids] = useState(false)
     const knownJobIdsRef = useRef<Set<string>>(new Set())
     const hasLoadedJobsRef = useRef(false)
     useEffect(() => {
@@ -80,7 +87,62 @@ export default function ServicesPage() {
         }))
         loadJobs()
         loadMyPostedJobs(user.id)
+        loadBids(user.id)
     }, [user])
+
+    const loadBids = async (userId: string) => {
+        const supabase = await getServiceRequestClient()
+        if (!supabase) return
+        const { data } = await supabase.from("profiles").select("bids").eq("id", userId).single()
+        setBids(data?.bids ?? 0)
+    }
+
+    const loadRazorpayScript = () =>
+        new Promise<boolean>((resolve) => {
+            if (typeof window !== "undefined" && (window as any).Razorpay) return resolve(true)
+            const script = document.createElement("script")
+            script.src = "https://checkout.razorpay.com/v1/checkout.js"
+            script.onload = () => resolve(true)
+            script.onerror = () => resolve(false)
+            document.body.appendChild(script)
+        })
+
+    const handleBuyBids = async () => {
+        if (!user) { signInWithGoogle(); return }
+        setIsBuyingBids(true)
+        try {
+            const ok = await loadRazorpayScript()
+            if (!ok) throw new Error("Failed to load payment gateway.")
+            const res = await fetch("/api/razorpay/bids", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ bids: buyQty }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data?.error || "Could not start purchase.")
+
+            const rzp = new (window as any).Razorpay({
+                key: data.keyId,
+                order_id: data.orderId,
+                amount: data.amount,
+                name: "AI Director Hub",
+                description: `${data.bids} bids`,
+                prefill: { name: data.name, email: data.email },
+                theme: { color: "#7C3AED" },
+                handler: async () => {
+                    // Webhook credits the bids; poll a moment then refresh balance.
+                    setShowBuyBids(false)
+                    setTimeout(() => user && loadBids(user.id), 4000)
+                    setMessage("Payment received — bids will be added shortly.")
+                },
+                modal: { ondismiss: () => setIsBuyingBids(false) },
+            })
+            rzp.open()
+        } catch (e: any) {
+            setMessage(e?.message || "Could not start purchase.")
+            setIsBuyingBids(false)
+        }
+    }
 
     const loadJobs = async (silent = false) => {
         if (!silent) setIsLoadingJobs(true)
@@ -202,6 +264,19 @@ export default function ServicesPage() {
                 avatar_url: user.user_metadata?.avatar_url || "",
                 email: bidderEmail,
             }, { onConflict: "id" })
+
+            // New bids cost BID_COST bids; editing an existing bid is free.
+            if (!editingBid) {
+                const { data: spent } = await supabase.rpc("spend_bids", { p_cost: BID_COST })
+                if (!spent) {
+                    setMessage(`You need ${BID_COST} bids to bid on a job. Buy more bids to continue.`)
+                    setIsSubmittingBid(false)
+                    setSelectedJob(null)
+                    setShowBuyBids(true)
+                    return
+                }
+                if (user) loadBids(user.id)
+            }
 
             const bid = editingBid
                 ? await updateServiceBid(supabase, editingBid.id, {
@@ -335,6 +410,22 @@ export default function ServicesPage() {
                         <p className="text-white/60 leading-relaxed">
                             Post AI video projects, review creator bids, and pick the right person to work with. Admins approve every job before it goes live.
                         </p>
+                        {user && (
+                            <div className="mt-4 flex flex-wrap items-center gap-3 p-4 bg-amber-400/5 border border-amber-400/20 rounded-xl">
+                                <div className="flex items-center gap-2">
+                                    <Coins className="w-5 h-5 text-amber-400" />
+                                    <span className="text-lg font-black">{bids ?? "—"}</span>
+                                    <span className="text-xs text-white/40 font-bold uppercase tracking-widest">Bids</span>
+                                </div>
+                                <span className="text-xs text-white/35">Each job bid costs {BID_COST} bids.</span>
+                                <button
+                                    onClick={() => { setBuyQty(10); setShowBuyBids(true) }}
+                                    className="ml-auto inline-flex items-center gap-2 px-4 py-2 bg-amber-400 text-black rounded-lg text-sm font-bold hover:bg-amber-300 transition-colors"
+                                >
+                                    <Plus className="w-4 h-4" /> Buy Bids
+                                </button>
+                            </div>
+                        )}
                         <div className="mt-4 p-4 bg-primary/10 border border-primary/20 rounded-xl">
                             <p className="text-sm text-white/70"><strong className="text-primary">Need professional AI video services?</strong> Our AI services are priced on a custom-quote basis — pricing varies per project scope and requirements.</p>
                             <Link href="/contact" className="inline-flex items-center gap-2 mt-3 px-5 py-2 bg-primary rounded-lg text-sm font-bold hover:bg-primary/80 transition-colors">
@@ -706,14 +797,96 @@ export default function ServicesPage() {
                                 <textarea required rows={5} value={bidForm.message} onChange={(e) => setBidForm({ ...bidForm, message: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50 resize-none" placeholder="Custom message, portfolio links, approach..." />
                             </div>
 
-                            <div className="p-6 border-t border-white/5 bg-white/[0.02] flex justify-end gap-3">
+                            <div className="p-6 border-t border-white/5 bg-white/[0.02] flex items-center justify-between gap-3">
+                                {!editingBid && (
+                                    <span className="text-xs text-white/40 flex items-center gap-1.5">
+                                        <Coins className="w-3.5 h-3.5 text-amber-400" /> Costs {BID_COST} bids · Balance: {bids ?? "—"}
+                                    </span>
+                                )}
+                                <div className="flex justify-end gap-3 ml-auto">
                                 <button type="button" onClick={() => { setSelectedJob(null); setEditingBid(null) }} disabled={isSubmittingBid} className="px-5 py-3 bg-white/5 rounded-xl text-sm font-bold hover:bg-white/10 transition-colors disabled:opacity-40">Cancel</button>
                                 <button type="submit" disabled={isSubmittingBid} className="btn-primary flex items-center justify-center gap-2 px-6 py-3 disabled:opacity-60">
                                     {isSubmittingBid ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                                     {isSubmittingBid ? "Saving..." : editingBid ? "Save Changes" : "Send Bid"}
                                 </button>
+                                </div>
                             </div>
                         </motion.form>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Buy Bids Modal */}
+            <AnimatePresence>
+                {showBuyBids && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+                        onClick={() => !isBuyingBids && setShowBuyBids(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full max-w-md glass-card rounded-2xl border-white/10 p-6 space-y-5"
+                        >
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-xl font-bold flex items-center gap-2"><Coins className="w-5 h-5 text-amber-400" /> Buy Bids</h3>
+                                <button onClick={() => setShowBuyBids(false)} className="p-1.5 rounded-lg hover:bg-white/10"><X className="w-4 h-4" /></button>
+                            </div>
+                            <p className="text-sm text-white/50">Bids are ₹{PRICE_PER_BID} each (10 bids = ₹{PRICE_PER_BID * 10}). Each job bid costs {BID_COST} bids.</p>
+
+                            <div className="flex items-center justify-center gap-4">
+                                <button
+                                    onClick={() => setBuyQty((q) => Math.max(10, q - 10))}
+                                    className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10"
+                                >
+                                    <Minus className="w-4 h-4" />
+                                </button>
+                                <div className="text-center min-w-[120px]">
+                                    <p className="text-4xl font-black">{buyQty}</p>
+                                    <p className="text-xs text-white/40 font-bold uppercase tracking-widest">Bids</p>
+                                </div>
+                                <button
+                                    onClick={() => setBuyQty((q) => q + 10)}
+                                    className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10"
+                                >
+                                    <Plus className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2 justify-center">
+                                {[10, 50, 100, 250].map((q) => (
+                                    <button
+                                        key={q}
+                                        onClick={() => setBuyQty(q)}
+                                        className={cn(
+                                            "px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors",
+                                            buyQty === q ? "bg-amber-400 text-black border-amber-400" : "bg-white/5 border-white/10 hover:bg-white/10"
+                                        )}
+                                    >
+                                        {q}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="flex items-center justify-between rounded-xl bg-white/5 border border-white/10 px-4 py-3">
+                                <span className="text-sm text-white/50">Total</span>
+                                <span className="text-2xl font-black">₹{buyQty * PRICE_PER_BID}</span>
+                            </div>
+
+                            <button
+                                onClick={handleBuyBids}
+                                disabled={isBuyingBids}
+                                className="btn-primary w-full flex items-center justify-center gap-2 py-3 disabled:opacity-60"
+                            >
+                                {isBuyingBids ? <Loader2 className="w-4 h-4 animate-spin" /> : <Coins className="w-4 h-4" />}
+                                Pay ₹{buyQty * PRICE_PER_BID}
+                            </button>
+                        </motion.div>
                     </motion.div>
                 )}
             </AnimatePresence>

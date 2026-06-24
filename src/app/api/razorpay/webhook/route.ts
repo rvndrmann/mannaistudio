@@ -26,16 +26,41 @@ export async function POST(req: Request) {
         const eventType: string = event?.event || ''
         const subscription = event?.payload?.subscription?.entity
         const paymentEntity = event?.payload?.payment?.entity
+        const orderEntity = event?.payload?.order?.entity
+        const subscriptionId: string = subscription?.id || ''
+
+        const supabase = await createClient()
+
+        // --- One-time bid purchase (order.paid) ---
+        if (eventType === 'order.paid') {
+            const notes = orderEntity?.notes || {}
+            if (notes.type === 'bids' && notes.profile_id) {
+                const bidsToAdd = Number(notes.bids)
+                if (Number.isFinite(bidsToAdd) && bidsToAdd > 0) {
+                    await supabase.rpc('add_bids', { p_profile_id: notes.profile_id, p_amount: bidsToAdd })
+                    const orderPaymentId = paymentEntity?.id || orderEntity?.id
+                    await supabase.rpc('record_payment', {
+                        p_email: notes.email || paymentEntity?.email || '',
+                        p_txnid: orderPaymentId,
+                        p_payment_id: orderPaymentId,
+                        p_amount: orderEntity?.amount ? String(orderEntity.amount / 100) : '',
+                        p_product_info: `Bids: ${bidsToAdd}`,
+                        p_status: 'success',
+                        p_profile_id: notes.profile_id,
+                    })
+                }
+            }
+            return NextResponse.json({ received: true })
+        }
+
+        // --- Subscription events ---
         const profileId: string | undefined = subscription?.notes?.profile_id
         const email: string = subscription?.notes?.email || paymentEntity?.email || ''
-        const subscriptionId: string = subscription?.id || ''
 
         if (!profileId) {
             // Nothing we can reconcile against; acknowledge so Razorpay stops retrying.
             return NextResponse.json({ received: true })
         }
-
-        const supabase = await createClient()
 
         switch (eventType) {
             case 'subscription.charged': {
@@ -58,6 +83,8 @@ export async function POST(req: Request) {
                     p_profile_id: profileId,
                     p_payment_id: paymentId,
                 })
+                // One-time 100-bid bonus for paid members (no-op if already granted).
+                await supabase.rpc('grant_member_bids', { p_profile_id: profileId })
                 break
             }
 
