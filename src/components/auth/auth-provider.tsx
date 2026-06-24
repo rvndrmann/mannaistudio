@@ -3,14 +3,10 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { User } from '@supabase/supabase-js'
 
-type AuthResult = { error: string | null; needsConfirmation?: boolean }
-
 type AuthContextType = {
     user: User | null
     loading: boolean
     signInWithGoogle: () => Promise<void>
-    signInWithEmail: (email: string, password: string) => Promise<AuthResult>
-    signUpWithEmail: (email: string, password: string, fullName: string) => Promise<AuthResult>
     signOut: () => Promise<void>
 }
 
@@ -62,32 +58,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         })
     }
 
-    const signInWithEmail = async (email: string, password: string): Promise<AuthResult> => {
-        if (!isSupabaseConfigured()) return { error: 'Supabase is not configured.' }
-        const { createClient } = await import('@/lib/supabase/client')
-        const supabase = createClient()
-        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
-        return { error: error ? error.message : null }
-    }
-
-    const signUpWithEmail = async (email: string, password: string, fullName: string): Promise<AuthResult> => {
-        if (!isSupabaseConfigured()) return { error: 'Supabase is not configured.' }
-        const { createClient } = await import('@/lib/supabase/client')
-        const supabase = createClient()
-        const { data, error } = await supabase.auth.signUp({
-            email: email.trim(),
-            password,
-            options: {
-                data: { full_name: fullName.trim() },
-                emailRedirectTo: `${window.location.origin}/auth/callback`,
-            },
-        })
-        if (error) return { error: error.message }
-        // If email confirmation is required, there is no active session yet.
-        const needsConfirmation = !data.session
-        return { error: null, needsConfirmation }
-    }
-
     const signOut = async () => {
         if (!isSupabaseConfigured()) return
         const { createClient } = await import('@/lib/supabase/client')
@@ -97,7 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     return (
-        <AuthContext.Provider value={{ user, loading, signInWithGoogle, signInWithEmail, signUpWithEmail, signOut }}>
+        <AuthContext.Provider value={{ user, loading, signInWithGoogle, signOut }}>
             {children}
         </AuthContext.Provider>
     )
