@@ -7,6 +7,7 @@ import { AuthProvider } from "@/components/auth/auth-provider";
 const inter = Inter({ subsets: ["latin"] });
 
 const FB_PIXEL_ID = "998332272805619";
+const GA4_ID = "G-G1Y59LLJ3S";
 
 export const metadata: Metadata = {
     title: "AI Director Hub | Learn AI Video Creation",
@@ -28,6 +29,14 @@ export default function RootLayout({
     return (
         <html lang="en" className="dark">
             <body dir="ltr" className={`${inter.className} bg-black text-white selection:bg-primary/30`}>
+                {/* Google Analytics 4 */}
+                <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`} strategy="afterInteractive" />
+                <Script id="ga4" strategy="afterInteractive">
+                    {`window.dataLayer = window.dataLayer || [];
+                    function gtag(){dataLayer.push(arguments);}
+                    gtag('js', new Date());
+                    gtag('config', '${GA4_ID}');`}
+                </Script>
                 {/* Meta Pixel */}
                 <Script id="meta-pixel" strategy="afterInteractive">
                     {`!function(f,b,e,v,n,t,s)
