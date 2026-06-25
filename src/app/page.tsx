@@ -366,6 +366,13 @@ export default function LandingPage() {
                     <p className="text-white/60">One membership unlocks all premium courses and creator tools.</p>
                 </div>
 
+                <div className="mb-8 max-w-md mx-auto rounded-2xl border border-primary/30 bg-primary/5 p-5 text-center">
+                    <p className="text-sm font-bold text-primary">Free account — no payment to start</p>
+                    <p className="text-sm text-white/60 mt-1">
+                        Sign up free to post jobs, bid on AI jobs, and build your portfolio. Every account gets <strong className="text-white">20 free bids</strong> to start.
+                    </p>
+                </div>
+
                 <div className="glass-card rounded-3xl border-white/10 p-8 md:p-10 max-w-md mx-auto text-center relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-48 h-48 bg-primary/10 blur-[80px] rounded-full -z-10" />
                     <h3 className="text-xl font-bold">{billingSettings.planName}</h3>

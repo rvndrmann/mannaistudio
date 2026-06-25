@@ -26,7 +26,7 @@ function LoginInner() {
                             <LogIn className="w-8 h-8 text-primary" />
                         </div>
                         <h1 className="text-3xl font-bold tracking-tight">Welcome to AI Director Hub</h1>
-                        <p className="text-white/50 text-sm mt-2">Sign in to access your courses, portfolio, and AI jobs.</p>
+                        <p className="text-white/50 text-sm mt-2">Free account — post jobs &amp; build your portfolio free. Every new account gets 20 free bids to start.</p>
                     </div>
 
                     <button

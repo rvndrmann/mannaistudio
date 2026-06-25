@@ -22,6 +22,8 @@ export async function GET(request: Request) {
 
                 // Grant free trial for new users
                 await supabase.rpc('grant_free_trial', { p_user_id: user.id })
+                // One-time 20 free bids so free accounts can post & bid on AI jobs
+                await supabase.rpc('grant_starter_bids', { p_user_id: user.id })
             }
             return NextResponse.redirect(`${origin}${next}`)
         }
