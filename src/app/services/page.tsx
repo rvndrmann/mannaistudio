@@ -18,6 +18,7 @@ import {
     type ServiceRequest,
 } from "@/lib/service-requests"
 import Link from "next/link"
+import { fbTrack } from "@/lib/fbpixel"
 // @ts-ignore
 import confetti from "canvas-confetti"
 
@@ -110,6 +111,7 @@ export default function ServicesPage() {
     const handleBuyBids = async () => {
         if (!user) { signInWithGoogle(); return }
         setIsBuyingBids(true)
+        fbTrack("InitiateCheckout", { content_name: "Bids", content_category: "bids", num_items: buyQty, value: buyQty * PRICE_PER_BID, currency: "INR" })
         try {
             const ok = await loadRazorpayScript()
             if (!ok) throw new Error("Failed to load payment gateway.")
@@ -131,6 +133,7 @@ export default function ServicesPage() {
                 theme: { color: "#C4F52B" },
                 handler: async () => {
                     // Webhook credits the bids; poll a moment then refresh balance.
+                    fbTrack("Purchase", { content_name: "Bids", content_category: "bids", num_items: data.bids, value: data.bids * PRICE_PER_BID, currency: "INR" })
                     setShowBuyBids(false)
                     setTimeout(() => user && loadBids(user.id), 4000)
                     setMessage("Payment received — bids will be added shortly.")

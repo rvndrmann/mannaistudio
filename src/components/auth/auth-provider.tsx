@@ -35,6 +35,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
                 setUser(session?.user ?? null)
                 setLoading(false)
+                // Fire a registration/login conversion when a fresh sign-in completes.
+                if (event === 'SIGNED_IN') {
+                    import('@/lib/fbpixel').then(({ fbTrack }) => fbTrack('CompleteRegistration')).catch(() => {})
+                }
             })
 
             return () => subscription.unsubscribe()

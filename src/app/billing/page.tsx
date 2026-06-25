@@ -5,6 +5,7 @@ import Footer from "@/components/Footer"
 import { useAuth } from "@/components/auth/auth-provider"
 import { createClient } from "@/lib/supabase/client"
 import { defaultBillingSettings, fetchBillingSettings, fetchMyMembership, fetchMyPayments, getActivePlanPrice, isMembershipActive, membershipPlan, type PaymentRecord } from "@/lib/membership"
+import { fbTrack } from "@/lib/fbpixel"
 import { CheckCircle2, CreditCard, Loader2, Lock, Play, Receipt, Sparkles, XCircle } from "lucide-react"
 import { useEffect, useState } from "react"
 
@@ -61,6 +62,7 @@ export default function BillingPage() {
         }
 
         setIsCheckingOut(true)
+        fbTrack('InitiateCheckout', { content_name: billingSettings.planName, content_category: 'membership', value: activePrice, currency: 'INR' })
         try {
             const ok = await loadRazorpayScript()
             if (!ok) throw new Error("Failed to load payment gateway.")
@@ -78,6 +80,8 @@ export default function BillingPage() {
                 theme: { color: "#C4F52B" },
                 handler: () => {
                     // Subscription authorised. Webhook activates membership; refresh shortly.
+                    fbTrack('Subscribe', { value: activePrice, currency: 'INR', predicted_ltv: activePrice * 12 })
+                    fbTrack('Purchase', { content_name: billingSettings.planName, content_category: 'membership', value: activePrice, currency: 'INR' })
                     window.location.href = "/billing?subscription=success"
                 },
                 modal: {
