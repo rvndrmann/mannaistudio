@@ -89,7 +89,7 @@ export default function LandingPage() {
                         className="text-5xl md:text-7xl font-bold tracking-tight mb-6"
                     >
                         Become an <br />
-                        <span className="text-gradient">AI Video Director</span>
+                        <span className="text-gradient">AI Director</span>
                     </motion.h1>
 
                     <motion.p
