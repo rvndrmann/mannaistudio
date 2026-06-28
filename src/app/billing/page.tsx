@@ -230,7 +230,7 @@ export default function BillingPage() {
                         <button
                             onClick={handleCancel}
                             disabled={isCancelling}
-                            className="w-full text-xs text-white/40 hover:text-red-400 transition-colors disabled:opacity-60"
+                            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-sm font-medium text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-60"
                         >
                             {isCancelling ? "Cancelling…" : "Cancel subscription"}
                         </button>
