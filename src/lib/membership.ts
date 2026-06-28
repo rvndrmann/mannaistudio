@@ -68,7 +68,7 @@ export async function isAdminUser(supabase: SupabaseClient, userId: string) {
 export async function fetchMyMembership(supabase: SupabaseClient, userId: string) {
     const { data, error } = await supabase
         .from("profiles")
-        .select("membership_status, membership_expires_at, membership_payment_id, is_trial")
+        .select("membership_status, membership_expires_at, membership_payment_id, is_trial, razorpay_subscription_id")
         .eq("id", userId)
         .single()
 

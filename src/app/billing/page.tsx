@@ -15,6 +15,8 @@ export default function BillingPage() {
     const [billingSettings, setBillingSettings] = useState(defaultBillingSettings)
     const [isLoadingPlan, setIsLoadingPlan] = useState(true)
     const [isCheckingOut, setIsCheckingOut] = useState(false)
+    const [isCancelling, setIsCancelling] = useState(false)
+    const [cancelMsg, setCancelMsg] = useState("")
     const [payments, setPayments] = useState<PaymentRecord[]>([])
 
     useEffect(() => {
@@ -54,6 +56,23 @@ export default function BillingPage() {
             script.onerror = () => resolve(false)
             document.body.appendChild(script)
         })
+
+    const handleCancel = async () => {
+        if (!window.confirm("Cancel your membership? You'll keep access until the end of your current paid period.")) return
+        setIsCancelling(true)
+        setCancelMsg("")
+        try {
+            const res = await fetch('/api/razorpay/subscription/cancel', { method: 'POST' })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data?.error || "Could not cancel.")
+            setCancelMsg("Subscription cancelled. You keep access until " + (expiresAt || "your period ends") + ".")
+            setMembership((m: any) => ({ ...m, razorpay_subscription_id: null }))
+        } catch (e: any) {
+            setCancelMsg(e?.message || "Could not cancel subscription.")
+        } finally {
+            setIsCancelling(false)
+        }
+    }
 
     const handleCheckout = async () => {
         if (!user) {
@@ -206,6 +225,17 @@ export default function BillingPage() {
                             <p className="text-xs text-white/40 mt-1">Sign up now and enjoy free Pro access. Paid plans coming soon.</p>
                         </div>
                     )}
+
+                    {active && !membership?.is_trial && membership?.razorpay_subscription_id && (
+                        <button
+                            onClick={handleCancel}
+                            disabled={isCancelling}
+                            className="w-full text-xs text-white/40 hover:text-red-400 transition-colors disabled:opacity-60"
+                        >
+                            {isCancelling ? "Cancelling…" : "Cancel subscription"}
+                        </button>
+                    )}
+                    {cancelMsg && <p className="text-xs text-center text-white/50">{cancelMsg}</p>}
                 </div>
             </section>
             <Footer />
