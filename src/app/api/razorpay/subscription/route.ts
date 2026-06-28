@@ -7,9 +7,8 @@ export async function POST() {
     try {
         const keyId = process.env.RAZORPAY_KEY_ID
         const keySecret = process.env.RAZORPAY_KEY_SECRET
-        const planId = process.env.RAZORPAY_PLAN_ID
 
-        if (!keyId || !keySecret || !planId) {
+        if (!keyId || !keySecret) {
             return NextResponse.json({ error: 'Razorpay is not configured.' }, { status: 500 })
         }
 
@@ -17,6 +16,18 @@ export async function POST() {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) {
             return NextResponse.json({ error: 'Not authenticated.' }, { status: 401 })
+        }
+
+        // Active plan is configurable from the DB (site_settings.billing.razorpay_plan_id);
+        // falls back to the RAZORPAY_PLAN_ID env var.
+        const { data: billingRow } = await supabase
+            .from('site_settings')
+            .select('value')
+            .eq('key', 'billing')
+            .single()
+        const planId = (billingRow?.value as any)?.razorpay_plan_id || process.env.RAZORPAY_PLAN_ID
+        if (!planId) {
+            return NextResponse.json({ error: 'No subscription plan configured.' }, { status: 500 })
         }
 
         const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret })

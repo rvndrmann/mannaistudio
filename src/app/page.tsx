@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/components/auth/auth-provider"
 import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, membershipPlan } from "@/lib/membership"
 import { CheckCircle2 } from "lucide-react"
+import Countdown from "@/components/Countdown"
 
 export default function LandingPage() {
     const { user, signInWithGoogle } = useAuth()
@@ -386,6 +387,13 @@ export default function LandingPage() {
                         <span className="text-5xl font-bold">₹{getActivePlanPrice(billingSettings)}</span>
                         <span className="text-white/40"> / month</span>
                     </div>
+
+                    {billingSettings.offerEnabled && billingSettings.offerEndsAt && (
+                        <div className="mb-6 rounded-xl bg-primary/5 border border-primary/20 p-4">
+                            <p className="text-xs font-bold uppercase tracking-widest text-primary mb-3">Early member price ends in</p>
+                            <Countdown endsAt={billingSettings.offerEndsAt} />
+                        </div>
+                    )}
 
                     <ul className="text-left space-y-3 mb-8 max-w-xs mx-auto">
                         {[

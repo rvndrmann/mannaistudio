@@ -15,6 +15,8 @@ export type BillingSettings = {
     offerPrice: number
     offerText: string
     paymentsEnabled: boolean
+    razorpayPlanId: string
+    offerEndsAt: string
 }
 
 export const defaultBillingSettings: BillingSettings = {
@@ -24,6 +26,8 @@ export const defaultBillingSettings: BillingSettings = {
     offerPrice: 799,
     offerText: "Limited offer: AI Director Hub Pro for ₹799/month",
     paymentsEnabled: false,
+    razorpayPlanId: "",
+    offerEndsAt: "",
 }
 
 export function normalizeBillingSettings(value: any): BillingSettings {
@@ -34,6 +38,8 @@ export function normalizeBillingSettings(value: any): BillingSettings {
         offerPrice: Number(value?.offer_price || defaultBillingSettings.offerPrice),
         offerText: value?.offer_text || defaultBillingSettings.offerText,
         paymentsEnabled: value?.payments_enabled !== undefined ? Boolean(value.payments_enabled) : defaultBillingSettings.paymentsEnabled,
+        razorpayPlanId: value?.razorpay_plan_id || defaultBillingSettings.razorpayPlanId,
+        offerEndsAt: value?.offer_ends_at || defaultBillingSettings.offerEndsAt,
     }
 }
 

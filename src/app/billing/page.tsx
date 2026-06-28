@@ -6,6 +6,7 @@ import { useAuth } from "@/components/auth/auth-provider"
 import { createClient } from "@/lib/supabase/client"
 import { defaultBillingSettings, fetchBillingSettings, fetchMyMembership, fetchMyPayments, getActivePlanPrice, isMembershipActive, membershipPlan, type PaymentRecord } from "@/lib/membership"
 import { fbTrack } from "@/lib/fbpixel"
+import Countdown from "@/components/Countdown"
 import { CheckCircle2, CreditCard, Loader2, Lock, Play, Receipt, Sparkles, XCircle } from "lucide-react"
 import { useEffect, useState } from "react"
 
@@ -194,6 +195,13 @@ export default function BillingPage() {
                         <span className="text-4xl font-bold">₹{activePrice}</span>
                         <span className="text-white/40"> / month</span>
                     </div>
+
+                    {billingSettings.offerEnabled && billingSettings.offerEndsAt && (
+                        <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 text-center">
+                            <p className="text-xs font-bold uppercase tracking-widest text-primary mb-3">Offer ends in</p>
+                            <Countdown endsAt={billingSettings.offerEndsAt} />
+                        </div>
+                    )}
 
                     <div className="rounded-xl bg-white/5 border border-white/10 p-4">
                         {loading || isLoadingPlan ? (

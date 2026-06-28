@@ -282,6 +282,8 @@ function AdminDashboardContent() {
                 offerPrice: Number(data?.offer_price || billingSettings.offerPrice),
                 offerText: data?.offer_text || billingSettings.offerText,
                 paymentsEnabled: data?.payments_enabled !== undefined ? Boolean(data.payments_enabled) : billingSettings.paymentsEnabled,
+                razorpayPlanId: data?.razorpay_plan_id || billingSettings.razorpayPlanId,
+                offerEndsAt: data?.offer_ends_at || billingSettings.offerEndsAt,
             })
             setBillingMessage("Plan settings saved.")
         } catch (err: any) {
