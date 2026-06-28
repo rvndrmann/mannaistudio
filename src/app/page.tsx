@@ -395,12 +395,16 @@ export default function LandingPage() {
                         </div>
                     )}
 
-                    <ul className="text-left space-y-3 mb-8 max-w-xs mx-auto">
+                    <p className="text-sm font-bold text-white/80 mb-3 text-center">Everything included in your membership:</p>
+                    <ul className="text-left space-y-3 mb-8 max-w-sm mx-auto">
                         {[
-                            "Access to all premium courses",
+                            "Full AI Filmmaking Crash Course (idea → finished film)",
+                            "Script Writer AI Agent — turn ideas into shoot-ready scripts",
+                            "Seedance Prompt AI Agent — master prompts for cinematic shots",
+                            "Access to all premium courses & resources",
                             `Showcase up to ${membershipPlan.portfolioLimit} portfolio videos`,
                             "Weekly challenges with paid rewards",
-                            "AI jobs marketplace access",
+                            "AI Jobs marketplace access",
                         ].map((feature) => (
                             <li key={feature} className="flex items-start gap-2 text-sm text-white/70">
                                 <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
