@@ -26,7 +26,7 @@ export default function Footer() {
                         <span>AI Director <span className="text-primary">Hub</span></span>
                     </Link>
                     <p className="text-sm text-white/40 leading-relaxed">
-                        Learn AI video creation step by step — from scriptwriting to publishing. Build your portfolio and find work through AI jobs.
+                        Learn AI video creation step by step — from scriptwriting to publishing. Master AI tools and build your creator portfolio.
                     </p>
                 </div>
 

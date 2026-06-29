@@ -99,8 +99,8 @@ export default function LandingPage() {
                         transition={{ delay: 0.2 }}
                         className="text-lg md:text-xl text-white/60 max-w-2xl mx-auto mb-10 leading-relaxed"
                     >
-                        Learn the complete AI filmmaking workflow with project-based courses, practice
-                        in weekly challenges with rewards, and put your skills to work through AI jobs.
+                        Learn the complete AI filmmaking workflow with project-based courses, AI
+                        scriptwriting and prompt agents, and build your own creator portfolio.
                     </motion.p>
 
                     <motion.div
@@ -133,14 +133,14 @@ export default function LandingPage() {
                                 color: "text-primary"
                             },
                             {
-                                title: "Weekly Challenges & Rewards",
-                                desc: "Put your skills to the test in weekly creation challenges with prizes. Earn XP, level up, and climb the leaderboard as you complete chapters.",
+                                title: "Built-in AI Agents",
+                                desc: "Work faster with our Script Writer Agent — turn ideas into shoot-ready scripts — and the Seedance Prompt Agent that crafts master prompts for cinematic shots.",
                                 icon: Trophy,
                                 color: "text-amber-400"
                             },
                             {
-                                title: "Portfolio & AI Jobs",
-                                desc: "Upload your best AI videos to a shareable creator portfolio, then take on AI video projects through our AI jobs marketplace built for AI video creators.",
+                                title: "Creator Portfolio",
+                                desc: "Upload your best AI videos to a shareable creator portfolio that shows off your work and skills as an AI video director.",
                                 icon: Briefcase,
                                 color: "text-lime-300"
                             }
@@ -403,8 +403,8 @@ export default function LandingPage() {
                             "Seedance Prompt AI Agent — master prompts for cinematic shots",
                             "Access to all premium courses & resources",
                             `Showcase up to ${membershipPlan.portfolioLimit} portfolio videos`,
-                            "Weekly challenges with rewards",
-                            "AI Jobs marketplace access",
+                            "Downloadable prompt docs & resources",
+                            "Priority access to new tools & lessons",
                         ].map((feature) => (
                             <li key={feature} className="flex items-start gap-2 text-sm text-white/70">
                                 <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />

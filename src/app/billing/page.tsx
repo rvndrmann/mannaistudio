@@ -149,8 +149,7 @@ export default function BillingPage() {
                                 "Seedance Prompt AI Agent — master prompts for cinematic shots",
                                 "Access to all premium courses & downloadable resources",
                                 "Showcase up to 10 portfolio videos",
-                                "Weekly challenges with rewards",
-                                "AI Jobs marketplace access",
+                                "Downloadable prompt docs & resources",
                                 "Priority access to new tools & lessons",
                             ].map((feature) => (
                                 <li key={feature} className="flex items-start gap-2 text-sm text-white/70">
