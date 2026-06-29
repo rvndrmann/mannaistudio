@@ -8,6 +8,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 const FB_PIXEL_ID = "998332272805619";
 const GA4_ID = "G-G1Y59LLJ3S";
+const GADS_ID = "AW-18272552489";
 const CLARITY_ID = "xckmot5rdo";
 
 export const metadata: Metadata = {
@@ -36,7 +37,8 @@ export default function RootLayout({
                     {`window.dataLayer = window.dataLayer || [];
                     function gtag(){dataLayer.push(arguments);}
                     gtag('js', new Date());
-                    gtag('config', '${GA4_ID}');`}
+                    gtag('config', '${GA4_ID}');
+                    gtag('config', '${GADS_ID}');`}
                 </Script>
                 {/* Microsoft Clarity */}
                 <Script id="ms-clarity" strategy="afterInteractive">
