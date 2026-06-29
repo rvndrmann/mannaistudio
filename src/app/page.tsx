@@ -123,6 +123,37 @@ export default function LandingPage() {
                         </Link>
                     </motion.div>
 
+                    {/* Featured video — front and center */}
+                    {adminShowcase[0] && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 30 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.4 }}
+                            className="mt-12 max-w-3xl mx-auto"
+                        >
+                            <div
+                                className="glass-card group overflow-hidden cursor-pointer rounded-2xl border-white/10"
+                                onClick={() => adminShowcase[0].videoUrl && setPlayingVideo({ url: adminShowcase[0].videoUrl, title: adminShowcase[0].title })}
+                            >
+                                <div className="relative aspect-video bg-white/5">
+                                    {adminShowcase[0].thumbnail ? (
+                                        <img src={adminShowcase[0].thumbnail} alt={adminShowcase[0].title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                                    ) : adminShowcase[0].videoUrl ? (
+                                        <video src={`${adminShowcase[0].videoUrl}#t=0.1`} muted preload="metadata" playsInline className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                                    ) : null}
+                                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                                        <div className="bg-primary p-5 rounded-full shadow-2xl scale-90 group-hover:scale-100 transition-transform">
+                                            <Play className="w-8 h-8 fill-black text-black" />
+                                        </div>
+                                    </div>
+                                    <div className="absolute top-4 left-4 glass px-3 py-1 rounded-full text-[10px] font-bold tracking-widest uppercase">
+                                        Watch the demo
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+
                     {/* Feature Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-24">
                         {[
@@ -162,71 +193,6 @@ export default function LandingPage() {
                             </motion.div>
                         ))}
                     </div>
-                </div>
-            </section>
-
-            {/* Featured Showcase Section (moved to top) */}
-            <section className="py-16 px-6 max-w-7xl mx-auto">
-                <div className="flex flex-col md:flex-row items-end justify-between gap-6 mb-12">
-                    <div className="space-y-4">
-                        <h2 className="text-3xl md:text-5xl font-bold tracking-tight">
-                            Our <span className="text-primary">Featured Course</span>
-                        </h2>
-                        <p className="text-white/60 max-w-xl">
-                            Witness the power of AI video through our team's creative lens. High-end productions that push the boundaries of what's possible.
-                        </p>
-                    </div>
-                    <Link href="/courses" className="text-sm font-bold text-primary hover:underline flex items-center gap-2">
-                        Explore Courses <ArrowUpRight className="w-4 h-4" />
-                    </Link>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {adminShowcase.map((item, i) => (
-                        <motion.div
-                            key={item.id}
-                            initial={{ opacity: 0, y: 30 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.1 }}
-                            viewport={{ once: true }}
-                            className="glass-card group overflow-hidden cursor-pointer"
-                            onClick={() => item.videoUrl && setPlayingVideo({ url: item.videoUrl, title: item.title })}
-                        >
-                            <div className="relative aspect-video bg-white/5">
-                                {item.thumbnail ? (
-                                    <img
-                                        src={item.thumbnail}
-                                        alt={item.title}
-                                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                                    />
-                                ) : item.videoUrl ? (
-                                    <video
-                                        src={`${item.videoUrl}#t=0.1`}
-                                        muted
-                                        preload="metadata"
-                                        playsInline
-                                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                                    />
-                                ) : null}
-                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <div className="bg-primary p-5 rounded-full shadow-2xl scale-75 group-hover:scale-100 transition-transform">
-                                        <Play className="w-8 h-8 fill-black" />
-                                    </div>
-                                </div>
-                                <div className="absolute top-4 left-4">
-                                    <div className="glass px-3 py-1 rounded-full text-[10px] font-bold tracking-widest uppercase">
-                                        Agency Original
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="p-8">
-                                <h3 className="text-2xl font-bold mb-3 group-hover:text-primary transition-colors">{item.title}</h3>
-                                <p className="text-white/50 leading-relaxed text-sm">
-                                    {item.description}
-                                </p>
-                            </div>
-                        </motion.div>
-                    ))}
                 </div>
             </section>
 
