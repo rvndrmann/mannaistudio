@@ -141,7 +141,7 @@ export default function BillingPage() {
 
                     <div className="glass-card rounded-2xl border-white/10 p-6">
                         <h2 className="font-bold mb-1">What's included in your membership</h2>
-                        <p className="text-sm text-white/40 mb-5">Everything you need to go from idea to income with AI video.</p>
+                        <p className="text-sm text-white/40 mb-5">Everything you need to go from idea to a finished film with AI.</p>
                         <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
                             {[
                                 "Full AI Filmmaking Crash Course (idea → finished film)",
@@ -149,7 +149,7 @@ export default function BillingPage() {
                                 "Seedance Prompt AI Agent — master prompts for cinematic shots",
                                 "Access to all premium courses & downloadable resources",
                                 "Showcase up to 10 portfolio videos",
-                                "Weekly challenges with paid rewards",
+                                "Weekly challenges with rewards",
                                 "AI Jobs marketplace access",
                                 "Priority access to new tools & lessons",
                             ].map((feature) => (

@@ -12,7 +12,7 @@ const CLARITY_ID = "xckmot5rdo";
 
 export const metadata: Metadata = {
     title: "AI Director Hub | Learn AI Video Creation",
-    description: "Learn AI video creation step by step — scriptwriting with AI agents, prompt engineering, character and scene generation, and editing. Practice with weekly challenges, build your portfolio, and earn through AI jobs.",
+    description: "Learn AI video creation step by step — scriptwriting with AI agents, prompt engineering, character and scene generation, and editing. Practice with weekly challenges, build your portfolio, and find work through AI jobs.",
     icons: {
         icon: "/favicon.png",
         apple: "/favicon.png",

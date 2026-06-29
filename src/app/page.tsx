@@ -79,7 +79,7 @@ export default function LandingPage() {
                         className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border-white/10 mb-8"
                     >
                         <span className="flex h-2 w-2 rounded-full bg-primary animate-pulse" />
-                        <span className="text-xs font-medium text-white/80">NEW: Weekly Challenges with Paid Rewards</span>
+                        <span className="text-xs font-medium text-white/80">NEW: Weekly Challenges with Rewards</span>
                         <ChevronRight className="w-3 h-3 text-white/40" />
                     </motion.div>
 
@@ -100,7 +100,7 @@ export default function LandingPage() {
                         className="text-lg md:text-xl text-white/60 max-w-2xl mx-auto mb-10 leading-relaxed"
                     >
                         Learn the complete AI filmmaking workflow with project-based courses, practice
-                        in weekly challenges with paid rewards, and turn your skills into income through AI jobs.
+                        in weekly challenges with rewards, and put your skills to work through AI jobs.
                     </motion.p>
 
                     <motion.div
@@ -134,13 +134,13 @@ export default function LandingPage() {
                             },
                             {
                                 title: "Weekly Challenges & Rewards",
-                                desc: "Put your skills to the test in weekly creation challenges with paid prizes. Earn XP, level up, and climb the leaderboard as you complete chapters.",
+                                desc: "Put your skills to the test in weekly creation challenges with prizes. Earn XP, level up, and climb the leaderboard as you complete chapters.",
                                 icon: Trophy,
                                 color: "text-amber-400"
                             },
                             {
                                 title: "Portfolio & AI Jobs",
-                                desc: "Upload your best AI videos to a shareable creator portfolio, then land paid work through our AI jobs marketplace built for AI video creators.",
+                                desc: "Upload your best AI videos to a shareable creator portfolio, then take on AI video projects through our AI jobs marketplace built for AI video creators.",
                                 icon: Briefcase,
                                 color: "text-lime-300"
                             }
@@ -403,7 +403,7 @@ export default function LandingPage() {
                             "Seedance Prompt AI Agent — master prompts for cinematic shots",
                             "Access to all premium courses & resources",
                             `Showcase up to ${membershipPlan.portfolioLimit} portfolio videos`,
-                            "Weekly challenges with paid rewards",
+                            "Weekly challenges with rewards",
                             "AI Jobs marketplace access",
                         ].map((feature) => (
                             <li key={feature} className="flex items-start gap-2 text-sm text-white/70">

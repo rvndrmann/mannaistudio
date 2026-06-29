@@ -211,7 +211,7 @@ export default function ChallengesPage() {
                             transition={{ delay: 0.1 }}
                             className="text-white/60 max-w-xl"
                         >
-                            Compete with other creators, win cash rewards, and get featured on our main hall of fame. New challenges every Monday.
+                            Compete with other creators, win rewards, and get featured on our main hall of fame. New challenges every Monday.
                         </motion.p>
                     </div>
 
