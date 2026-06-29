@@ -26,6 +26,7 @@ export default function ContactPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
                     {[
                         { icon: Mail, title: "Email", text: "rvndr.mann@gmail.com" },
+                        { icon: Phone, title: "Phone", text: "+91 8168157635" },
                         { icon: MessageSquare, title: "Support", text: "Via email or in-app chat" },
                         { icon: Clock, title: "Response Time", text: "Within 24–48 hours" },
                     ].map((item) => (
@@ -107,6 +108,10 @@ export default function ContactPage() {
                                 <Mail className="w-3.5 h-3.5 text-white/30" />
                                 <a href="mailto:rvndr.mann@gmail.com" className="text-xs hover:text-white transition-colors">rvndr.mann@gmail.com</a>
                             </div>
+                            <div className="flex items-center gap-2">
+                                <Phone className="w-3.5 h-3.5 text-white/30" />
+                                <a href="tel:+918168157635" className="text-xs hover:text-white transition-colors">+91 8168157635</a>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -132,6 +137,10 @@ export default function ContactPage() {
                         <div className="flex items-center gap-2">
                             <Mail className="w-3.5 h-3.5 text-white/30" />
                             <a href="mailto:rvndr.mann@gmail.com" className="hover:text-white transition-colors">rvndr.mann@gmail.com</a>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Phone className="w-3.5 h-3.5 text-white/30" />
+                            <a href="tel:+918168157635" className="hover:text-white transition-colors">+91 8168157635</a>
                         </div>
                         <div className="flex items-start gap-2 sm:col-span-2">
                             <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-white/30" />
