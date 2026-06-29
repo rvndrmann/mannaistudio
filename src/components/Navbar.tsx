@@ -11,12 +11,13 @@ import { createClient } from "@/lib/supabase/client"
 import { defaultBillingSettings, fetchBillingSettings, isAdminUser } from "@/lib/membership"
 
 const baseNavLinks = [
-    { name: "Feed", href: "/feed", icon: Clapperboard },
+    // Paused for now (re-enable by uncommenting):
+    // { name: "Feed", href: "/feed", icon: Clapperboard },
     { name: "Courses", href: "/courses", icon: Play },
-    { name: "Challenges", href: "/challenges", icon: Zap },
+    // { name: "Challenges", href: "/challenges", icon: Zap },
     { name: "Billing", href: "/billing", icon: CreditCard },
-    { name: "AI Jobs", href: "/services", icon: ShieldCheck },
-    { name: "Messages", href: "/messages", icon: MessageSquare },
+    // { name: "AI Jobs", href: "/services", icon: ShieldCheck },
+    // { name: "Messages", href: "/messages", icon: MessageSquare },
 ]
 
 const adminLink = { name: "Admin", href: "/admin", icon: ShieldCheck }

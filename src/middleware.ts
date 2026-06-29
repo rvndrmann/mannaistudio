@@ -4,11 +4,23 @@ import { NextResponse, type NextRequest } from 'next/server'
 // Routes that require authentication (everything else is public).
 const protectedPaths = ['/courses', '/challenges', '/services', '/admin', '/profile', '/portfolio', '/billing']
 
+// Temporarily paused features — redirect to home (code kept; re-enable by emptying this list).
+const pausedPaths = ['/feed', '/services', '/challenges', '/messages']
+
 function isProtectedRoute(pathname: string): boolean {
     return protectedPaths.some(path => pathname === path || pathname.startsWith(path + '/'))
 }
 
+function isPausedRoute(pathname: string): boolean {
+    return pausedPaths.some(path => pathname === path || pathname.startsWith(path + '/'))
+}
+
 export async function middleware(request: NextRequest) {
+    // Paused pages: send visitors back to home until we relaunch them.
+    if (isPausedRoute(request.nextUrl.pathname)) {
+        return NextResponse.redirect(new URL('/', request.url))
+    }
+
     const response = NextResponse.next({ request: { headers: request.headers } })
 
     // Public routes: never touch Supabase. This keeps the edge function fast

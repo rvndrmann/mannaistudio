@@ -118,8 +118,8 @@ export default function LandingPage() {
                                 Start Learning Now <ArrowRight className="w-5 h-5" />
                             </button>
                         )}
-                        <Link href="/services" className="px-8 py-4 text-lg font-medium text-white hover:text-primary transition-colors flex items-center gap-2">
-                            AI Jobs <ShieldCheck className="w-5 h-5 text-primary" />
+                        <Link href="/courses" className="px-8 py-4 text-lg font-medium text-white hover:text-primary transition-colors flex items-center gap-2">
+                            Explore Courses <ShieldCheck className="w-5 h-5 text-primary" />
                         </Link>
                     </motion.div>
 
@@ -176,8 +176,8 @@ export default function LandingPage() {
                             Witness the power of AI video through our team's creative lens. High-end productions that push the boundaries of what's possible.
                         </p>
                     </div>
-                    <Link href="/services" className="text-sm font-bold text-primary hover:underline flex items-center gap-2">
-                        Browse AI Jobs <ArrowUpRight className="w-4 h-4" />
+                    <Link href="/courses" className="text-sm font-bold text-primary hover:underline flex items-center gap-2">
+                        Explore Courses <ArrowUpRight className="w-4 h-4" />
                     </Link>
                 </div>
 
@@ -368,7 +368,7 @@ export default function LandingPage() {
                 <div className="mb-8 max-w-md mx-auto rounded-2xl border border-primary/30 bg-primary/5 p-5 text-center">
                     <p className="text-sm font-bold text-primary">Free account — no payment to start</p>
                     <p className="text-sm text-white/60 mt-1">
-                        Sign up free to post jobs, bid on AI jobs, and build your portfolio. Every account gets <strong className="text-white">20 free bids</strong> to start.
+                        Sign up free, preview the course, and build your creator portfolio — upgrade to Pro whenever you're ready.
                     </p>
                 </div>
 

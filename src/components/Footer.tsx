@@ -11,8 +11,7 @@ const legalLinks = [
 
 const siteLinks = [
     { href: "/courses", label: "Courses" },
-    { href: "/challenges", label: "Challenges" },
-    { href: "/services", label: "AI Jobs" },
+    // Paused: Challenges, AI Jobs
     { href: "/billing", label: "Pricing" },
     { href: "/about", label: "About Us" },
 ]
