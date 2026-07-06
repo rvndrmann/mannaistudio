@@ -70,3 +70,50 @@
 .animate-float {
   animation: float 6s ease-in-out infinite;
 }
+
+/* Blog article body — lightweight prose styles (no typography plugin needed). */
+.blog-prose {
+  @apply text-white/70 leading-relaxed;
+}
+.blog-prose > * + * {
+  margin-top: 1.25rem;
+}
+.blog-prose h2 {
+  @apply text-2xl font-bold text-white mt-12 mb-2;
+}
+.blog-prose h3 {
+  @apply text-xl font-semibold text-white mt-8 mb-1;
+}
+.blog-prose p {
+  @apply text-white/70;
+}
+.blog-prose a {
+  @apply text-primary hover:underline;
+}
+.blog-prose strong {
+  @apply text-white font-semibold;
+}
+.blog-prose ul {
+  @apply list-disc pl-6 space-y-2 text-white/70;
+}
+.blog-prose ol {
+  @apply list-decimal pl-6 space-y-2 text-white/70;
+}
+.blog-prose blockquote {
+  @apply border-l-4 border-primary/50 pl-4 italic text-white/60;
+}
+.blog-prose img {
+  @apply rounded-2xl border border-white/10 my-6 w-full;
+}
+.blog-prose video {
+  @apply rounded-2xl border border-white/10 my-6 w-full bg-black;
+}
+.blog-prose figure {
+  @apply my-6;
+}
+.blog-prose figcaption {
+  @apply text-sm text-white/40 mt-2 text-center;
+}
+.blog-prose code {
+  @apply bg-white/10 px-1.5 py-0.5 rounded text-sm text-lime-200;
+}

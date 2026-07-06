@@ -1,7 +1,10 @@
 import Navbar from "@/components/Navbar"
 import Footer from "@/components/Footer"
 
-export const metadata = { title: "Terms & Conditions | AI Director Hub" }
+export const metadata = {
+    title: "Terms & Conditions | AI Director Hub",
+    description: "The terms and conditions governing your use of AI Director Hub's courses, services, and platform.",
+}
 
 export default function TermsPage() {
     return (

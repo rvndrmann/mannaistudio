@@ -57,6 +57,21 @@ export default function LandingPage() {
 
     return (
         <main className="min-h-screen">
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{
+                    __html: JSON.stringify({
+                        "@context": "https://schema.org",
+                        "@type": "Organization",
+                        name: "AI Director Hub",
+                        url: "https://www.aidirectorhub.com",
+                        logo: "https://www.aidirectorhub.com/logo.png",
+                        description:
+                            "AI Director Hub teaches AI video creation and filmmaking through project-based courses, AI scriptwriting and prompt agents, and a creator portfolio.",
+                        sameAs: [],
+                    }),
+                }}
+            />
             <Navbar />
 
             {/* Hero Section */}
@@ -89,8 +104,8 @@ export default function LandingPage() {
                         transition={{ delay: 0.1 }}
                         className="text-5xl md:text-7xl font-bold tracking-tight mb-6"
                     >
-                        Become an <br />
-                        <span className="text-gradient">AI Director</span>
+                        AI Film Making &amp;<br />
+                        Become an <span className="text-gradient">AI Director</span>
                     </motion.h1>
 
                     <motion.p
