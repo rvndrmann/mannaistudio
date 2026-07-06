@@ -1,7 +1,10 @@
 import Navbar from "@/components/Navbar"
 import Footer from "@/components/Footer"
 
-export const metadata = { title: "Refund & Cancellation Policy | AI Director Hub" }
+export const metadata = {
+    title: "Refund & Cancellation Policy | AI Director Hub",
+    description: "AI Director Hub's refund and cancellation policy for course purchases and membership plans.",
+}
 
 export default function RefundPage() {
     return (

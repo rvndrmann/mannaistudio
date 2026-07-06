@@ -28,6 +28,7 @@ import {
     type ServiceRequestStatus,
 } from "@/lib/service-requests"
 import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, type BillingSettings } from "@/lib/membership"
+import BlogManager from "@/components/admin/BlogManager"
 
 type EnrolledStudent = {
     profile_id: string
@@ -933,6 +934,15 @@ function AdminDashboardContent() {
                                 <Tv className="w-4 h-4" /> Showcase Manager
                             </button>
                             <button
+                                onClick={() => setActiveTab("blog")}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    activeTab === "blog" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                )}
+                            >
+                                <FileText className="w-4 h-4" /> Blog
+                            </button>
+                            <button
                                 onClick={() => setActiveTab("challenges")}
                                 className={cn(
                                     "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
@@ -1470,6 +1480,18 @@ function AdminDashboardContent() {
                                 </div>
                             </motion.div>
                         )}
+                        {activeTab === "blog" && (
+                            <motion.div
+                                key="blog"
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                className="space-y-8"
+                            >
+                                <BlogManager />
+                            </motion.div>
+                        )}
+
                         {activeTab === "challenges" && (
                             <motion.div
                                 key="challenges"

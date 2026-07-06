@@ -2,7 +2,10 @@ import Navbar from "@/components/Navbar"
 import Footer from "@/components/Footer"
 import { Zap, Video, BookOpen, Briefcase, MapPin, Mail, Phone } from "lucide-react"
 
-export const metadata = { title: "About Us | AI Director Hub" }
+export const metadata = {
+    title: "About Us | AI Director Hub",
+    description: "AI Director Hub teaches AI video creation and filmmaking through project-based courses, and offers professional AI video services. Learn who we are and what we build.",
+}
 
 export default function AboutPage() {
     return (

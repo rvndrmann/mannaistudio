@@ -1,7 +1,10 @@
 import Navbar from "@/components/Navbar"
 import Footer from "@/components/Footer"
 
-export const metadata = { title: "Privacy Policy | AI Director Hub" }
+export const metadata = {
+    title: "Privacy Policy | AI Director Hub",
+    description: "How AI Director Hub collects, uses, and protects your personal data across our courses and services.",
+}
 
 export default function PrivacyPage() {
     return (
