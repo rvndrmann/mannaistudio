@@ -41,7 +41,6 @@ export default function TermsPage() {
                     <li><strong>Business:</strong> Ravinder Deep Singh (Proprietor), AI Director Hub</li>
                     <li><strong>Registered Address:</strong> VPO Barwala, Panchkula, Haryana 134118, India</li>
                     <li><strong>Email:</strong> <a href="mailto:rvndr.mann@gmail.com">rvndr.mann@gmail.com</a></li>
-                    <li><strong>Phone:</strong> +91 8168157635</li>
                 </ul>
             </article>
             <Footer />

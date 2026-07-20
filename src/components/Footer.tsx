@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Zap, Mail, Phone, MapPin } from "lucide-react"
+import { Zap, Mail, MapPin } from "lucide-react"
 
 const legalLinks = [
     { href: "/terms", label: "Terms & Conditions" },
@@ -71,10 +71,6 @@ export default function Footer() {
                         <div className="flex items-center gap-2">
                             <Mail className="w-3.5 h-3.5 text-white/30" />
                             <a href="mailto:rvndr.mann@gmail.com" className="hover:text-white transition-colors">rvndr.mann@gmail.com</a>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Phone className="w-3.5 h-3.5 text-white/30" />
-                            <a href="tel:+918168157635" className="hover:text-white transition-colors">+91 8168157635</a>
                         </div>
                     </div>
                 </div>

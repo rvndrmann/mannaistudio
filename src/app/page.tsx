@@ -3,7 +3,7 @@
 import Navbar from "@/components/Navbar"
 import Footer from "@/components/Footer"
 import { motion } from "framer-motion"
-import { ArrowRight, Play, Zap, Trophy, Briefcase, Clapperboard, PenLine, Wand2, Film, ShieldCheck, ChevronRight, ArrowUpRight, X } from "lucide-react"
+import { ArrowRight, Play, Zap, Trophy, Briefcase, Clapperboard, PenLine, Wand2, Film, ShieldCheck, ChevronRight, ArrowUpRight, X, Star } from "lucide-react"
 import { AnimatePresence } from "framer-motion"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
@@ -94,7 +94,7 @@ export default function LandingPage() {
                         className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border-white/10 mb-8"
                     >
                         <span className="flex h-2 w-2 rounded-full bg-primary animate-pulse" />
-                        <span className="text-xs font-medium text-white/80">NEW: Weekly Challenges with Rewards</span>
+                        <span className="text-xs font-medium tracking-widest text-white/80">AI FILMMAKING &bull; TAUGHT BY A WORKING PRO</span>
                         <ChevronRight className="w-3 h-3 text-white/40" />
                     </motion.div>
 
@@ -104,8 +104,8 @@ export default function LandingPage() {
                         transition={{ delay: 0.1 }}
                         className="text-5xl md:text-7xl font-bold tracking-tight mb-6"
                     >
-                        AI Film Making &amp;<br />
-                        Become an <span className="text-gradient">AI Director</span>
+                        Learn AI Filmmaking From a<br />
+                        <span className="text-gradient">Top Rated Upwork Creator</span>
                     </motion.h1>
 
                     <motion.p
@@ -114,8 +114,9 @@ export default function LandingPage() {
                         transition={{ delay: 0.2 }}
                         className="text-lg md:text-xl text-white/60 max-w-2xl mx-auto mb-10 leading-relaxed"
                     >
-                        Learn the complete AI filmmaking workflow with project-based courses, AI
-                        scriptwriting and prompt agents, and build your own creator portfolio.
+                        I earned $18,000+ making AI videos for global brands — UGC ads, cinematic
+                        scenes, and short-form content. Now I&apos;ll teach you the exact system, tools,
+                        and prompts I use every day.
                     </motion.p>
 
                     <motion.div
@@ -126,11 +127,11 @@ export default function LandingPage() {
                     >
                         {user ? (
                             <Link href="/courses" className="btn-primary flex items-center gap-2 px-8 py-4 text-lg">
-                                Start Learning Now <ArrowRight className="w-5 h-5" />
+                                Start Learning Free <ArrowRight className="w-5 h-5" />
                             </Link>
                         ) : (
                             <button onClick={signInWithGoogle} className="btn-primary flex items-center gap-2 px-8 py-4 text-lg">
-                                Start Learning Now <ArrowRight className="w-5 h-5" />
+                                Start Learning Free <ArrowRight className="w-5 h-5" />
                             </button>
                         )}
                         <Link href="/courses" className="px-8 py-4 text-lg font-medium text-white hover:text-primary transition-colors flex items-center gap-2">
@@ -168,6 +169,148 @@ export default function LandingPage() {
                             </div>
                         </motion.div>
                     )}
+
+                    {/* Proof Section */}
+                    <div className="mt-24">
+                        <motion.div
+                            initial={{ opacity: 0, y: 30 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            viewport={{ once: true }}
+                            className="space-y-4 mb-12"
+                        >
+                            <h2 className="text-3xl md:text-5xl font-bold tracking-tight">
+                                Why Learn <span className="text-primary">From Me</span>
+                            </h2>
+                            <p className="text-white/60 max-w-2xl mx-auto">
+                                I&apos;m not a guru — I&apos;m a working AI video freelancer. These are my real,
+                                verifiable Upwork stats.
+                            </p>
+                        </motion.div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                            {[
+                                { value: "$18,142", label: "Earned in the last 12 months" },
+                                { value: "Top Rated", label: "Upwork badge, top 10% of freelancers" },
+                                { value: "95%", label: "Job Success Score" },
+                                { value: "81", label: "Jobs completed for global clients" },
+                            ].map((stat, i) => (
+                                <motion.div
+                                    key={stat.label}
+                                    initial={{ opacity: 0, y: 30 }}
+                                    whileInView={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: i * 0.1 }}
+                                    viewport={{ once: true }}
+                                    className="glass-card p-8 text-center"
+                                >
+                                    <div className="text-3xl md:text-4xl font-bold text-primary mb-2">{stat.value}</div>
+                                    <p className="text-white/60 text-sm leading-relaxed">{stat.label}</p>
+                                </motion.div>
+                            ))}
+                        </div>
+
+                        <motion.p
+                            initial={{ opacity: 0, y: 20 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            viewport={{ once: true }}
+                            className="text-white/60 max-w-2xl mx-auto mt-10"
+                        >
+                            Every course on this platform teaches the same workflows I use on real client
+                            projects — Seedance, Veo, Kling, and the prompting system behind them.
+                        </motion.p>
+
+                        <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl mx-auto">
+                            <motion.figure
+                                initial={{ opacity: 0, y: 30 }}
+                                whileInView={{ opacity: 1, y: 0 }}
+                                viewport={{ once: true }}
+                            >
+                                <div className="glass-card rounded-2xl border-white/10 overflow-hidden">
+                                    <img
+                                        src="/proof/upwork-profile.png"
+                                        alt="Upwork profile of Ravinderdeep S. showing the Top Rated badge and 95% Job Success score"
+                                        className="w-full h-auto"
+                                        loading="lazy"
+                                    />
+                                </div>
+                                <figcaption className="text-sm text-white/50 mt-3">
+                                    My Upwork profile — Ravinderdeep S., AI Video Ads &amp; UGC Creator
+                                </figcaption>
+                            </motion.figure>
+                            <motion.figure
+                                initial={{ opacity: 0, y: 30 }}
+                                whileInView={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.1 }}
+                                viewport={{ once: true }}
+                            >
+                                <div className="glass-card rounded-2xl border-white/10 overflow-hidden">
+                                    <img
+                                        src="/proof/upwork-stats.png"
+                                        alt="Upwork My Stats page showing $18,142 earned in 12 months and a 95% Job Success Score"
+                                        className="w-full h-auto"
+                                        loading="lazy"
+                                    />
+                                </div>
+                                <figcaption className="text-sm text-white/50 mt-3">
+                                    My Upwork stats — 12-month earnings &amp; Job Success Score
+                                </figcaption>
+                            </motion.figure>
+                        </div>
+
+                        {/* Client Reviews */}
+                        <div className="mt-16">
+                            <motion.h3
+                                initial={{ opacity: 0, y: 20 }}
+                                whileInView={{ opacity: 1, y: 0 }}
+                                viewport={{ once: true }}
+                                className="text-2xl md:text-3xl font-bold tracking-tight mb-8"
+                            >
+                                What Upwork Clients <span className="text-primary">Say</span>
+                            </motion.h3>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl mx-auto">
+                                {[
+                                    {
+                                        quote: "One word will not describe the experience….INCREDIBLE, AMAZING, AWESOME….and most of all KIND!!! My good fortune to have worked with him.",
+                                        job: "promotion",
+                                        tags: ["Collaborative"],
+                                    },
+                                    {
+                                        quote: "The ultimate in professionalism…..The most talented and understanding professional in his field….Always ready to accommodate and knows exactly what the project calls……The sky is the limit of praise for this freelancer…..",
+                                        job: "video ads for kdp amazon",
+                                        tags: ["Collaborative", "Committed to Quality", "Solution Oriented", "Clear Communicator", "Professional"],
+                                    },
+                                ].map((review, i) => (
+                                    <motion.figure
+                                        key={review.job}
+                                        initial={{ opacity: 0, y: 30 }}
+                                        whileInView={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: i * 0.1 }}
+                                        viewport={{ once: true }}
+                                        className="glass-card p-8 text-left flex flex-col"
+                                    >
+                                        <div className="flex items-center gap-1 mb-4">
+                                            {[...Array(5)].map((_, s) => (
+                                                <Star key={s} className="w-4 h-4 fill-amber-400 text-amber-400" />
+                                            ))}
+                                            <span className="ml-2 text-sm font-bold text-white/80">5.0</span>
+                                        </div>
+                                        <blockquote className="text-white/70 leading-relaxed italic mb-6">
+                                            &ldquo;{review.quote}&rdquo;
+                                        </blockquote>
+                                        <figcaption className="mt-auto">
+                                            <p className="text-sm font-bold text-white/80">Upwork client — &ldquo;{review.job}&rdquo;</p>
+                                            <div className="flex flex-wrap gap-2 mt-3">
+                                                {review.tags.map((tag) => (
+                                                    <span key={tag} className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs text-white/60">
+                                                        {tag}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </figcaption>
+                                    </motion.figure>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
 
                     {/* Feature Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-24">

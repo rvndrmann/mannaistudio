@@ -12,8 +12,8 @@ const GADS_ID = "AW-18272552489";
 const CLARITY_ID = "xckmot5rdo";
 
 export const metadata: Metadata = {
-    title: "AI Director Hub | Learn AI Video Creation",
-    description: "Learn AI video creation step by step — scriptwriting with AI agents, prompt engineering, character and scene generation, and editing. Build your AI filmmaking skills and a creator portfolio.",
+    title: "AI Director Hub — Learn AI Filmmaking From a Top Rated Upwork Creator",
+    description: "Learn AI video creation from a Top Rated Upwork freelancer with $18K+ earned. Project-based courses, AI agents, and prompts for Seedance, Veo, and Kling.",
     icons: {
         icon: "/favicon.png",
         apple: "/favicon.png",
