@@ -354,7 +354,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                 />
                             </div>
 
-                            {(activeLesson?.description || activeLesson?.takeaways?.length > 0) && (
+                            {(activeLesson?.description || activeLesson?.takeaways?.length > 0 || activeLesson?.resources?.length > 0) && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8 border-t border-white/5">
                                 {activeLesson?.description && (
                                 <div className="space-y-4">
@@ -374,6 +374,28 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     <ul className="text-sm text-white/60 space-y-2">
                                         {activeLesson.takeaways.map((t: string, i: number) => (
                                             <li key={i} className="flex items-start gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" /> <span>{renderTextWithLinks(t)}</span></li>
+                                        ))}
+                                    </ul>
+                                </div>
+                                )}
+                                {hasCourseAccess && activeLesson?.resources?.length > 0 && (
+                                <div className="space-y-4 md:col-span-2">
+                                    <h4 className="flex items-center gap-2 font-bold text-white/90">
+                                        <FileText className="w-4 h-4 text-primary" /> Resources &amp; Assets
+                                    </h4>
+                                    <ul className="text-sm space-y-2">
+                                        {activeLesson.resources.map((resource: any, i: number) => (
+                                            <li key={i}>
+                                                <a
+                                                    href={resource.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 hover:border-primary/40 hover:bg-white/10 transition-all group"
+                                                >
+                                                    <Download className="w-4 h-4 text-primary shrink-0" />
+                                                    <span className="text-white/70 group-hover:text-white transition-colors truncate">{resource.name || resource.url}</span>
+                                                </a>
+                                            </li>
                                         ))}
                                     </ul>
                                 </div>
