@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { motion } from "framer-motion"
-import { Clapperboard, Play, Zap, User, Menu, X, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, MessageSquare, BookOpen } from "lucide-react"
+import { Clapperboard, Play, Zap, User, Menu, X, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, MessageSquare, BookOpen, Sparkles } from "lucide-react"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -81,6 +81,16 @@ export default function Navbar() {
                         </Link>
                     ))}
 
+                    {!loading && (
+                        <Link
+                            href="/studio"
+                            className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition-all hover:bg-primary hover:text-black"
+                        >
+                            <Sparkles className="h-4 w-4" />
+                            Creator Studio
+                        </Link>
+                    )}
+
                     {loading ? (
                         <div className="flex items-center gap-2 px-4 py-2 bg-white/10 rounded-xl">
                             <Loader2 className="w-4 h-4 animate-spin text-white/70" />
@@ -128,6 +138,16 @@ export default function Navbar() {
                     animate={{ opacity: 1, scale: 1 }}
                     className="md:hidden absolute top-20 left-4 right-4 glass p-6 rounded-2xl border border-white/10 flex flex-col gap-4"
                 >
+                    {!loading && (
+                        <Link
+                            href="/studio"
+                            onClick={() => setIsOpen(false)}
+                            className="flex items-center gap-3 text-lg font-medium text-primary"
+                        >
+                            <Sparkles className="h-5 w-5" />
+                            Creator Studio
+                        </Link>
+                    )}
                     {user && navLinks.map((link) => (
                         <Link
                             key={link.name}
