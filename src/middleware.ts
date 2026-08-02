@@ -2,7 +2,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 // Routes that require authentication (everything else is public).
-const protectedPaths = ['/courses', '/challenges', '/services', '/admin', '/profile', '/portfolio', '/billing']
+const protectedPaths = ['/courses', '/challenges', '/services', '/admin', '/profile', '/portfolio', '/billing', '/studio']
 
 // Temporarily paused features — redirect to home (code kept; re-enable by emptying this list).
 const pausedPaths = ['/feed', '/services', '/challenges', '/messages']
