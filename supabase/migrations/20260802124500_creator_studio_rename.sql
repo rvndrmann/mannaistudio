@@ -20,6 +20,6 @@ begin
     execute format('alter trigger %I on public.creator_%s rename to creator_%s_updated', legacy_prefix || '_' || item || '_updated', case when item = 'sessions' then 'chat_sessions' else case when item = 'jobs' then 'generation_jobs' else item end end, item);
   end loop;
   foreach item in array array['projects owner', 'episodes owner', 'entities owner', 'shots owner', 'sessions owner', 'messages owner', 'jobs owner', 'credit owner'] loop
-    execute format('alter policy %I on public.creator_%s rename to creator %s', legacy_prefix || ' ' || item, case when item like 'sessions%' then 'chat_sessions' when item like 'messages%' then 'chat_messages' when item like 'jobs%' then 'generation_jobs' when item like 'credit%' then 'credit_transactions' else split_part(item, ' ', 1) end, item);
+    execute format('alter policy %I on public.creator_%s rename to %I', legacy_prefix || ' ' || item, case when item like 'sessions%' then 'chat_sessions' when item like 'messages%' then 'chat_messages' when item like 'jobs%' then 'generation_jobs' when item like 'credit%' then 'credit_transactions' else split_part(item, ' ', 1) end, 'creator ' || item);
   end loop;
 end $$;
