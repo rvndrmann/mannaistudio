@@ -1,60 +1,2338 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { use, useEffect, useMemo, useState } from "react"
-import { ArrowLeft, Bot, Clapperboard, FileText, Film, Image, LayoutPanelTop, Loader2, MessageSquare, Users } from "lucide-react"
+import Link from "next/link";
+import { FormEvent, use, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowLeft,
+  Bot,
+  ChevronDown,
+  Clapperboard,
+  Gem,
+  FileText,
+  Film,
+  Image as ImageIcon,
+  LayoutPanelTop,
+  Loader2,
+  Mic,
+  MicOff,
+  Pencil,
+  Plus,
+  Send,
+  Sparkles,
+  Upload,
+  Users,
+  WandSparkles,
+  X,
+} from "lucide-react";
+import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models";
+import { imageGenerationModels, videoGenerationModels } from "@/lib/studio/generation-models";
+import { createClient } from "@/lib/supabase/client";
 
+type Entity = {
+  id: string;
+  name: string;
+  type: "character" | "scene" | "prop";
+  description: string | null;
+  reference_images: string[];
+  metadata: Record<string, unknown>;
+  voice_id: string | null;
+  status: string;
+};
+type Shot = {
+  id: string;
+  title: string;
+  prompt: string | null;
+  keyframe_image: string | null;
+  video_url: string | null;
+  video_status: string;
+  duration_seconds: number;
+  aspect_ratio?: string | null;
+  resolution?: string | null;
+  referenced_entities: string[];
+  order_index: number;
+  metadata?: Record<string, unknown>;
+};
+type Episode = {
+  id: string;
+  name: string;
+  description: string | null;
+  script_content: unknown;
+};
 type Workspace = {
-  project: { id: string; name: string; description: string | null; default_style: string; default_aspect: string }
-  episodes: { id: string; name: string; description: string | null; status: string }[]
-  entities: { id: string; name: string; type: string; description: string | null }[]
-  shots: { id: string; title: string; description: string | null; prompt: string | null; video_url: string | null; video_status: string }[]
-  chatMessages: { id: string; role: string; content: string | null; created_at: string }[]
-}
-
+  project: {
+    id: string;
+    name: string;
+    default_aspect: string;
+    default_style: string;
+    production_mode?: string;
+    project_type?: string;
+    creative_brief?: Record<string, unknown>;
+  };
+  episodes: Episode[];
+  activeEpisode: Episode;
+  entities: Entity[];
+  shots: Shot[];
+  scriptSuggestions: {
+    id: string;
+    content: unknown;
+    summary: string;
+    status: string;
+  }[];
+  chatMessages: { id: string; role: string; content: string | null }[];
+  features?: Record<string, boolean>;
+  production?: {
+    series: Array<Record<string, unknown>>;
+    scenes: Array<Record<string, unknown>>;
+    referenceAssets: Array<Record<string, unknown>>;
+    continuityIssues: Array<Record<string, unknown>>;
+    revisions: Array<Record<string, unknown>>;
+    generationJobs: Array<Record<string, unknown>>;
+    creditAccount: { balance: number; reserved: number } | null;
+  };
+};
 const tabs = [
-  { id: "canvas", label: "Canvas", icon: LayoutPanelTop },
-  { id: "script", label: "Script", icon: FileText },
-  { id: "characters", label: "Characters", icon: Users },
-  { id: "storyboard", label: "Storyboard", icon: Image },
-  { id: "timeline", label: "Timeline", icon: Film },
-] as const
+  ["canvas", "Canvas", LayoutPanelTop],
+  ["script", "Script", FileText],
+  ["characters", "Characters & Assets", Users],
+  ["storyboard", "Storyboard", ImageIcon],
+  ["timeline", "Timeline", Film],
+] as const;
+const productionTab = ["production", "Production", Clapperboard] as const;
+const blankScript = {
+  title: "Untitled production",
+  overview: "",
+  scenes: [] as {
+    heading: string;
+    timing: string;
+    direction: string;
+    framing: string;
+    continuity: string;
+  }[],
+};
 
-export default function ProjectWorkspacePage({ params }: { params: Promise<{ projectId: string }> }) {
-  const { projectId } = use(params)
-  const [workspace, setWorkspace] = useState<Workspace | null>(null)
-  const [tab, setTab] = useState<(typeof tabs)[number]["id"]>("canvas")
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
-
+export default function WorkspacePage({
+  params,
+}: {
+  params: Promise<{ projectId: string }>;
+}) {
+  const { projectId } = use(params);
+  const [data, setData] = useState<Workspace | null>(null);
+  const [tab, setTab] = useState("canvas");
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [directorModel, setDirectorModel] = useState<string>(defaultDirectorModelId);
+  const [directorModels, setDirectorModels] = useState<DirectorModelConfig[]>(defaultDirectorModels.map((model) => ({ ...model })).filter((model) => model.status === "active"));
+  const [voiceState, setVoiceState] = useState<"idle" | "connecting" | "connected" | "error">("idle");
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const voiceConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  useEffect(() => () => {
+    voiceConnectionRef.current?.close();
+    voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
   useEffect(() => {
-    const load = async () => {
-      try {
-        const response = await fetch(`/api/studio/projects/${projectId}`)
-        const data = await response.json()
-        if (!response.ok) throw new Error(data.error || "Could not load this workspace.")
-        setWorkspace(data)
-      } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "Could not load this workspace.")
-      } finally { setLoading(false) }
+    createClient()
+      .from("site_settings")
+      .select("value")
+      .eq("key", "ai_director_models")
+      .maybeSingle()
+      .then(({ data: settings }) => {
+        const nextModels = activeDirectorModels(settings?.value);
+        if (!nextModels.length) return;
+        setDirectorModels(nextModels);
+        setDirectorModel((current) => nextModels.some((model) => model.id === current) ? current : nextModels[0].id);
+      });
+  }, []);
+  const [assetType, setAssetType] = useState<Entity["type"] | null>(null);
+  const [episodeId, setEpisodeId] = useState<string | null>(null);
+  const [episodeMenu, setEpisodeMenu] = useState(false);
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(
+        `/api/studio/projects/${projectId}${episodeId ? `?episodeId=${episodeId}` : ""}`,
+      );
+      const json = await r.json();
+      if (!r.ok) throw new Error(json.error);
+      setData(json);
+    } catch {
+      setData(null);
+    } finally {
+      setLoading(false);
     }
-    load()
-  }, [projectId])
-
-  const content = useMemo(() => {
-    if (!workspace) return null
-    if (tab === "script") return <section><h2 className="text-lg font-semibold">Script</h2><p className="mt-2 text-sm text-slate-500">Build each episode’s screenplay and use it to guide your shots.</p><div className="mt-5 space-y-3">{workspace.episodes.map((episode) => <article key={episode.id} className="rounded-xl border border-slate-200 bg-white p-4"><p className="font-medium">{episode.name}</p><p className="mt-1 text-sm text-slate-500">{episode.description || "No script notes yet."}</p></article>)}</div></section>
-    if (tab === "characters") return <section><h2 className="text-lg font-semibold">Characters, scenes & props</h2><p className="mt-2 text-sm text-slate-500">Keep recurring visual details consistent across every generation.</p><div className="mt-5 grid gap-3 sm:grid-cols-2">{workspace.entities.map((entity) => <article key={entity.id} className="rounded-xl border border-slate-200 bg-white p-4"><span className="text-xs font-semibold uppercase tracking-wide text-indigo-600">{entity.type}</span><p className="mt-1 font-medium">{entity.name}</p><p className="mt-1 text-sm text-slate-500">{entity.description || "No description yet."}</p></article>)}{workspace.entities.length === 0 && <Empty label="Add characters, scenes, and props from the assistant." />}</div></section>
-    if (tab === "storyboard") return <section><h2 className="text-lg font-semibold">Storyboard</h2><p className="mt-2 text-sm text-slate-500">Arrange your planned shots visually before generating video.</p><div className="mt-5 grid gap-4 sm:grid-cols-2">{workspace.shots.map((shot) => <article key={shot.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white"><div className="flex aspect-video items-center justify-center bg-slate-100"><Image className="h-7 w-7 text-slate-400" /></div><div className="p-4"><p className="font-medium">{shot.title}</p><p className="mt-1 line-clamp-2 text-sm text-slate-500">{shot.prompt || shot.description || "No prompt yet."}</p></div></article>)}{workspace.shots.length === 0 && <Empty label="Your storyboard will appear here when you add shots." />}</div></section>
-    if (tab === "timeline") return <section><h2 className="text-lg font-semibold">Timeline</h2><p className="mt-2 text-sm text-slate-500">Sequence your shots into the final cut.</p><div className="mt-5 space-y-3">{workspace.shots.map((shot, index) => <article key={shot.id} className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-4"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-50 text-sm font-semibold text-indigo-600">{index + 1}</span><div><p className="font-medium">{shot.title}</p><p className="text-sm text-slate-500">{shot.video_status}</p></div></article>)}{workspace.shots.length === 0 && <Empty label="No shots have been added to the timeline." />}</div></section>
-    return <section><h2 className="text-lg font-semibold">Creative canvas</h2><p className="mt-2 text-sm text-slate-500">Your central workspace for planning and generating this project.</p><div className="mt-6 grid gap-4 sm:grid-cols-2"><Metric label="Episodes" value={workspace.episodes.length} /><Metric label="Characters & assets" value={workspace.entities.length} /><Metric label="Shots" value={workspace.shots.length} /><Metric label="Visual style" value={workspace.project.default_style || "Cinematic"} /></div></section>
-  }, [tab, workspace])
-
-  if (loading) return <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white"><Loader2 className="h-7 w-7 animate-spin" /></div>
-  if (error || !workspace) return <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-950 px-5 text-center text-white"><h1 className="text-2xl font-bold">Workspace unavailable</h1><p className="text-white/60">{error || "This project could not be found."}</p><Link href="/studio" className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-slate-950">Back to Studio</Link></div>
-
-  return <main className="min-h-screen bg-slate-100 text-slate-900"><header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6"><div className="flex min-w-0 items-center gap-3"><Link href="/studio" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><ArrowLeft className="h-5 w-5" /></Link><div className="min-w-0"><p className="truncate font-semibold">{workspace.project.name}</p><p className="text-xs text-slate-500">Creator Studio workspace</p></div></div><div className="hidden items-center gap-2 text-sm text-slate-500 sm:flex"><Clapperboard className="h-4 w-4" /> {workspace.project.default_aspect || "16:9"}</div></header><div className="flex min-h-[calc(100vh-4rem)]"><aside className="w-16 border-r border-slate-200 bg-white py-4 sm:w-52"><nav className="space-y-1 px-2">{tabs.map(({ id, label, icon: Icon }) => <button key={id} onClick={() => setTab(id)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${tab === id ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-100"}`}><Icon className="h-5 w-5 shrink-0" /><span className="hidden sm:block">{label}</span></button>)}</nav></aside><section className="flex-1 p-5 sm:p-8"><div className="mx-auto max-w-4xl">{content}</div></section><aside className="hidden w-80 border-l border-slate-200 bg-white lg:block"><div className="border-b border-slate-200 p-5"><div className="flex items-center gap-2 font-semibold"><Bot className="h-5 w-5 text-indigo-600" /> Creative assistant</div><p className="mt-1 text-xs text-slate-500">Chat tools will be available here.</p></div><div className="space-y-3 p-5">{workspace.chatMessages.slice(-4).map((message) => <div key={message.id} className={`rounded-xl p-3 text-sm ${message.role === "user" ? "bg-indigo-50 text-indigo-950" : "bg-slate-100 text-slate-700"}`}>{message.content || "Generation activity"}</div>)}{workspace.chatMessages.length === 0 && <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500"><MessageSquare className="mb-2 h-5 w-5" />Start planning in the dashboard assistant.</div>}</div></aside></div></main>
+  };
+  useEffect(() => {
+    load();
+  }, [projectId, episodeId]);
+  const save = async (body: unknown) => {
+    const r = await fetch(`/api/studio/projects/${projectId}/workspace`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const json = await r.json();
+    if (!r.ok) throw new Error(json.error);
+    return json;
+  };
+  if (loading)
+    return (
+      <div className="grid min-h-screen place-items-center bg-[#070807]">
+        <Loader2 className="animate-spin text-[#b9f42e]" />
+      </div>
+    );
+  if (!data)
+    return (
+      <div className="grid min-h-screen place-items-center bg-[#070807] text-white">
+        <div className="text-center">
+          <p className="text-xl font-semibold">Workspace unavailable</p>
+          <Link href="/studio" className="mt-4 inline-block text-[#b9f42e]">
+            Back to Studio
+          </Link>
+        </div>
+      </div>
+    );
+  const episode = data.activeEpisode || data.episodes[0];
+  const visibleTabs = data.features?.production_modes_enabled
+    ? [...tabs, productionTab]
+    : tabs;
+  const createEpisode = async () => {
+    const created = await save({ action: "createEpisode" });
+    setEpisodeMenu(false);
+    setEpisodeId(created.id);
+    setTab("script");
+  };
+  const sendChat = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!message.trim() || chatSending) return;
+    setChatSending(true);
+    setChatError(null);
+    try {
+      const response = await fetch(`/api/studio/projects/${projectId}/director/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ episodeId: episode.id, message: message.trim(), model: directorModel, idempotencyKey: crypto.randomUUID() }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "AI Director could not respond");
+      setMessage("");
+      await load();
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : "AI Director could not respond");
+    } finally {
+      setChatSending(false);
+    }
+  };
+  const stopVoice = () => {
+    voiceConnectionRef.current?.close();
+    voiceConnectionRef.current = null;
+    voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+    voiceStreamRef.current = null;
+    setVoiceState("idle");
+  };
+  const startVoice = async () => {
+    if (voiceState === "connected") return stopVoice();
+    setVoiceState("connecting");
+    setVoiceError(null);
+    try {
+      const sessionResponse = await fetch(`/api/studio/projects/${projectId}/voice/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ voice: "marin", language: "en", interactionMode: "hands_free" }) });
+      const session = await sessionResponse.json();
+      if (!sessionResponse.ok) throw new Error(session.error || "Could not start the Voice Director");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const peer = new RTCPeerConnection();
+      const audio = new Audio();
+      audio.autoplay = true;
+      peer.ontrack = (event) => { audio.srcObject = event.streams[0]; };
+      stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+      const events = peer.createDataChannel("oai-events");
+      events.addEventListener("message", (event) => {
+        const payload = JSON.parse(event.data) as { type?: string; transcript?: string };
+        if (payload.type?.includes("error")) setVoiceError("The Voice Director connection reported an error. Please retry.");
+      });
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+      const answerResponse = await fetch(session.realtimeUrl, { method: "POST", headers: { Authorization: `Bearer ${session.ephemeralCredential}`, "Content-Type": "application/sdp" }, body: offer.sdp });
+      if (!answerResponse.ok) throw new Error("Could not connect the Voice Director");
+      await peer.setRemoteDescription({ type: "answer", sdp: await answerResponse.text() });
+      voiceConnectionRef.current = peer;
+      voiceStreamRef.current = stream;
+      setVoiceState("connected");
+    } catch (error) {
+      stopVoice();
+      setVoiceState("error");
+      setVoiceError(error instanceof Error ? error.message : "Could not start the Voice Director");
+    }
+  };
+  return (
+    <main className="h-screen overflow-hidden bg-[#070807] text-[#f5f2e5]">
+      <header className="relative flex h-[74px] items-center gap-3 overflow-x-auto border-b border-white/10 bg-[#0b0c0b] px-4">
+        <Link
+          href="/studio"
+          className="rounded-lg p-2 text-zinc-400 hover:bg-white/10"
+        >
+          <ArrowLeft />
+        </Link>
+        <Clapperboard className="hidden text-[#b9f42e] sm:block" />
+        <div className="min-w-[120px] border-r border-white/10 pr-4">
+          <p className="truncate font-semibold">{data.project.name}</p>
+        </div>
+        <button
+          onClick={() => setEpisodeMenu((open) => !open)}
+          className="flex shrink-0 items-center gap-2 text-sm font-semibold"
+        >
+          {episode?.name || "Episode 1"}
+          <ChevronDown className="h-4 w-4" />
+        </button>
+        {episodeMenu && (
+          <div className="absolute left-[180px] top-[66px] z-50 w-[330px] overflow-hidden rounded-2xl border border-white/10 bg-[#1a1c1b] p-2 shadow-2xl">
+            <div className="space-y-1">
+              {data.episodes.map((item, index) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setEpisodeId(item.id);
+                    setEpisodeMenu(false);
+                  }}
+                  className={`flex w-full items-center gap-4 rounded-xl px-4 py-4 text-left ${item.id === episode.id ? "bg-white/5" : "hover:bg-white/5"}`}
+                >
+                  <span className="font-mono text-sm text-zinc-400">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span className="font-bold">{item.name}</span>
+                </button>
+              ))}
+            </div>
+            <div className="my-2 border-t border-white/10" />
+            <button className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-zinc-300 hover:bg-white/5">
+              <span className="text-xl">⚙</span> Manage Episodes
+            </button>
+            <button
+              onClick={createEpisode}
+              className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-zinc-100 hover:bg-[#b9f42e]/10"
+            >
+              <Plus className="h-5 w-5 text-[#b9f42e]" /> Create Next Episode
+            </button>
+          </div>
+        )}
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {visibleTabs.map(([id, label, Icon], index) => (
+            <div key={id} className="flex items-center gap-2">
+              <button
+                onClick={() => setTab(id)}
+                className={`flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-bold transition ${tab === id ? "bg-[#b9f42e] text-[#151609]" : "bg-[#1d1e1d] text-zinc-200 hover:bg-[#292b29]"}`}
+              >
+                <Icon className="h-4 w-4" />
+                <span>{label}</span>
+              </button>
+              {index < visibleTabs.length - 1 && (
+                <span className="hidden text-zinc-600 2xl:inline">···</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </header>
+      <div className="flex h-[calc(100vh-74px)]">
+        <section className="min-w-0 flex-1 overflow-auto border-r border-white/10">
+          <div
+            className={`${tab === "timeline" ? "max-w-none p-0" : "mx-auto max-w-6xl p-5 lg:p-8"}`}
+          >
+            <div
+              className={`${tab === "timeline" ? "hidden" : "mb-6 flex items-center justify-between"}`}
+            >
+              <div>
+                <p className="text-xs font-bold tracking-[.2em] text-[#b9f42e]">
+                  AI DIRECTOR HUB STUDIO
+                </p>
+                <h1 className="mt-1 text-2xl font-bold">
+                  {visibleTabs.find((x) => x[0] === tab)?.[1]}
+                </h1>
+              </div>
+              {tab === "storyboard" && (
+                <div className="flex gap-2">
+                  <Pill>{data.project.default_aspect || "9:16"}</Pill>
+                  <Pill>{data.project.default_style || "Cinematic"}</Pill>
+                  <Pill>720p</Pill>
+                </div>
+              )}
+            </div>
+            {tab === "canvas" && <Canvas data={data} onTab={setTab} />}
+            {tab === "script" && (
+              <Script
+                episode={episode}
+                suggestions={data.scriptSuggestions}
+                save={save}
+                reload={load}
+              />
+            )}
+            {tab === "characters" && (
+              <Assets
+                entities={data.entities}
+                projectId={projectId}
+                save={save}
+                reload={load}
+                openAdd={setAssetType}
+              />
+            )}
+            {tab === "storyboard" && (
+              <Storyboard
+                shots={data.shots}
+                entities={data.entities}
+                episodeId={episode.id}
+                projectId={projectId}
+                save={save}
+                reload={load}
+              />
+            )}
+            {tab === "timeline" && (
+              <Timeline
+                shots={data.shots}
+                entities={data.entities}
+                save={save}
+                reload={load}
+              />
+            )}
+            {tab === "production" && <ProductionOverview data={data} />}
+          </div>
+        </section>
+        <aside className="hidden w-[40%] min-w-[380px] max-w-[560px] flex-col bg-[#131514] xl:flex">
+          <div className="border-b border-white/10 p-4">
+            <div className="flex gap-2 rounded-xl border border-white/10 bg-[#1c1e1d] px-3 py-3 text-sm text-zinc-300">
+              <Bot className="h-5 w-5 text-[#b9f42e]" /> AI Director{" "}
+              <span className="ml-auto text-zinc-500">
+                Plan, revise, and direct
+              </span>
+            </div>
+            <div className="mt-3 flex gap-2">
+              <Pill>{data.project.default_style || "Cinematic"}</Pill>
+              <Pill>{data.project.default_aspect || "9:16"}</Pill>
+              <Pill>6 sec</Pill>
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto p-5">
+            {!data.chatMessages.length && (
+              <div className="flex h-full items-end pb-3 text-sm leading-6 text-zinc-500">
+                Tell the AI Director what you want to create, revise, or plan.
+              </div>
+            )}
+            {data.chatMessages.map((item) => (
+              <div
+                key={item.id}
+                className={`mt-4 max-w-[90%] rounded-2xl p-4 text-sm ${item.role === "user" ? "ml-auto bg-[#b9f42e] text-black" : "bg-[#242624] text-zinc-200"}`}
+              >
+                {item.content}
+              </div>
+            ))}
+            {chatError && <p role="alert" className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{chatError}</p>}
+            {voiceState !== "idle" && <p className={`mt-4 rounded-xl border p-3 text-sm ${voiceState === "connected" ? "border-[#b9f42e]/30 bg-[#b9f42e]/10 text-[#d9ff84]" : "border-white/10 bg-white/5 text-zinc-300"}`}>{voiceState === "connecting" ? "Connecting your AI Voice Director…" : voiceState === "connected" ? "AI Voice Director is listening. You can speak naturally." : voiceError}</p>}
+          </div>
+          <form
+            onSubmit={sendChat}
+            className="border-t border-[#b9f42e]/50 bg-[#202220] p-4"
+          >
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Tell the director what to shoot..."
+              className="h-24 w-full resize-none bg-transparent text-lg outline-none placeholder:text-zinc-500"
+            />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-zinc-500">
+                Model
+                <select
+                  value={directorModel}
+                  onChange={(event) => setDirectorModel(event.target.value)}
+                  className="rounded-lg border border-white/10 bg-[#111311] px-3 py-2 text-sm font-semibold normal-case tracking-normal text-zinc-100 outline-none hover:border-[#b9f42e]/50"
+                >
+                  {directorModels.map((modelOption) => (
+                    <option key={modelOption.id} value={modelOption.id}>
+                      {modelOption.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex items-center justify-end gap-2">
+              <button type="button" onClick={startVoice} disabled={voiceState === "connecting"} aria-label={voiceState === "connected" ? "Stop AI Voice Director" : "Start AI Voice Director"} className={`rounded-full border p-3 ${voiceState === "connected" ? "border-red-400 bg-red-500/15 text-red-200" : "border-white/15 text-zinc-200 hover:border-[#b9f42e] hover:text-[#b9f42e]"}`}>
+                {voiceState === "connected" ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              </button>
+              <button type="submit" disabled={chatSending} aria-label="Send message to AI Director" className="rounded-full bg-[#b9f42e] p-3 text-black disabled:opacity-50">
+                {chatSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </button>
+              </div>
+            </div>
+          </form>
+        </aside>
+      </div>
+      {assetType && (
+        <AssetModal
+          type={assetType}
+          projectId={projectId}
+          close={() => setAssetType(null)}
+          save={save}
+          reload={load}
+        />
+      )}
+    </main>
+  );
 }
 
-function Metric({ label, value }: { label: string; value: string | number }) { return <article className="rounded-xl border border-slate-200 bg-white p-5"><p className="text-sm text-slate-500">{label}</p><p className="mt-2 text-2xl font-semibold">{value}</p></article> }
-function Empty({ label }: { label: string }) { return <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">{label}</div> }
+function ProductionOverview({ data }: { data: Workspace }) {
+  const production = data.production ?? {
+    series: [], scenes: [], referenceAssets: [], continuityIssues: [], revisions: [], generationJobs: [], creditAccount: null,
+  };
+  const approvedAssets = production.referenceAssets.filter((asset) => asset.approval_status === "approved").length;
+  const rejectedAssets = production.referenceAssets.filter((asset) => asset.approval_status === "rejected").length;
+  const activeJobs = production.generationJobs.filter((job) => ["queued", "approved", "processing"].includes(String(job.status))).length;
+  const cards = [
+    ["Series", production.series.length],
+    ["Episodes", data.episodes.length],
+    ["Scenes", production.scenes.length],
+    ["Shots", data.shots.length],
+    ["Active jobs", activeJobs],
+    ["Continuity warnings", production.continuityIssues.length],
+  ] as const;
+  return (
+    <div className="space-y-6">
+      <section className="rounded-2xl border border-white/10 bg-[#121412] p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold tracking-[.2em] text-[#b9f42e]">PROJECT OVERVIEW</p>
+            <h2 className="mt-2 text-2xl font-bold">{data.project.name}</h2>
+            <p className="mt-2 text-sm text-zinc-400">{data.project.production_mode || "Legacy project"} · {data.project.project_type || "Unspecified type"}</p>
+          </div>
+          <div className="rounded-xl border border-[#b9f42e]/30 bg-[#b9f42e]/5 px-4 py-3 text-right">
+            <p className="text-xs text-zinc-500">AVAILABLE CREDITS</p>
+            <p className="text-xl font-bold text-[#b9f42e]">{production.creditAccount ? production.creditAccount.balance - production.creditAccount.reserved : "—"}</p>
+            <p className="text-xs text-zinc-500">{production.creditAccount?.reserved || 0} reserved</p>
+          </div>
+        </div>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {cards.map(([label, value]) => <div key={label} className="rounded-xl bg-white/[.04] p-4"><p className="text-2xl font-black">{value}</p><p className="mt-1 text-xs uppercase tracking-wider text-zinc-500">{label}</p></div>)}
+        </div>
+      </section>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <DashboardPanel title="Creative brief">
+          {Object.keys(data.project.creative_brief || {}).length ? <dl className="space-y-3">{Object.entries(data.project.creative_brief || {}).filter(([key]) => key !== "confirmedFields").map(([key, value]) => <div key={key}><dt className="text-xs uppercase tracking-wide text-zinc-500">{key.replace(/([A-Z])/g, " $1")}</dt><dd className="mt-1 text-sm text-zinc-200">{value === null || value === "" ? "Not confirmed" : String(value)}</dd></div>)}</dl> : <EmptyState>Start a conversation with the AI Director to build an editable brief.</EmptyState>}
+        </DashboardPanel>
+        <DashboardPanel title="Assets and continuity">
+          <div className="grid grid-cols-3 gap-3 text-center"><Metric label="Approved" value={approvedAssets} /><Metric label="Rejected" value={rejectedAssets} /><Metric label="Warnings" value={production.continuityIssues.length} /></div>
+          {production.continuityIssues.length > 0 && <div className="mt-4 space-y-2">{production.continuityIssues.slice(0, 5).map((issue) => <div key={String(issue.id)} className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-3 text-sm text-amber-100">{String(issue.description || "Continuity issue")}</div>)}</div>}
+        </DashboardPanel>
+        <DashboardPanel title="Generation and export">
+          <p className="text-sm text-zinc-400">{activeJobs ? `${activeJobs} generation jobs are active.` : "No generation jobs are running."}</p>
+          <div className="mt-4 rounded-lg border border-dashed border-white/15 p-4 text-sm text-zinc-500">Export remains unavailable until approved shots have completed provider outputs. No placeholder export will be created.</div>
+        </DashboardPanel>
+        <DashboardPanel title="Revisions">
+          {production.revisions.length ? <div className="space-y-2">{production.revisions.slice(0, 6).map((revision) => <div key={String(revision.id)} className="rounded-lg bg-white/[.04] p-3"><p className="text-sm text-zinc-200">{String(revision.instruction)}</p><p className="mt-1 text-xs uppercase text-zinc-500">{String(revision.status)}</p></div>)}</div> : <EmptyState>No project revisions have been proposed.</EmptyState>}
+        </DashboardPanel>
+      </div>
+      <section className="rounded-2xl border border-white/10 bg-[#121412] p-5">
+        <div className="flex items-center justify-between gap-4"><div><h3 className="font-bold">Voice Director</h3><p className="mt-1 text-sm text-zinc-500">Realtime voice controls will appear here when voice sessions are configured and enabled.</p></div><button disabled className="rounded-xl border border-white/10 px-4 py-2 text-sm text-zinc-600">Voice unavailable</button></div>
+      </section>
+    </div>
+  );
+}
+
+function DashboardPanel({ title, children }: { title: string; children: React.ReactNode }) {
+  return <section className="rounded-2xl border border-white/10 bg-[#121412] p-5"><h3 className="mb-4 font-bold">{title}</h3>{children}</section>;
+}
+function Metric({ label, value }: { label: string; value: number }) { return <div className="rounded-lg bg-white/[.04] p-3"><p className="text-xl font-bold">{value}</p><p className="text-xs text-zinc-500">{label}</p></div>; }
+function EmptyState({ children }: { children: React.ReactNode }) { return <p className="rounded-lg border border-dashed border-white/15 p-4 text-sm text-zinc-500">{children}</p>; }
+
+function Canvas({
+  data,
+  onTab,
+}: {
+  data: Workspace;
+  onTab: (tab: string) => void;
+}) {
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const script = parseScript(data.episodes[0]?.script_content);
+  const total = data.shots.reduce(
+    (sum, shot) => sum + Number(shot.duration_seconds || 0),
+    0,
+  );
+  const zoomTo = (next: number) =>
+    setZoom(Math.max(0.5, Math.min(1.5, Number(next.toFixed(2)))));
+  return (
+    <div
+      className="relative -mx-5 h-[calc(100vh-210px)] min-h-[620px] overflow-auto border-y border-white/10 bg-[#080908] lg:-mx-8"
+      onWheel={(event) => {
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault();
+          zoomTo(zoom + (event.deltaY > 0 ? -0.1 : 0.1));
+        }
+      }}
+    >
+      <div className="absolute inset-0 opacity-30 [background-image:radial-gradient(#3a3c38_1px,transparent_1px)] [background-size:22px_22px]" />
+      <div
+        className="relative h-[1100px] w-[1400px]"
+        aria-label="Studio production canvas"
+      >
+        <div
+          className={`absolute left-0 top-0 h-[900px] w-[1200px] select-none ${dragStart ? "cursor-grabbing" : "cursor-grab"}`}
+          style={{
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transformOrigin: "top left",
+          }}
+          onPointerDown={(event) => {
+            if ((event.target as HTMLElement).closest("button")) return;
+            setDragStart({
+              x: event.clientX - pan.x,
+              y: event.clientY - pan.y,
+            });
+          }}
+          onPointerMove={(event) => {
+            if (dragStart)
+              setPan({
+                x: event.clientX - dragStart.x,
+                y: event.clientY - dragStart.y,
+              });
+          }}
+          onPointerUp={() => setDragStart(null)}
+          onPointerLeave={() => setDragStart(null)}
+        >
+          <svg
+            className="pointer-events-none absolute inset-0 h-full w-full"
+            aria-hidden="true"
+          >
+            <path
+              d="M305 220 C430 220 440 380 555 380 S690 340 760 340"
+              fill="none"
+              stroke="#b9f42e"
+              strokeOpacity=".45"
+              strokeDasharray="5 8"
+              strokeWidth="2"
+            />
+            <path
+              d="M315 505 C440 505 480 510 610 510 S750 590 860 590"
+              fill="none"
+              stroke="#98a6ff"
+              strokeOpacity=".38"
+              strokeDasharray="5 8"
+              strokeWidth="2"
+            />
+          </svg>
+          <CanvasNode
+            className="left-[7%] top-16 w-[300px]"
+            eyebrow="SCRIPT"
+            title={script.title || "Production script"}
+            action="Open script"
+            onClick={() => onTab("script")}
+          >
+            <p className="line-clamp-5 text-sm leading-6 text-zinc-400">
+              {script.overview ||
+                "Write the story, visual direction, framing, timing, continuity notes and references."}
+            </p>
+            <div className="mt-4 flex gap-2 text-xs text-zinc-500">
+              <span>{script.scenes?.length || 0} scenes</span>
+              <span>•</span>
+              <span>editable</span>
+            </div>
+          </CanvasNode>
+          <CanvasNode
+            className="left-[8%] top-[430px] w-[330px]"
+            eyebrow="ASSET LIBRARY"
+            title={`${data.entities.length} reusable assets`}
+            action="Open assets"
+            onClick={() => onTab("characters")}
+          >
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {(["character", "scene", "prop"] as const).map((kind) => (
+                <div key={kind} className="rounded-lg bg-black/30 p-2">
+                  <p className="text-lg font-bold text-[#b9f42e]">
+                    {data.entities.filter((e) => e.type === kind).length}
+                  </p>
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-500">
+                    {kind}s
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1">
+              {data.entities.slice(0, 4).map((entity) => (
+                <span
+                  key={entity.id}
+                  className="rounded bg-white/5 px-2 py-1 text-[11px] text-zinc-300"
+                >
+                  {entity.name}
+                </span>
+              ))}
+            </div>
+          </CanvasNode>
+          <CanvasNode
+            className="left-[43%] top-[280px] w-[340px]"
+            eyebrow="STORYBOARD"
+            title={`${data.shots.length} planned shots`}
+            action="Open storyboard"
+            onClick={() => onTab("storyboard")}
+          >
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {data.shots.slice(0, 3).map((shot, index) => (
+                <div
+                  key={shot.id}
+                  className="aspect-[9/11] overflow-hidden rounded-lg bg-gradient-to-br from-[#314656] to-[#161b1c] p-2"
+                >
+                  <span className="rounded bg-black/40 px-1.5 py-1 text-[10px] font-bold text-[#b9f42e]">
+                    {index + 1}
+                  </span>
+                  <p className="mt-6 line-clamp-2 text-[10px] text-zinc-300">
+                    {shot.title}
+                  </p>
+                </div>
+              ))}
+              {data.shots.length === 0 && (
+                <div className="col-span-3 rounded-lg border border-dashed border-white/15 p-4 text-sm text-zinc-500">
+                  Create your first shot from the script.
+                </div>
+              )}
+            </div>
+          </CanvasNode>
+          <CanvasNode
+            className="left-[62%] top-[535px] w-[290px]"
+            eyebrow="TIMELINE"
+            title={`${total} seconds planned`}
+            action="Open timeline"
+            onClick={() => onTab("timeline")}
+          >
+            <div className="mt-4 flex gap-1 overflow-hidden">
+              {data.shots.slice(0, 5).map((shot, index) => (
+                <div
+                  key={shot.id}
+                  className="h-12 min-w-12 flex-1 rounded bg-gradient-to-br from-[#625a36] to-[#24231b] p-1 text-[10px]"
+                >
+                  {index + 1}
+                </div>
+              )) || (
+                <div className="h-12 flex-1 rounded border border-dashed border-white/15" />
+              )}
+            </div>
+            <p className="mt-3 text-xs text-zinc-500">
+              Arrange clips in playback order.
+            </p>
+          </CanvasNode>
+        </div>
+        <div className="fixed bottom-5 left-5 z-10 flex items-center gap-3 rounded-xl border border-white/10 bg-[#151715]/95 p-2 text-sm shadow-xl">
+          <button
+            onClick={() => zoomTo(zoom - 0.1)}
+            className="px-2 text-zinc-300 hover:text-[#b9f42e]"
+            aria-label="Zoom out"
+          >
+            −
+          </button>
+          <span className="min-w-11 text-center text-[#b9f42e]">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button
+            onClick={() => zoomTo(zoom + 0.1)}
+            className="px-2 text-zinc-300 hover:text-[#b9f42e]"
+            aria-label="Zoom in"
+          >
+            +
+          </button>
+          <button
+            onClick={() => {
+              setZoom(1);
+              setPan({ x: 0, y: 0 });
+            }}
+            className="border-l border-white/10 pl-3 text-zinc-400 hover:text-white"
+          >
+            Reset
+          </button>
+          <span className="border-l border-white/10 pl-3 text-zinc-500">
+            Drag to pan · Ctrl/⌘ + scroll to zoom
+          </span>
+        </div>
+        <div className="fixed bottom-5 right-5 z-10 h-28 w-44 rounded-xl border border-white/10 bg-[#151715]/95 p-3 shadow-xl">
+          <div className="h-full rounded border border-[#b9f42e]/45 bg-[radial-gradient(#343631_1px,transparent_1px)] [background-size:8px_8px]">
+            <div className="ml-4 mt-3 h-5 w-10 rounded bg-zinc-600/80" />
+            <div className="ml-14 mt-3 h-5 w-12 rounded bg-zinc-600/80" />
+            <div className="ml-20 mt-2 h-4 w-8 rounded bg-zinc-600/80" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+function CanvasNode({
+  className,
+  eyebrow,
+  title,
+  action,
+  onClick,
+  children,
+}: {
+  className: string;
+  eyebrow: string;
+  title: string;
+  action: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      className={`absolute rounded-xl border border-white/10 bg-[#1b1d1c]/95 p-4 shadow-2xl shadow-black/40 ${className}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-bold tracking-[.18em] text-[#b9f42e]">
+            {eyebrow}
+          </p>
+          <h3 className="mt-1 font-bold">{title}</h3>
+        </div>
+        <button
+          onClick={onClick}
+          className="rounded-lg bg-white/5 px-2 py-1 text-xs text-zinc-300 hover:bg-[#b9f42e] hover:text-black"
+        >
+          {action}
+        </button>
+      </div>
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+function Script({
+  episode,
+  suggestions,
+  save,
+  reload,
+}: {
+  episode: Episode;
+  suggestions: Workspace["scriptSuggestions"];
+  save: (b: unknown) => Promise<void>;
+  reload: () => Promise<void>;
+}) {
+  const [content, setContent] = useState(() =>
+    parseScript(episode.script_content),
+  );
+  const [saving, setSaving] = useState(false);
+  const updateScene = (
+    index: number,
+    field: keyof (typeof blankScript.scenes)[number],
+    value: string,
+  ) =>
+    setContent((current) => ({
+      ...current,
+      scenes: current.scenes.map((scene, i) =>
+        i === index ? { ...scene, [field]: value } : scene,
+      ),
+    }));
+  const submit = async () => {
+    try {
+      setSaving(true);
+      await save({ action: "saveScript", episodeId: episode.id, content });
+      await reload();
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="space-y-5">
+      <section className="border border-white/10 bg-[#0b0c0b] p-6 sm:p-9">
+        <div className="mb-7 flex items-start justify-between gap-4">
+          <p className="text-xs font-bold tracking-[.2em] text-[#b9f42e]">
+            PRODUCTION SCRIPT
+          </p>
+          <button
+            onClick={submit}
+            disabled={saving}
+            className="rounded-xl bg-[#b9f42e] px-4 py-2 text-sm font-bold text-black"
+          >
+            {saving ? "Saving…" : "Save script"}
+          </button>
+        </div>
+        <input
+          value={content.title}
+          onChange={(e) => setContent((c) => ({ ...c, title: e.target.value }))}
+          placeholder="Project title"
+          className="w-full bg-transparent text-3xl font-black tracking-tight text-white outline-none placeholder:text-zinc-600 sm:text-5xl"
+        />
+        <textarea
+          value={content.overview}
+          onChange={(e) =>
+            setContent((c) => ({ ...c, overview: e.target.value }))
+          }
+          placeholder="Write a concise story synopsis, creative intent, main references, and continuity rules for the whole production."
+          className="mt-7 min-h-36 w-full resize-y bg-transparent text-lg leading-8 text-zinc-300 outline-none placeholder:text-zinc-600"
+        />
+        <div className="mt-7 border-t border-slate-700/70" />
+        <div className="mt-8 space-y-8">
+          {content.scenes.map((scene, index) => (
+            <section key={index}>
+              <div className="flex items-center justify-between gap-3">
+                <input
+                  value={scene.heading}
+                  onChange={(e) =>
+                    updateScene(index, "heading", e.target.value)
+                  }
+                  placeholder={`SCENE ${index + 1} — Title and timing`}
+                  className="w-full bg-transparent text-xl font-black uppercase text-white outline-none placeholder:text-zinc-600 sm:text-3xl"
+                />
+                <button
+                  onClick={() =>
+                    setContent((c) => ({
+                      ...c,
+                      scenes: c.scenes.filter((_, i) => i !== index),
+                    }))
+                  }
+                  className="text-xs text-zinc-500 hover:text-red-300"
+                >
+                  Remove
+                </button>
+              </div>
+              <div className="mt-5 rounded-xl bg-[#1d1f1e] p-5">
+                <label className="text-xs font-bold uppercase tracking-wide text-[#b9f42e]">
+                  Panel / shot breakdown
+                </label>
+                <textarea
+                  value={scene.direction}
+                  onChange={(e) =>
+                    updateScene(index, "direction", e.target.value)
+                  }
+                  placeholder="Describe the action, staging, subjects, visual direction, and the required shot sequence."
+                  className="mt-3 min-h-32 w-full resize-y bg-transparent text-base leading-7 text-zinc-200 outline-none placeholder:text-zinc-600"
+                />
+                <div className="mt-5 grid gap-4 border-t border-white/10 pt-4 md:grid-cols-2">
+                  <label className="text-xs font-bold uppercase tracking-wide text-zinc-500">
+                    Timing
+                    <input
+                      value={scene.timing}
+                      onChange={(e) =>
+                        updateScene(index, "timing", e.target.value)
+                      }
+                      placeholder="0–6 seconds"
+                      className="mt-2 w-full rounded-lg bg-black/20 p-3 text-sm font-normal normal-case tracking-normal text-zinc-200 outline-none"
+                    />
+                  </label>
+                  <label className="text-xs font-bold uppercase tracking-wide text-zinc-500">
+                    Framing and continuity
+                    <textarea
+                      value={`${scene.framing}${scene.continuity ? `\n${scene.continuity}` : ""}`}
+                      onChange={(e) => {
+                        const [framing, ...notes] = e.target.value.split("\n");
+                        updateScene(index, "framing", framing);
+                        updateScene(index, "continuity", notes.join("\n"));
+                      }}
+                      placeholder="Camera, framing, transition, reference, continuity notes"
+                      className="mt-2 h-20 w-full rounded-lg bg-black/20 p-3 text-sm font-normal normal-case tracking-normal text-zinc-200 outline-none"
+                    />
+                  </label>
+                </div>
+              </div>
+            </section>
+          ))}
+        </div>
+        <button
+          onClick={() =>
+            setContent((c) => ({
+              ...c,
+              scenes: [
+                ...c.scenes,
+                {
+                  heading: `SCENE ${c.scenes.length + 1} — Untitled`,
+                  timing: "",
+                  direction: "",
+                  framing: "",
+                  continuity: "",
+                },
+              ],
+            }))
+          }
+          className="mt-8 inline-flex items-center gap-2 rounded-xl border border-dashed border-[#b9f42e]/45 px-4 py-3 text-sm font-bold text-[#b9f42e]"
+        >
+          <Plus className="h-4 w-4" /> Add scene
+        </button>
+      </section>
+      {suggestions
+        .filter((s) => s.status === "pending")
+        .map((s) => (
+          <section
+            key={s.id}
+            className="border border-[#b9f42e]/35 bg-[#b9f42e]/5 p-5"
+          >
+            <p className="font-bold text-[#b9f42e]">
+              AI Director draft — review required
+            </p>
+            <p className="mt-1 text-sm text-zinc-400">{s.summary}</p>
+            <pre className="mt-4 max-h-48 overflow-auto whitespace-pre-wrap bg-black/25 p-4 text-xs text-zinc-300">
+              {JSON.stringify(s.content, null, 2)}
+            </pre>
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={async () => {
+                  await save({
+                    action: "reviewSuggestion",
+                    suggestionId: s.id,
+                    status: "accepted",
+                  });
+                  await reload();
+                }}
+                className="rounded-lg bg-[#b9f42e] px-3 py-2 text-sm font-bold text-black"
+              >
+                Accept update
+              </button>
+              <button
+                onClick={async () => {
+                  await save({
+                    action: "reviewSuggestion",
+                    suggestionId: s.id,
+                    status: "dismissed",
+                  });
+                  await reload();
+                }}
+                className="rounded-lg border border-white/15 px-3 py-2 text-sm"
+              >
+                Keep my script
+              </button>
+            </div>
+          </section>
+        ))}
+    </div>
+  );
+}
+function Assets({
+  entities,
+  projectId,
+  save,
+  reload,
+  openAdd,
+}: {
+  entities: Entity[];
+  projectId: string;
+  save: (b: unknown) => Promise<void>;
+  reload: () => Promise<void>;
+  openAdd: (t: Entity["type"]) => void;
+}) {
+  const [selectedAsset, setSelectedAsset] = useState<Entity | null>(null);
+  return (
+    <div className="space-y-8">
+      {(["character", "scene", "prop"] as const).map((type) => (
+        <section key={type}>
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold">
+                {type === "character"
+                  ? "Characters"
+                  : type === "scene"
+                    ? "Scenes"
+                    : "Props"}
+              </h2>
+              <p className="text-sm text-zinc-500">
+                Reusable across every shot in this project.
+              </p>
+            </div>
+            <button
+              onClick={() => openAdd(type)}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#b9f42e] px-3 py-2 text-sm font-bold text-black"
+            >
+              <Plus className="h-4 w-4" /> Add
+            </button>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {entities
+              .filter((e) => e.type === type)
+              .map((e) => (
+                <AssetCard
+                  key={e.id}
+                  entity={e}
+                  projectId={projectId}
+                  save={save}
+                  reload={reload}
+                  openWorkspace={() => setSelectedAsset(e)}
+                />
+              ))}
+            {!entities.some((e) => e.type === type) && (
+              <button
+                onClick={() => openAdd(type)}
+                className="min-h-40 rounded-xl border border-dashed border-white/15 p-6 text-left text-sm text-zinc-500 hover:border-[#b9f42e]/50"
+              >
+                Add your first {type}. The AI Director can later suggest missing
+                assets from your script.
+              </button>
+            )}
+          </div>
+        </section>
+      ))}
+      {selectedAsset && (
+        <AssetWorkspace
+          asset={selectedAsset}
+          entities={entities}
+          projectId={projectId}
+          close={() => setSelectedAsset(null)}
+          save={save}
+          reload={reload}
+        />
+      )}
+    </div>
+  );
+}
+function AssetCard({
+  entity,
+  projectId,
+  save,
+  reload,
+  openWorkspace,
+}: {
+  entity: Entity;
+  projectId: string;
+  save: (b: unknown) => Promise<void>;
+  reload: () => Promise<void>;
+  openWorkspace: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  return (
+    <article className="overflow-hidden rounded-xl border border-white/10 bg-[#1b1d1c] transition hover:border-[#b9f42e]/55">
+      <button onClick={openWorkspace} className="block w-full text-left">
+        <AssetImage src={entity.reference_images?.[0]} />
+      </button>
+      <div className="p-4">
+        <div className="flex justify-between gap-2">
+          <button
+            onClick={openWorkspace}
+            className="font-bold hover:text-[#b9f42e]"
+          >
+            {entity.name}
+          </button>
+          <span className="rounded-full bg-[#b9f42e]/10 px-2 py-1 text-[10px] font-bold uppercase text-[#b9f42e]">
+            {entity.status}
+          </span>
+        </div>
+        <p className="mt-2 line-clamp-2 text-sm text-zinc-500">
+          {entity.description || "Add visual direction for consistency."}
+        </p>
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={() => setEditing(true)}
+            className="inline-flex items-center gap-1 text-sm font-semibold text-zinc-300"
+          >
+            <Pencil className="h-3.5 w-3.5" /> Edit
+          </button>
+          <button
+            onClick={async () => {
+              await save({
+                action: "saveAsset",
+                asset: { ...entity, status: "redo_requested" },
+              });
+              reload();
+            }}
+            className="text-sm font-semibold text-[#b9f42e]"
+          >
+            Redo
+          </button>
+        </div>
+      </div>
+      {editing && (
+        <AssetModal
+          type={entity.type}
+          projectId={projectId}
+          entity={entity}
+          close={() => setEditing(false)}
+          save={save}
+          reload={reload}
+        />
+      )}
+    </article>
+  );
+}
+
+function ModelMenu({ type, value, onChange }: { type: "image" | "video"; value: string; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const models = type === "image" ? imageGenerationModels : videoGenerationModels;
+  const selected = models.find((modelOption) => modelOption.id === value) || models[0];
+  const families = type === "image"
+    ? [
+      { label: "OpenAI Images", icon: Sparkles, models: imageGenerationModels.filter((modelOption) => modelOption.provider === "openai") },
+      { label: "Seedream Series", icon: WandSparkles, models: imageGenerationModels.filter((modelOption) => modelOption.provider === "byteplus") },
+    ]
+    : [
+      { label: "Wan Series", icon: Gem, disabled: true, models: [] },
+      { label: "Kling Series", icon: Gem, disabled: true, models: [] },
+      { label: "Hailuo 2.3", icon: Gem, disabled: true, models: [] },
+      { label: "Vidu Series", icon: Gem, disabled: true, models: [] },
+      { label: "Seedance Series", icon: WandSparkles, models: videoGenerationModels },
+      { label: "PixVerse C1", icon: Gem, disabled: true, models: [] },
+      { label: "HappyHorse 1.0", icon: Gem, disabled: true, models: [] },
+    ];
+  return (
+    <div className="relative mt-5">
+      <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{type === "image" ? "Image model" : "Video model"}</p>
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="mt-2 flex w-full items-center justify-between rounded-xl border border-white/10 bg-[#0b0c0b] px-3 py-3 text-left text-sm font-bold text-white outline-none hover:border-[#b9f42e]/50"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <WandSparkles className="h-4 w-4 shrink-0 text-[#fff878]" />
+          <span className="truncate">{selected.label}</span>
+        </span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="absolute bottom-[calc(100%+8px)] left-0 z-[80] w-full min-w-[280px] overflow-hidden rounded-xl border border-white/10 bg-[#18191c] p-2 shadow-2xl">
+          {families.map((family) => {
+            const Icon = family.icon;
+            return (
+              <div key={family.label}>
+                {family.models.length ? (
+                  <details className="group" open={family.models.some((modelOption) => modelOption.id === value)}>
+                    <summary className="flex cursor-pointer list-none items-center gap-3 rounded-lg px-3 py-3 text-sm font-bold text-zinc-100 hover:bg-white/5">
+                      <Icon className="h-5 w-5 text-zinc-200" />
+                      <span className="flex-1">{family.label}</span>
+                      <ChevronDown className="h-4 w-4 text-zinc-500 transition group-open:rotate-180" />
+                    </summary>
+                    <div className="pb-1 pl-8">
+                      {family.models.map((modelOption) => (
+                        <button
+                          key={modelOption.id}
+                          type="button"
+                          onClick={() => {
+                            onChange(modelOption.id);
+                            setOpen(false);
+                          }}
+                          className={`mt-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${modelOption.id === value ? "bg-[#fff878] font-bold text-black" : "text-zinc-300 hover:bg-white/5"}`}
+                        >
+                          {modelOption.label}
+                          {modelOption.id === value && <span>✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </details>
+                ) : (
+                  <button type="button" disabled className="flex w-full cursor-not-allowed items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-bold text-zinc-500">
+                    <Icon className="h-5 w-5" />
+                    <span className="flex-1">{family.label}</span>
+                    <span className="text-xs font-medium">soon</span>
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssetWorkspace({
+  asset,
+  entities,
+  projectId,
+  close,
+  save,
+  reload,
+}: {
+  asset: Entity;
+  entities: Entity[];
+  projectId: string;
+  close: () => void;
+  save: (b: unknown) => Promise<void>;
+  reload: () => Promise<void>;
+}) {
+  const [selected, setSelected] = useState(0);
+  const [prompt, setPrompt] = useState(asset.description || "");
+  const [model, setModel] = useState<string>(imageGenerationModels[0].id);
+  const [working, setWorking] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [picker, setPicker] = useState(false);
+  const [referenceSourcePicker, setReferenceSourcePicker] = useState(false);
+  const [libraryImages, setLibraryImages] = useState(asset.reference_images || []);
+  const [references, setReferences] = useState<string[]>(Array.isArray(asset.metadata?.generation_reference_images) ? asset.metadata.generation_reference_images.filter((value): value is string => typeof value === "string") : []);
+  const saveReferences = async (nextReferences: string[]) => {
+    setReferences(nextReferences);
+    await save({ action: "saveAsset", asset: { ...asset, reference_images: libraryImages, metadata: { ...asset.metadata, generation_reference_images: nextReferences } } });
+  };
+  const requestGeneration = async () => {
+    setWorking(true);
+    setGenerationError(null);
+    try {
+      const response = await fetch(`/api/studio/projects/${projectId}/images`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: "asset", targetId: asset.id, prompt, model, referenceImages: references }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Image generation failed");
+      if (typeof body.path === "string") setLibraryImages((current) => current.includes(body.path) ? current : [...current, body.path]);
+      await reload();
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "Image generation failed");
+    } finally {
+      setWorking(false);
+    }
+  };
+  const uploadImage = async (file: File | undefined, destination: "library" | "reference") => { if (!file) return; setWorking(true); try { const userId = (await createClient().auth.getUser()).data.user?.id; if (!userId) return; const path = `${userId}/${projectId}/asset-${destination}-${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`; const { error } = await createClient().storage.from("creator-studio-media").upload(path, file); if (error) throw error; if (destination === "library") { const nextImages = [...libraryImages, path]; setLibraryImages(nextImages); await save({ action: "saveAsset", asset: { ...asset, reference_images: nextImages, metadata: asset.metadata } }); } else { await saveReferences([...references, path]); } } finally { setWorking(false) } };
+  return (
+    <div className="fixed inset-0 z-50 bg-[#080908] text-white">
+      <div className="flex h-full">
+        <aside className="w-40 shrink-0 overflow-y-auto border-r border-white/10 bg-[#0b0c0b] p-4">
+          <button
+            onClick={close}
+            className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl bg-white/5 text-zinc-300 hover:bg-white/10"
+          >
+            <X />
+          </button>
+          <label className="grid aspect-[3/4] cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-sm text-zinc-400 hover:border-[#b9f42e]">
+            +<br />
+            Upload
+            <input type="file" accept="image/*" className="hidden" onChange={(e) => uploadImage(e.target.files?.[0], "library")} />
+          </label>
+          <div className="mt-4 space-y-3">
+            {libraryImages.map((image, index) => (
+              <button
+                key={`${image}-${index}`}
+                onClick={() => setSelected(index)}
+                className={`block w-full overflow-hidden rounded-xl border-2 ${index === selected ? "border-[#b9f42e]" : "border-transparent"}`}
+              >
+                <AssetImage src={image} />
+              </button>
+            ))}
+          </div>
+        </aside>
+        <main className="flex min-w-0 flex-1 flex-col">
+          <header className="flex h-20 items-center gap-3 border-b border-white/10 px-6">
+            <button type="button" onClick={() => { const image = libraryImages[selected]; if (image && !references.includes(image)) void saveReferences([...references, image]); }} className="rounded-lg bg-[#b9f42e] px-4 py-2 text-sm font-bold text-black">
+              Choose
+            </button>
+            <button type="button" onClick={() => { const image = libraryImages[selected]; if (image && !references.includes(image)) void saveReferences([...references, image]); }} className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-300 hover:bg-white/5">
+              Use as reference
+            </button>
+            <span className="h-6 border-l border-white/10" />
+            <button
+              onClick={requestGeneration}
+              disabled={working}
+              className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-300 hover:bg-white/5"
+            >
+              ↻ {working ? "Requesting…" : "Regenerate"}
+            </button>
+            <button className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-300">
+              Generate variations
+            </button>
+            <span className="ml-auto text-xs text-zinc-500">
+              Private project asset
+            </span>
+          </header>
+          <div className="grid flex-1 place-items-center overflow-auto bg-black/30 p-8">
+            <div className="w-full max-w-[540px] overflow-hidden rounded-lg bg-[#151715] shadow-2xl">
+              {generationError ? (
+                <GenerationPreviewError message={generationError} />
+              ) : libraryImages[selected] ? (
+                <AssetImage src={libraryImages[selected]} />
+              ) : (
+                <div className="grid aspect-[3/4] place-items-center text-center text-zinc-500">
+                  Upload a reference image
+                  <br />
+                  or generate a draft below.
+                </div>
+              )}
+            </div>
+          </div>
+        </main>
+        <aside className="flex w-[420px] shrink-0 flex-col border-l border-white/10 bg-[#151715]">
+          <div className="flex items-start justify-between p-6">
+            <div>
+              <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">
+                {asset.type}
+              </p>
+              <h2 className="mt-2 text-3xl font-black">{asset.name}</h2>
+            </div>
+            <button
+              onClick={close}
+              className="rounded-xl p-2 text-zinc-400 hover:bg-white/10"
+            >
+              <X />
+            </button>
+          </div>
+          <div className="flex-1 overflow-auto px-6">
+            <p className="text-sm leading-6 text-zinc-400">
+              This asset is reusable across the project. Generate a consistent
+              draft with your selected AI image model, then choose the approved
+              reference.
+            </p>
+            <div className="mt-5 rounded-xl border border-white/10 bg-[#0b0c0b] p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">Reference images</p>
+                <button type="button" onClick={() => setPicker(true)} className="text-sm font-semibold text-[#b9f42e]">Select assets</button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" aria-label="Add reference image" onClick={() => setReferenceSourcePicker(true)} className="grid h-16 w-16 place-items-center rounded-lg border border-dashed border-white/25 text-xl text-zinc-400 hover:border-[#b9f42e]">+</button>
+                {references.map((image, index) => <div key={`${image}-${index}`} className="relative h-16 w-16 overflow-hidden rounded-lg"><AssetImage src={image} /><button type="button" aria-label={`Remove reference image ${index + 1}`} onClick={() => void saveReferences(references.filter((_, itemIndex) => itemIndex !== index))} className="absolute right-1 top-1 rounded bg-black/70 px-1 text-xs">×</button></div>)}
+              </div>
+            </div>
+            <label className="mt-6 block text-xs font-bold uppercase tracking-wide text-zinc-500">
+              Visual prompt
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                className="mt-2 h-52 w-full resize-none rounded-xl border border-white/10 bg-[#0b0c0b] p-4 text-base leading-7 text-zinc-200 outline-none focus:border-[#b9f42e]/60"
+                placeholder="Describe the look, lighting, composition, materials and consistency rules…"
+              />
+            </label>
+            <ModelMenu type="image" value={model} onChange={setModel} />
+            <div className="mt-5 rounded-xl border border-[#b9f42e]/20 bg-[#b9f42e]/5 p-4 text-sm text-zinc-300">
+              GPT Image requests are processed securely on the server. Your API key is never sent to this browser.
+            </div>
+            {generationError && <p role="alert" className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{generationError}</p>}
+          </div>
+          <div className="border-t border-white/10 p-6">
+            <button
+              onClick={requestGeneration}
+              disabled={working}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-3 font-bold text-black"
+            >
+              <Sparkles className="h-4 w-4" />
+              {working ? "Saving request…" : "Generate image"}
+            </button>
+          </div>
+        </aside>
+      </div>
+      {referenceSourcePicker && <ReferenceSourcePicker close={() => setReferenceSourcePicker(false)} onChooseExisting={() => { setReferenceSourcePicker(false); setPicker(true); }} onUpload={(file) => uploadImage(file, "reference")} />}
+      {picker && <ReferencePicker entities={entities.filter(entity => entity.id !== asset.id)} selected={references} close={() => setPicker(false)} confirm={(items) => { void saveReferences(items); setPicker(false) }} />}
+    </div>
+  );
+}
+function AssetModal({
+  type,
+  projectId,
+  entity,
+  close,
+  save,
+  reload,
+}: {
+  type: Entity["type"];
+  projectId: string;
+  entity?: Entity;
+  close: () => void;
+  save: (b: unknown) => Promise<void>;
+  reload: () => Promise<void>;
+}) {
+  const [asset, setAsset] = useState<Partial<Entity>>(
+    entity || {
+      type,
+      name: "",
+      description: "",
+      reference_images: [],
+      status: "draft",
+      voice_id: "",
+    },
+  );
+  const [busy, setBusy] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const upload = async (file?: File) => {
+    if (!file) return;
+    setBusy(true);
+    const path = `${(await createClient().auth.getUser()).data.user?.id}/${projectId}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+    const { error } = await createClient()
+      .storage.from("creator-studio-media")
+      .upload(path, file);
+    if (!error)
+      setAsset((a) => ({
+        ...a,
+        reference_images: [...(a.reference_images || []), path],
+      }));
+    setBusy(false);
+  };
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!asset.name?.trim()) return;
+    setBusy(true);
+    try {
+      await save({ action: "saveAsset", asset: { ...asset, type } });
+      await reload();
+      close();
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4">
+      <form
+        onSubmit={submit}
+        className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#1b1d1c] p-6 shadow-2xl"
+      >
+        <div className="flex justify-between">
+          <h2 className="text-xl font-bold">
+            {entity ? "Edit" : "Add"} {type}
+          </h2>
+          <button type="button" onClick={close}>
+            <X />
+          </button>
+        </div>
+        <label className="mt-5 block text-sm">
+          Name
+          <input
+            required
+            value={asset.name || ""}
+            onChange={(e) => setAsset((a) => ({ ...a, name: e.target.value }))}
+            className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 p-3 outline-none"
+          />
+        </label>
+        <label className="mt-4 block text-sm">
+          Description / consistency prompt
+          <textarea
+            value={asset.description || ""}
+            onChange={(e) =>
+              setAsset((a) => ({ ...a, description: e.target.value }))
+            }
+            className="mt-2 h-24 w-full rounded-lg border border-white/10 bg-black/20 p-3 outline-none"
+          />
+        </label>
+        {type === "character" && (
+          <label className="mt-4 block text-sm">
+            Voice setting (optional)
+            <input
+              value={asset.voice_id || ""}
+              onChange={(e) =>
+                setAsset((a) => ({ ...a, voice_id: e.target.value }))
+              }
+              className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 p-3 outline-none"
+            />
+          </label>
+        )}
+        <label className="mt-4 flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-white/20 p-3 text-sm text-zinc-400">
+          <Upload className="h-4 w-4" /> Upload reference image
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => upload(e.target.files?.[0])}
+            className="hidden"
+          />
+        </label>
+        {asset.reference_images?.length ? (
+          <p className="mt-2 text-xs text-[#b9f42e]">
+            {asset.reference_images.length} reference image
+            {asset.reference_images.length > 1 ? "s" : ""} attached
+          </p>
+        ) : null}
+        <button
+          disabled={busy}
+          className="mt-5 w-full rounded-xl bg-[#b9f42e] px-4 py-3 font-bold text-black"
+        >
+          {busy ? "Saving…" : "Save asset"}
+        </button>
+      </form>
+    </div>
+  );
+}
+function Storyboard({
+  shots,
+  entities,
+  episodeId,
+  projectId,
+  save,
+  reload,
+}: {
+  shots: Shot[];
+  entities: Entity[];
+  episodeId: string;
+  projectId: string;
+  save: (b: unknown) => Promise<void>;
+  reload: () => Promise<void>;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [media, setMedia] = useState<{
+    shot: Shot;
+    type: "image" | "video";
+  } | null>(null);
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <Pill>▯ {"9:16"}</Pill>
+          <Pill>◉ Cinematic</Pill>
+          <Pill>↗ 720p</Pill>
+          <button className="rounded-lg bg-[#222423] px-3 py-2 text-sm text-zinc-300">
+            Batch download
+          </button>
+        </div>
+        <button
+          onClick={() => setAdding(true)}
+          className="rounded-xl bg-[#b9f42e] px-4 py-2 text-sm font-bold text-black"
+        >
+          + Add shot
+        </button>
+      </div>
+      {adding && (
+        <ShotForm
+          entities={entities}
+          episodeId={episodeId}
+          save={save}
+          close={() => setAdding(false)}
+          reload={reload}
+        />
+      )}
+      <div className="overflow-x-auto">
+        <div className="min-w-[830px]">
+          <div className="grid grid-cols-[42px_minmax(210px,1.6fr)_150px_170px_170px] gap-3 px-4 pb-3 text-xs font-bold uppercase tracking-wide text-zinc-400">
+            <span>#</span>
+            <span>Description</span>
+            <span>Assets</span>
+            <span>Images</span>
+            <span>Videos</span>
+          </div>
+          <div className="space-y-3">
+            {shots.map((shot, index) => {
+              const linked = entities.filter((e) =>
+                shot.referenced_entities?.includes(e.id),
+              );
+              return (
+                <article
+                  key={shot.id}
+                  className="grid grid-cols-[42px_minmax(210px,1.6fr)_150px_170px_170px] gap-3 rounded-xl border border-white/10 bg-[#1a1c1b] p-3"
+                >
+                  <div className="flex flex-col items-center gap-3">
+                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#b9f42e]/12 font-bold text-[#b9f42e]">
+                      {index + 1}
+                    </span>
+                    <span className="text-[10px] text-zinc-600">⋮⋮</span>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded bg-[#b9f42e]/15 px-1.5 py-0.5 text-xs font-bold text-[#b9f42e]">
+                        {shot.duration_seconds}s
+                      </span>
+                      <p className="font-bold">{shot.title}</p>
+                    </div>
+                    <p className="mt-3 line-clamp-7 text-sm leading-6 text-zinc-300">
+                      {shot.prompt ||
+                        "Add a detailed prompt with the visual direction, camera framing, movement and continuity for this shot."}
+                    </p>
+                    <div className="mt-3 flex gap-2">
+                      <button className="text-xs font-semibold text-zinc-300">
+                        ✎ Edit
+                      </button>
+                      <button className="text-xs font-semibold text-[#b9f42e]">
+                        ↻ Redo
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap content-start gap-2">
+                    {linked.map((entity) => (
+                      <div key={entity.id} className="w-[62px]">
+                        <AssetImage src={entity.reference_images?.[0]} />
+                        <p className="mt-1 truncate text-[10px] text-zinc-400">
+                          {entity.name}
+                        </p>
+                      </div>
+                    ))}
+                    {!linked.length && (
+                      <button className="grid h-14 w-14 place-items-center rounded-full border border-dashed border-white/20 text-zinc-500">
+                        +
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setMedia({ shot, type: "image" })}
+                    className="overflow-hidden rounded-lg bg-[#292b2a] text-left transition hover:ring-2 hover:ring-[#b9f42e]"
+                  >
+                    <Preview
+                      src={shot.keyframe_image}
+                      label="Reference image"
+                    />
+                    <div className="border-t border-white/10 px-2 py-2 text-xs text-zinc-400">
+                      Image reference
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setMedia({ shot, type: "video" })}
+                    className="overflow-hidden rounded-lg bg-[#292b2a] text-left transition hover:ring-2 hover:ring-[#b9f42e]"
+                  >
+                    <Preview src={shot.video_url} label="Generated video" type="video" />
+                    <div className="border-t border-white/10 px-2 py-2 text-xs text-zinc-400">
+                      {shot.video_status === "completed"
+                        ? "Video ready"
+                        : "Awaiting output"}
+                    </div>
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+          {shots.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-white/15 p-12 text-center text-zinc-500">
+              Add a shot to begin your visual storyboard.
+            </div>
+          )}
+        </div>
+      </div>
+      {media && (
+        <ShotMediaWorkspace
+          media={media}
+          entities={entities}
+          projectId={projectId}
+          close={() => setMedia(null)}
+          save={save}
+          reload={reload}
+        />
+      )}
+    </div>
+  );
+}
+function ShotMediaWorkspace({
+  media,
+  entities,
+  projectId,
+  close,
+  save,
+  reload,
+}: {
+  media: { shot: Shot; type: "image" | "video" };
+  entities: Entity[];
+  projectId: string;
+  close: () => void;
+  save: (b: unknown) => Promise<void>;
+  reload: () => Promise<void>;
+}) {
+  const [prompt, setPrompt] = useState(media.shot.prompt || "");
+  const [model, setModel] = useState<string>(
+    media.type === "image" ? imageGenerationModels[0].id : videoGenerationModels[0].id,
+  );
+  const savedVideoMode = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "generation_mode" in media.shot.metadata.video_generation ? (media.shot.metadata.video_generation as { generation_mode?: string }).generation_mode : null;
+  const [videoInputMode, setVideoInputMode] = useState<"keyframe" | "multi_image">(savedVideoMode === "multi_image" ? "multi_image" : "keyframe");
+  const [startFrame, setStartFrame] = useState<string | null>(media.type === "video" ? media.shot.keyframe_image : null);
+  const [endFrame, setEndFrame] = useState<string | null>(null);
+  const savedAspectRatio = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "aspect_ratio" in media.shot.metadata.video_generation ? (media.shot.metadata.video_generation as { aspect_ratio?: string }).aspect_ratio : null;
+  const savedResolution = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "resolution" in media.shot.metadata.video_generation ? (media.shot.metadata.video_generation as { resolution?: string }).resolution : null;
+  const savedAudio = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "audio_enabled" in media.shot.metadata.video_generation ? Boolean((media.shot.metadata.video_generation as { audio_enabled?: boolean }).audio_enabled) : true;
+  const [aspectRatio, setAspectRatio] = useState<string>(savedAspectRatio || media.shot.aspect_ratio || "9:16");
+  const [resolution, setResolution] = useState<string>(savedResolution || media.shot.resolution || "720p");
+  const [audioEnabled, setAudioEnabled] = useState<boolean>(savedAudio);
+  const [durationSeconds, setDurationSeconds] = useState<number>(Number(media.shot.duration_seconds || 4));
+  const [busy, setBusy] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [generationStatus, setGenerationStatus] = useState<string | null>(null);
+  const [picker, setPicker] = useState(false);
+  const [referenceSourcePicker, setReferenceSourcePicker] = useState(false);
+  const [referenceTarget, setReferenceTarget] = useState<"references" | "start" | "end">("references");
+  const [references, setReferences] = useState<string[]>(() => media.type === "video" && media.shot.keyframe_image ? [media.shot.keyframe_image] : []);
+  const isImage = media.type === "image";
+  const source = isImage ? media.shot.keyframe_image : media.shot.video_url;
+  const videoReferenceImages = videoInputMode === "keyframe" ? [startFrame, endFrame].filter((item): item is string => Boolean(item)) : references;
+  const openReferenceSource = (target: "references" | "start" | "end") => {
+    setReferenceTarget(target);
+    setReferenceSourcePicker(true);
+  };
+  const addCurrentSourceAsReference = () => {
+    if (!source) return;
+    if (!isImage && videoInputMode === "keyframe") {
+      setStartFrame((current) => current || source);
+      return;
+    }
+    setReferences((current) => current.includes(source) ? current : [...current, source]);
+  };
+  const generate = async () => {
+    setBusy(true);
+    setGenerationError(null);
+    setGenerationStatus(null);
+    try {
+      if (isImage) {
+        const response = await fetch(`/api/studio/projects/${projectId}/images`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references }) });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || "Image generation failed");
+      } else {
+        const approved = window.confirm(`Generate one ${media.shot.duration_seconds || 4}s video with ${videoGenerationModels.find((item) => item.id === model)?.label || model} using ${videoReferenceImages.length} reference image${videoReferenceImages.length === 1 ? "" : "s"}? This sends a billable request to BytePlus and may replace the current shot video.`);
+        if (!approved) return;
+        setGenerationStatus("Submitting to BytePlus…");
+        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, generationMode: videoInputMode, startFrame, endFrame, aspectRatio, resolution, audioEnabled, durationSeconds }) });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || "Video generation failed");
+        setGenerationStatus("BytePlus is generating the video…");
+        let finalJob = body;
+        for (let attempt = 0; attempt < 180; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 5_000));
+          const statusResponse = await fetch(`/api/studio/projects/${projectId}/videos?jobId=${encodeURIComponent(body.jobId)}`, { cache: "no-store" });
+          finalJob = await statusResponse.json();
+          if (!statusResponse.ok) throw new Error(finalJob.error || "Could not check video status");
+          if (finalJob.status === "completed") break;
+          if (finalJob.status === "failed" || finalJob.status === "cancelled") throw new Error(finalJob.error || `Video generation ${finalJob.status}`);
+        }
+        if (finalJob.status !== "completed") throw new Error("Video generation is still running. Reopen this shot to check again.");
+        setGenerationStatus("Video ready");
+      }
+      await reload();
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "Generation failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const addReferencePath = (path: string) => {
+    if (referenceTarget === "start") {
+      setStartFrame(path);
+      return;
+    }
+    if (referenceTarget === "end") {
+      setEndFrame(path);
+      return;
+    }
+    setReferences((current) => current.includes(path) ? current : [...current, path]);
+  };
+  const uploadReference = async (file?: File) => {
+    if (!file) return;
+    setBusy(true);
+    setGenerationError(null);
+    setGenerationStatus(null);
+    try {
+      const userId = (await createClient().auth.getUser()).data.user?.id;
+      if (!userId) throw new Error("Please sign in before uploading a reference.");
+      const path = `${userId}/${projectId}/shot-reference-${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+      const { error } = await createClient()
+        .storage.from("creator-studio-media")
+        .upload(path, file);
+      if (error) throw error;
+      addReferencePath(path);
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "Reference upload failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="fixed inset-0 z-50 bg-[#080908] text-white">
+      <div className="flex h-full">
+        <aside className="w-40 shrink-0 overflow-y-auto border-r border-white/10 bg-[#0b0c0b] p-4">
+          <button
+            onClick={close}
+            className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl bg-white/5 text-zinc-300 hover:bg-white/10"
+          >
+            <X />
+          </button>
+          <label className="grid aspect-[3/4] cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-sm text-zinc-400 hover:border-[#b9f42e]">
+            +<br />
+            Upload
+            <input type="file" accept="image/*,video/*" className="hidden" onChange={(e) => uploadReference(e.target.files?.[0])} />
+          </label>
+          {source && (
+            <button className="mt-4 block w-full overflow-hidden rounded-xl border-2 border-[#b9f42e]">
+              <Preview src={source} label="Selected media" type={isImage ? "image" : "video"} />
+            </button>
+          )}
+        </aside>
+        <main className="flex min-w-0 flex-1 flex-col">
+          <header className="flex h-20 items-center gap-3 border-b border-white/10 px-6">
+            <button className="rounded-lg bg-[#b9f42e] px-4 py-2 text-sm font-bold text-black">
+              Chosen
+            </button>
+            <button onClick={addCurrentSourceAsReference} disabled={!source} className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-300 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40">
+              Use as reference
+            </button>
+            <span className="h-6 border-l border-white/10" />
+            <button
+              onClick={generate}
+              className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-300 hover:bg-white/5"
+            >
+              ↻ Regenerate
+            </button>
+            {isImage ? (
+              <button className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-300">
+                Generate variations
+              </button>
+            ) : (
+              <button className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-300">
+                Upscale
+              </button>
+            )}
+            <button
+              onClick={close}
+              className="ml-auto rounded-xl p-2 text-zinc-400 hover:bg-white/10"
+            >
+              <X />
+            </button>
+          </header>
+          <div className="grid flex-1 place-items-center overflow-auto bg-black/30 p-8">
+            <div className="w-full max-w-[540px] overflow-hidden rounded-lg bg-[#151715] shadow-2xl">
+              {generationError ? (
+                <GenerationPreviewError message={generationError} />
+              ) : source ? (
+                <Preview
+                  src={source}
+                  label={isImage ? "Image preview" : "Video preview"}
+                  type={isImage ? "image" : "video"}
+                />
+              ) : (
+                <div className="grid aspect-[9/14] place-items-center text-center text-zinc-500">
+                  Your {media.type} output
+                  <br />
+                  will appear here.
+                </div>
+              )}
+            </div>
+          </div>
+        </main>
+        <aside className="flex w-[430px] shrink-0 flex-col border-l border-white/10 bg-[#151715]">
+          <div className="flex items-start justify-between p-6">
+            <div>
+              <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">
+                SHOT {isImage ? "IMAGE" : "VIDEO"}
+              </p>
+              <h2 className="mt-2 text-3xl font-black">{media.shot.title}</h2>
+              <p className="mt-2 text-sm text-zinc-400">
+                {media.shot.duration_seconds}s ·{" "}
+                {isImage ? "9:16 image" : "9:16 video"}
+              </p>
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto px-6">
+            {isImage ? (
+              <div className="mb-5 rounded-xl border border-white/10 bg-[#0b0c0b] p-4">
+                <div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wide text-zinc-500">Reference images</p><button type="button" onClick={() => { setReferenceTarget("references"); setPicker(true); }} className="text-sm font-semibold text-[#b9f42e]">Select assets</button></div>
+                <div className="mt-3 flex flex-wrap gap-2"><button type="button" aria-label="Add reference image" onClick={() => openReferenceSource("references")} className="grid h-16 w-16 place-items-center rounded-lg border border-dashed border-white/25 text-xl text-zinc-400 hover:border-[#b9f42e]">+</button>{references.map((reference, index) => <div key={`${reference}-${index}`} className="relative h-16 w-16 overflow-hidden rounded-lg"><AssetImage src={reference} /><button type="button" aria-label={`Remove reference image ${index + 1}`} onClick={() => setReferences(items => items.filter((_, itemIndex) => itemIndex !== index))} className="absolute right-1 top-1 rounded bg-black/70 px-1 text-xs">×</button></div>)}</div>
+                <p className="mt-3 text-xs leading-5 text-zinc-500">{references.length ? `${references.length} reference image${references.length === 1 ? "" : "s"} will be sent with this prompt.` : "Add a reference image to guide this generation."}</p>
+              </div>
+            ) : (
+              <div className="mb-5 rounded-2xl border border-white/10 bg-[#0b0c0b] p-4">
+                <div className="inline-flex rounded-full bg-black/60 p-1">
+                  <button type="button" onClick={() => setVideoInputMode("keyframe")} className={`rounded-full px-4 py-2 text-sm font-bold ${videoInputMode === "keyframe" ? "bg-[#fff878] text-black" : "text-zinc-400"}`}>Key Frame</button>
+                  <button type="button" onClick={() => setVideoInputMode("multi_image")} className={`rounded-full px-4 py-2 text-sm font-bold ${videoInputMode === "multi_image" ? "bg-[#fff878] text-black" : "text-zinc-400"}`}>Multi Image</button>
+                </div>
+                {videoInputMode === "keyframe" ? (
+                  <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                    <FrameSlot label="Start frame" value={startFrame} onAdd={() => openReferenceSource("start")} onClear={() => setStartFrame(null)} />
+                    <span className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/5 text-zinc-400">↔</span>
+                    <FrameSlot label="Last frame" value={endFrame} onAdd={() => openReferenceSource("end")} onClear={() => setEndFrame(null)} />
+                  </div>
+                ) : (
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wide text-zinc-500">Multi image references</p><button type="button" onClick={() => { setReferenceTarget("references"); setPicker(true); }} className="text-sm font-semibold text-[#b9f42e]">Select assets</button></div>
+                    <div className="mt-3 flex flex-wrap gap-2"><button type="button" aria-label="Add reference image" onClick={() => openReferenceSource("references")} className="grid h-16 w-16 place-items-center rounded-lg border border-dashed border-white/25 text-xl text-zinc-400 hover:border-[#b9f42e]">+</button>{references.map((reference, index) => <div key={`${reference}-${index}`} className="relative h-16 w-16 overflow-hidden rounded-lg"><AssetImage src={reference} /><button type="button" aria-label={`Remove reference image ${index + 1}`} onClick={() => setReferences(items => items.filter((_, itemIndex) => itemIndex !== index))} className="absolute right-1 top-1 rounded bg-black/70 px-1 text-xs">×</button></div>)}</div>
+                  </div>
+                )}
+                <p className="mt-3 text-xs leading-5 text-zinc-500">{videoReferenceImages.length ? `${videoReferenceImages.length} reference image${videoReferenceImages.length === 1 ? "" : "s"} will be sent with this prompt.` : "Add a start frame or multi-image references to guide this video."}</p>
+              </div>
+            )}
+            {!isImage && (
+              <div className="mb-5 rounded-2xl border border-white/10 bg-[#0b0c0b] p-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <ModelChip label="Aspect ratio" value={aspectRatio} choices={["9:16", "16:9", "1:1", "3:4", "4:3", "21:9"]} onChange={setAspectRatio} />
+                  <ModelChip label="Resolution" value={resolution} choices={["480p", "720p"]} onChange={setResolution} />
+                  <ModelChip label="Duration" value={`${durationSeconds}s`} choices={["4s", "6s", "8s", "10s", "15s", "20s", "30s"]} onChange={(next) => setDurationSeconds(Number(next.replace(/s$/, "")))} />
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
+                    <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">Audio</p>
+                    <button type="button" onClick={() => setAudioEnabled((current) => !current)} className={`mt-2 inline-flex items-center gap-3 rounded-full px-3 py-2 text-sm font-bold ${audioEnabled ? "bg-[#fff878] text-black" : "bg-white/10 text-zinc-300"}`}>
+                      <span className={`grid h-6 w-10 rounded-full p-1 ${audioEnabled ? "bg-black/20" : "bg-black/40"}`}>
+                        <span className={`h-4 w-4 rounded-full bg-black transition ${audioEnabled ? "translate-x-4" : "translate-x-0"}`} />
+                      </span>
+                      {audioEnabled ? "On" : "Off"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            <label className="block text-xs font-bold uppercase tracking-wide text-zinc-500">
+              {isImage ? "Image prompt" : "Video motion prompt"}
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                className="mt-2 h-52 w-full resize-none rounded-xl border border-white/10 bg-[#0b0c0b] p-4 text-base leading-7 text-zinc-200 outline-none focus:border-[#b9f42e]/60"
+                placeholder={
+                  isImage
+                    ? "Describe composition, lighting, character consistency and visual style…"
+                    : "Describe camera movement, subject motion, timing and continuity…"
+                }
+              />
+            </label>
+            <ModelMenu type={isImage ? "image" : "video"} value={model} onChange={setModel} />
+            <p className="mt-4 rounded-xl border border-[#b9f42e]/20 bg-[#b9f42e]/5 p-3 text-sm text-zinc-300">
+              {isImage ? "Image requests are processed securely on the server. OpenAI and BytePlus API keys are never sent to this browser." : "Seedance video requests run asynchronously through BytePlus ModelArk. You will approve the billable request before it is submitted."}
+            </p>
+            {generationStatus && <p role="status" className="mt-3 rounded-xl border border-sky-500/30 bg-sky-500/10 p-3 text-sm text-sky-100">{generationStatus}</p>}
+            {generationError && <p role="alert" className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{generationError}</p>}
+          </div>
+          <div className="border-t border-white/10 p-6">
+            <button
+              onClick={generate}
+              disabled={busy}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-3 font-bold text-black"
+            >
+              <Sparkles className="h-4 w-4" />
+              {busy
+                ? isImage ? "Generating image…" : "Generating video…"
+                : `Generate ${isImage ? "image" : "video"}`}
+            </button>
+          </div>
+        </aside>
+      </div>
+      {referenceSourcePicker && <ReferenceSourcePicker close={() => setReferenceSourcePicker(false)} onChooseExisting={() => { setReferenceSourcePicker(false); setPicker(true); }} onUpload={uploadReference} />}
+      {picker && <ReferencePicker entities={entities} selected={referenceTarget === "references" ? references : []} close={() => setPicker(false)} confirm={(items) => { const selectedImage = items[0]; if (referenceTarget === "start" && selectedImage) setStartFrame(selectedImage); else if (referenceTarget === "end" && selectedImage) setEndFrame(selectedImage); else setReferences(items); setPicker(false) }} />}
+    </div>
+  );
+}
+
+function GenerationPreviewError({ message }: { message: string }) {
+  return (
+    <div className="grid aspect-[9/14] place-items-center p-6 text-center">
+      <div role="alert" className="max-w-sm rounded-xl border border-red-500/30 bg-red-500/10 p-5 text-left">
+        <p className="text-xs font-bold uppercase tracking-wide text-red-200">Generation error</p>
+        <p className="mt-2 text-sm leading-6 text-red-100">{message}</p>
+      </div>
+    </div>
+  );
+}
+
+function FrameSlot({ label, value, onAdd, onClear }: { label: string; value: string | null; onAdd: () => void; onClear: () => void }) {
+  return (
+    <div>
+      <button type="button" onClick={onAdd} className="grid aspect-square w-full min-w-0 place-items-center overflow-hidden rounded-xl border border-dashed border-white/20 bg-white/[0.03] text-zinc-300 hover:border-[#b9f42e]">
+        {value ? <AssetImage src={value} /> : <span className="text-3xl">+</span>}
+      </button>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <p className="truncate text-sm font-bold text-zinc-100">{label}</p>
+        {value && <button type="button" onClick={onClear} className="rounded bg-black/50 px-2 py-0.5 text-xs text-zinc-300 hover:bg-white/10">×</button>}
+      </div>
+    </div>
+  );
+}
+
+function ModelChip({
+  label,
+  value,
+  choices,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  choices: string[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
+      <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{label}</p>
+      <button type="button" onClick={() => setOpen((current) => !current)} className="mt-2 flex w-full items-center justify-between gap-2 text-sm font-bold text-white">
+        <span className="truncate">{value}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-[calc(100%+8px)] z-[90] w-full overflow-hidden rounded-xl border border-white/10 bg-[#18191c] p-2 shadow-2xl">
+          {choices.map((choice) => (
+            <button
+              key={choice}
+              type="button"
+              onClick={() => {
+                onChange(choice);
+                setOpen(false);
+              }}
+              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${choice === value ? "bg-[#fff878] font-bold text-black" : "text-zinc-300 hover:bg-white/5"}`}
+            >
+              {choice}
+              {choice === value && <span>✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReferencePicker({ entities, selected, close, confirm }: { entities: Entity[]; selected: string[]; close: () => void; confirm: (items: string[]) => void }) {
+  const [choices, setChoices] = useState(selected); const [filter, setFilter] = useState<"all" | Entity["type"]>("all"); const visible = entities.filter(entity => filter === "all" || entity.type === filter).filter(entity => entity.reference_images?.[0])
+  return <div className="fixed inset-0 z-[60] grid place-items-center bg-black/75 p-6 backdrop-blur-sm"><section className="flex h-[min(760px,85vh)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#171918] shadow-2xl"><header className="flex items-center gap-4 border-b border-white/10 p-5"><h3 className="text-xl font-black">Select from existing assets</h3><div className="flex gap-1 rounded-xl bg-white/5 p-1">{(["all", "character", "scene", "prop"] as const).map(item => <button key={item} onClick={() => setFilter(item)} className={`rounded-lg px-3 py-2 text-sm font-semibold capitalize ${filter === item ? "bg-[#b9f42e] text-black" : "text-zinc-400"}`}>{item === "all" ? "All" : `${item}s`}</button>)}</div><button onClick={close} className="ml-auto rounded-lg p-2 text-zinc-400 hover:bg-white/10"><X /></button></header><div className="grid flex-1 grid-cols-2 content-start gap-4 overflow-auto p-5 sm:grid-cols-4 lg:grid-cols-6">{visible.map(entity => { const image = entity.reference_images[0]; const active = choices.includes(image); return <button key={entity.id} onClick={() => setChoices(items => active ? items.filter(item => item !== image) : [...items, image])} className={`relative overflow-hidden rounded-xl border-2 text-left ${active ? "border-[#b9f42e]" : "border-transparent"}`}><AssetImage src={image} /><span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-2 text-xs font-bold">{entity.name}</span>{active && <span className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full bg-[#b9f42e] text-xs text-black">✓</span>}</button>})}{!visible.length && <p className="col-span-full text-zinc-500">Upload an image to an asset first, then it will appear here.</p>}</div><footer className="flex items-center justify-end gap-4 border-t border-white/10 p-5"><span className="text-sm text-zinc-400">{choices.length} selected</span><button onClick={() => confirm(choices)} className="rounded-xl bg-[#b9f42e] px-6 py-3 font-bold text-black">Confirm references</button></footer></section></div>
+}
+function ReferenceSourcePicker({ close, onChooseExisting, onUpload }: { close: () => void; onChooseExisting: () => void; onUpload: (file?: File) => Promise<void> }) {
+  return <div className="fixed inset-0 z-[70] grid place-items-center bg-black/65 p-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Add a reference image"><section className="w-full max-w-md rounded-2xl border border-white/10 bg-[#171918] p-6 shadow-2xl"><div className="flex items-start justify-between"><div><p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">REFERENCE IMAGE</p><h3 className="mt-2 text-2xl font-black">Add a reference</h3><p className="mt-2 text-sm leading-6 text-zinc-400">Choose a project asset or upload an image from your device.</p></div><button type="button" aria-label="Close reference picker" onClick={close} className="rounded-lg p-2 text-zinc-400 hover:bg-white/10"><X /></button></div><div className="mt-6 flex gap-3"><div className="grid h-32 w-32 shrink-0 place-items-center rounded-2xl border-2 border-dashed border-white/15 text-5xl text-zinc-300">+</div><div className="flex-1 overflow-hidden rounded-2xl border border-white/15 bg-[#101110]"><button type="button" onClick={onChooseExisting} className="flex w-full items-center gap-4 px-5 py-5 text-left text-lg font-bold hover:bg-white/5"><ImageIcon className="h-6 w-6" />Select from existing assets</button><label className="flex cursor-pointer items-center gap-4 border-t border-white/10 px-5 py-5 text-lg font-bold hover:bg-white/5"><Upload className="h-6 w-6" />Upload from local device<input type="file" accept="image/*" className="hidden" onChange={async (event) => { const file = event.target.files?.[0]; if (file) await onUpload(file); close(); }} /></label></div></div></section></div>
+}
+function ShotForm({
+  entities,
+  episodeId,
+  save,
+  close,
+  reload,
+}: {
+  entities: Entity[];
+  episodeId: string;
+  save: (b: unknown) => Promise<void>;
+  close: () => void;
+  reload: () => Promise<void>;
+}) {
+  const [title, setTitle] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [ids, setIds] = useState<string[]>([]);
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        await save({
+          action: "saveShot",
+          episodeId,
+          orderIndex: 9999,
+          shot: { title, prompt, entityIds: ids },
+        });
+        await reload();
+        close();
+      }}
+      className="rounded-2xl border border-[#b9f42e]/30 bg-[#1b1d1c] p-5"
+    >
+      <input
+        required
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder="Shot title"
+        className="w-full rounded-lg border border-white/10 bg-black/20 p-3 outline-none"
+      />
+      <textarea
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+        placeholder="Describe camera, framing, visual direction and continuity…"
+        className="mt-3 h-24 w-full rounded-lg border border-white/10 bg-black/20 p-3 outline-none"
+      />
+      <div className="mt-3 flex flex-wrap gap-2">
+        {entities.map((e) => (
+          <label
+            key={e.id}
+            className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs ${ids.includes(e.id) ? "border-[#b9f42e] bg-[#b9f42e]/10" : "border-white/10"}`}
+          >
+            <input
+              type="checkbox"
+              className="hidden"
+              checked={ids.includes(e.id)}
+              onChange={() =>
+                setIds((x) =>
+                  x.includes(e.id)
+                    ? x.filter((id) => id !== e.id)
+                    : [...x, e.id],
+                )
+              }
+            />
+            {e.name}
+          </label>
+        ))}
+      </div>
+      <div className="mt-4 flex gap-2">
+        <button className="rounded-lg bg-[#b9f42e] px-4 py-2 text-sm font-bold text-black">
+          Save shot
+        </button>
+        <button
+          type="button"
+          onClick={close}
+          className="rounded-lg border border-white/15 px-4 py-2 text-sm"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+function Timeline({
+  shots,
+  entities,
+  save,
+  reload,
+}: {
+  shots: Shot[];
+  entities: Entity[];
+  save: (b: unknown) => Promise<void>;
+  reload: () => Promise<void>;
+}) {
+  const [selected, setSelected] = useState(0);
+  const shot = shots[selected];
+  const move = async (i: number, delta: number) => {
+    const next = [...shots];
+    const target = i + delta;
+    if (target < 0 || target >= next.length) return;
+    [next[i], next[target]] = [next[target], next[i]];
+    await save({ action: "reorderShots", ids: next.map((s) => s.id) });
+    reload();
+  };
+  return (
+    <div className="min-h-[calc(100vh-74px)] bg-[#080908]">
+      <div className="flex h-20 items-center justify-end border-b border-white/10 px-6">
+        <button className="rounded-xl bg-[#b9f42e] px-6 py-3 font-bold text-black">
+          ⇩ Render video
+        </button>
+      </div>
+      {shot ? (
+        <div className="grid min-h-[calc(100vh-250px)] grid-cols-[minmax(190px,28%)_1fr] border-b border-white/10">
+          <aside className="border-r border-white/10 p-5">
+            <div className="rounded-xl bg-[#1d1f1e] p-4 font-bold">
+              Shot {selected + 1}
+            </div>
+            <p className="mt-6 text-xs font-bold uppercase tracking-wide text-zinc-500">
+              Shot description
+            </p>
+            <p className="mt-3 text-sm leading-6 text-zinc-300">
+              {shot.prompt ||
+                "Add camera direction and visual details to this shot."}
+            </p>
+            <p className="mt-6 text-xs font-bold uppercase tracking-wide text-zinc-500">
+              Subject reference
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {entities
+                .filter((e) => shot.referenced_entities?.includes(e.id))
+                .map((entity) => (
+                  <div key={entity.id} className="w-14">
+                    <AssetImage src={entity.reference_images?.[0]} />
+                    <p className="mt-1 truncate text-[10px] text-zinc-500">
+                      {entity.name}
+                    </p>
+                  </div>
+                ))}
+              {!shot.referenced_entities?.length && (
+                <span className="text-xs text-zinc-600">No linked assets</span>
+              )}
+            </div>
+          </aside>
+          <section className="grid place-items-center p-6">
+            <div className="relative aspect-[9/14] max-h-[520px] w-full max-w-[350px] overflow-hidden bg-[#182d3b] shadow-2xl shadow-black/50">
+              {shot.video_url ? (
+                <ResolvedMedia src={shot.video_url} type="video" className="h-full w-full object-cover" />
+              ) : shot.keyframe_image ? (
+                <ResolvedMedia src={shot.keyframe_image} type="image" className="h-full w-full object-cover" />
+              ) : (
+                <div className="grid h-full place-items-center bg-[radial-gradient(circle_at_50%_30%,#315b70,transparent_40%),linear-gradient(#0a1820,#223d46)] text-center text-sm text-zinc-400">
+                  Shot preview
+                  <br />
+                  will appear here
+                </div>
+              )}
+              <span className="absolute bottom-3 left-3 rounded bg-black/50 px-2 py-1 text-xs">
+                {shot.duration_seconds}s
+              </span>
+            </div>
+          </section>
+        </div>
+      ) : (
+        <div className="grid h-[420px] place-items-center text-zinc-500">
+          Add storyboard shots to build a timeline.
+        </div>
+      )}
+      <div className="border-t border-white/10 bg-[#111211] p-4">
+        <div className="mx-auto mb-3 flex max-w-3xl items-center justify-between text-sm">
+          <span className="font-mono text-[#b9f42e]">00:00.00</span>
+          <div className="flex items-center gap-5 text-zinc-400">
+            <button>◁</button>
+            <button className="grid h-10 w-10 place-items-center rounded bg-[#252725] text-white">
+              ▷
+            </button>
+            <button>▷</button>
+          </div>
+          <span className="font-mono text-zinc-400">
+            00:
+            {String(
+              Math.round(
+                shots.reduce(
+                  (sum, item) => sum + Number(item.duration_seconds || 0),
+                  0,
+                ),
+              ),
+            ).padStart(2, "0")}
+            .00
+          </span>
+        </div>
+        <div className="relative flex h-24 gap-1 overflow-x-auto border-t border-white/10 pt-3">
+          {shots.map((item, i) => (
+            <div
+              key={item.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelected(i)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setSelected(i);
+                }
+              }}
+              className={`relative h-16 min-w-32 flex-1 overflow-hidden rounded border p-2 text-left text-xs ${i === selected ? "border-[#b9f42e] ring-1 ring-[#b9f42e]" : "border-white/10 bg-[#1b1d1c]"}`}
+            >
+              <span className="absolute inset-0 bg-gradient-to-br from-[#35576a] to-[#182428] opacity-70" />
+              <span className="relative block truncate font-bold">
+                {item.title}
+              </span>
+              <span className="relative mt-1 block text-zinc-300">
+                {item.duration_seconds}s
+              </span>
+              <span className="absolute right-1 top-1 z-10 flex gap-1">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    move(i, -1);
+                  }}
+                  className="rounded bg-black/40 px-1"
+                >
+                  ↑
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    move(i, 1);
+                  }}
+                  className="rounded bg-black/40 px-1"
+                >
+                  ↓
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+function AssetImage({ src }: { src?: string }) {
+  const [url, setUrl] = useState<string>();
+  useEffect(() => {
+    if (!src || src.startsWith("http")) return;
+    createClient()
+      .storage.from("creator-studio-media")
+      .createSignedUrl(src, 3600)
+      .then(({ data }) => setUrl(data?.signedUrl));
+  }, [src]);
+  const displayUrl = src?.startsWith("http") ? src : url;
+  return (
+    <div className="aspect-[4/3] bg-gradient-to-br from-[#4d5044] to-[#161716]">
+      {displayUrl && <img src={displayUrl} alt="" className="h-full w-full object-cover" />}
+    </div>
+  );
+}
+function Preview({ src, label, type = "image" }: { src: string | null; label: string; type?: "image" | "video" }) {
+  return (
+    <div className="aspect-[9/12] overflow-hidden rounded-lg bg-[#2a2c2b]">
+      {src ? (
+        <ResolvedMedia src={src} type={type} className="h-full w-full object-cover" />
+      ) : (
+        <div className="grid h-full place-items-center p-2 text-center text-xs text-zinc-500">
+          {label}
+        </div>
+      )}
+    </div>
+  );
+}
+function ResolvedMedia({ src, type, className }: { src: string; type: "image" | "video"; className?: string }) {
+  const [url, setUrl] = useState(src.startsWith("http") ? src : "");
+  useEffect(() => {
+    let active = true;
+    if (src.startsWith("http")) {
+      setUrl(src);
+      return;
+    }
+    setUrl("");
+    createClient()
+      .storage.from("creator-studio-media")
+      .createSignedUrl(src, 3600)
+      .then(({ data }) => {
+        if (active) setUrl(data?.signedUrl || "");
+      });
+    return () => {
+      active = false;
+    };
+  }, [src]);
+  if (!url) {
+    return <div className={`grid place-items-center text-xs text-zinc-500 ${className || ""}`}>Loading media…</div>;
+  }
+  if (type === "video") {
+    return <video src={url} controls muted playsInline preload="metadata" className={className} />;
+  }
+  return <img src={url} alt="" className={className} />;
+}
+function Pill({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded-lg bg-[#222423] px-3 py-2 text-sm text-zinc-300">
+      {children}
+    </span>
+  );
+}
+function parseScript(value: unknown) {
+  if (value && typeof value === "object" && !Array.isArray(value))
+    return { ...blankScript, ...(value as typeof blankScript) };
+  if (typeof value === "string") return { ...blankScript, overview: value };
+  return blankScript;
+}
