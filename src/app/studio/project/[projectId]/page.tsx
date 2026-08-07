@@ -46,6 +46,8 @@ type Shot = {
   video_url: string | null;
   video_status: string;
   duration_seconds: number;
+  aspect_ratio?: string | null;
+  resolution?: string | null;
   referenced_entities: string[];
   order_index: number;
   metadata?: Record<string, unknown>;
@@ -1688,6 +1690,13 @@ function ShotMediaWorkspace({
   const [videoInputMode, setVideoInputMode] = useState<"keyframe" | "multi_image">(savedVideoMode === "multi_image" ? "multi_image" : "keyframe");
   const [startFrame, setStartFrame] = useState<string | null>(media.type === "video" ? media.shot.keyframe_image : null);
   const [endFrame, setEndFrame] = useState<string | null>(null);
+  const savedAspectRatio = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "aspect_ratio" in media.shot.metadata.video_generation ? (media.shot.metadata.video_generation as { aspect_ratio?: string }).aspect_ratio : null;
+  const savedResolution = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "resolution" in media.shot.metadata.video_generation ? (media.shot.metadata.video_generation as { resolution?: string }).resolution : null;
+  const savedAudio = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "audio_enabled" in media.shot.metadata.video_generation ? Boolean((media.shot.metadata.video_generation as { audio_enabled?: boolean }).audio_enabled) : true;
+  const [aspectRatio, setAspectRatio] = useState<string>(savedAspectRatio || media.shot.aspect_ratio || "9:16");
+  const [resolution, setResolution] = useState<string>(savedResolution || media.shot.resolution || "720p");
+  const [audioEnabled, setAudioEnabled] = useState<boolean>(savedAudio);
+  const [durationSeconds, setDurationSeconds] = useState<number>(Number(media.shot.duration_seconds || 4));
   const [busy, setBusy] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
@@ -1723,7 +1732,7 @@ function ShotMediaWorkspace({
         const approved = window.confirm(`Generate one ${media.shot.duration_seconds || 4}s video with ${videoGenerationModels.find((item) => item.id === model)?.label || model} using ${videoReferenceImages.length} reference image${videoReferenceImages.length === 1 ? "" : "s"}? This sends a billable request to BytePlus and may replace the current shot video.`);
         if (!approved) return;
         setGenerationStatus("Submitting to BytePlus…");
-        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, generationMode: videoInputMode, startFrame, endFrame }) });
+        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, generationMode: videoInputMode, startFrame, endFrame, aspectRatio, resolution, audioEnabled, durationSeconds }) });
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || "Video generation failed");
         setGenerationStatus("BytePlus is generating the video…");
@@ -1890,6 +1899,24 @@ function ShotMediaWorkspace({
                 <p className="mt-3 text-xs leading-5 text-zinc-500">{videoReferenceImages.length ? `${videoReferenceImages.length} reference image${videoReferenceImages.length === 1 ? "" : "s"} will be sent with this prompt.` : "Add a start frame or multi-image references to guide this video."}</p>
               </div>
             )}
+            {!isImage && (
+              <div className="mb-5 rounded-2xl border border-white/10 bg-[#0b0c0b] p-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <ModelChip label="Aspect ratio" value={aspectRatio} choices={["9:16", "16:9", "1:1", "3:4", "4:3", "21:9"]} onChange={setAspectRatio} />
+                  <ModelChip label="Resolution" value={resolution} choices={["480p", "720p"]} onChange={setResolution} />
+                  <ModelChip label="Duration" value={`${durationSeconds}s`} choices={["4s", "6s", "8s", "10s", "15s", "20s", "30s"]} onChange={(next) => setDurationSeconds(Number(next.replace(/s$/, "")))} />
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
+                    <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">Audio</p>
+                    <button type="button" onClick={() => setAudioEnabled((current) => !current)} className={`mt-2 inline-flex items-center gap-3 rounded-full px-3 py-2 text-sm font-bold ${audioEnabled ? "bg-[#fff878] text-black" : "bg-white/10 text-zinc-300"}`}>
+                      <span className={`grid h-6 w-10 rounded-full p-1 ${audioEnabled ? "bg-black/20" : "bg-black/40"}`}>
+                        <span className={`h-4 w-4 rounded-full bg-black transition ${audioEnabled ? "translate-x-4" : "translate-x-0"}`} />
+                      </span>
+                      {audioEnabled ? "On" : "Off"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             <label className="block text-xs font-bold uppercase tracking-wide text-zinc-500">
               {isImage ? "Image prompt" : "Video motion prompt"}
               <textarea
@@ -1951,6 +1978,47 @@ function FrameSlot({ label, value, onAdd, onClear }: { label: string; value: str
         <p className="truncate text-sm font-bold text-zinc-100">{label}</p>
         {value && <button type="button" onClick={onClear} className="rounded bg-black/50 px-2 py-0.5 text-xs text-zinc-300 hover:bg-white/10">×</button>}
       </div>
+    </div>
+  );
+}
+
+function ModelChip({
+  label,
+  value,
+  choices,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  choices: string[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
+      <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{label}</p>
+      <button type="button" onClick={() => setOpen((current) => !current)} className="mt-2 flex w-full items-center justify-between gap-2 text-sm font-bold text-white">
+        <span className="truncate">{value}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-[calc(100%+8px)] z-[90] w-full overflow-hidden rounded-xl border border-white/10 bg-[#18191c] p-2 shadow-2xl">
+          {choices.map((choice) => (
+            <button
+              key={choice}
+              type="button"
+              onClick={() => {
+                onChange(choice);
+                setOpen(false);
+              }}
+              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${choice === value ? "bg-[#fff878] font-bold text-black" : "text-zinc-300 hover:bg-white/5"}`}
+            >
+              {choice}
+              {choice === value && <span>✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

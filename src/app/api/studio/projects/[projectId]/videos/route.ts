@@ -13,6 +13,10 @@ const submitSchema = z.object({
   generationMode: z.enum(["keyframe", "multi_image"]).default("keyframe"),
   startFrame: z.string().max(2_000).nullable().optional(),
   endFrame: z.string().max(2_000).nullable().optional(),
+  aspectRatio: z.enum(["9:16", "16:9", "1:1", "3:4", "4:3", "21:9"]).default("9:16"),
+  resolution: z.enum(["480p", "720p"]).default("720p"),
+  audioEnabled: z.boolean().default(true),
+  durationSeconds: z.number().int().min(4).max(30).default(4),
 }).strict()
 
 async function verifyShot(context: Awaited<ReturnType<typeof requireAuthenticatedProject>>, projectId: string, shotId: string) {
@@ -44,7 +48,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const shot = await verifyShot(context, projectId, input.shotId)
     if (!shot) return NextResponse.json({ error: "Shot not found" }, { status: 404 })
     const references = await signedReferenceUrls(context, input.referenceImages)
-    const providerRequest = { prompt: input.prompt, duration: Number(shot.duration_seconds || 5), resolution: shot.resolution || "720p", ratio: shot.aspect_ratio || "9:16", referenceImages: input.referenceImages, generationMode: input.generationMode, startFrame: input.startFrame || null, endFrame: input.endFrame || null }
+    const providerRequest = { prompt: input.prompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceImages: input.referenceImages, generationMode: input.generationMode, startFrame: input.startFrame || null, endFrame: input.endFrame || null, audioEnabled: input.audioEnabled }
 
     const { data: job, error: jobError } = await context.supabase.from("creator_generation_jobs").insert({
       user_id: context.user.id,
@@ -67,10 +71,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (jobError) throw jobError
 
     try {
-      const task = await submitBytePlusVideo({ model: input.model, prompt: input.prompt, duration: Number(shot.duration_seconds || 5), resolution: shot.resolution || "720p", ratio: shot.aspect_ratio || "9:16", referenceUrls: references, generationMode: input.generationMode })
+      const task = await submitBytePlusVideo({ model: input.model, prompt: input.prompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references, generationMode: input.generationMode, audioEnabled: input.audioEnabled })
       await Promise.all([
         context.supabase.from("creator_generation_jobs").update({ status: "processing", provider_job_id: task.id, provider_response: task.response }).eq("id", job.id),
-        context.supabase.from("creator_shots").update({ video_status: "generating", model: input.model, metadata: { ...(shot.metadata || {}), video_generation: { provider: "byteplus", model: input.model, prompt: input.prompt, reference_images: input.referenceImages, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
+        context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, metadata: { ...(shot.metadata || {}), video_generation: { provider: "byteplus", model: input.model, prompt: input.prompt, reference_images: input.referenceImages, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
       ])
       return NextResponse.json({ jobId: job.id, providerJobId: task.id, status: "processing", provider: "byteplus", model: input.model }, { status: 202 })
     } catch (error) {

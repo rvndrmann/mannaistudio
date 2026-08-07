@@ -58,7 +58,7 @@ export async function generateBytePlusImage(input: { model: ImageGenerationModel
   return { url, contentType: "image/png" }
 }
 
-export async function submitBytePlusVideo(input: { model: VideoGenerationModelId; prompt: string; duration: number; resolution: string; ratio: string; referenceUrls?: string[]; generationMode?: "keyframe" | "multi_image" }) {
+export async function submitBytePlusVideo(input: { model: VideoGenerationModelId; prompt: string; duration: number; resolution: string; ratio: string; referenceUrls?: string[]; generationMode?: "keyframe" | "multi_image"; audioEnabled?: boolean }) {
   const content: Array<Record<string, unknown>> = [{ type: "text", text: input.prompt }]
   const referenceUrls = input.referenceUrls || []
   if (input.generationMode === "keyframe") {
@@ -72,7 +72,7 @@ export async function submitBytePlusVideo(input: { model: VideoGenerationModelId
     body: JSON.stringify({
       model: input.model,
       content,
-      generate_audio: true,
+      generate_audio: input.audioEnabled ?? true,
       duration: Math.min(maxDuration, Math.max(4, Math.round(input.duration))),
       resolution: input.resolution === "480p" ? "480p" : "720p",
       ratio: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].includes(input.ratio) ? input.ratio : "9:16",
