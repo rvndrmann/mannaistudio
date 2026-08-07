@@ -28,6 +28,7 @@ import {
     type ServiceRequestStatus,
 } from "@/lib/service-requests"
 import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, type BillingSettings } from "@/lib/membership"
+import { defaultDirectorModels, normalizeDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models"
 import BlogManager from "@/components/admin/BlogManager"
 
 type EnrolledStudent = {
@@ -182,6 +183,9 @@ function AdminDashboardContent() {
     const [trialSettings, setTrialSettings] = useState({ enabled: true, trialDays: 4, promoEndDate: "2026-07-01" })
     const [isSavingTrial, setIsSavingTrial] = useState(false)
     const [trialMessage, setTrialMessage] = useState("")
+    const [directorModels, setDirectorModels] = useState<DirectorModelConfig[]>(defaultDirectorModels.map((model) => ({ ...model })))
+    const [isSavingDirectorModels, setIsSavingDirectorModels] = useState(false)
+    const [directorModelsMessage, setDirectorModelsMessage] = useState("")
 
     const pricePerEnrollment = getActivePlanPrice(billingSettings)
 
@@ -325,6 +329,36 @@ function AdminDashboardContent() {
         } finally {
             setIsSavingTrial(false)
         }
+    }
+
+    const loadDirectorModels = async () => {
+        const supabase = await getServiceRequestClient()
+        if (!supabase) return
+        const { data } = await supabase.from("site_settings").select("value").eq("key", "ai_director_models").maybeSingle()
+        setDirectorModels(normalizeDirectorModels(data?.value))
+    }
+
+    const handleSaveDirectorModels = async () => {
+        setIsSavingDirectorModels(true)
+        setDirectorModelsMessage("")
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) throw new Error("No Supabase client")
+            const { data, error } = await supabase.rpc("admin_update_ai_director_models", {
+                p_models: directorModels,
+            })
+            if (error) throw error
+            setDirectorModels(normalizeDirectorModels(data))
+            setDirectorModelsMessage("AI Director models saved.")
+        } catch (err: any) {
+            setDirectorModelsMessage(`Could not save models: ${err.message || "Unknown error"}`)
+        } finally {
+            setIsSavingDirectorModels(false)
+        }
+    }
+
+    const setDirectorModelStatus = (id: string, status: "active" | "paused") => {
+        setDirectorModels((models) => models.map((model) => model.id === id ? { ...model, status } : model))
     }
 
     const loadShowcaseItems = async () => {
@@ -893,6 +927,7 @@ function AdminDashboardContent() {
         loadServiceRequests()
         loadBillingSettings()
         loadTrialSettings()
+        loadDirectorModels()
         loadAdminData()
         loadShowcaseItems()
     }, [])
@@ -977,6 +1012,15 @@ function AdminDashboardContent() {
                                 )}
                             >
                                 <DollarSign className="w-4 h-4" /> Plan & Offers
+                            </button>
+                            <button
+                                onClick={() => setActiveTab("ai-models")}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    activeTab === "ai-models" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                )}
+                            >
+                                <Settings className="w-4 h-4" /> AI Models
                             </button>
                             <div className="pt-4 mt-4 border-t border-white/5">
                                 <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium text-red-400 hover:bg-red-400/5">
@@ -1303,7 +1347,7 @@ function AdminDashboardContent() {
                                 <div className="flex items-center justify-between">
                                     <header>
                                         <h1 className="text-3xl font-bold tracking-tight mb-2">Showcase Manager</h1>
-                                        <p className="text-white/40 text-sm">Curate the videos displayed in the "Our Featured Work" section on the homepage.</p>
+                                        <p className="text-white/40 text-sm">Curate the videos displayed in the &quot;Our Featured Work&quot; section on the homepage.</p>
                                     </header>
                                     <button
                                         onClick={handleAddShowcase}
@@ -1999,7 +2043,7 @@ function AdminDashboardContent() {
                                     <label className="flex items-center justify-between gap-4 rounded-xl bg-white/5 border border-white/10 p-4">
                                         <div>
                                             <p className="font-bold">Enable Payments</p>
-                                            <p className="text-xs text-white/40 mt-1">When OFF, the billing page hides the checkout button and shows "Early Access — Free Pro!" instead.</p>
+                                            <p className="text-xs text-white/40 mt-1">When OFF, the billing page hides the checkout button and shows &quot;Early Access - Free Pro!&quot; instead.</p>
                                         </div>
                                         <input
                                             type="checkbox"
@@ -2091,6 +2135,71 @@ function AdminDashboardContent() {
                                 </div>
                             </motion.div>
                         )}
+
+                        {activeTab === "ai-models" && (
+                            <motion.div
+                                key="ai-models"
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                className="space-y-8"
+                            >
+                                <header>
+                                    <h1 className="text-3xl font-bold tracking-tight mb-2">AI Director Models</h1>
+                                    <p className="text-white/40 text-sm">Pause models to remove them from the Studio chat selector. Resume them when they are ready again.</p>
+                                </header>
+
+                                <div className="glass-card p-6 rounded-2xl border-white/10 space-y-4 max-w-4xl">
+                                    {directorModels.map((model) => {
+                                        const isPaused = model.status === "paused"
+                                        return (
+                                            <div key={model.id} className="flex flex-col gap-4 rounded-xl border border-white/10 bg-white/[0.03] p-4 md:flex-row md:items-center md:justify-between">
+                                                <div>
+                                                    <div className="flex flex-wrap items-center gap-3">
+                                                        <p className="font-bold">{model.label}</p>
+                                                        <span className={cn("rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wider", isPaused ? "bg-amber-400/10 text-amber-300" : "bg-lime-400/10 text-lime-300")}>
+                                                            {isPaused ? "Paused" : "Active"}
+                                                        </span>
+                                                    </div>
+                                                    <p className="mt-1 font-mono text-xs text-white/35">{model.id}</p>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={() => setDirectorModelStatus(model.id, "paused")}
+                                                        disabled={isPaused}
+                                                        className="flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-amber-300 transition hover:bg-amber-400/10 disabled:cursor-not-allowed disabled:opacity-35"
+                                                    >
+                                                        <Ban className="h-4 w-4" /> Pause
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setDirectorModelStatus(model.id, "active")}
+                                                        disabled={!isPaused}
+                                                        className="flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-lime-300 transition hover:bg-lime-400/10 disabled:cursor-not-allowed disabled:opacity-35"
+                                                    >
+                                                        <Play className="h-4 w-4" /> Rerun
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+
+                                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/45">
+                                        Active models appear in the Studio chat model dropdown. Paused models are blocked server-side too, so users cannot call them by editing the browser request.
+                                    </div>
+
+                                    {directorModelsMessage && <p className="text-sm text-white/50">{directorModelsMessage}</p>}
+
+                                    <button
+                                        onClick={handleSaveDirectorModels}
+                                        disabled={isSavingDirectorModels}
+                                        className="btn-primary flex items-center gap-2 px-6 py-3 disabled:opacity-60"
+                                    >
+                                        {isSavingDirectorModels ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                        {isSavingDirectorModels ? "Saving..." : "Save Model Settings"}
+                                    </button>
+                                </div>
+                            </motion.div>
+                        )}
                     </AnimatePresence>
 
                     {/* Submission Video Player Modal */}
@@ -2113,7 +2222,7 @@ function AdminDashboardContent() {
                                     <div className="p-4 border-b border-white/5 flex items-center justify-between">
                                         <div>
                                             <h3 className="text-lg font-bold">
-                                                {mockChallenges.find(c => c.id === watchingChallengeId)?.submissions.find(s => s.id === watchingSubmissionId)?.studentName}'s Submission
+                                                {mockChallenges.find(c => c.id === watchingChallengeId)?.submissions.find(s => s.id === watchingSubmissionId)?.studentName}&apos;s Submission
                                             </h3>
                                             <p className="text-xs text-white/40">Watching student creation for {mockChallenges.find(c => c.id === watchingChallengeId)?.title}</p>
                                         </div>

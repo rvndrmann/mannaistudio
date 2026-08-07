@@ -139,6 +139,32 @@ export default function LandingPage() {
                         </Link>
                     </motion.div>
 
+                    <motion.section
+                        initial={{ opacity: 0, y: 30 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.38 }}
+                        className="mt-16 rounded-3xl border border-primary/20 bg-black/30 p-6 text-left backdrop-blur md:p-9"
+                    >
+                        <p className="text-xs font-bold tracking-[.22em] text-primary">AI DIRECTOR STUDIO</p>
+                        <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-5xl">Talk to your AI Director. Create an entire video universe.</h2>
+                        <p className="mt-4 max-w-4xl text-base leading-7 text-white/60 md:text-lg">Create AI ads, recurring branded stories, and complete short-form shows with consistent characters, scenes, voices, and creative direction.</p>
+                        <div className="mt-7 grid gap-3 md:grid-cols-3">
+                            {[
+                                ["Create an AI Ad", "quick_video", "A focused UGC video, product ad, property video, app ad, or cinematic social story."],
+                                ["Create a Brand Series", "story_campaign", "Connected branded entertainment with recurring characters, products, and campaign memory."],
+                                ["Create a Short Drama", "ai_show", "Vertical episodes with season planning, character arcs, cliffhangers, and continuity."],
+                            ].map(([label, mode, description]) => (
+                                <Link key={mode} href={`/studio?mode=${mode}`} className="group rounded-2xl border border-white/10 bg-white/[.04] p-5 transition hover:border-primary/50 hover:bg-primary/[.06]">
+                                    <Clapperboard className="h-5 w-5 text-primary" />
+                                    <h3 className="mt-4 font-bold">{label}</h3>
+                                    <p className="mt-2 text-sm leading-6 text-white/50">{description}</p>
+                                    <span className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-primary">Open Studio <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" /></span>
+                                </Link>
+                            ))}
+                        </div>
+                        <p className="mt-7 border-t border-white/10 pt-6 text-sm leading-6 text-white/50">Unlike AI video generators that create disconnected clips, AI Director Hub helps users create connected stories, recurring characters, and complete video campaigns through a conversation with a personal AI director.</p>
+                    </motion.section>
+
                     {/* Featured video — front and center */}
                     {adminShowcase[0] && (
                         <motion.div
