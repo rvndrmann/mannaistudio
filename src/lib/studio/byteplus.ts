@@ -217,7 +217,8 @@ export async function createBytePlusAsset(input: { imageUrl: string; name?: stri
   let groupId = input.groupId
   if (!groupId) {
     try {
-      groupId = await createBytePlusAssetGroup("portrait_group", "Automated AIGC Portrait Group")
+      const groupName = input.name ? `Group-${input.name.slice(0, 25).replace(/[^a-zA-Z0-9_-]/g, "_")}` : "portrait_group"
+      groupId = await createBytePlusAssetGroup(groupName, "Automated AIGC Portrait Group")
     } catch (err) {
       console.warn("Could not auto-create Asset Group, attempting default:", err)
     }
