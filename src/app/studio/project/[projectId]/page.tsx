@@ -1865,6 +1865,7 @@ function Storyboard({
                       <Preview
                         src={shot.keyframe_image}
                         label="Reference image"
+                        aspectRatio={shot.aspect_ratio || "9:16"}
                       />
                       <div className="flex flex-col gap-1 border-t border-white/10 px-2 py-2 text-xs text-zinc-400">
                         <div className="flex items-center justify-between">
@@ -1920,7 +1921,7 @@ function Storyboard({
                     onClick={() => setMedia({ shot, type: "video" })}
                     className="overflow-hidden rounded-lg bg-[#292b2a] text-left transition hover:ring-2 hover:ring-[#b9f42e]"
                   >
-                    <Preview src={shot.video_url} label="Generated video" type="video" />
+                    <Preview src={shot.video_url} label="Generated video" type="video" aspectRatio={shot.aspect_ratio || "9:16"} />
                     <div className="border-t border-white/10 px-2 py-2 text-xs text-zinc-400">
                       {shot.video_status === "completed"
                         ? "Video ready"
@@ -2355,9 +2356,9 @@ function ShotMediaWorkspace({
             </span>
           </header>
           <div className="grid flex-1 place-items-center overflow-auto bg-black/30 p-8">
-            <div className="w-full max-w-[540px] overflow-hidden rounded-lg bg-[#151715] shadow-2xl">
+            <div className={`w-full overflow-hidden rounded-lg bg-[#151715] shadow-2xl transition-all ${aspectRatio === "9:16" ? "max-w-[360px]" : "max-w-[640px]"}`}>
               {previewGenerating ? (
-                <div className="grid aspect-[9/14] place-items-center">
+                <div className={`grid place-items-center ${aspectRatio === "9:16" ? "aspect-[9/16]" : aspectRatio === "16:9" ? "aspect-[16/9]" : "aspect-square"}`}>
                   <div className="flex flex-col items-center gap-4">
                     <svg className="h-12 w-12 animate-spin text-[#b9f42e]" viewBox="0 0 24 24" fill="none">
                       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="opacity-20" />
@@ -2370,9 +2371,9 @@ function ShotMediaWorkspace({
               ) : previewError ? (
                 <GenerationPreviewError message={previewError} />
               ) : previewSource ? (
-                <Preview src={previewSource} label="Shot media" type={isImage ? "image" : "video"} />
+                <Preview src={previewSource} label="Shot media" type={isImage ? "image" : "video"} aspectRatio={aspectRatio} />
               ) : (
-                <div className="grid aspect-[9/14] place-items-center text-center text-zinc-500">
+                <div className={`grid place-items-center text-center text-zinc-500 ${aspectRatio === "9:16" ? "aspect-[9/16]" : aspectRatio === "16:9" ? "aspect-[16/9]" : "aspect-square"}`}>
                   Click &ldquo;Generate video&rdquo; below<br />to create your first output.
                 </div>
               )}
@@ -2957,9 +2958,28 @@ function AssetImage({ src }: { src?: string }) {
     </div>
   );
 }
-function Preview({ src, label, type = "image" }: { src: string | null; label: string; type?: "image" | "video" }) {
+function Preview({
+  src,
+  label,
+  type = "image",
+  aspectRatio = "9:16",
+}: {
+  src: string | null;
+  label: string;
+  type?: "image" | "video";
+  aspectRatio?: string;
+}) {
+  const aspectClass =
+    aspectRatio === "16:9"
+      ? "aspect-[16/9]"
+      : aspectRatio === "1:1"
+      ? "aspect-square"
+      : aspectRatio === "4:3"
+      ? "aspect-[4/3]"
+      : "aspect-[9/16]";
+
   return (
-    <div className="aspect-[9/12] overflow-hidden rounded-lg bg-[#2a2c2b]">
+    <div className={`relative overflow-hidden rounded-lg bg-[#2a2c2b] ${aspectClass}`}>
       {src ? (
         <ResolvedMedia src={src} type={type} className="h-full w-full object-cover" />
       ) : (
