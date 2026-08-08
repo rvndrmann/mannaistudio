@@ -68,6 +68,8 @@ type Shot = {
   resolution?: string | null;
   referenced_entities: string[];
   order_index: number;
+  is_trusted_provider_asset?: boolean;
+  provider_asset_uri?: string | null;
   metadata?: Record<string, unknown>;
 };
 type Episode = {
@@ -1855,18 +1857,55 @@ function Storyboard({
                       </button>
                     )}
                   </div>
-                  <button
-                    onClick={() => setMedia({ shot, type: "image" })}
-                    className="overflow-hidden rounded-lg bg-[#292b2a] text-left transition hover:ring-2 hover:ring-[#b9f42e]"
-                  >
-                    <Preview
-                      src={shot.keyframe_image}
-                      label="Reference image"
-                    />
-                    <div className="border-t border-white/10 px-2 py-2 text-xs text-zinc-400">
-                      Image reference
-                    </div>
-                  </button>
+                  <div className="relative group">
+                    <button
+                      onClick={() => setMedia({ shot, type: "image" })}
+                      className="w-full overflow-hidden rounded-lg bg-[#292b2a] text-left transition hover:ring-2 hover:ring-[#b9f42e]"
+                    >
+                      <Preview
+                        src={shot.keyframe_image}
+                        label="Reference image"
+                      />
+                      <div className="flex items-center justify-between border-t border-white/10 px-2 py-2 text-xs text-zinc-400">
+                        <span>Image reference</span>
+                        {shot.keyframe_image && (
+                          <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ${shot.is_trusted_provider_asset || (typeof shot.metadata === "object" && shot.metadata !== null && "byteplus_asset_id" in shot.metadata) ? "bg-[#b9f42e]/20 text-[#b9f42e]" : "bg-white/10 text-zinc-400"}`}>
+                            {shot.is_trusted_provider_asset || (typeof shot.metadata === "object" && shot.metadata !== null && "byteplus_asset_id" in shot.metadata) ? "✓ Seedance Verified" : "+ Asset Library"}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+
+                    {shot.keyframe_image && !(shot.is_trusted_provider_asset || (typeof shot.metadata === "object" && shot.metadata !== null && "byteplus_asset_id" in shot.metadata)) && (
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            const res = await fetch(`/api/studio/projects/${projectId}/assets`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                target: "shot",
+                                targetId: shot.id,
+                                imagePath: shot.keyframe_image,
+                                name: shot.prompt?.slice(0, 50) || "shot_portrait",
+                              }),
+                            });
+                            const json = await res.json();
+                            if (!res.ok) alert(json.error || "Asset registration failed");
+                            else reload();
+                          } catch (err) {
+                            alert(err instanceof Error ? err.message : "Asset registration failed");
+                          }
+                        }}
+                        className="mt-1 w-full rounded-md bg-[#b9f42e]/10 py-1 text-[11px] font-bold text-[#b9f42e] hover:bg-[#b9f42e]/20 transition text-center"
+                      >
+                        + Add to Asset Library (Seedance)
+                      </button>
+                    )}
+                  </div>
+
                   <button
                     onClick={() => setMedia({ shot, type: "video" })}
                     className="overflow-hidden rounded-lg bg-[#292b2a] text-left transition hover:ring-2 hover:ring-[#b9f42e]"
@@ -2070,6 +2109,34 @@ function ShotMediaWorkspace({
     return () => { active = false; };
   }, [media.shot.id]);
 
+  const [registeringAsset, setRegisteringAsset] = useState(false);
+  const registerCurrentAsBytePlusAsset = async () => {
+    const previewSrc = activeGen?.videoUrl || source;
+    if (!previewSrc) return;
+    setRegisteringAsset(true);
+    setGenerationError(null);
+    try {
+      const res = await fetch(`/api/studio/projects/${projectId}/assets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: "shot",
+          targetId: media.shot.id,
+          imagePath: previewSrc,
+          name: media.shot.prompt?.slice(0, 50) || "shot_portrait",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Asset registration failed");
+      setGenerationStatus("Registered to BytePlus Asset Library ✓");
+      await reload();
+    } catch (err) {
+      setGenerationError(err instanceof Error ? err.message : "Asset registration failed");
+    } finally {
+      setRegisteringAsset(false);
+    }
+  };
+
   const openReferenceSource = (target: "references" | "start" | "end") => {
     setReferenceTarget(target);
     setReferenceSourcePicker(true);
@@ -2257,6 +2324,13 @@ function ShotMediaWorkspace({
             )}
             <button onClick={addCurrentSourceAsReference} disabled={!previewSource} className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-300 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40">
               Use as reference
+            </button>
+            <button
+              onClick={registerCurrentAsBytePlusAsset}
+              disabled={registeringAsset || !previewSource}
+              className="rounded-lg bg-[#b9f42e]/10 px-3 py-2 text-xs font-bold text-[#b9f42e] hover:bg-[#b9f42e]/20 disabled:opacity-40"
+            >
+              {registeringAsset ? "Registering to Asset Library…" : "Verify for Seedance (Asset Library)"}
             </button>
             <span className="h-6 border-l border-white/10" />
             <button
