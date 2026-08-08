@@ -154,14 +154,14 @@ export function signBytePlusRequest(method: string, query: Record<string, string
 
   const payloadHash = hashSig(body)
   const canonicalQuery = Object.keys(query).sort().map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(query[k])}`).join("&")
-  const canonicalHeaders = `content-type:application/json\nhost:${host}\nx-date:${dateStr}\n`
-  const signedHeaders = "content-type;host;x-date"
+  const canonicalHeaders = `content-type:application/json\nhost:${host}\nx-content-sha256:${payloadHash}\nx-date:${dateStr}\n`
+  const signedHeaders = "content-type;host;x-content-sha256;x-date"
 
   const canonicalRequest = [method, "/", canonicalQuery, canonicalHeaders, signedHeaders, payloadHash].join("\n")
   const credentialScope = `${dateShort}/${region}/${service}/request`
   const stringToSign = ["HMAC-SHA256", dateStr, credentialScope, hashSig(canonicalRequest)].join("\n")
 
-  const kDate = hmacSig(`volc${sk}`, dateShort)
+  const kDate = hmacSig(sk, dateShort)
   const kRegion = hmacSig(kDate, region)
   const kService = hmacSig(kRegion, service)
   const kSigning = hmacSig(kService, "request")
@@ -173,6 +173,7 @@ export function signBytePlusRequest(method: string, query: Record<string, string
     "Content-Type": "application/json",
     Host: host,
     "X-Date": dateStr,
+    "X-Content-Sha256": payloadHash,
     Authorization: authHeader,
   }
 }
