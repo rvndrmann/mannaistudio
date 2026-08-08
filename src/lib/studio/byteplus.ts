@@ -100,23 +100,142 @@ export async function getBytePlusVideoTask(taskId: string) {
   }>
 }
 
-export async function createBytePlusAsset(input: { imageUrl: string; name?: string }) {
-  const cleanName = (input.name || "character").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 15)
-  const timestamp = Date.now().toString(36)
-  const randomSuffix = Math.random().toString(36).slice(2, 7)
-  const assetId = `asset-${cleanName}-${timestamp}-${randomSuffix}`
+import crypto from "node:crypto"
+
+function hmacSig(key: Buffer | string, string: string): Buffer {
+  return crypto.createHmac("sha256", key).update(string, "utf8").digest()
+}
+
+function hashSig(string: string): string {
+  return crypto.createHash("sha256").update(string, "utf8").digest("hex")
+}
+
+export function signBytePlusRequest(method: string, query: Record<string, string>, body: string, ak: string, sk: string) {
+  const host = "ark.ap-southeast-1.byteplusapi.com"
+  const service = "ark"
+  const region = "ap-southeast-1"
+  const now = new Date()
+  const dateStr = now.toISOString().replace(/[:-]/g, "").split(".")[0] + "Z"
+  const dateShort = dateStr.slice(0, 8)
+
+  const payloadHash = hashSig(body)
+  const canonicalQuery = Object.keys(query).sort().map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(query[k])}`).join("&")
+  const canonicalHeaders = `content-type:application/json\nhost:${host}\nx-date:${dateStr}\n`
+  const signedHeaders = "content-type;host;x-date"
+
+  const canonicalRequest = [method, "/", canonicalQuery, canonicalHeaders, signedHeaders, payloadHash].join("\n")
+  const credentialScope = `${dateShort}/${region}/${service}/request`
+  const stringToSign = ["HMAC-SHA256", dateStr, credentialScope, hashSig(canonicalRequest)].join("\n")
+
+  const kDate = hmacSig(`volc${sk}`, dateShort)
+  const kRegion = hmacSig(kDate, region)
+  const kService = hmacSig(kRegion, service)
+  const kSigning = hmacSig(kService, "request")
+  const signature = crypto.createHmac("sha256", kSigning).update(stringToSign).digest("hex")
+
+  const authHeader = `HMAC-SHA256 Credential=${ak}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`
+
+  return {
+    "Content-Type": "application/json",
+    Host: host,
+    "X-Date": dateStr,
+    Authorization: authHeader,
+  }
+}
+
+export async function createBytePlusAssetGroup(name = "portrait_group", description = "Portraits for Seedance") {
+  const ak = process.env.ARK_ACCESS_KEY
+  const sk = process.env.ARK_SECRET_KEY
+  if (!ak || !sk) throw new BytePlusProviderError("ARK_ACCESS_KEY and ARK_SECRET_KEY are required for CreateAssetGroup.")
+
+  const query = { Action: "CreateAssetGroup", Version: "2024-01-01" }
+  const body = JSON.stringify({ Name: name, Description: description, GroupType: "AIGC" })
+  const headers = signBytePlusRequest("POST", query, body, ak, sk)
+
+  const res = await fetch(`https://${headers.Host}/?Action=CreateAssetGroup&Version=2024-01-01`, {
+    method: "POST",
+    headers,
+    body,
+  })
+
+  const json = (await res.json().catch(() => ({}))) as { Result?: { Id?: string }; ResponseMetadata?: { Error?: { Message?: string } } }
+  if (!res.ok || json.ResponseMetadata?.Error) {
+    throw new BytePlusProviderError(`CreateAssetGroup failed: ${json.ResponseMetadata?.Error?.Message || res.statusText}`)
+  }
+
+  const groupId = json.Result?.Id
+  if (!groupId) throw new BytePlusProviderError("CreateAssetGroup did not return a Group ID.")
+  return groupId
+}
+
+export async function createBytePlusAsset(input: { imageUrl: string; name?: string; groupId?: string }) {
+  const ak = process.env.ARK_ACCESS_KEY
+  const sk = process.env.ARK_SECRET_KEY
+
+  if (!ak || !sk) {
+    // Fallback ID when IAM management credentials are not set
+    const cleanName = (input.name || "character").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 15)
+    const timestamp = Date.now().toString(36)
+    const randomSuffix = Math.random().toString(36).slice(2, 7)
+    return { assetId: `asset-${cleanName}-${timestamp}-${randomSuffix}` }
+  }
+
+  let groupId = input.groupId
+  if (!groupId) {
+    try {
+      groupId = await createBytePlusAssetGroup("portrait_group", "Automated AIGC Portrait Group")
+    } catch (err) {
+      console.warn("Could not auto-create Asset Group, attempting default:", err)
+    }
+  }
+
+  const query = { Action: "CreateAsset", Version: "2024-01-01" }
+  const body = JSON.stringify({
+    ...(groupId ? { GroupId: groupId } : {}),
+    URL: input.imageUrl,
+    Name: input.name || "actor_portrait",
+    AssetType: "Image", // strictly 'Image'
+  })
+
+  const headers = signBytePlusRequest("POST", query, body, ak, sk)
+  const res = await fetch(`https://${headers.Host}/?Action=CreateAsset&Version=2024-01-01`, {
+    method: "POST",
+    headers,
+    body,
+  })
+
+  const json = (await res.json().catch(() => ({}))) as { Result?: { Id?: string }; ResponseMetadata?: { Error?: { Message?: string } } }
+  if (!res.ok || json.ResponseMetadata?.Error) {
+    throw new BytePlusProviderError(`CreateAsset failed: ${json.ResponseMetadata?.Error?.Message || res.statusText}`)
+  }
+
+  const assetId = json.Result?.Id
+  if (!assetId) throw new BytePlusProviderError("CreateAsset did not return an Asset ID.")
   return { assetId }
 }
 
 export async function getBytePlusAsset(assetId: string) {
-  const data = await request("/?Action=GetAsset&Version=2024-01-01", {
-    method: "POST",
-    body: JSON.stringify({ Id: assetId }),
-  }) as { Items?: Array<{ Id?: string; Status?: string; AssetUri?: string }> }
-  const item = data.Items?.[0]
-  return {
-    id: item?.Id || assetId,
-    status: item?.Status || "Unknown",
-    assetUri: item?.AssetUri || `asset://${assetId}`,
+  const ak = process.env.ARK_ACCESS_KEY
+  const sk = process.env.ARK_SECRET_KEY
+
+  if (!ak || !sk) {
+    return { id: assetId, status: "Active", assetUri: `asset://${assetId}` }
   }
+
+  const query = { Action: "GetAsset", Version: "2024-01-01" }
+  const body = JSON.stringify({ Id: assetId })
+  const headers = signBytePlusRequest("POST", query, body, ak, sk)
+
+  const res = await fetch(`https://${headers.Host}/?Action=GetAsset&Version=2024-01-01`, {
+    method: "POST",
+    headers,
+    body,
+  })
+
+  const json = (await res.json().catch(() => ({}))) as { Result?: { Status?: string; AssetUri?: string }; Items?: Array<{ Status?: string; AssetUri?: string }> }
+  const status = json.Result?.Status || json.Items?.[0]?.Status || "Unknown"
+  const assetUri = json.Result?.AssetUri || json.Items?.[0]?.AssetUri || `asset://${assetId}`
+
+  return { id: assetId, status, assetUri }
 }
+
