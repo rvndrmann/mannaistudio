@@ -58,9 +58,16 @@ export async function generateBytePlusImage(input: { model: ImageGenerationModel
   return { url, contentType: "image/png" }
 }
 
+export function formatBytePlusMediaUrl(url: string): string {
+  const trimmed = url.trim()
+  if (/^asset:\/\//i.test(trimmed)) return trimmed
+  if (/^asset-[a-z0-9-]+$/i.test(trimmed)) return `asset://${trimmed}`
+  return trimmed
+}
+
 export async function submitBytePlusVideo(input: { model: VideoGenerationModelId; prompt: string; duration: number; resolution: string; ratio: string; referenceUrls?: string[]; generationMode?: "keyframe" | "multi_image"; audioEnabled?: boolean }) {
   const content: Array<Record<string, unknown>> = [{ type: "text", text: input.prompt }]
-  const referenceUrls = input.referenceUrls || []
+  const referenceUrls = (input.referenceUrls || []).map(formatBytePlusMediaUrl)
   if (input.generationMode === "keyframe") {
     referenceUrls.forEach((url, index) => content.push({ type: "image_url", image_url: { url }, role: index === 0 ? "first_frame" : index === 1 ? "last_frame" : "reference_image" }))
   } else {
@@ -91,4 +98,25 @@ export async function getBytePlusVideoTask(taskId: string) {
     error?: { message?: string }
     usage?: { completion_tokens?: number; total_tokens?: number }
   }>
+}
+
+export async function createBytePlusAsset(input: { imageUrl: string; name?: string }) {
+  const cleanName = (input.name || "character").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 15)
+  const timestamp = Date.now().toString(36)
+  const randomSuffix = Math.random().toString(36).slice(2, 7)
+  const assetId = `asset-${cleanName}-${timestamp}-${randomSuffix}`
+  return { assetId }
+}
+
+export async function getBytePlusAsset(assetId: string) {
+  const data = await request("/?Action=GetAsset&Version=2024-01-01", {
+    method: "POST",
+    body: JSON.stringify({ Id: assetId }),
+  }) as { Items?: Array<{ Id?: string; Status?: string; AssetUri?: string }> }
+  const item = data.Items?.[0]
+  return {
+    id: item?.Id || assetId,
+    status: item?.Status || "Unknown",
+    assetUri: item?.AssetUri || `asset://${assetId}`,
+  }
 }

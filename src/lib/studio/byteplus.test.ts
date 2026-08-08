@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { formatBytePlusError } from "./byteplus"
+import { formatBytePlusError, formatBytePlusMediaUrl } from "./byteplus"
 
 describe("formatBytePlusError", () => {
   it("uses nested BytePlus error messages and redacts provider identifiers", () => {
@@ -11,3 +11,18 @@ describe("formatBytePlusError", () => {
     }, 404)).toBe("BytePlus request failed (404): Your account has not activated the model test-model. Request id: redacted")
   })
 })
+
+describe("formatBytePlusMediaUrl", () => {
+  it("preserves standard HTTP URLs", () => {
+    expect(formatBytePlusMediaUrl("https://storage.supabase.co/v1/image.png")).toBe("https://storage.supabase.co/v1/image.png")
+  })
+
+  it("formats raw asset IDs into asset:// URIs", () => {
+    expect(formatBytePlusMediaUrl("asset-20260222234430-mxpgh")).toBe("asset://asset-20260222234430-mxpgh")
+  })
+
+  it("preserves already formatted asset:// URIs", () => {
+    expect(formatBytePlusMediaUrl("asset://asset-20260222234430-mxpgh")).toBe("asset://asset-20260222234430-mxpgh")
+  })
+})
+

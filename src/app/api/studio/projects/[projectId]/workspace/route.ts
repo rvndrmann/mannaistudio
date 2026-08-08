@@ -32,7 +32,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json(suggestion)
     }
     if (body.action === "saveAsset") {
-      const payload = { type: body.asset.type, name: body.asset.name, handle: body.asset.handle || body.asset.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""), description: body.asset.description || null, reference_images: body.asset.reference_images || [], voice_id: body.asset.voice_id || null, status: body.asset.status || "draft", metadata: body.asset.metadata || {} }
+      const payload = {
+        type: body.asset.type,
+        name: body.asset.name,
+        handle: body.asset.handle || body.asset.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""),
+        description: body.asset.description || null,
+        reference_images: body.asset.reference_images || [],
+        voice_id: body.asset.voice_id || null,
+        status: body.asset.status || "draft",
+        character_type: body.asset.character_type || "ai_human",
+        source_type: body.asset.source_type || (body.asset.byteplus_asset_id ? "byteplus_virtual_portrait" : "external_untrusted"),
+        byteplus_asset_class: body.asset.byteplus_asset_class || (body.asset.byteplus_asset_id ? "private_virtual_portrait" : "untrusted_external"),
+        byteplus_asset_id: body.asset.byteplus_asset_id || body.asset.metadata?.byteplus_asset_id || null,
+        byteplus_asset_uri: body.asset.byteplus_asset_uri || (body.asset.byteplus_asset_id ? `asset://${body.asset.byteplus_asset_id}` : null),
+        verification_status: body.asset.verification_status || (body.asset.byteplus_asset_id ? "verified" : "unverified"),
+        provenance: body.asset.provenance || {},
+        metadata: body.asset.metadata || {},
+      }
       const query = body.asset.id ? supabase.from("creator_entities").update(payload).eq("id", body.asset.id).eq("project_id", projectId) : supabase.from("creator_entities").insert({ ...payload, project_id: projectId })
       const { data, error } = await query.select().single(); if (error) throw error; return NextResponse.json(data)
     }

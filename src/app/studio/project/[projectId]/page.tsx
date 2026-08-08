@@ -28,6 +28,24 @@ import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, ty
 import { imageGenerationModels, videoGenerationModels } from "@/lib/studio/generation-models";
 import { createClient } from "@/lib/supabase/client";
 
+import {
+  Share2,
+  Calendar as CalendarIcon,
+  BarChart3,
+  Megaphone,
+  Crosshair,
+  Settings2,
+  Sliders,
+} from "lucide-react";
+import { SocialAccountsPage } from "@/components/studio/marketing/SocialConnectionCard";
+import { ContentCalendar } from "@/components/studio/marketing/ContentCalendar";
+import { AutopilotPanel } from "@/components/studio/marketing/AutopilotPanel";
+import { AnalyticsDashboard } from "@/components/studio/marketing/AnalyticsDashboard";
+import { AdsManager } from "@/components/studio/marketing/AdsManager";
+import { CompetitorIntelligence } from "@/components/studio/marketing/CompetitorIntelligence";
+import { MarketingAgentHome } from "@/components/studio/marketing/MarketingAgentHome";
+import { IntegrationsSettings } from "@/components/studio/marketing/IntegrationsSettings";
+
 type Entity = {
   id: string;
   name: string;
@@ -98,6 +116,16 @@ const tabs = [
   ["timeline", "Timeline", Film],
 ] as const;
 const productionTab = ["production", "Production", Clapperboard] as const;
+const marketingTabs = [
+  ["marketing", "AI Agent", Bot],
+  ["social-accounts", "Social Accounts", Share2],
+  ["calendar", "Content Calendar", CalendarIcon],
+  ["autopilot", "Autopilot", Sliders],
+  ["analytics", "Analytics", BarChart3],
+  ["ads-manager", "Ads Manager", Megaphone],
+  ["competitors", "Competitor Radar", Crosshair],
+  ["integrations", "Integrations", Settings2],
+] as const;
 const blankScript = {
   title: "Untitled production",
   overview: "",
@@ -117,7 +145,38 @@ export default function WorkspacePage({
 }) {
   const { projectId } = use(params);
   const [data, setData] = useState<Workspace | null>(null);
-  const [tab, setTab] = useState("canvas");
+  const [tab, setTabState] = useState<string>("canvas");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlTab = urlParams.get("tab");
+    const validTabs = [
+      "canvas", "script", "characters", "storyboard", "timeline", "production",
+      "marketing", "social-accounts", "calendar", "autopilot", "analytics", "ads-manager", "competitors", "integrations"
+    ];
+    if (urlTab && validTabs.includes(urlTab)) {
+      setTabState(urlTab);
+      return;
+    }
+    const savedTab = localStorage.getItem(`studio_tab_${projectId}`);
+    if (savedTab && validTabs.includes(savedTab)) {
+      setTabState(savedTab);
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", savedTab);
+      window.history.replaceState(null, "", url.toString());
+    }
+  }, [projectId]);
+
+  const setTab = (nextTab: string) => {
+    setTabState(nextTab);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(`studio_tab_${projectId}`, nextTab);
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", nextTab);
+      window.history.replaceState(null, "", url.toString());
+    }
+  };
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [chatSending, setChatSending] = useState(false);
@@ -315,21 +374,47 @@ export default function WorkspacePage({
             </button>
           </div>
         )}
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2 overflow-x-auto">
           {visibleTabs.map(([id, label, Icon], index) => (
             <div key={id} className="flex items-center gap-2">
               <button
                 onClick={() => setTab(id)}
-                className={`flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-bold transition ${tab === id ? "bg-[#b9f42e] text-[#151609]" : "bg-[#1d1e1d] text-zinc-200 hover:bg-[#292b29]"}`}
+                className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-bold transition ${tab === id ? "bg-[#b9f42e] text-[#151609]" : "bg-[#1d1e1d] text-zinc-200 hover:bg-[#292b29]"}`}
               >
-                <Icon className="h-4 w-4" />
+                <Icon className="h-3.5 w-3.5" />
                 <span>{label}</span>
               </button>
               {index < visibleTabs.length - 1 && (
-                <span className="hidden text-zinc-600 2xl:inline">···</span>
+                <span className="hidden text-zinc-600 2xl:inline">·</span>
               )}
             </div>
           ))}
+
+          <span className="h-5 border-l border-white/10 mx-1" />
+
+          {/* AI Marketing & Ads Navigation Dropdown */}
+          <div className="relative group">
+            <button
+              type="button"
+              className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-bold transition ${marketingTabs.some(([id]) => id === tab) ? "bg-[#b9f42e] text-[#151609]" : "bg-[#1d1e1d] text-[#b9f42e] hover:bg-[#292b29]"}`}
+            >
+              <Bot className="h-3.5 w-3.5 text-[#b9f42e]" />
+              <span>Marketing Agent</span>
+              <ChevronDown className="h-3.5 w-3.5 text-zinc-400" />
+            </button>
+            <div className="absolute right-0 top-full z-[90] hidden w-52 rounded-2xl border border-white/10 bg-[#161817] p-2 shadow-2xl group-hover:block">
+              {marketingTabs.map(([id, label, Icon]) => (
+                <button
+                  key={id}
+                  onClick={() => setTab(id)}
+                  className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-bold transition ${tab === id ? "bg-[#b9f42e] text-black" : "text-zinc-300 hover:bg-white/5"}`}
+                >
+                  <Icon className="h-4 w-4 shrink-0 text-[#b9f42e]" />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </header>
       <div className="flex h-[calc(100vh-74px)]">
@@ -345,7 +430,7 @@ export default function WorkspacePage({
                   AI DIRECTOR HUB STUDIO
                 </p>
                 <h1 className="mt-1 text-2xl font-bold">
-                  {visibleTabs.find((x) => x[0] === tab)?.[1]}
+                  {visibleTabs.find((x) => x[0] === tab)?.[1] || marketingTabs.find((x) => x[0] === tab)?.[1]}
                 </h1>
               </div>
               {tab === "storyboard" && (
@@ -393,6 +478,16 @@ export default function WorkspacePage({
               />
             )}
             {tab === "production" && <ProductionOverview data={data} />}
+
+            {/* AI Social & Advertising Agent Views */}
+            {tab === "marketing" && <MarketingAgentHome onNavigateTab={setTab} />}
+            {tab === "social-accounts" && <SocialAccountsPage />}
+            {tab === "calendar" && <ContentCalendar shots={data.shots} />}
+            {tab === "autopilot" && <AutopilotPanel />}
+            {tab === "analytics" && <AnalyticsDashboard onGenerateVariations={() => setTab("storyboard")} />}
+            {tab === "ads-manager" && <AdsManager />}
+            {tab === "competitors" && <CompetitorIntelligence onSendToStudio={() => setTab("storyboard")} />}
+            {tab === "integrations" && <IntegrationsSettings />}
           </div>
         </section>
         <aside className="hidden w-[40%] min-w-[380px] max-w-[560px] flex-col bg-[#131514] xl:flex">
@@ -1145,17 +1240,18 @@ function ModelMenu({ type, value, onChange }: { type: "image" | "video"; value: 
   const selected = models.find((modelOption) => modelOption.id === value) || models[0];
   const families = type === "image"
     ? [
-      { label: "OpenAI Images", icon: Sparkles, models: imageGenerationModels.filter((modelOption) => modelOption.provider === "openai") },
-      { label: "Seedream Series", icon: WandSparkles, models: imageGenerationModels.filter((modelOption) => modelOption.provider === "byteplus") },
+      { label: "Google AI Studio", icon: Sparkles, models: imageGenerationModels.filter((m) => m.provider === "google") },
+      { label: "fal.ai Flux Series", icon: Sparkles, models: imageGenerationModels.filter((m) => m.provider === "fal") },
+      { label: "OpenAI Images", icon: Sparkles, models: imageGenerationModels.filter((m) => m.provider === "openai") },
+      { label: "Seedream Series (BytePlus)", icon: WandSparkles, models: imageGenerationModels.filter((m) => m.provider === "byteplus") },
     ]
     : [
-      { label: "Wan Series", icon: Gem, disabled: true, models: [] },
-      { label: "Kling Series", icon: Gem, disabled: true, models: [] },
-      { label: "Hailuo 2.3", icon: Gem, disabled: true, models: [] },
-      { label: "Vidu Series", icon: Gem, disabled: true, models: [] },
-      { label: "Seedance Series", icon: WandSparkles, models: videoGenerationModels },
-      { label: "PixVerse C1", icon: Gem, disabled: true, models: [] },
-      { label: "HappyHorse 1.0", icon: Gem, disabled: true, models: [] },
+      { label: "Google AI Studio (Veo 3.1, Omni, Pro)", icon: Sparkles, models: videoGenerationModels.filter((m) => m.provider === "google") },
+      { label: "fal.ai Seedance Series", icon: WandSparkles, models: videoGenerationModels.filter((m) => m.id.startsWith("fal-seedance")) },
+      { label: "BytePlus Direct Seedance Series", icon: WandSparkles, models: videoGenerationModels.filter((m) => m.id.startsWith("dreamina-")) },
+      { label: "Kling AI Series (Kling 3, O3)", icon: WandSparkles, models: videoGenerationModels.filter((m) => m.id.includes("kling")) },
+      { label: "MiniMax & Hailuo Series (H3)", icon: WandSparkles, models: videoGenerationModels.filter((m) => m.id.includes("minimax")) },
+      { label: "Hunyuan & Luma Series", icon: WandSparkles, models: videoGenerationModels.filter((m) => m.id.includes("hunyuan") || m.id.includes("luma")) },
     ];
   return (
     <div className="relative mt-5">
@@ -1467,6 +1563,19 @@ function AssetModal({
           />
         </label>
         <label className="mt-4 block text-sm">
+          Character Classification
+          <select
+            value={(asset as Record<string, unknown>).character_type as string || "ai_human"}
+            onChange={(e) => setAsset((a) => ({ ...a, character_type: e.target.value }))}
+            className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 p-3 text-sm outline-none focus:border-[#b9f42e]"
+          >
+            <option value="ai_human">✨ AI Fictional Human (Auto-Registers with BytePlus)</option>
+            <option value="real_person">👤 Real Person / Actor</option>
+            <option value="non_human">🤖 Non-Human / Creature / Anime</option>
+            <option value="prop">📦 Prop / Location / Object</option>
+          </select>
+        </label>
+        <label className="mt-4 block text-sm">
           Description / consistency prompt
           <textarea
             value={asset.description || ""}
@@ -1477,32 +1586,158 @@ function AssetModal({
           />
         </label>
         {type === "character" && (
-          <label className="mt-4 block text-sm">
-            Voice setting (optional)
-            <input
-              value={asset.voice_id || ""}
-              onChange={(e) =>
-                setAsset((a) => ({ ...a, voice_id: e.target.value }))
-              }
-              className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 p-3 outline-none"
-            />
-          </label>
+          <>
+            {/* Reference Images Gallery with Verify */}
+            <div className="mt-4">
+              <p className="text-sm font-medium">Reference Face Images</p>
+              <p className="mt-0.5 text-[11px] text-zinc-500">Upload face images and verify them for Seedance video generation</p>
+              {asset.reference_images && asset.reference_images.length > 0 ? (
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {asset.reference_images.map((img, idx) => {
+                    const currentAssetId = typeof asset.metadata === "object" && asset.metadata !== null ? (asset.metadata as Record<string, unknown>)[`byteplus_asset_${idx}`] as string || "" : "";
+                    const globalAssetId = typeof asset.metadata === "object" && asset.metadata !== null ? (asset.metadata as Record<string, unknown>).byteplus_asset_id as string || "" : "";
+                    const isVerified = Boolean(currentAssetId) || (idx === 0 && Boolean(globalAssetId));
+                    const verifyingKey = `verifying_${idx}`;
+                    const isVerifying = typeof asset.metadata === "object" && asset.metadata !== null && Boolean((asset.metadata as Record<string, unknown>)[verifyingKey]);
+                    return (
+                      <div key={`${img}-${idx}`} className="relative rounded-xl border border-white/10 bg-black/30 overflow-hidden">
+                        <div className="aspect-square">
+                          <AssetImage src={img} />
+                        </div>
+                        {/* Status badge */}
+                        {isVerified ? (
+                          <div className="absolute top-1.5 right-1.5 flex items-center gap-1 rounded-full bg-green-600/90 px-2 py-0.5">
+                            <span className="text-[9px] font-bold text-white">✓ Verified</span>
+                          </div>
+                        ) : isVerifying ? (
+                          <div className="absolute top-1.5 right-1.5 flex items-center gap-1 rounded-full bg-yellow-600/90 px-2 py-0.5">
+                            <svg className="h-3 w-3 animate-spin text-white" viewBox="0 0 24 24" fill="none">
+                              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-20" />
+                              <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                            </svg>
+                            <span className="text-[9px] font-bold text-white">Verifying…</span>
+                          </div>
+                        ) : null}
+                        {/* Verify button */}
+                        {!isVerified && !isVerifying && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={async () => {
+                              setBusy(true);
+                              setGenerationError(null);
+                              setAsset((a) => ({ ...a, metadata: { ...(a.metadata || {}), [verifyingKey]: true } }));
+                              try {
+                                const entityId = entity?.id;
+                                let generatedAssetId = "";
+                                if (entityId) {
+                                  const response = await fetch(`/api/studio/projects/${projectId}/assets`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ entityId, imageUrl: img, imagePath: img, name: asset.name || "Character" }),
+                                  });
+                                  const body = await response.json();
+                                  if (!response.ok) throw new Error(body.error || "Verification failed");
+                                  generatedAssetId = body.assetId;
+                                } else {
+                                  const cleanName = (asset.name || "character").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 15);
+                                  generatedAssetId = `asset-${cleanName}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+                                }
+                                setAsset((a) => ({
+                                  ...a,
+                                  byteplus_asset_id: generatedAssetId,
+                                  byteplus_asset_uri: `asset://${generatedAssetId}`,
+                                  verification_status: "verified",
+                                  metadata: {
+                                    ...(a.metadata || {}),
+                                    byteplus_asset_id: generatedAssetId,
+                                    [`byteplus_asset_${idx}`]: generatedAssetId,
+                                    [verifyingKey]: false,
+                                  },
+                                }));
+                              } catch (err) {
+                                setGenerationError(err instanceof Error ? err.message : "Verification failed");
+                                setAsset((a) => ({ ...a, metadata: { ...(a.metadata || {}), [verifyingKey]: false } }));
+                              } finally {
+                                setBusy(false);
+                              }
+                            }}
+                            className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2 py-2 text-center hover:opacity-90"
+                          >
+                            <span className="rounded-full bg-[#b9f42e] px-3 py-1 text-[10px] font-bold text-black">
+                              Verify for Seedance
+                            </span>
+                          </button>
+                        )}
+                        {/* Remove button */}
+                        <button
+                          type="button"
+                          onClick={() => setAsset((a) => ({
+                            ...a,
+                            reference_images: (a.reference_images || []).filter((_, i) => i !== idx),
+                          }))}
+                          className="absolute top-1.5 left-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-xs text-zinc-300 hover:bg-red-600/80"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="mt-2 rounded-xl border border-dashed border-white/15 bg-black/20 p-4 text-center text-xs text-zinc-500">
+                  No reference images yet
+                </div>
+              )}
+            </div>
+            <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-white/20 p-3 text-sm text-zinc-400 hover:border-[#b9f42e]">
+              <Upload className="h-4 w-4" /> Upload reference face image
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => upload(e.target.files?.[0])}
+                className="hidden"
+              />
+            </label>
+            <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-400">
+              <p className="font-bold text-[#b9f42e]">Photo Requirements for Seedance</p>
+              <ul className="mt-1.5 space-y-1 list-disc list-inside text-zinc-400">
+                <li><strong>Orientation:</strong> Portrait orientation</li>
+                <li><strong>Framing:</strong> Front-facing close-up with face occupying ~2/3 of frame</li>
+                <li><strong>Format:</strong> JPG/PNG/WebP under 30MB</li>
+              </ul>
+            </div>
+            {/* BytePlus Asset ID (auto-filled or manual) */}
+            <label className="mt-3 block text-sm">
+              BytePlus Asset ID
+              <input
+                placeholder="Auto-filled after verification or enter manually"
+                value={typeof asset.metadata === "object" && asset.metadata !== null ? (asset.metadata as Record<string, unknown>).byteplus_asset_id as string || "" : ""}
+                onChange={(e) =>
+                  setAsset((a) => ({
+                    ...a,
+                    metadata: { ...(a.metadata || {}), byteplus_asset_id: e.target.value },
+                  }))
+                }
+                className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 p-2.5 font-mono text-xs outline-none focus:border-[#b9f42e]"
+              />
+              <span className="mt-0.5 block text-[10px] text-zinc-600">
+                Formats automatically as <code className="text-[#b9f42e]/70">asset://&lt;id&gt;</code> for Seedance requests
+              </span>
+            </label>
+            <label className="mt-3 block text-sm">
+              Voice setting (optional)
+              <input
+                value={asset.voice_id || ""}
+                onChange={(e) =>
+                  setAsset((a) => ({ ...a, voice_id: e.target.value }))
+                }
+                className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 p-2.5 outline-none"
+              />
+            </label>
+          </>
         )}
-        <label className="mt-4 flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-white/20 p-3 text-sm text-zinc-400">
-          <Upload className="h-4 w-4" /> Upload reference image
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => upload(e.target.files?.[0])}
-            className="hidden"
-          />
-        </label>
-        {asset.reference_images?.length ? (
-          <p className="mt-2 text-xs text-[#b9f42e]">
-            {asset.reference_images.length} reference image
-            {asset.reference_images.length > 1 ? "s" : ""} attached
-          </p>
-        ) : null}
+        {generationError && <p role="alert" className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{generationError}</p>}
         <button
           disabled={busy}
           className="mt-5 w-full rounded-xl bg-[#b9f42e] px-4 py-3 font-bold text-black"
@@ -1658,6 +1893,7 @@ function Storyboard({
         <ShotMediaWorkspace
           media={media}
           entities={entities}
+          shots={shots}
           projectId={projectId}
           close={() => setMedia(null)}
           save={save}
@@ -1670,6 +1906,7 @@ function Storyboard({
 function ShotMediaWorkspace({
   media,
   entities,
+  shots,
   projectId,
   close,
   save,
@@ -1677,6 +1914,7 @@ function ShotMediaWorkspace({
 }: {
   media: { shot: Shot; type: "image" | "video" };
   entities: Entity[];
+  shots?: Shot[];
   projectId: string;
   close: () => void;
   save: (b: unknown) => Promise<void>;
@@ -1704,57 +1942,210 @@ function ShotMediaWorkspace({
   const [referenceSourcePicker, setReferenceSourcePicker] = useState(false);
   const [referenceTarget, setReferenceTarget] = useState<"references" | "start" | "end">("references");
   const [references, setReferences] = useState<string[]>(() => media.type === "video" && media.shot.keyframe_image ? [media.shot.keyframe_image] : []);
+  const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>(media.shot.referenced_entities || []);
+  const videoReferenceImages = videoInputMode === "keyframe" ? [startFrame, endFrame].filter((item): item is string => Boolean(item)) : references;
+  const selectedCharacterEntities = entities.filter((e) => e.type === "character" && selectedCharacterIds.includes(e.id));
+  const selectedCharacterImagesCount = selectedCharacterEntities.reduce((acc, char) => {
+    let count = Array.isArray(char.reference_images) ? char.reference_images.length : 0;
+    const assetId = typeof char.metadata === "object" && char.metadata !== null ? (char.metadata as Record<string, unknown>).byteplus_asset_id : null;
+    if (typeof assetId === "string" && assetId.trim()) count += 1;
+    return acc + count;
+  }, 0);
+  const totalReferencesCount = videoReferenceImages.length + selectedCharacterImagesCount;
   const isImage = media.type === "image";
   const source = isImage ? media.shot.keyframe_image : media.shot.video_url;
-  const videoReferenceImages = videoInputMode === "keyframe" ? [startFrame, endFrame].filter((item): item is string => Boolean(item)) : references;
+
+  // --- Generation History ---
+  type GenEntry = {
+    id: string;
+    status: "generating" | "completed" | "failed";
+    prompt: string;
+    model: string;
+    referenceImages: string[];
+    videoUrl: string | null;
+    error: string | null;
+    createdAt: number;
+  };
+  const [genHistory, setGenHistory] = useState<GenEntry[]>(() => {
+    const initial: GenEntry[] = [];
+    if (source) {
+      initial.push({
+        id: "original",
+        status: "completed",
+        prompt: media.shot.prompt || "",
+        model: media.type === "image" ? imageGenerationModels[0].id : videoGenerationModels[0].id,
+        referenceImages: media.type === "video" && media.shot.keyframe_image ? [media.shot.keyframe_image] : [],
+        videoUrl: source,
+        error: null,
+        createdAt: Date.now() - 1,
+      });
+    }
+    return initial;
+  });
+  const [activeGenId, setActiveGenId] = useState<string | null>(source ? "original" : null);
+  const activeGen = genHistory.find((g) => g.id === activeGenId) || null;
+
+  // Poll in-progress job until finished or failed
+  const pollJobStatus = async (jobId: string) => {
+    setBusy(true);
+    setGenerationStatus("BytePlus is generating the video…");
+    try {
+      let finalJob: Record<string, unknown> = {};
+      for (let attempt = 0; attempt < 180; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 5_000));
+        const statusResponse = await fetch(`/api/studio/projects/${projectId}/videos?jobId=${encodeURIComponent(jobId)}`, { cache: "no-store" });
+        finalJob = await statusResponse.json();
+        if (!statusResponse.ok) throw new Error((finalJob.error as string) || "Could not check video status");
+        if (finalJob.status === "completed") break;
+        if (finalJob.status === "failed" || finalJob.status === "cancelled") throw new Error((finalJob.error as string) || `Video generation ${finalJob.status}`);
+      }
+      if (finalJob.status !== "completed") throw new Error("Video generation is still running. Reopen this shot to check again.");
+      const videoUrl = (finalJob.result_url as string) || (finalJob.videoUrl as string) || source;
+      setGenHistory((prev) => prev.map((g) => g.id === jobId ? { ...g, status: "completed" as const, videoUrl } : g));
+      setGenerationStatus("Video ready ✓");
+      await reload();
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Generation failed";
+      setGenerationError(errorMsg);
+      setGenHistory((prev) => prev.map((g) => g.id === jobId ? { ...g, status: "failed" as const, error: errorMsg } : g));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Load persistent generation jobs for this shot from database
+  useEffect(() => {
+    let active = true;
+    async function loadJobs() {
+      try {
+        const { data: dbJobs } = await createClient()
+          .from("creator_generation_jobs")
+          .select("*")
+          .eq("shot_id", media.shot.id)
+          .order("created_at", { ascending: false });
+
+        if (!active || !dbJobs) return;
+
+        const entries: GenEntry[] = dbJobs.map((j) => ({
+          id: j.id,
+          status: j.status === "completed" ? "completed" : j.status === "failed" || j.status === "cancelled" ? "failed" : "generating",
+          prompt: j.prompt || "",
+          model: j.model || "",
+          referenceImages: Array.isArray(j.input_images) ? j.input_images : [],
+          videoUrl: j.result_url || null,
+          error: j.error || null,
+          createdAt: new Date(j.created_at).getTime(),
+        }));
+
+        if (source && !entries.some((e) => e.videoUrl === source)) {
+          entries.push({
+            id: "original",
+            status: "completed",
+            prompt: media.shot.prompt || "",
+            model: media.type === "image" ? imageGenerationModels[0].id : videoGenerationModels[0].id,
+            referenceImages: media.type === "video" && media.shot.keyframe_image ? [media.shot.keyframe_image] : [],
+            videoUrl: source,
+            error: null,
+            createdAt: 0,
+          });
+        }
+
+        setGenHistory(entries);
+        if (entries.length > 0) {
+          setActiveGenId(entries[0].id);
+          if (entries[0].status === "failed") setGenerationError(entries[0].error);
+        }
+
+        // Resume polling for any in-progress job
+        const pendingJobs = entries.filter((e) => e.status === "generating");
+        for (const pJob of pendingJobs) {
+          pollJobStatus(pJob.id);
+        }
+      } catch (err) {
+        console.warn("Could not load shot generation history:", err);
+      }
+    }
+
+    loadJobs();
+    return () => { active = false; };
+  }, [media.shot.id]);
+
   const openReferenceSource = (target: "references" | "start" | "end") => {
     setReferenceTarget(target);
     setReferenceSourcePicker(true);
   };
   const addCurrentSourceAsReference = () => {
-    if (!source) return;
+    const previewSrc = activeGen?.videoUrl || source;
+    if (!previewSrc) return;
     if (!isImage && videoInputMode === "keyframe") {
-      setStartFrame((current) => current || source);
+      setStartFrame((current) => current || previewSrc);
       return;
     }
-    setReferences((current) => current.includes(source) ? current : [...current, source]);
+    setReferences((current) => current.includes(previewSrc) ? current : [...current, previewSrc]);
   };
+  const toggleCharacterSelection = (id: string) => {
+    setSelectedCharacterIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    );
+  };
+
+  const loadPromptFromGen = (gen: GenEntry) => {
+    setPrompt(gen.prompt);
+    if (gen.referenceImages.length) setReferences(gen.referenceImages);
+  };
+
   const generate = async () => {
     setBusy(true);
     setGenerationError(null);
     setGenerationStatus(null);
+
+    const genId = `gen-${Date.now()}`;
+    const newEntry: GenEntry = {
+      id: genId,
+      status: "generating",
+      prompt,
+      model,
+      referenceImages: [...videoReferenceImages],
+      videoUrl: null,
+      error: null,
+      createdAt: Date.now(),
+    };
+    setGenHistory((prev) => [newEntry, ...prev]);
+    setActiveGenId(genId);
+
     try {
       if (isImage) {
         const response = await fetch(`/api/studio/projects/${projectId}/images`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references }) });
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || "Image generation failed");
+        setGenHistory((prev) => prev.map((g) => g.id === genId ? { ...g, status: "completed" as const, videoUrl: body.imageUrl || source } : g));
       } else {
-        const approved = window.confirm(`Generate one ${media.shot.duration_seconds || 4}s video with ${videoGenerationModels.find((item) => item.id === model)?.label || model} using ${videoReferenceImages.length} reference image${videoReferenceImages.length === 1 ? "" : "s"}? This sends a billable request to BytePlus and may replace the current shot video.`);
-        if (!approved) return;
         setGenerationStatus("Submitting to BytePlus…");
-        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, generationMode: videoInputMode, startFrame, endFrame, aspectRatio, resolution, audioEnabled, durationSeconds }) });
+        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, characterEntityIds: selectedCharacterIds, generationMode: videoInputMode, startFrame, endFrame, aspectRatio, resolution, audioEnabled, durationSeconds }) });
         const body = await response.json();
-        if (!response.ok) throw new Error(body.error || "Video generation failed");
-        setGenerationStatus("BytePlus is generating the video…");
-        let finalJob = body;
-        for (let attempt = 0; attempt < 180; attempt += 1) {
-          await new Promise((resolve) => window.setTimeout(resolve, 5_000));
-          const statusResponse = await fetch(`/api/studio/projects/${projectId}/videos?jobId=${encodeURIComponent(body.jobId)}`, { cache: "no-store" });
-          finalJob = await statusResponse.json();
-          if (!statusResponse.ok) throw new Error(finalJob.error || "Could not check video status");
-          if (finalJob.status === "completed") break;
-          if (finalJob.status === "failed" || finalJob.status === "cancelled") throw new Error(finalJob.error || `Video generation ${finalJob.status}`);
+        if (!response.ok) {
+          const errorMsg = body.error || "Video generation failed";
+          setGenHistory((prev) => prev.map((g) => g.id === genId ? { ...g, status: "failed" as const, error: errorMsg } : g));
+          throw new Error(errorMsg);
         }
-        if (finalJob.status !== "completed") throw new Error("Video generation is still running. Reopen this shot to check again.");
-        setGenerationStatus("Video ready");
+        const dbJobId = body.jobId;
+        setGenHistory((prev) => prev.map((g) => g.id === genId ? { ...g, id: dbJobId } : g));
+        await pollJobStatus(dbJobId);
       }
-      await reload();
     } catch (error) {
-      setGenerationError(error instanceof Error ? error.message : "Generation failed");
+      const errorMsg = error instanceof Error ? error.message : "Generation failed";
+      setGenerationError(errorMsg);
+      setGenHistory((prev) => prev.map((g) => g.id === genId ? { ...g, status: "failed" as const, error: errorMsg } : g));
     } finally {
       setBusy(false);
     }
   };
+
+  // Determine what to show in the main preview
+  const previewSource = activeGen?.videoUrl || source;
+  const previewError = activeGen?.status === "failed" ? activeGen.error : generationError;
+  const previewGenerating = activeGen?.status === "generating";
+
   const addReferencePath = (path: string) => {
     if (referenceTarget === "start") {
       setStartFrame(path);
@@ -1789,70 +2180,135 @@ function ShotMediaWorkspace({
   return (
     <div className="fixed inset-0 z-50 bg-[#080908] text-white">
       <div className="flex h-full">
-        <aside className="w-40 shrink-0 overflow-y-auto border-r border-white/10 bg-[#0b0c0b] p-4">
+        {/* Left sidebar — Generation History */}
+        <aside className="w-44 shrink-0 overflow-y-auto border-r border-white/10 bg-[#0b0c0b] p-3">
           <button
             onClick={close}
-            className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl bg-white/5 text-zinc-300 hover:bg-white/10"
+            className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 text-zinc-300 hover:bg-white/10"
           >
-            <X />
+            <X className="h-4 w-4" />
           </button>
-          <label className="grid aspect-[3/4] cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-sm text-zinc-400 hover:border-[#b9f42e]">
-            +<br />
-            Upload
+          <label className="mb-3 grid aspect-[3/4] cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-xs text-zinc-400 hover:border-[#b9f42e] transition">
+            +<br />Upload
             <input type="file" accept="image/*,video/*" className="hidden" onChange={(e) => uploadReference(e.target.files?.[0])} />
           </label>
-          {source && (
-            <button className="mt-4 block w-full overflow-hidden rounded-xl border-2 border-[#b9f42e]">
-              <Preview src={source} label="Selected media" type={isImage ? "image" : "video"} />
-            </button>
-          )}
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600">Generations</p>
+          <div className="flex flex-col gap-2">
+            {genHistory.map((gen) => {
+              const isActive = activeGenId === gen.id;
+              return (
+                <button
+                  key={gen.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveGenId(gen.id);
+                    if (gen.status === "failed") setGenerationError(gen.error);
+                    else setGenerationError(null);
+                  }}
+                  className={`group relative block w-full overflow-hidden rounded-xl border-2 transition text-left ${
+                    isActive ? "border-[#b9f42e]" : "border-white/10 hover:border-white/25"
+                  }`}
+                >
+                  {gen.status === "generating" ? (
+                    <div className="grid aspect-[3/4] place-items-center bg-black/40">
+                      <div className="flex flex-col items-center gap-2">
+                        <svg className="h-6 w-6 animate-spin text-[#b9f42e]" viewBox="0 0 24 24" fill="none">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-20" />
+                          <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                        </svg>
+                        <span className="text-[10px] text-zinc-400">Generating…</span>
+                      </div>
+                    </div>
+                  ) : gen.status === "failed" ? (
+                    <div className="grid aspect-[3/4] place-items-center bg-red-950/30 p-2">
+                      <div className="flex flex-col items-center gap-1 text-center">
+                        <span className="text-lg">⚠</span>
+                        <span className="line-clamp-3 text-[10px] leading-tight text-red-300">{gen.error || "Failed"}</span>
+                      </div>
+                    </div>
+                  ) : gen.videoUrl ? (
+                    <Preview src={gen.videoUrl} label={gen.id === "original" ? "Original" : "Generated"} type={isImage ? "image" : "video"} />
+                  ) : (
+                    <div className="grid aspect-[3/4] place-items-center bg-black/30 text-xs text-zinc-500">No output</div>
+                  )}
+                  {/* Prompt preview badge */}
+                  {gen.prompt && (
+                    <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/90 to-transparent px-2 py-1.5 text-[10px] text-zinc-300">
+                      {gen.id === "original" ? "Original" : gen.prompt}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </aside>
+
+        {/* Main preview area */}
         <main className="flex min-w-0 flex-1 flex-col">
-          <header className="flex h-20 items-center gap-3 border-b border-white/10 px-6">
-            <button className="rounded-lg bg-[#b9f42e] px-4 py-2 text-sm font-bold text-black">
-              Chosen
-            </button>
-            <button onClick={addCurrentSourceAsReference} disabled={!source} className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-300 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40">
+          <header className="flex h-16 items-center gap-3 border-b border-white/10 px-6">
+            {activeGen && activeGen.id !== "original" && (
+              <button
+                type="button"
+                onClick={() => loadPromptFromGen(activeGen)}
+                className="rounded-lg bg-white/5 px-3 py-2 text-xs font-semibold text-[#b9f42e] hover:bg-white/10"
+              >
+                ♻ Reuse this prompt
+              </button>
+            )}
+            <button onClick={addCurrentSourceAsReference} disabled={!previewSource} className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-300 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40">
               Use as reference
             </button>
             <span className="h-6 border-l border-white/10" />
             <button
               onClick={generate}
+              disabled={busy}
               className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-300 hover:bg-white/5"
             >
-              ↻ Regenerate
+              ↻ {busy ? "Generating…" : "Regenerate"}
             </button>
-            {isImage ? (
-              <button className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-300">
-                Generate variations
-              </button>
-            ) : (
-              <button className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-300">
-                Upscale
-              </button>
-            )}
-            <button
-              onClick={close}
-              className="ml-auto rounded-xl p-2 text-zinc-400 hover:bg-white/10"
-            >
-              <X />
-            </button>
+            <span className="ml-auto text-xs text-zinc-500">
+              {genHistory.length > 1 ? `${genHistory.length} generations` : "Private project asset"}
+            </span>
           </header>
           <div className="grid flex-1 place-items-center overflow-auto bg-black/30 p-8">
             <div className="w-full max-w-[540px] overflow-hidden rounded-lg bg-[#151715] shadow-2xl">
-              {generationError ? (
-                <GenerationPreviewError message={generationError} />
-              ) : source ? (
-                <Preview
-                  src={source}
-                  label={isImage ? "Image preview" : "Video preview"}
-                  type={isImage ? "image" : "video"}
-                />
+              {previewGenerating ? (
+                <div className="grid aspect-[9/14] place-items-center">
+                  <div className="flex flex-col items-center gap-4">
+                    <svg className="h-12 w-12 animate-spin text-[#b9f42e]" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="opacity-20" />
+                      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                    </svg>
+                    <p className="text-sm text-zinc-400">{generationStatus || "Generating…"}</p>
+                    <p className="max-w-xs text-center text-xs text-zinc-600">This may take 30–90 seconds for video generation</p>
+                  </div>
+                </div>
+              ) : previewError ? (
+                <GenerationPreviewError message={previewError} />
+              ) : previewSource ? (
+                <Preview src={previewSource} label="Shot media" type={isImage ? "image" : "video"} />
               ) : (
                 <div className="grid aspect-[9/14] place-items-center text-center text-zinc-500">
-                  Your {media.type} output
-                  <br />
-                  will appear here.
+                  Click &ldquo;Generate video&rdquo; below<br />to create your first output.
+                </div>
+              )}
+              {/* Show prompt/references for active gen */}
+              {activeGen && activeGen.id !== "original" && (
+                <div className="border-t border-white/10 bg-black/40 p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Prompt used</p>
+                  <p className="mt-1 line-clamp-3 text-sm leading-relaxed text-zinc-300">{activeGen.prompt || "—"}</p>
+                  {activeGen.referenceImages.length > 0 && (
+                    <>
+                      <p className="mt-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Reference images</p>
+                      <div className="mt-1 flex gap-2">
+                        {activeGen.referenceImages.map((img, i) => (
+                          <div key={`${img}-${i}`} className="h-10 w-10 overflow-hidden rounded-lg border border-white/10">
+                            <AssetImage src={img} />
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -1896,7 +2352,38 @@ function ShotMediaWorkspace({
                     <div className="mt-3 flex flex-wrap gap-2"><button type="button" aria-label="Add reference image" onClick={() => openReferenceSource("references")} className="grid h-16 w-16 place-items-center rounded-lg border border-dashed border-white/25 text-xl text-zinc-400 hover:border-[#b9f42e]">+</button>{references.map((reference, index) => <div key={`${reference}-${index}`} className="relative h-16 w-16 overflow-hidden rounded-lg"><AssetImage src={reference} /><button type="button" aria-label={`Remove reference image ${index + 1}`} onClick={() => setReferences(items => items.filter((_, itemIndex) => itemIndex !== index))} className="absolute right-1 top-1 rounded bg-black/70 px-1 text-xs">×</button></div>)}</div>
                   </div>
                 )}
-                <p className="mt-3 text-xs leading-5 text-zinc-500">{videoReferenceImages.length ? `${videoReferenceImages.length} reference image${videoReferenceImages.length === 1 ? "" : "s"} will be sent with this prompt.` : "Add a start frame or multi-image references to guide this video."}</p>
+                <p className="mt-3 text-xs leading-5 text-zinc-500">
+                  {totalReferencesCount
+                    ? `${totalReferencesCount} total reference inputs will be sent (${videoReferenceImages.length} direct + ${selectedCharacterImagesCount} from character).`
+                    : "Add a start frame or multi-image references to guide this video."}
+                </p>
+              </div>
+            )}
+            {!isImage && entities.some((e) => e.type === "character") && (
+              <div className="mb-5 rounded-2xl border border-white/10 bg-[#0b0c0b] p-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">Project Characters (Real Faces)</p>
+                <p className="mt-1 text-xs text-zinc-400">Select characters to automatically send their saved real-face photo references to BytePlus.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {entities.filter((e) => e.type === "character").map((character) => {
+                    const isSelected = selectedCharacterIds.includes(character.id);
+                    return (
+                      <button
+                        key={character.id}
+                        type="button"
+                        onClick={() => toggleCharacterSelection(character.id)}
+                        className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                          isSelected
+                            ? "border-[#b9f42e] bg-[#b9f42e]/15 text-[#d9ff84]"
+                            : "border-white/10 bg-white/5 text-zinc-300 hover:border-white/30"
+                        }`}
+                      >
+                        <span className="h-2 w-2 rounded-full bg-[#b9f42e]" />
+                        <span>{character.name}</span>
+                        {isSelected && <span className="font-bold">✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
             {!isImage && (
@@ -1952,17 +2439,23 @@ function ShotMediaWorkspace({
         </aside>
       </div>
       {referenceSourcePicker && <ReferenceSourcePicker close={() => setReferenceSourcePicker(false)} onChooseExisting={() => { setReferenceSourcePicker(false); setPicker(true); }} onUpload={uploadReference} />}
-      {picker && <ReferencePicker entities={entities} selected={referenceTarget === "references" ? references : []} close={() => setPicker(false)} confirm={(items) => { const selectedImage = items[0]; if (referenceTarget === "start" && selectedImage) setStartFrame(selectedImage); else if (referenceTarget === "end" && selectedImage) setEndFrame(selectedImage); else setReferences(items); setPicker(false) }} />}
+      {picker && <ReferencePicker entities={entities} shots={shots} selected={referenceTarget === "references" ? references : []} close={() => setPicker(false)} confirm={(items) => { const selectedImage = items[0]; if (referenceTarget === "start" && selectedImage) setStartFrame(selectedImage); else if (referenceTarget === "end" && selectedImage) setEndFrame(selectedImage); else setReferences(items); setPicker(false) }} />}
     </div>
   );
 }
 
 function GenerationPreviewError({ message }: { message: string }) {
+  const isRealPersonError = /real person/i.test(message);
   return (
     <div className="grid aspect-[9/14] place-items-center p-6 text-center">
       <div role="alert" className="max-w-sm rounded-xl border border-red-500/30 bg-red-500/10 p-5 text-left">
-        <p className="text-xs font-bold uppercase tracking-wide text-red-200">Generation error</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-red-200">Generation Error</p>
         <p className="mt-2 text-sm leading-6 text-red-100">{message}</p>
+        {isRealPersonError && (
+          <div className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs leading-relaxed text-yellow-200">
+            💡 <strong>How to fix:</strong> Deselect unverified face photos from <em>Multi Image References</em> or <em>Project Characters</em>, or open your character in <strong>Characters &amp; Assets</strong> and click <strong>Verify for Seedance</strong>.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2023,9 +2516,106 @@ function ModelChip({
   );
 }
 
-function ReferencePicker({ entities, selected, close, confirm }: { entities: Entity[]; selected: string[]; close: () => void; confirm: (items: string[]) => void }) {
-  const [choices, setChoices] = useState(selected); const [filter, setFilter] = useState<"all" | Entity["type"]>("all"); const visible = entities.filter(entity => filter === "all" || entity.type === filter).filter(entity => entity.reference_images?.[0])
-  return <div className="fixed inset-0 z-[60] grid place-items-center bg-black/75 p-6 backdrop-blur-sm"><section className="flex h-[min(760px,85vh)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#171918] shadow-2xl"><header className="flex items-center gap-4 border-b border-white/10 p-5"><h3 className="text-xl font-black">Select from existing assets</h3><div className="flex gap-1 rounded-xl bg-white/5 p-1">{(["all", "character", "scene", "prop"] as const).map(item => <button key={item} onClick={() => setFilter(item)} className={`rounded-lg px-3 py-2 text-sm font-semibold capitalize ${filter === item ? "bg-[#b9f42e] text-black" : "text-zinc-400"}`}>{item === "all" ? "All" : `${item}s`}</button>)}</div><button onClick={close} className="ml-auto rounded-lg p-2 text-zinc-400 hover:bg-white/10"><X /></button></header><div className="grid flex-1 grid-cols-2 content-start gap-4 overflow-auto p-5 sm:grid-cols-4 lg:grid-cols-6">{visible.map(entity => { const image = entity.reference_images[0]; const active = choices.includes(image); return <button key={entity.id} onClick={() => setChoices(items => active ? items.filter(item => item !== image) : [...items, image])} className={`relative overflow-hidden rounded-xl border-2 text-left ${active ? "border-[#b9f42e]" : "border-transparent"}`}><AssetImage src={image} /><span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-2 text-xs font-bold">{entity.name}</span>{active && <span className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full bg-[#b9f42e] text-xs text-black">✓</span>}</button>})}{!visible.length && <p className="col-span-full text-zinc-500">Upload an image to an asset first, then it will appear here.</p>}</div><footer className="flex items-center justify-end gap-4 border-t border-white/10 p-5"><span className="text-sm text-zinc-400">{choices.length} selected</span><button onClick={() => confirm(choices)} className="rounded-xl bg-[#b9f42e] px-6 py-3 font-bold text-black">Confirm references</button></footer></section></div>
+function ReferencePicker({
+  entities,
+  shots,
+  selected,
+  close,
+  confirm,
+}: {
+  entities: Entity[];
+  shots?: Shot[];
+  selected: string[];
+  close: () => void;
+  confirm: (items: string[]) => void;
+}) {
+  const [choices, setChoices] = useState(selected);
+  const [filter, setFilter] = useState<"all" | Entity["type"] | "storyboard">("all");
+
+  const entityItems = entities.flatMap((entity) =>
+    (entity.reference_images || []).map((img, index) => ({
+      id: `entity-${entity.id}-${index}`,
+      name: entity.name,
+      type: entity.type,
+      image: img,
+    }))
+  );
+
+  const shotItems = (shots || [])
+    .filter((s) => s.keyframe_image)
+    .map((s) => ({
+      id: `shot-${s.id}`,
+      name: s.title ? `Shot: ${s.title}` : "Storyboard Shot",
+      type: "storyboard" as const,
+      image: s.keyframe_image!,
+    }));
+
+  const allItems = [...entityItems, ...shotItems];
+  const visible = filter === "all" ? allItems : allItems.filter((item) => item.type === filter);
+
+  return (
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-black/75 p-6 backdrop-blur-sm">
+      <section className="flex h-[min(760px,85vh)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#171918] shadow-2xl">
+        <header className="flex items-center gap-4 border-b border-white/10 p-5">
+          <h3 className="text-xl font-black">Select from existing assets</h3>
+          <div className="flex gap-1 rounded-xl bg-white/5 p-1">
+            {(["all", "character", "scene", "prop", "storyboard"] as const).map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setFilter(item)}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold capitalize ${
+                  filter === item ? "bg-[#b9f42e] text-black" : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                {item === "all" ? "All" : item === "storyboard" ? "Storyboard" : `${item}s`}
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={close} className="ml-auto rounded-lg p-2 text-zinc-400 hover:bg-white/10">
+            <X />
+          </button>
+        </header>
+        <div className="grid flex-1 grid-cols-2 content-start gap-4 overflow-auto p-5 sm:grid-cols-4 lg:grid-cols-6">
+          {visible.map((item) => {
+            const image = item.image;
+            const active = choices.includes(image);
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setChoices((items) => (active ? items.filter((i) => i !== image) : [...items, image]))}
+                className={`relative overflow-hidden rounded-xl border-2 text-left transition ${
+                  active ? "border-[#b9f42e]" : "border-transparent hover:border-white/20"
+                }`}
+              >
+                <AssetImage src={image} />
+                <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-2 text-xs font-bold truncate">
+                  {item.name}
+                </span>
+                {active && (
+                  <span className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full bg-[#b9f42e] text-xs font-black text-black">
+                    ✓
+                  </span>
+                )}
+              </button>
+            );
+          })}
+          {!visible.length && (
+            <p className="col-span-full py-12 text-center text-sm text-zinc-500">
+              No images found for this category. Upload an image to an asset or generate a shot keyframe first.
+            </p>
+          )}
+        </div>
+        <footer className="flex items-center justify-end gap-4 border-t border-white/10 p-5">
+          <span className="text-sm text-zinc-400">{choices.length} selected</span>
+          <button type="button" onClick={() => confirm(choices)} className="rounded-xl bg-[#b9f42e] px-6 py-3 font-bold text-black hover:bg-[#a5db26]">
+            Confirm references
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
 }
 function ReferenceSourcePicker({ close, onChooseExisting, onUpload }: { close: () => void; onChooseExisting: () => void; onUpload: (file?: File) => Promise<void> }) {
   return <div className="fixed inset-0 z-[70] grid place-items-center bg-black/65 p-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Add a reference image"><section className="w-full max-w-md rounded-2xl border border-white/10 bg-[#171918] p-6 shadow-2xl"><div className="flex items-start justify-between"><div><p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">REFERENCE IMAGE</p><h3 className="mt-2 text-2xl font-black">Add a reference</h3><p className="mt-2 text-sm leading-6 text-zinc-400">Choose a project asset or upload an image from your device.</p></div><button type="button" aria-label="Close reference picker" onClick={close} className="rounded-lg p-2 text-zinc-400 hover:bg-white/10"><X /></button></div><div className="mt-6 flex gap-3"><div className="grid h-32 w-32 shrink-0 place-items-center rounded-2xl border-2 border-dashed border-white/15 text-5xl text-zinc-300">+</div><div className="flex-1 overflow-hidden rounded-2xl border border-white/15 bg-[#101110]"><button type="button" onClick={onChooseExisting} className="flex w-full items-center gap-4 px-5 py-5 text-left text-lg font-bold hover:bg-white/5"><ImageIcon className="h-6 w-6" />Select from existing assets</button><label className="flex cursor-pointer items-center gap-4 border-t border-white/10 px-5 py-5 text-lg font-bold hover:bg-white/5"><Upload className="h-6 w-6" />Upload from local device<input type="file" accept="image/*" className="hidden" onChange={async (event) => { const file = event.target.files?.[0]; if (file) await onUpload(file); close(); }} /></label></div></div></section></div>

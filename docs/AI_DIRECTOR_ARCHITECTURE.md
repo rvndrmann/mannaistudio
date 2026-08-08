@@ -1,5 +1,5 @@
 # AI Director Hub architecture
-
+/Users/apple/Downloads/upto june all 2026/june- next-2026/HOLD/all websites/mannaistudio/docs/AI_DIRECTOR_ARCHITECTURE.md
 ## Compatibility contract
 
 - `creator_projects` remains the canonical project table.
@@ -79,7 +79,14 @@ Costly tools must declare `requiresApproval: true`. Generation also requires an 
 
 The asset and storyboard image workspaces support `gpt-image-2` and `gpt-image-1.5` through an authenticated server route. Results are uploaded to the existing private `creator-studio-media` bucket and written back to the selected asset or shot. A missing `OPENAI_API_KEY` produces an explicit configuration error; no fake output is generated.
 
-The same image workspaces also support BytePlus Seedream 5.0 Pro (`dola-seedream-5-0-pro-260628`). Storyboard video generation supports BytePlus Seedance 2.5 (`dreamina-seedance-2-5-260628`) plus Seedance 2.0, Fast, and Mini through asynchronous ModelArk tasks. Seedance 2.5 requests may use up to 30 seconds, while Seedance 2.0 variants remain capped at 15 seconds. `ARK_API_KEY` remains server-only, provider outputs are copied into the existing private studio bucket, and generation job/provider status is persisted before a shot is marked complete.
+The image workspaces also support BytePlus Seedream 5.0 Pro (`dola-seedream-5-0-pro-260628`), fal.ai Flux 3 (`fal-flux-3`), Flux Dev (`fal-flux-dev`), Flux Realism (`fal-flux-realism`), and Google AI Studio Nano Banana 2 (`google-nano-banana-2`).
+
+Storyboard video generation supports:
+- **Google AI Studio**: Veo 3.1 (`google-veo-3-1`), Gemini 2.5 Pro (`google-gemini-2-5-pro`), Omni Flash (`google-omni-flash`).
+- **fal.ai Provider**: Seedance 2.5 (`fal-seedance-2-5`), Seedance 2.0 (`fal-seedance-2-0`), Seedance 2.0 Fast (`fal-seedance-2-0-fast`), Seedance 2.0 Mini (`fal-seedance-2-0-mini`), Kling 3 (`fal-kling-3`), Kling O3 (`fal-kling-o3`), Kling 1.6 Pro (`fal-kling-1-6-pro`), MiniMax H3 (`fal-minimax-h3`), MiniMax Video-01 (`fal-minimax-video-01`), Hunyuan Video (`fal-hunyuan-video`), Luma Dream Machine (`fal-luma-dream-machine`).
+- **BytePlus Direct**: Seedance 2.5 (`dreamina-seedance-2-5-260628`), Seedance 2.0 (`dreamina-seedance-2-0-260128`), Fast (`dreamina-seedance-2-0-fast-260128`), and Mini (`dreamina-seedance-2-0-mini-260615`).
+
+For complete AI Social Media + Advertising Agent architecture, see [`docs/MARKETING_AGENT_ARCHITECTURE.md`](file:///Users/apple/Downloads/upto%20june%20all%202026/june-%20next-2026/HOLD/all%20websites/mannaistudio/docs/MARKETING_AGENT_ARCHITECTURE.md).
 
 ## Continuity
 

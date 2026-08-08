@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { BytePlusProviderError, getBytePlusVideoTask, submitBytePlusVideo } from "@/lib/studio/byteplus"
-import { isVideoGenerationModel } from "@/lib/studio/generation-models"
+import { BytePlusProviderError, createBytePlusAsset, getBytePlusAsset, getBytePlusVideoTask, submitBytePlusVideo } from "@/lib/studio/byteplus"
+import { FalProviderError, getFalVideoTask, submitFalVideo } from "@/lib/studio/fal"
+import { getGoogleVideoTask, GoogleProviderError, submitGoogleVideo } from "@/lib/studio/google"
+import { generationProvider, isVideoGenerationModel } from "@/lib/studio/generation-models"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 
 const submitSchema = z.object({
@@ -10,6 +12,7 @@ const submitSchema = z.object({
   prompt: z.string().trim().min(1).max(20_000),
   model: z.string().refine(isVideoGenerationModel, "Unsupported video model"),
   referenceImages: z.array(z.string().max(2_000)).max(50).default([]),
+  characterEntityIds: z.array(z.string().uuid()).max(10).default([]),
   generationMode: z.enum(["keyframe", "multi_image"]).default("keyframe"),
   startFrame: z.string().max(2_000).nullable().optional(),
   endFrame: z.string().max(2_000).nullable().optional(),
@@ -29,7 +32,7 @@ async function verifyShot(context: Awaited<ReturnType<typeof requireAuthenticate
 async function signedReferenceUrls(context: Awaited<ReturnType<typeof requireAuthenticatedProject>>, paths: string[]) {
   const urls: string[] = []
   for (const path of paths) {
-    if (/^https?:\/\//i.test(path)) {
+    if (/^https?:\/\//i.test(path) || /^asset:\/\//i.test(path) || /^asset-[a-z0-9-]+$/i.test(path)) {
       urls.push(path)
       continue
     }
@@ -47,8 +50,56 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const input = submitSchema.parse(await request.json())
     const shot = await verifyShot(context, projectId, input.shotId)
     if (!shot) return NextResponse.json({ error: "Shot not found" }, { status: 404 })
-    const references = await signedReferenceUrls(context, input.referenceImages)
-    const providerRequest = { prompt: input.prompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceImages: input.referenceImages, generationMode: input.generationMode, startFrame: input.startFrame || null, endFrame: input.endFrame || null, audioEnabled: input.audioEnabled }
+
+    // Resolve character entity face references and direct shot references
+    let combinedReferencePaths: string[] = []
+    const rawImagesToOmit = new Set<string>()
+
+    if (input.characterEntityIds.length > 0) {
+      const { data: entities } = await context.supabase
+        .from("creator_entities")
+        .select("id, name, reference_images, metadata")
+        .eq("project_id", projectId)
+        .in("id", input.characterEntityIds)
+
+      if (entities && entities.length > 0) {
+        for (const entity of entities) {
+          const byteplusAssetId = typeof entity.metadata === "object" && entity.metadata !== null ? (entity.metadata as Record<string, unknown>).byteplus_asset_id : null
+
+          if (typeof byteplusAssetId === "string" && byteplusAssetId.trim()) {
+            combinedReferencePaths.push(byteplusAssetId.trim())
+            // Omit raw reference images for this character so BytePlus receives ONLY the asset:// ID
+            if (Array.isArray(entity.reference_images)) {
+              for (const img of entity.reference_images) {
+                if (typeof img === "string" && img.trim()) {
+                  rawImagesToOmit.add(img.trim())
+                }
+              }
+            }
+          } else if (Array.isArray(entity.reference_images)) {
+            for (const img of entity.reference_images) {
+              if (typeof img === "string" && img.trim()) {
+                combinedReferencePaths.push(img.trim())
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Include direct shot reference images
+    for (const refPath of input.referenceImages) {
+      if (rawImagesToOmit.has(refPath)) continue
+      combinedReferencePaths.push(refPath)
+    }
+
+    // Deduplicate reference paths
+    combinedReferencePaths = Array.from(new Set(combinedReferencePaths))
+
+    const references = await signedReferenceUrls(context, combinedReferencePaths)
+    const providerRequest = { prompt: input.prompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceImages: combinedReferencePaths, characterEntityIds: input.characterEntityIds, generationMode: input.generationMode, startFrame: input.startFrame || null, endFrame: input.endFrame || null, audioEnabled: input.audioEnabled }
+
+    const provider = generationProvider(input.model)
 
     const { data: job, error: jobError } = await context.supabase.from("creator_generation_jobs").insert({
       user_id: context.user.id,
@@ -56,7 +107,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       shot_id: shot.id,
       type: "video",
       status: "approved",
-      provider: "byteplus",
+      provider,
       model: input.model,
       prompt: input.prompt,
       input_images: input.referenceImages,
@@ -71,12 +122,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (jobError) throw jobError
 
     try {
-      const task = await submitBytePlusVideo({ model: input.model, prompt: input.prompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references, generationMode: input.generationMode, audioEnabled: input.audioEnabled })
+      let task: { id: string; response?: unknown }
+      if (provider === "fal") {
+        const falRes = await submitFalVideo({ model: input.model, prompt: input.prompt, duration: input.durationSeconds || Number(shot.duration_seconds || 4), ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references })
+        task = { id: falRes.id, response: falRes }
+      } else if (provider === "google") {
+        const gRes = await submitGoogleVideo({ model: input.model, prompt: input.prompt, duration: input.durationSeconds || Number(shot.duration_seconds || 4), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references })
+        task = { id: gRes.id, response: gRes.response }
+      } else {
+        const bpRes = await submitBytePlusVideo({ model: input.model, prompt: input.prompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references, generationMode: input.generationMode, audioEnabled: input.audioEnabled })
+        task = { id: bpRes.id, response: bpRes.response }
+      }
       await Promise.all([
         context.supabase.from("creator_generation_jobs").update({ status: "processing", provider_job_id: task.id, provider_response: task.response }).eq("id", job.id),
-        context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, metadata: { ...(shot.metadata || {}), video_generation: { provider: "byteplus", model: input.model, prompt: input.prompt, reference_images: input.referenceImages, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
+        context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, metadata: { ...(shot.metadata || {}), video_generation: { provider, model: input.model, prompt: input.prompt, reference_images: input.referenceImages, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
       ])
-      return NextResponse.json({ jobId: job.id, providerJobId: task.id, status: "processing", provider: "byteplus", model: input.model }, { status: 202 })
+      return NextResponse.json({ jobId: job.id, providerJobId: task.id, status: "processing", provider, model: input.model }, { status: 202 })
     } catch (error) {
       await Promise.all([
         context.supabase.from("creator_generation_jobs").update({ status: "failed", error: studioErrorMessage(error, "Submission failed"), completed_at: new Date().toISOString() }).eq("id", job.id),
@@ -86,7 +147,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
   } catch (error) {
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid video request", issues: error.flatten() }, { status: 400 })
-    return NextResponse.json({ error: studioErrorMessage(error, "Video generation failed") }, { status: error instanceof BytePlusProviderError ? error.status : studioErrorStatus(error) })
+    return NextResponse.json({ error: studioErrorMessage(error, "Video generation failed") }, { status: error instanceof BytePlusProviderError || error instanceof FalProviderError || error instanceof GoogleProviderError ? error.status : studioErrorStatus(error) })
   }
 }
 
@@ -101,9 +162,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (["completed", "failed", "cancelled"].includes(job.status)) return NextResponse.json(job)
     if (!job.provider_job_id || !isVideoGenerationModel(job.model)) return NextResponse.json({ error: "Generation job is missing provider details" }, { status: 409 })
 
-    const task = await getBytePlusVideoTask(job.provider_job_id)
+    const provider = generationProvider(job.model)
+    let task: { status: "queued" | "running" | "succeeded" | "failed" | "cancelled"; content?: { video_url?: string }; error?: { message?: string } }
+
+    if (provider === "fal") {
+      const endpoint = (job.provider_response as Record<string, unknown>)?.endpoint as string || "bytedance/seedance-2.0/image-to-video"
+      task = await getFalVideoTask(job.provider_job_id, endpoint)
+    } else if (provider === "google") {
+      task = await getGoogleVideoTask(job.provider_job_id)
+    } else {
+      task = await getBytePlusVideoTask(job.provider_job_id)
+    }
+
     if (task.status === "failed" || task.status === "cancelled") {
-      const error = task.error?.message || `BytePlus task ${task.status}`
+      const error = task.error?.message || `${provider} task ${task.status}`
       await Promise.all([
         context.supabase.from("creator_generation_jobs").update({ status: task.status === "cancelled" ? "cancelled" : "failed", provider_response: task, error, completed_at: new Date().toISOString() }).eq("id", job.id),
         job.shot_id ? context.supabase.from("creator_shots").update({ video_status: task.status === "cancelled" ? "cancelled" : "failed" }).eq("id", job.shot_id) : Promise.resolve(),
@@ -114,7 +186,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const output = await fetch(task.content.video_url)
     if (!output.ok) throw new BytePlusProviderError(`Could not download generated video (${output.status}).`)
-    const storagePath = `${context.user.id}/${projectId}/byteplus-video-${randomUUID()}.mp4`
+    const storagePath = `${context.user.id}/${projectId}/${provider}-video-${randomUUID()}.mp4`
     const { error: uploadError } = await context.supabase.storage.from("creator-studio-media").upload(storagePath, Buffer.from(await output.arrayBuffer()), { contentType: "video/mp4", upsert: false })
     if (uploadError) throw uploadError
     const completedAt = new Date().toISOString()
@@ -124,6 +196,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     ])
     return NextResponse.json({ ...job, status: "completed", result_url: storagePath, completed_at: completedAt })
   } catch (error) {
-    return NextResponse.json({ error: studioErrorMessage(error, "Could not check video status") }, { status: error instanceof BytePlusProviderError ? error.status : studioErrorStatus(error) })
+    return NextResponse.json({ error: studioErrorMessage(error, "Could not check video status") }, { status: error instanceof BytePlusProviderError || error instanceof FalProviderError ? error.status : studioErrorStatus(error) })
   }
 }

@@ -109,6 +109,12 @@ All admin write operations use these to avoid nested RLS policy issues:
 Located in `supabase/migrations/`:
 - `20260525162000_portfolio.sql` — profiles extensions, portfolio_items, RLS, portfolio-media bucket
 - `20260525162500_service_requests.sql` — service_requests table, RLS
+- `20260808120000_character_asset_pipeline.sql` — profiles character pipeline, asset class, provenance metadata
+- `20260808143000_social_ads_marketing.sql` — social connections, posts, ad accounts, ad campaigns, competitors, competitor creatives, agent actions, automation rules, RLS policies
+
+## Documentation
+- [`docs/MARKETING_AGENT_ARCHITECTURE.md`](file:///Users/apple/Downloads/upto%20june%20all%202026/june-%20next-2026/HOLD/all%20websites/mannaistudio/docs/MARKETING_AGENT_ARCHITECTURE.md) — AI Social Media & Advertising Agent architecture, provider interfaces, guardrails, & schema
+- [`docs/AI_DIRECTOR_ARCHITECTURE.md`](file:///Users/apple/Downloads/upto%20june%20all%202026/june-%20next-2026/HOLD/all%20websites/mannaistudio/docs/AI_DIRECTOR_ARCHITECTURE.md) — AI Director Hub studio generation pipeline (OpenAI, fal.ai, BytePlus, Google AI Studio)
 
 ## What Still Needs Work
 - `challenge_submissions` table — Not yet created (only mock data exists)
