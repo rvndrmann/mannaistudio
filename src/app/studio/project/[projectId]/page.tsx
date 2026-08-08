@@ -1866,12 +1866,19 @@ function Storyboard({
                         src={shot.keyframe_image}
                         label="Reference image"
                       />
-                      <div className="flex items-center justify-between border-t border-white/10 px-2 py-2 text-xs text-zinc-400">
-                        <span>Image reference</span>
-                        {shot.keyframe_image && (
-                          <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ${shot.is_trusted_provider_asset || (typeof shot.metadata === "object" && shot.metadata !== null && "byteplus_asset_id" in shot.metadata) ? "bg-[#b9f42e]/20 text-[#b9f42e]" : "bg-white/10 text-zinc-400"}`}>
-                            {shot.is_trusted_provider_asset || (typeof shot.metadata === "object" && shot.metadata !== null && "byteplus_asset_id" in shot.metadata) ? "✓ Seedance Verified" : "+ Asset Library"}
-                          </span>
+                      <div className="flex flex-col gap-1 border-t border-white/10 px-2 py-2 text-xs text-zinc-400">
+                        <div className="flex items-center justify-between">
+                          <span>Image reference</span>
+                          {shot.keyframe_image && (
+                            <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ${shot.is_trusted_provider_asset || (typeof shot.metadata === "object" && shot.metadata !== null && "byteplus_asset_id" in shot.metadata) ? "bg-[#b9f42e]/20 text-[#b9f42e]" : "bg-white/10 text-zinc-400"}`}>
+                              {shot.is_trusted_provider_asset || (typeof shot.metadata === "object" && shot.metadata !== null && "byteplus_asset_id" in shot.metadata) ? "✓ Seedance Verified" : "+ Asset Library"}
+                            </span>
+                          )}
+                        </div>
+                        {(shot.is_trusted_provider_asset || (typeof shot.metadata === "object" && shot.metadata !== null && "byteplus_asset_id" in shot.metadata)) && (
+                          <div className="truncate text-[9px] font-mono text-zinc-500">
+                            {String(shot.provider_asset_uri || (shot.metadata as Record<string, unknown>)?.byteplus_asset_uri || (shot.metadata as Record<string, unknown>)?.byteplus_asset_id || "")}
+                          </div>
                         )}
                       </div>
                     </button>
@@ -1894,7 +1901,10 @@ function Storyboard({
                             });
                             const json = await res.json();
                             if (!res.ok) alert(json.error || "Asset registration failed");
-                            else reload();
+                            else {
+                              alert(`✅ Registered to BytePlus Asset Library!\nAsset ID: ${json.assetId}\nAsset URI: ${json.assetUri || `asset://${json.assetId}`}`);
+                              await reload();
+                            }
                           } catch (err) {
                             alert(err instanceof Error ? err.message : "Asset registration failed");
                           }
