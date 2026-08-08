@@ -5,6 +5,7 @@ import { BytePlusProviderError, createBytePlusAsset, getBytePlusAsset, getBytePl
 import { FalProviderError, getFalVideoTask, submitFalVideo } from "@/lib/studio/fal"
 import { getGoogleVideoTask, GoogleProviderError, submitGoogleVideo } from "@/lib/studio/google"
 import { generationProvider, isVideoGenerationModel } from "@/lib/studio/generation-models"
+import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 
 const submitSchema = z.object({
@@ -50,6 +51,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const input = submitSchema.parse(await request.json())
     const shot = await verifyShot(context, projectId, input.shotId)
     if (!shot) return NextResponse.json({ error: "Shot not found" }, { status: 404 })
+
+    // Enforce credit balance & deduction (2x API cost rule)
+    const creditCost = calculateCreditCost(input.model, "video", input.durationSeconds)
+    const deduct = await deductUserCredits(context.user.id, creditCost, input.model, `Video Generation (${input.model})`, context.supabase)
+    if (!deduct.success) {
+      return NextResponse.json({ error: deduct.errorMessage || "Insufficient credits" }, { status: 402 })
+    }
 
     // Resolve character entity face references and direct shot references
     let combinedReferencePaths: string[] = []

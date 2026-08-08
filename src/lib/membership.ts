@@ -1,9 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 
+export const MEMBERSHIP_PLANS = {
+    starter: { id: "starter", name: "Starter Membership", priceUsd: 9, monthlyCredits: 0, canBuyCredits: true },
+    pro: { id: "pro", name: "Pro Membership", priceUsd: 30, monthlyCredits: 3000, canBuyCredits: true },
+}
+
 export const membershipPlan = {
     name: "AI Director Hub Pro",
-    price: 999,
-    currency: "INR",
+    price: 30,
+    currency: "USD",
     portfolioLimit: 10,
     freePortfolioLimit: 2,
 }

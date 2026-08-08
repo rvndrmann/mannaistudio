@@ -6,6 +6,7 @@ import { createBytePlusAsset, generateBytePlusImage, BytePlusProviderError } fro
 import { FalProviderError, generateFalImage } from "@/lib/studio/fal"
 import { generateGoogleImage, GoogleProviderError } from "@/lib/studio/google"
 import { generationProvider, isImageGenerationModel, type ImageGenerationModelId } from "@/lib/studio/generation-models"
+import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 
 const imageRequestSchema = z.object({
@@ -21,6 +22,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { projectId } = await params
     const context = await requireAuthenticatedProject(projectId)
     const input = imageRequestSchema.parse(await request.json())
+
+    // Enforce credit balance & deduction (2x API cost rule)
+    const creditCost = calculateCreditCost(input.model, "image")
+    const deduct = await deductUserCredits(context.user.id, creditCost, input.model, `Image Generation (${input.model})`, context.supabase)
+    if (!deduct.success) {
+      return NextResponse.json({ error: deduct.errorMessage || "Insufficient credits" }, { status: 402 })
+    }
+
     let shotData: Record<string, unknown> | null = null
     if (input.target === "asset") {
       const { data } = await context.supabase.from("creator_entities").select("id, reference_images, metadata").eq("id", input.targetId).eq("project_id", projectId).maybeSingle()

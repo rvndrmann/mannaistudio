@@ -6,6 +6,7 @@ import { Clapperboard, Play, Zap, User, Menu, X, ShieldCheck, LogIn, LogOut, Loa
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
+import CreditBadge from "@/components/CreditBadge"
 import NotificationBell from "@/components/NotificationBell"
 import { createClient } from "@/lib/supabase/client"
 import { defaultBillingSettings, fetchBillingSettings, isAdminUser } from "@/lib/membership"
@@ -97,6 +98,7 @@ export default function Navbar() {
                         </div>
                     ) : user ? (
                         <div className="flex items-center gap-3">
+                            <CreditBadge />
                             <NotificationBell />
                             <Link href="/profile" className="flex items-center gap-2 px-4 py-2 bg-white/10 rounded-xl hover:bg-white/20 transition-all group">
                                 {user.user_metadata?.avatar_url ? (
