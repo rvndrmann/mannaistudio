@@ -65,13 +65,39 @@ export function formatBytePlusMediaUrl(url: string): string {
   return trimmed
 }
 
+export async function resolveBytePlusReferenceUrl(rawUrl: string): Promise<string> {
+  const formatted = formatBytePlusMediaUrl(rawUrl)
+  if (/^asset:\/\//i.test(formatted)) return formatted
+
+  // If HTTP/HTTPS URL and management API keys are set, register image to Asset Library to avoid PrivacyInformation error
+  if (/^https?:\/\//i.test(formatted) && process.env.ARK_ACCESS_KEY && process.env.ARK_SECRET_KEY) {
+    try {
+      const assetRes = await createBytePlusAsset({ imageUrl: formatted })
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const assetInfo = await getBytePlusAsset(assetRes.assetId)
+        if (assetInfo.status === "Active" || assetInfo.status === "active") {
+          return assetInfo.assetUri
+        }
+        await new Promise((r) => setTimeout(r, 1000))
+      }
+      return `asset://${assetRes.assetId}`
+    } catch (err) {
+      console.warn("Could not auto-register image URL to BytePlus Asset Library:", err)
+      return formatted
+    }
+  }
+
+  return formatted
+}
+
 export async function submitBytePlusVideo(input: { model: VideoGenerationModelId; prompt: string; duration: number; resolution: string; ratio: string; referenceUrls?: string[]; generationMode?: "keyframe" | "multi_image"; audioEnabled?: boolean }) {
   const content: Array<Record<string, unknown>> = [{ type: "text", text: input.prompt }]
-  const referenceUrls = (input.referenceUrls || []).map(formatBytePlusMediaUrl)
+  const resolvedUrls = await Promise.all((input.referenceUrls || []).map(resolveBytePlusReferenceUrl))
+
   if (input.generationMode === "keyframe") {
-    referenceUrls.forEach((url, index) => content.push({ type: "image_url", image_url: { url }, role: index === 0 ? "first_frame" : index === 1 ? "last_frame" : "reference_image" }))
+    resolvedUrls.forEach((url, index) => content.push({ type: "image_url", image_url: { url }, role: index === 0 ? "first_frame" : index === 1 ? "last_frame" : "reference_image" }))
   } else {
-    for (const url of referenceUrls) content.push({ type: "image_url", image_url: { url }, role: "reference_image" })
+    for (const url of resolvedUrls) content.push({ type: "image_url", image_url: { url }, role: "reference_image" })
   }
   const maxDuration = input.model === "dreamina-seedance-2-5-260628" ? 30 : 15
   const data = await request("/contents/generations/tasks", {
