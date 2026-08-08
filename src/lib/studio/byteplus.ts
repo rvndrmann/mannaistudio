@@ -69,8 +69,15 @@ export async function resolveBytePlusReferenceUrl(rawUrl: string): Promise<strin
   const formatted = formatBytePlusMediaUrl(rawUrl)
   if (/^asset:\/\//i.test(formatted)) return formatted
 
-  // If HTTP/HTTPS URL and management API keys are set, register image to Asset Library to avoid PrivacyInformation error
-  if (/^https?:\/\//i.test(formatted) && process.env.ARK_ACCESS_KEY && process.env.ARK_SECRET_KEY) {
+  // If HTTP/HTTPS URL, register image to Asset Library to avoid PrivacyInformation real-person error
+  if (/^https?:\/\//i.test(formatted)) {
+    if (!process.env.ARK_ACCESS_KEY || !process.env.ARK_SECRET_KEY) {
+      throw new BytePlusProviderError(
+        "BytePlus Direct requires ARK_ACCESS_KEY and ARK_SECRET_KEY in .env.local to register real-person face photos to the Asset Library. Please add ARK_ACCESS_KEY and ARK_SECRET_KEY to .env.local, or use the fal.ai Seedance model (Seedance 2.0 Mini via fal.ai).",
+        400
+      )
+    }
+
     try {
       const assetRes = await createBytePlusAsset({ imageUrl: formatted })
       for (let attempt = 0; attempt < 10; attempt++) {
@@ -82,6 +89,7 @@ export async function resolveBytePlusReferenceUrl(rawUrl: string): Promise<strin
       }
       return `asset://${assetRes.assetId}`
     } catch (err) {
+      if (err instanceof BytePlusProviderError) throw err
       console.warn("Could not auto-register image URL to BytePlus Asset Library:", err)
       return formatted
     }
