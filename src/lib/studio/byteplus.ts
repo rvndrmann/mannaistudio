@@ -207,11 +207,10 @@ export async function createBytePlusAsset(input: { imageUrl: string; name?: stri
   const sk = process.env.ARK_SECRET_KEY
 
   if (!ak || !sk) {
-    // Fallback ID when IAM management credentials are not set
-    const cleanName = (input.name || "character").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 15)
-    const timestamp = Date.now().toString(36)
-    const randomSuffix = Math.random().toString(36).slice(2, 7)
-    return { assetId: `asset-${cleanName}-${timestamp}-${randomSuffix}` }
+    throw new BytePlusProviderError(
+      "BytePlus Asset Library registration requires ARK_ACCESS_KEY and ARK_SECRET_KEY in .env.local (with ArkFullAccess permission). Please add ARK_ACCESS_KEY and ARK_SECRET_KEY to .env.local, or switch to fal.ai Seedance models (Seedance 2.0 Mini via fal.ai).",
+      400
+    )
   }
 
   let groupId = input.groupId
