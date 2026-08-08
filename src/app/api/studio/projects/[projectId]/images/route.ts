@@ -81,6 +81,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { error: uploadError } = await context.supabase.storage.from("creator-studio-media").upload(storagePath, image, { contentType, upsert: false })
     if (uploadError) throw uploadError
 
+    // Auto-register generated image as BytePlus Asset Library asset if management keys are set
+    if (!byteplusAssetId && process.env.ARK_ACCESS_KEY && process.env.ARK_SECRET_KEY) {
+      try {
+        const { data: signed } = await context.supabase.storage.from("creator-studio-media").createSignedUrl(storagePath, 60 * 60)
+        if (signed?.signedUrl) {
+          const assetRes = await createBytePlusAsset({ imageUrl: signed.signedUrl, name: input.prompt.slice(0, 50) })
+          byteplusAssetId = assetRes.assetId
+          byteplusAssetUri = `asset://${assetRes.assetId}`
+        }
+      } catch (assetErr) {
+        console.warn("Could not auto-register shot image to BytePlus Asset Library:", assetErr)
+      }
+    }
+
     if (input.target === "asset") {
       const { data: asset, error: readError } = await context.supabase.from("creator_entities").select("reference_images, metadata").eq("id", input.targetId).eq("project_id", projectId).single()
       if (readError) throw readError

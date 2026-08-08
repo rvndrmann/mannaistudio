@@ -23,7 +23,7 @@ const submitSchema = z.object({
 }).strict()
 
 async function verifyShot(context: Awaited<ReturnType<typeof requireAuthenticatedProject>>, projectId: string, shotId: string) {
-  const { data: shot } = await context.supabase.from("creator_shots").select("id, episode_id, duration_seconds, aspect_ratio, resolution, metadata").eq("id", shotId).maybeSingle()
+  const { data: shot } = await context.supabase.from("creator_shots").select("id, episode_id, duration_seconds, aspect_ratio, resolution, keyframe_image, metadata").eq("id", shotId).maybeSingle()
   if (!shot) return null
   const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", shot.episode_id).eq("project_id", projectId).maybeSingle()
   return episode ? shot : null
@@ -54,6 +54,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Resolve character entity face references and direct shot references
     let combinedReferencePaths: string[] = []
     const rawImagesToOmit = new Set<string>()
+
+    // Check if shot keyframe image has a registered BytePlus asset ID in metadata
+    const shotMeta = (shot.metadata as Record<string, unknown>) || {}
+    const shotBytePlusAssetId = typeof shotMeta.byteplus_asset_id === "string" && shotMeta.byteplus_asset_id.trim() ? shotMeta.byteplus_asset_id.trim() : null
+
+    if (shotBytePlusAssetId) {
+      combinedReferencePaths.push(shotBytePlusAssetId)
+      if (shot.keyframe_image) rawImagesToOmit.add(shot.keyframe_image)
+    } else if (shot.keyframe_image && !input.startFrame) {
+      combinedReferencePaths.push(shot.keyframe_image)
+    }
 
     if (input.characterEntityIds.length > 0) {
       const { data: entities } = await context.supabase
