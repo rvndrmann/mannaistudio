@@ -25,7 +25,7 @@ import {
   X,
 } from "lucide-react";
 import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models";
-import { imageGenerationModels, videoGenerationModels } from "@/lib/studio/generation-models";
+import { getModelLabel, imageGenerationModels, videoGenerationModels } from "@/lib/studio/generation-models";
 import { createClient } from "@/lib/supabase/client";
 
 import {
@@ -2288,6 +2288,9 @@ function ShotMediaWorkspace({
                   type="button"
                   onClick={() => {
                     setActiveGenId(gen.id);
+                    if (gen.prompt) setPrompt(gen.prompt);
+                    if (gen.model) setModel(gen.model);
+                    if (gen.referenceImages && gen.referenceImages.length) setReferences(gen.referenceImages);
                     if (gen.status === "failed") setGenerationError(gen.error);
                     else setGenerationError(null);
                   }}
@@ -2364,7 +2367,7 @@ function ShotMediaWorkspace({
             </span>
           </header>
           <div className="grid flex-1 place-items-center overflow-auto bg-black/40 p-4 sm:p-8">
-            <div className="flex flex-col items-center overflow-hidden rounded-xl bg-[#151715] shadow-2xl transition-all max-w-4xl">
+            <div className="flex flex-col items-center overflow-hidden rounded-xl bg-[#151715] shadow-2xl transition-all max-w-4xl w-full">
               {previewGenerating ? (
                 <div className={`grid place-items-center p-8 ${aspectRatio === "9:16" ? "aspect-[9/16] h-[55vh] max-h-[580px]" : "aspect-[16/9] w-full max-w-[640px]"}`}>
                   <div className="flex flex-col items-center gap-4">
@@ -2382,22 +2385,31 @@ function ShotMediaWorkspace({
                 <ResolvedMedia
                   src={previewSource}
                   type={isImage ? "image" : "video"}
-                  className="max-h-[65vh] w-auto max-w-full rounded-t-xl object-contain mx-auto"
+                  className="max-h-[60vh] w-auto max-w-full rounded-t-xl object-contain mx-auto"
                 />
               ) : (
                 <div className={`grid place-items-center text-center text-zinc-500 p-8 ${aspectRatio === "9:16" ? "aspect-[9/16] h-[55vh] max-h-[580px]" : "aspect-[16/9] w-full max-w-[640px]"}`}>
                   Click &ldquo;Generate video&rdquo; below<br />to create your first output.
                 </div>
               )}
-              {/* Show prompt/references for active gen */}
-              {activeGen && activeGen.id !== "original" && (
-                <div className="border-t border-white/10 bg-black/40 p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Prompt used</p>
-                  <p className="mt-1 line-clamp-3 text-sm leading-relaxed text-zinc-300">{activeGen.prompt || "—"}</p>
-                  {activeGen.referenceImages.length > 0 && (
+              {/* Show prompt, model used, and reference images for active selected generation */}
+              {activeGen && (
+                <div className="w-full border-t border-white/10 bg-black/60 p-4 rounded-b-xl">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#b9f42e]">
+                      PROMPT USED
+                    </p>
+                    {activeGen.model && (
+                      <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-[11px] font-bold text-[#b9f42e]">
+                        Model: {getModelLabel(activeGen.model)}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1.5 text-sm leading-relaxed text-zinc-200">{activeGen.prompt || "—"}</p>
+                  {activeGen.referenceImages && activeGen.referenceImages.length > 0 && (
                     <>
                       <p className="mt-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Reference images</p>
-                      <div className="mt-1 flex gap-2">
+                      <div className="mt-1.5 flex gap-2">
                         {activeGen.referenceImages.map((img, i) => (
                           <div key={`${img}-${i}`} className="h-10 w-10 overflow-hidden rounded-lg border border-white/10">
                             <AssetImage src={img} />

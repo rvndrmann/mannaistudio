@@ -136,6 +136,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         },
       }).eq("id", input.targetId)
       if (error) throw error
+
+      // Record in creator_generation_jobs so history displays prompt and model
+      await context.supabase.from("creator_generation_jobs").insert({
+        project_id: projectId,
+        episode_id: typeof shotData?.episode_id === "string" ? shotData.episode_id : null,
+        shot_id: input.targetId,
+        provider,
+        model: input.model,
+        prompt: input.prompt,
+        input_images: input.referenceImages,
+        status: "completed",
+        result_url: storagePath,
+      })
     }
     return NextResponse.json({ path: storagePath, provider, model: input.model, byteplusAssetId, byteplusAssetUri })
   } catch (error) {
