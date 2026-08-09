@@ -424,16 +424,24 @@ export default function WorkspacePage({
           <div
             className={`${tab === "timeline" ? "max-w-none p-0" : "mx-auto max-w-6xl p-5 lg:p-8"}`}
           >
-            <div
-              className={`${tab === "timeline" ? "hidden" : "mb-6 flex items-center justify-between"}`}
-            >
-              <div>
-                <p className="text-xs font-bold tracking-[.2em] text-[#b9f42e]">
-                  AI DIRECTOR HUB STUDIO
-                </p>
-                <h1 className="mt-1 text-2xl font-bold">
-                  {visibleTabs.find((x) => x[0] === tab)?.[1] || marketingTabs.find((x) => x[0] === tab)?.[1]}
-                </h1>
+            <div className={`mb-5 flex flex-wrap items-center justify-between gap-3 ${tab === "timeline" ? "hidden" : ""}`}>
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/studio"
+                  className="flex items-center gap-1.5 rounded-xl bg-white/10 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition hover:bg-white/20 hover:text-white"
+                  title="Back to Studio Home"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  <span>Studio</span>
+                </Link>
+                <div>
+                  <p className="text-xs font-bold tracking-[.2em] text-[#b9f42e]">
+                    AI DIRECTOR HUB STUDIO
+                  </p>
+                  <h1 className="mt-1 text-2xl font-bold">
+                    {visibleTabs.find((x) => x[0] === tab)?.[1] || marketingTabs.find((x) => x[0] === tab)?.[1]}
+                  </h1>
+                </div>
               </div>
               {tab === "storyboard" && (
                 <div className="flex gap-2">

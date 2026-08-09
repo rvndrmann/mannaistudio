@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
+  ArrowLeft,
   Bot,
   Clapperboard,
   FolderKanban,
@@ -15,6 +16,7 @@ import {
   Upload,
   WandSparkles,
 } from "lucide-react";
+import CreditBadge from "@/components/CreditBadge";
 
 type Project = {
   id: string;
@@ -339,6 +341,7 @@ function ProductionModePicker({
     </section>
   );
 }
+
 function TopBar() {
   return (
     <>
@@ -350,23 +353,28 @@ function TopBar() {
         </button>
       </div>
       <header className="fixed inset-x-0 top-12 z-30 flex h-20 items-center justify-between border-b border-white/10 bg-[#090a09]/95 px-5 backdrop-blur">
-        <div className="flex items-center gap-3 text-xl font-bold">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#b9f42e] text-black">
-            <Clapperboard className="h-5 w-5" />
-          </span>
-          AI Director <span className="text-[#b9f42e]">Studio</span>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/"
+            className="flex items-center gap-2 rounded-xl bg-white/10 px-3.5 py-2 text-sm font-semibold text-zinc-300 transition hover:bg-white/20 hover:text-white"
+            title="Back to Home"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="hidden sm:inline">Back to Home</span>
+          </Link>
+          <span className="h-6 border-r border-white/10" />
+          <div className="flex items-center gap-3 text-xl font-bold">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#b9f42e] text-black">
+              <Clapperboard className="h-5 w-5" />
+            </span>
+            AI Director <span className="text-[#b9f42e]">Studio</span>
+          </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className="hidden text-sm text-zinc-400 sm:block">English</span>
-          <span className="rounded-xl border border-[#b9f42e]/40 px-4 py-2 font-semibold text-[#b9f42e]">
-            ✦ 1,058
-          </span>
+          <CreditBadge />
           <button className="rounded-xl bg-gradient-to-r from-orange-400 to-violet-600 px-4 py-2 text-sm font-semibold">
             Upgrade
           </button>
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-600 font-semibold">
-            R
-          </span>
         </div>
       </header>
     </>
