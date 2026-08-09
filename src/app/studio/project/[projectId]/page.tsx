@@ -1709,163 +1709,422 @@ function AssetWorkspace({
   projectId: string;
   close: () => void;
   save: (b: unknown) => Promise<void>;
-  reload: () => Promise<void>;
+  reload: (silent?: boolean) => Promise<void>;
 }) {
   const [selected, setSelected] = useState(0);
   const [prompt, setPrompt] = useState(asset.description || "");
   const [model, setModel] = useState<string>(imageGenerationModels[0].id);
+  const [aspectRatio, setAspectRatio] = useState<string>("9:16");
+  const [quality, setQuality] = useState<"Low" | "Medium" | "High" | "Ultra">("Medium");
   const [working, setWorking] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [generationStatus, setGenerationStatus] = useState<string | null>(null);
   const [picker, setPicker] = useState(false);
   const [referenceSourcePicker, setReferenceSourcePicker] = useState(false);
-  const [libraryImages, setLibraryImages] = useState(asset.reference_images || []);
-  const [references, setReferences] = useState<string[]>(Array.isArray(asset.metadata?.generation_reference_images) ? asset.metadata.generation_reference_images.filter((value): value is string => typeof value === "string") : []);
+  const [libraryImages, setLibraryImages] = useState<string[]>(asset.reference_images || []);
+  const [references, setReferences] = useState<string[]>(
+    Array.isArray(asset.metadata?.generation_reference_images)
+      ? asset.metadata.generation_reference_images.filter((value): value is string => typeof value === "string")
+      : []
+  );
+
+  const activeImage = libraryImages[selected] || null;
+  const chosenImage = libraryImages[0] || null;
+  const isCurrentlyChosen = Boolean(activeImage && selected === 0);
+
   const saveReferences = async (nextReferences: string[]) => {
     setReferences(nextReferences);
-    await save({ action: "saveAsset", asset: { ...asset, reference_images: libraryImages, metadata: { ...asset.metadata, generation_reference_images: nextReferences } } });
+    await save({
+      action: "saveAsset",
+      asset: {
+        ...asset,
+        reference_images: libraryImages,
+        metadata: { ...asset.metadata, generation_reference_images: nextReferences },
+      },
+    });
   };
+
+  const chooseSelectedImage = async () => {
+    if (!activeImage || isCurrentlyChosen) return;
+    setWorking(true);
+    try {
+      const nextLibrary = [activeImage, ...libraryImages.filter((_, idx) => idx !== selected)];
+      setLibraryImages(nextLibrary);
+      setSelected(0);
+      await save({
+        action: "saveAsset",
+        asset: {
+          ...asset,
+          reference_images: nextLibrary,
+          metadata: asset.metadata,
+        },
+      });
+      setGenerationStatus("Chosen as primary asset concept ✓");
+      await reload(true);
+    } catch (err) {
+      setGenerationError(err instanceof Error ? err.message : "Could not set chosen image");
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const deleteSelectedImage = async () => {
+    if (!activeImage) return;
+    if (!confirm("Are you sure you want to delete this generated asset image?")) return;
+    setWorking(true);
+    try {
+      const nextLibrary = libraryImages.filter((_, idx) => idx !== selected);
+      setLibraryImages(nextLibrary);
+      setSelected(0);
+      await save({
+        action: "saveAsset",
+        asset: {
+          ...asset,
+          reference_images: nextLibrary,
+          metadata: asset.metadata,
+        },
+      });
+      setGenerationStatus("Asset image deleted ✓");
+      await reload(true);
+    } catch (err) {
+      setGenerationError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const addActiveAsReference = () => {
+    if (!activeImage || references.includes(activeImage)) return;
+    void saveReferences([...references, activeImage]);
+  };
+
   const requestGeneration = async () => {
     setWorking(true);
     setGenerationError(null);
+    setGenerationStatus("Submitting image generation request…");
     try {
-      const response = await fetch(`/api/studio/projects/${projectId}/images`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: "asset", targetId: asset.id, prompt, model, referenceImages: references }) });
+      const response = await fetch(`/api/studio/projects/${projectId}/images`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: "asset",
+          targetId: asset.id,
+          prompt,
+          model,
+          referenceImages: references,
+          aspectRatio,
+          quality,
+        }),
+      });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Image generation failed");
-      if (typeof body.path === "string") setLibraryImages((current) => current.includes(body.path) ? current : [...current, body.path]);
-      await reload();
+      if (typeof body.path === "string") {
+        const nextLibrary = [body.path, ...libraryImages.filter((img) => img !== body.path)];
+        setLibraryImages(nextLibrary);
+        setSelected(0);
+      }
+      setGenerationStatus("Asset image generated ✓");
+      await reload(true);
     } catch (error) {
       setGenerationError(error instanceof Error ? error.message : "Image generation failed");
     } finally {
       setWorking(false);
     }
   };
-  const uploadImage = async (file: File | undefined, destination: "library" | "reference") => { if (!file) return; setWorking(true); try { const userId = (await createClient().auth.getUser()).data.user?.id; if (!userId) return; const path = `${userId}/${projectId}/asset-${destination}-${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`; const { error } = await createClient().storage.from("creator-studio-media").upload(path, file); if (error) throw error; if (destination === "library") { const nextImages = [...libraryImages, path]; setLibraryImages(nextImages); await save({ action: "saveAsset", asset: { ...asset, reference_images: nextImages, metadata: asset.metadata } }); } else { await saveReferences([...references, path]); } } finally { setWorking(false) } };
+
+  const uploadImage = async (file: File | undefined, destination: "library" | "reference") => {
+    if (!file) return;
+    setWorking(true);
+    try {
+      const userId = (await createClient().auth.getUser()).data.user?.id;
+      if (!userId) return;
+      const path = `${userId}/${projectId}/asset-${destination}-${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+      const { error } = await createClient().storage.from("creator-studio-media").upload(path, file);
+      if (error) throw error;
+      if (destination === "library") {
+        const nextImages = [path, ...libraryImages];
+        setLibraryImages(nextImages);
+        setSelected(0);
+        await save({ action: "saveAsset", asset: { ...asset, reference_images: nextImages, metadata: asset.metadata } });
+      } else {
+        await saveReferences([...references, path]);
+      }
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const currentCreditCost = calculateCreditCost(model, "image", 4, { quality, aspectRatio });
+
   return (
     <div className="fixed inset-0 z-50 bg-[#080908] text-white">
       <div className="flex h-full">
-        <aside className="w-40 shrink-0 overflow-y-auto border-r border-white/10 bg-[#0b0c0b] p-4">
+        {/* Left Side Thumbnail History List */}
+        <aside className="w-44 shrink-0 overflow-y-auto border-r border-white/10 bg-[#0b0c0b] p-4">
           <button
             onClick={close}
-            className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl bg-white/5 text-zinc-300 hover:bg-white/10"
+            className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 text-zinc-300 hover:bg-white/10"
           >
-            <X />
+            <X className="h-5 w-5" />
           </button>
-          <label className="grid aspect-[3/4] cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-sm text-zinc-400 hover:border-[#b9f42e]">
-            +<br />
-            Upload
+          <label className="mb-4 grid aspect-[3/4] cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-xs text-zinc-400 hover:border-[#b9f42e] transition">
+            +<br />Upload
             <input type="file" accept="image/*" className="hidden" onChange={(e) => uploadImage(e.target.files?.[0], "library")} />
           </label>
-          <div className="mt-4 space-y-3">
-            {libraryImages.map((image, index) => (
-              <button
-                key={`${image}-${index}`}
-                onClick={() => setSelected(index)}
-                className={`block w-full overflow-hidden rounded-xl border-2 ${index === selected ? "border-[#b9f42e]" : "border-transparent"}`}
-              >
-                <AssetImage src={image} />
-              </button>
-            ))}
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600">Asset Concept Gallery</p>
+          <div className="space-y-2.5">
+            {libraryImages.map((image, index) => {
+              const isChosen = index === 0;
+              const isSel = index === selected;
+              return (
+                <div key={`${image}-${index}`} className="relative group">
+                  <button
+                    type="button"
+                    onClick={() => setSelected(index)}
+                    className={`block w-full overflow-hidden rounded-xl border-2 transition text-left ${
+                      isChosen
+                        ? "border-[#b9f42e] ring-2 ring-[#b9f42e]/40"
+                        : isSel
+                        ? "border-white/60"
+                        : "border-white/10 hover:border-white/25"
+                    }`}
+                  >
+                    <AssetImage src={image} />
+                    {isChosen && (
+                      <span className="absolute left-1.5 top-1.5 rounded-md bg-[#b9f42e] px-1.5 py-0.5 text-[9px] font-black uppercase text-black shadow">
+                        ✓ CHOSEN
+                      </span>
+                    )}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </aside>
+
+        {/* Main Content Area */}
         <main className="flex min-w-0 flex-1 flex-col">
-          <header className="flex h-20 items-center gap-3 border-b border-white/10 px-6">
-            <button type="button" onClick={() => { const image = libraryImages[selected]; if (image && !references.includes(image)) void saveReferences([...references, image]); }} className="rounded-lg bg-[#b9f42e] px-4 py-2 text-sm font-bold text-black">
-              Choose
-            </button>
-            <button type="button" onClick={() => { const image = libraryImages[selected]; if (image && !references.includes(image)) void saveReferences([...references, image]); }} className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-300 hover:bg-white/5">
+          {/* Top Bar Actions */}
+          <header className="flex h-16 items-center gap-3 border-b border-white/10 px-6 bg-[#0b0c0b]">
+            {isCurrentlyChosen ? (
+              <span className="flex items-center gap-1.5 rounded-lg border border-[#b9f42e]/50 bg-[#b9f42e]/20 px-4 py-2 text-xs font-black text-[#b9f42e]">
+                ✓ Chosen Concept
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={chooseSelectedImage}
+                disabled={working || !activeImage}
+                className="flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-4 py-2 text-xs font-black text-black hover:bg-[#a6de25] transition shadow-lg disabled:opacity-40"
+              >
+                ✓ Choose
+              </button>
+            )}
+
+            {activeImage && (
+              <button
+                type="button"
+                onClick={deleteSelectedImage}
+                disabled={working}
+                className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300 hover:bg-red-500/20 transition disabled:opacity-40"
+                title="Delete this asset image"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Delete</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={addActiveAsReference}
+              disabled={!activeImage}
+              className="rounded-lg px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+            >
               Use as reference
             </button>
-            <span className="h-6 border-l border-white/10" />
+
+            <span className="h-5 border-l border-white/10" />
+
             <button
+              type="button"
               onClick={requestGeneration}
               disabled={working}
-              className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-300 hover:bg-white/5"
+              className="rounded-lg px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/5 disabled:opacity-40"
             >
-              ↻ {working ? "Requesting…" : "Regenerate"}
+              ↻ {working ? "Generating…" : "Regenerate"}
             </button>
-            <button className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-300">
-              Generate variations
-            </button>
-            <span className="ml-auto text-xs text-zinc-500">
-              Private project asset
+
+            <span className="ml-auto text-xs font-bold uppercase tracking-wider text-zinc-500">
+              {asset.type} Asset Studio
             </span>
           </header>
-          <div className="grid flex-1 place-items-center overflow-auto bg-black/30 p-8">
-            <div className="w-full max-w-[540px] overflow-hidden rounded-lg bg-[#151715] shadow-2xl">
-              {generationError ? (
+
+          {/* Central Preview Viewport */}
+          <div className="grid flex-1 place-items-center overflow-auto bg-black/40 p-4 sm:p-8">
+            <div className="flex flex-col items-center overflow-hidden rounded-xl bg-[#151715] shadow-2xl transition-all max-w-4xl w-full">
+              {working ? (
+                <div className={`grid place-items-center p-8 ${aspectRatio === "9:16" ? "aspect-[9/16] h-[55vh] max-h-[580px]" : "aspect-[16/9] w-full max-w-[640px]"}`}>
+                  <div className="flex flex-col items-center gap-4">
+                    <svg className="h-12 w-12 animate-spin text-[#b9f42e]" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="opacity-20" />
+                      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                    </svg>
+                    <p className="text-sm text-zinc-400">{generationStatus || "Generating asset image…"}</p>
+                  </div>
+                </div>
+              ) : generationError ? (
                 <GenerationPreviewError message={generationError} />
-              ) : libraryImages[selected] ? (
-                <AssetImage src={libraryImages[selected]} />
+              ) : activeImage ? (
+                <AssetImage src={activeImage} className="max-h-[60vh] w-auto max-w-full rounded-t-xl object-contain mx-auto" />
               ) : (
-                <div className="grid aspect-[3/4] place-items-center text-center text-zinc-500">
-                  Upload a reference image
-                  <br />
-                  or generate a draft below.
+                <div className={`grid place-items-center text-center text-zinc-500 p-8 ${aspectRatio === "9:16" ? "aspect-[9/16] h-[55vh] max-h-[580px]" : "aspect-[16/9] w-full max-w-[640px]"}`}>
+                  Upload a reference image or click &ldquo;Generate image&rdquo; below.
+                </div>
+              )}
+              {activeImage && (
+                <div className="w-full border-t border-white/10 bg-black/60 p-4 rounded-b-xl">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#b9f42e]">
+                      PROMPT USED
+                    </p>
+                    <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-[11px] font-bold text-[#b9f42e]">
+                      Model: {getModelLabel(model)}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-sm leading-relaxed text-zinc-200">{prompt || asset.description || "—"}</p>
                 </div>
               )}
             </div>
           </div>
         </main>
+
+        {/* Right Sidebar Controls */}
         <aside className="flex w-[420px] shrink-0 flex-col border-l border-white/10 bg-[#151715]">
-          <div className="flex items-start justify-between p-6">
+          <div className="flex items-start justify-between p-6 border-b border-white/10">
             <div>
-              <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">
+              <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e] uppercase">
                 {asset.type}
               </p>
-              <h2 className="mt-2 text-3xl font-black">{asset.name}</h2>
+              <h2 className="mt-1 text-2xl font-black">{asset.name}</h2>
             </div>
             <button
               onClick={close}
               className="rounded-xl p-2 text-zinc-400 hover:bg-white/10"
             >
-              <X />
+              <X className="h-5 w-5" />
             </button>
           </div>
-          <div className="flex-1 overflow-auto px-6">
-            <p className="text-sm leading-6 text-zinc-400">
-              This asset is reusable across the project. Generate a consistent
-              draft with your selected AI image model, then choose the approved
-              reference.
-            </p>
-            <div className="mt-5 rounded-xl border border-white/10 bg-[#0b0c0b] p-4">
+
+          <div className="flex-1 overflow-auto p-6 space-y-6">
+            {/* Reference Images Container */}
+            <div className="rounded-xl border border-white/10 bg-[#0b0c0b] p-4">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">Reference images</p>
-                <button type="button" onClick={() => setPicker(true)} className="text-sm font-semibold text-[#b9f42e]">Select assets</button>
+                <button type="button" onClick={() => setPicker(true)} className="text-xs font-semibold text-[#b9f42e]">Select assets</button>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" aria-label="Add reference image" onClick={() => setReferenceSourcePicker(true)} className="grid h-16 w-16 place-items-center rounded-lg border border-dashed border-white/25 text-xl text-zinc-400 hover:border-[#b9f42e]">+</button>
-                {references.map((image, index) => <div key={`${image}-${index}`} className="relative h-16 w-16 overflow-hidden rounded-lg"><AssetImage src={image} /><button type="button" aria-label={`Remove reference image ${index + 1}`} onClick={() => void saveReferences(references.filter((_, itemIndex) => itemIndex !== index))} className="absolute right-1 top-1 rounded bg-black/70 px-1 text-xs">×</button></div>)}
+                <button type="button" aria-label="Add reference image" onClick={() => setReferenceSourcePicker(true)} className="grid h-14 w-14 place-items-center rounded-lg border border-dashed border-white/25 text-lg text-zinc-400 hover:border-[#b9f42e] transition">+</button>
+                {references.map((image, index) => (
+                  <div key={`${image}-${index}`} className="relative h-14 w-14 overflow-hidden rounded-lg border border-white/10">
+                    <AssetImage src={image} />
+                    <button type="button" aria-label={`Remove reference image ${index + 1}`} onClick={() => void saveReferences(references.filter((_, itemIndex) => itemIndex !== index))} className="absolute right-1 top-1 rounded bg-black/80 px-1 text-[10px] font-bold text-white hover:bg-red-500 transition">×</button>
+                  </div>
+                ))}
               </div>
             </div>
-            <label className="mt-6 block text-xs font-bold uppercase tracking-wide text-zinc-500">
-              Visual prompt
+
+            {/* Generation Settings: Aspect Ratio & Quality */}
+            <div className="rounded-xl border border-white/10 bg-[#0b0c0b] p-4 space-y-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Generation Settings</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-zinc-500 mb-1">Aspect Ratio</label>
+                  <select
+                    value={aspectRatio}
+                    onChange={(e) => setAspectRatio(e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-[#141517] p-2.5 text-xs font-bold text-white outline-none focus:border-[#b9f42e]"
+                  >
+                    <option value="9:16">9:16 (Portrait)</option>
+                    <option value="16:9">16:9 (Landscape)</option>
+                    <option value="1:1">1:1 (Square)</option>
+                    <option value="2:3">2:3 (Photo)</option>
+                    <option value="3:2">3:2 (Classic)</option>
+                    <option value="21:9">21:9 (Cinematic)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-zinc-500 mb-1">Quality Level</label>
+                  <select
+                    value={quality}
+                    onChange={(e) => setQuality(e.target.value as "Low" | "Medium" | "High" | "Ultra")}
+                    className="w-full rounded-lg border border-white/10 bg-[#141517] p-2.5 text-xs font-bold text-white outline-none focus:border-[#b9f42e]"
+                  >
+                    <option value="Low">⚡ Low (Fast)</option>
+                    <option value="Medium">✨ Medium (Balanced)</option>
+                    <option value="High">🌟 High (Detailed)</option>
+                    <option value="Ultra">💎 Ultra (Max)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Image Prompt */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wide text-zinc-500 mb-2">
+                Visual Prompt
+              </label>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                className="mt-2 h-52 w-full resize-none rounded-xl border border-white/10 bg-[#0b0c0b] p-4 text-base leading-7 text-zinc-200 outline-none focus:border-[#b9f42e]/60"
-                placeholder="Describe the look, lighting, composition, materials and consistency rules…"
+                className="h-44 w-full resize-none rounded-xl border border-white/10 bg-[#0b0c0b] p-4 text-sm leading-relaxed text-zinc-200 outline-none focus:border-[#b9f42e]/60"
+                placeholder="Describe character appearance, outfit, facial features, lighting, style and materials…"
               />
-            </label>
-            <ModelMenu type="image" value={model} onChange={setModel} />
-            <div className="mt-5 rounded-xl border border-[#b9f42e]/20 bg-[#b9f42e]/5 p-4 text-sm text-zinc-300">
-              GPT Image requests are processed securely on the server. Your API key is never sent to this browser.
             </div>
-            {generationError && <p role="alert" className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{generationError}</p>}
+
+            {/* Model Selection Menu */}
+            <ModelMenu type="image" value={model} onChange={setModel} options={{ quality, aspectRatio }} />
+
+            {generationError && (
+              <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
+                {generationError}
+              </p>
+            )}
           </div>
-          <div className="border-t border-white/10 p-6">
+
+          {/* Submit Button with Dynamic Credit Display */}
+          <div className="border-t border-white/10 p-6 bg-[#0b0c0b]">
             <button
               onClick={requestGeneration}
               disabled={working}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-3.5 font-bold text-black hover:bg-[#a6de25] transition disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-3.5 font-black text-black hover:bg-[#a6de25] transition disabled:opacity-50 shadow-xl"
             >
               <Sparkles className="h-4 w-4 fill-black" />
-              {working ? "Saving request…" : `Generate image (⚡ ${calculateCreditCost(model, "image")} Credits)`}
+              {working ? "Generating…" : `Generate image (⚡ ${currentCreditCost} Credits)`}
             </button>
           </div>
         </aside>
       </div>
-      {referenceSourcePicker && <ReferenceSourcePicker close={() => setReferenceSourcePicker(false)} onChooseExisting={() => { setReferenceSourcePicker(false); setPicker(true); }} onUpload={(file) => uploadImage(file, "reference")} />}
-      {picker && <ReferencePicker entities={entities.filter(entity => entity.id !== asset.id)} selected={references} close={() => setPicker(false)} confirm={(items) => { void saveReferences(items); setPicker(false) }} />}
+      {referenceSourcePicker && (
+        <ReferenceSourcePicker
+          close={() => setReferenceSourcePicker(false)}
+          onChooseExisting={() => {
+            setReferenceSourcePicker(false);
+            setPicker(true);
+          }}
+          onUpload={(file) => uploadImage(file, "reference")}
+        />
+      )}
+      {picker && (
+        <ReferencePicker
+          entities={entities.filter((e) => e.id !== asset.id)}
+          selected={references}
+          close={() => setPicker(false)}
+          confirm={(items) => {
+            void saveReferences(items);
+            setPicker(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -2639,9 +2898,19 @@ function ShotMediaWorkspace({
 
   const [quality, setQuality] = useState<"Low" | "Medium" | "High" | "Ultra">("Medium");
 
-  const currentCreditCost = calculateCreditCost(model, isImage ? "image" : "video", durationSeconds, { quality, aspectRatio, resolution });
   const currentActiveChosenSource = isImage ? media.shot.keyframe_image : media.shot.video_url;
   const isCurrentlyChosen = Boolean(previewSource && previewSource === currentActiveChosenSource);
+
+  const currentCreditCost = calculateCreditCost(model, isImage ? "image" : "video", durationSeconds, { quality, aspectRatio, resolution });
+  const displayGenerations = useMemo(() => {
+    return [...genHistory].sort((a, b) => {
+      const aChosen = Boolean(a.videoUrl && a.videoUrl === currentActiveChosenSource);
+      const bChosen = Boolean(b.videoUrl && b.videoUrl === currentActiveChosenSource);
+      if (aChosen && !bChosen) return -1;
+      if (!aChosen && bChosen) return 1;
+      return b.createdAt - a.createdAt;
+    });
+  }, [genHistory, currentActiveChosenSource]);
 
   const chooseCurrentMedia = async () => {
     if (!previewSource || isCurrentlyChosen) return;
@@ -3503,7 +3772,7 @@ function Timeline({
     </div>
   );
 }
-function AssetImage({ src }: { src?: string }) {
+function AssetImage({ src, className }: { src?: string; className?: string }) {
   const [url, setUrl] = useState<string>();
   useEffect(() => {
     if (!src || src.startsWith("http")) return;
@@ -3514,8 +3783,8 @@ function AssetImage({ src }: { src?: string }) {
   }, [src]);
   const displayUrl = src?.startsWith("http") ? src : url;
   return (
-    <div className="aspect-[4/3] bg-gradient-to-br from-[#4d5044] to-[#161716]">
-      {displayUrl && <img src={displayUrl} alt="" className="h-full w-full object-cover" />}
+    <div className={`aspect-[4/3] bg-gradient-to-br from-[#4d5044] to-[#161716] ${className || ""}`}>
+      {displayUrl && <img src={displayUrl} alt="" className={`h-full w-full ${className ? className : "object-cover"}`} />}
     </div>
   );
 }
