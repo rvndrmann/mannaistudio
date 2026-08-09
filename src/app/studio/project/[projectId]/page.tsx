@@ -1360,6 +1360,64 @@ function AssetCard({
   );
 }
 
+function DeleteConfirmModal({
+  title = "Delete Item",
+  message = "Are you sure you want to delete this item? This action cannot be undone.",
+  confirmLabel = "Delete Item",
+  onConfirm,
+  onClose,
+  busy,
+}: {
+  title?: string;
+  message?: string;
+  confirmLabel?: string;
+  onConfirm: () => void;
+  onClose: () => void;
+  busy?: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-[120] grid place-items-center bg-black/80 p-4 backdrop-blur-md animate-fade-in">
+      <div className="relative w-full max-w-md rounded-2xl border border-white/15 bg-[#161719] p-6 text-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-white/10 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="grid h-9 w-9 place-items-center rounded-xl border border-red-500/30 bg-red-500/10 text-red-400">
+              <Trash2 className="h-5 w-5" />
+            </div>
+            <h3 className="text-base font-bold text-white">{title}</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/10 hover:text-white"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <p className="mt-4 text-sm leading-relaxed text-zinc-300">{message}</p>
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs font-bold text-zinc-300 hover:bg-white/10 transition"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-xs font-black text-white hover:bg-red-500 transition shadow-lg disabled:opacity-50"
+          >
+            {busy ? "Deleting…" : `✓ ${confirmLabel}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ModelMenu({
   type,
   value,
@@ -1768,9 +1826,15 @@ function AssetWorkspace({
     }
   };
 
-  const deleteSelectedImage = async () => {
+  const [confirmDeleteAssetImage, setConfirmDeleteAssetImage] = useState(false);
+
+  const deleteSelectedImage = () => {
     if (!activeImage) return;
-    if (!confirm("Are you sure you want to delete this generated asset image?")) return;
+    setConfirmDeleteAssetImage(true);
+  };
+
+  const executeDeleteSelectedImage = async () => {
+    if (!activeImage) return;
     setWorking(true);
     try {
       const nextLibrary = libraryImages.filter((_, idx) => idx !== selected);
@@ -1790,6 +1854,7 @@ function AssetWorkspace({
       setGenerationError(err instanceof Error ? err.message : "Delete failed");
     } finally {
       setWorking(false);
+      setConfirmDeleteAssetImage(false);
     }
   };
 
@@ -2123,6 +2188,16 @@ function AssetWorkspace({
             void saveReferences(items);
             setPicker(false);
           }}
+        />
+      )}
+      {confirmDeleteAssetImage && (
+        <DeleteConfirmModal
+          title="Delete Asset Concept"
+          message="Are you sure you want to delete this generated asset image? This action cannot be undone."
+          confirmLabel="Delete Image"
+          onConfirm={executeDeleteSelectedImage}
+          onClose={() => setConfirmDeleteAssetImage(false)}
+          busy={working}
         />
       )}
     </div>
@@ -2931,10 +3006,15 @@ function ShotMediaWorkspace({
     }
   };
 
-  const deleteGenerationJob = async (jobId: string, e?: React.MouseEvent) => {
+  const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
+
+  const deleteGenerationJob = (jobId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (!jobId || jobId === "original") return;
-    if (!confirm("Are you sure you want to delete this generated item?")) return;
+    setDeletingJobId(jobId);
+  };
+
+  const executeDeleteJob = async (jobId: string) => {
     setBusy(true);
     try {
       await save({
@@ -2970,6 +3050,7 @@ function ShotMediaWorkspace({
       setGenerationError(err instanceof Error ? err.message : "Delete failed");
     } finally {
       setBusy(false);
+      setDeletingJobId(null);
     }
   };
 
@@ -3355,6 +3436,16 @@ function ShotMediaWorkspace({
       </div>
       {referenceSourcePicker && <ReferenceSourcePicker close={() => setReferenceSourcePicker(false)} onChooseExisting={() => { setReferenceSourcePicker(false); setPicker(true); }} onUpload={uploadReference} />}
       {picker && <ReferencePicker entities={entities} shots={shots} selected={referenceTarget === "references" ? references : []} close={() => setPicker(false)} confirm={(items) => { const selectedImage = items[0]; if (referenceTarget === "start" && selectedImage) setStartFrame(selectedImage); else if (referenceTarget === "end" && selectedImage) setEndFrame(selectedImage); else setReferences(items); setPicker(false) }} />}
+      {deletingJobId && (
+        <DeleteConfirmModal
+          title="Delete Generation"
+          message="Are you sure you want to delete this generated item? This action cannot be undone."
+          confirmLabel="Delete Item"
+          onConfirm={() => executeDeleteJob(deletingJobId)}
+          onClose={() => setDeletingJobId(null)}
+          busy={busy}
+        />
+      )}
     </div>
   );
 }
