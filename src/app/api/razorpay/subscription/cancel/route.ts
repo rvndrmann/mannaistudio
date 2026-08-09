@@ -70,6 +70,15 @@ export async function POST() {
 
         // Unlink locally now (webhook also handles this, but don't depend on it).
         await supabase.rpc('set_razorpay_subscription', { p_profile_id: user.id, p_subscription_id: '' })
+        await supabase.rpc('record_payment', {
+            p_email: user.email || '',
+            p_txnid: `cancel_${subscriptionId.slice(0, 16)}_${Date.now()}`,
+            p_payment_id: subscriptionId,
+            p_amount: '0',
+            p_product_info: 'Membership: AI Director Hub Pro (Cancelled)',
+            p_status: 'cancelled',
+            p_profile_id: user.id,
+        })
 
         return NextResponse.json({ success: true, immediate: atCycleEnd === 0 })
     } catch (error: any) {

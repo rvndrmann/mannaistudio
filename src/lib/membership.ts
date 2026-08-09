@@ -79,7 +79,7 @@ export async function isAdminUser(supabase: SupabaseClient, userId: string) {
 export async function fetchMyMembership(supabase: SupabaseClient, userId: string) {
     const { data, error } = await supabase
         .from("profiles")
-        .select("membership_status, membership_expires_at, membership_payment_id, is_trial, razorpay_subscription_id")
+        .select("membership_status, membership_expires_at, membership_payment_id, is_trial, razorpay_subscription_id, credits_balance")
         .eq("id", userId)
         .single()
 
@@ -104,26 +104,49 @@ export type PaymentRecord = {
     paymentId: string
     amount: string
     productInfo: string
-    status: "success" | "failed"
+    status: "success" | "paid" | "failed" | "cancelled" | "used" | string
     createdAt: string
 }
 
 export async function fetchMyPayments(supabase: SupabaseClient, userId: string): Promise<PaymentRecord[]> {
-    const { data, error } = await supabase
-        .from("payments")
-        .select("*")
-        .eq("profile_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(50)
+    const [paymentsRes, creditTxRes] = await Promise.all([
+        supabase
+            .from("payments")
+            .select("*")
+            .eq("profile_id", userId)
+            .order("created_at", { ascending: false })
+            .limit(50),
+        supabase
+            .from("credit_transactions")
+            .select("*")
+            .eq("profile_id", userId)
+            .order("created_at", { ascending: false })
+            .limit(50)
+    ])
 
-    if (error) return []
-    return (data || []).map((row: any) => ({
+    const paymentsList: PaymentRecord[] = (paymentsRes.data || []).map((row: any) => ({
         id: row.id,
-        txnid: row.txnid,
-        paymentId: row.payment_id,
-        amount: row.amount,
-        productInfo: row.product_info,
-        status: row.status,
+        txnid: row.txnid || row.id,
+        paymentId: row.payment_id || row.id,
+        amount: row.amount ? (row.amount.startsWith("₹") || row.amount.startsWith("+") || row.amount.startsWith("-") ? row.amount : `₹${row.amount}`) : "₹0",
+        productInfo: row.product_info || "Payment",
+        status: row.status || "success",
         createdAt: row.created_at,
     }))
+
+    const creditTxList: PaymentRecord[] = (creditTxRes.data || []).map((row: any) => ({
+        id: row.id,
+        txnid: row.id.slice(0, 8),
+        paymentId: row.id,
+        amount: row.amount > 0 ? `+${row.amount} Credits` : `${row.amount} Credits`,
+        productInfo: row.description || `Credit ${row.type}`,
+        status: row.amount > 0 ? "success" : "used",
+        createdAt: row.created_at,
+    }))
+
+    const combined = [...paymentsList, ...creditTxList].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+
+    return combined.slice(0, 50)
 }
