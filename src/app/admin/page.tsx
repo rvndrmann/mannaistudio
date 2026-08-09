@@ -207,11 +207,20 @@ function AdminDashboardContent() {
         try {
             const supabase = await getServiceRequestClient()
             if (!supabase) throw new Error("No Supabase client")
-            const { error } = await supabase.rpc('admin_update_site_features', {
+            
+            const { error: rpcErr } = await supabase.rpc('admin_update_site_features', {
                 p_features: siteFeatures
             })
-            if (error) throw error
-            setSiteFeaturesMessage("Feature pause controls saved!")
+            
+            if (rpcErr) {
+                // Fallback to direct table upsert
+                const { error: directErr } = await supabase
+                    .from('site_settings')
+                    .upsert({ key: 'site_features', value: siteFeatures }, { onConflict: 'key' })
+                if (directErr) throw rpcErr
+            }
+            
+            setSiteFeaturesMessage("Feature pause controls saved successfully!")
         } catch (err: any) {
             setSiteFeaturesMessage(`Could not save: ${err.message || 'Unknown error'}`)
         } finally {
