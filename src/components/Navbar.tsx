@@ -10,24 +10,26 @@ import CreditBadge from "@/components/CreditBadge"
 import NotificationBell from "@/components/NotificationBell"
 import { createClient } from "@/lib/supabase/client"
 import { defaultBillingSettings, fetchBillingSettings, isAdminUser } from "@/lib/membership"
+import { defaultSiteFeatures, fetchSiteFeatures, type SiteFeatures } from "@/lib/studio/feature-flags"
 
 const baseNavLinks = [
-    { name: "Social", href: "/social", icon: Play },
-    { name: "Calendar", href: "/calendar", icon: BookOpen },
-    { name: "Analytics", href: "/analytics", icon: CreditCard },
-    { name: "Ads Manager", href: "/ads", icon: ShieldCheck },
-    { name: "Competitors", href: "/competitors", icon: ShieldCheck },
-    { name: "Courses", href: "/courses", icon: Play },
-    { name: "Blog", href: "/blog", icon: BookOpen },
-    { name: "Billing", href: "/billing", icon: CreditCard },
+    { key: "social", name: "Social", href: "/social", icon: Play },
+    { key: "calendar", name: "Calendar", href: "/calendar", icon: BookOpen },
+    { key: "analytics", name: "Analytics", href: "/analytics", icon: CreditCard },
+    { key: "ads", name: "Ads Manager", href: "/ads", icon: ShieldCheck },
+    { key: "competitors", name: "Competitors", href: "/competitors", icon: ShieldCheck },
+    { key: "courses", name: "Courses", href: "/courses", icon: Play },
+    { key: "blog", name: "Blog", href: "/blog", icon: BookOpen },
+    { key: "billing", name: "Billing", href: "/billing", icon: CreditCard },
 ]
 
-const adminLink = { name: "Admin", href: "/admin", icon: ShieldCheck }
+const adminLink = { key: "admin", name: "Admin", href: "/admin", icon: ShieldCheck }
 
 export default function Navbar() {
     const [isOpen, setIsOpen] = useState(false)
     const [isAdmin, setIsAdmin] = useState(false)
     const [offerText, setOfferText] = useState("")
+    const [siteFeatures, setSiteFeatures] = useState<SiteFeatures>(defaultSiteFeatures)
     const { user, loading, signInWithGoogle, signOut } = useAuth()
 
     useEffect(() => {
@@ -39,8 +41,13 @@ export default function Navbar() {
     useEffect(() => {
         const loadSettings = async () => {
             try {
-                const settings = await fetchBillingSettings(createClient())
+                const supabase = createClient()
+                const [settings, feats] = await Promise.all([
+                    fetchBillingSettings(supabase),
+                    fetchSiteFeatures(supabase),
+                ])
                 setOfferText(settings.offerEnabled ? settings.offerText : "")
+                setSiteFeatures(feats)
             } catch {
                 setOfferText(defaultBillingSettings.offerEnabled ? defaultBillingSettings.offerText : "")
             }
@@ -48,7 +55,14 @@ export default function Navbar() {
         loadSettings()
     }, [])
 
-    const navLinks = isAdmin ? [...baseNavLinks, adminLink] : baseNavLinks
+    const activeBaseNavLinks = baseNavLinks.filter((link) => {
+        if (link.key in siteFeatures) {
+            return (siteFeatures as any)[link.key] !== false
+        }
+        return true
+    })
+
+    const navLinks = isAdmin ? [...activeBaseNavLinks, adminLink] : activeBaseNavLinks
 
     return (
         <nav className="fixed top-0 left-0 right-0 z-50 flex justify-center p-4">

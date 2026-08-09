@@ -83,3 +83,41 @@ export const defaultFeatureFlags: FeatureFlags = {
 export function getFeatureFlag<K extends keyof FeatureFlags>(key: K): FeatureFlags[K] {
   return defaultFeatureFlags[key]
 }
+
+export type SiteFeatures = {
+  calendar: boolean
+  analytics: boolean
+  ads: boolean
+  competitors: boolean
+  social: boolean
+  courses: boolean
+  blog: boolean
+}
+
+export const defaultSiteFeatures: SiteFeatures = {
+  calendar: true,
+  analytics: true,
+  ads: true,
+  competitors: true,
+  social: true,
+  courses: true,
+  blog: true,
+}
+
+export async function fetchSiteFeatures(supabase: SupabaseClient): Promise<SiteFeatures> {
+  try {
+    const { data } = await supabase.from("site_settings").select("value").eq("key", "site_features").maybeSingle()
+    if (!data?.value) return defaultSiteFeatures
+    return {
+      calendar: data.value.calendar !== false,
+      analytics: data.value.analytics !== false,
+      ads: data.value.ads !== false,
+      competitors: data.value.competitors !== false,
+      social: data.value.social !== false,
+      courses: data.value.courses !== false,
+      blog: data.value.blog !== false,
+    }
+  } catch {
+    return defaultSiteFeatures
+  }
+}

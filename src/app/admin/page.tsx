@@ -29,6 +29,7 @@ import {
 } from "@/lib/service-requests"
 import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, type BillingSettings } from "@/lib/membership"
 import { defaultDirectorModels, normalizeDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models"
+import { defaultSiteFeatures, fetchSiteFeatures, type SiteFeatures } from "@/lib/studio/feature-flags"
 import BlogManager from "@/components/admin/BlogManager"
 
 type EnrolledStudent = {
@@ -186,6 +187,37 @@ function AdminDashboardContent() {
     const [directorModels, setDirectorModels] = useState<DirectorModelConfig[]>(defaultDirectorModels.map((model) => ({ ...model })))
     const [isSavingDirectorModels, setIsSavingDirectorModels] = useState(false)
     const [directorModelsMessage, setDirectorModelsMessage] = useState("")
+    const [siteFeatures, setSiteFeatures] = useState<SiteFeatures>(defaultSiteFeatures)
+    const [isSavingSiteFeatures, setIsSavingSiteFeatures] = useState(false)
+    const [siteFeaturesMessage, setSiteFeaturesMessage] = useState("")
+
+    const loadSiteFeatures = async () => {
+        const supabase = await getServiceRequestClient()
+        if (!supabase) return
+        setSiteFeatures(await fetchSiteFeatures(supabase))
+    }
+
+    const handleToggleSiteFeature = (key: keyof SiteFeatures) => {
+        setSiteFeatures(prev => ({ ...prev, [key]: !prev[key] }))
+    }
+
+    const handleSaveSiteFeatures = async () => {
+        setIsSavingSiteFeatures(true)
+        setSiteFeaturesMessage("")
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) throw new Error("No Supabase client")
+            const { error } = await supabase.rpc('admin_update_site_features', {
+                p_features: siteFeatures
+            })
+            if (error) throw error
+            setSiteFeaturesMessage("Feature pause controls saved!")
+        } catch (err: any) {
+            setSiteFeaturesMessage(`Could not save: ${err.message || 'Unknown error'}`)
+        } finally {
+            setIsSavingSiteFeatures(false)
+        }
+    }
 
     const pricePerEnrollment = getActivePlanPrice(billingSettings)
 
@@ -945,6 +977,7 @@ function AdminDashboardContent() {
         loadBillingSettings()
         loadTrialSettings()
         loadDirectorModels()
+        loadSiteFeatures()
         loadAdminData()
         loadShowcaseItems()
     }, [])
@@ -1038,6 +1071,15 @@ function AdminDashboardContent() {
                                 )}
                             >
                                 <Settings className="w-4 h-4" /> AI Models
+                            </button>
+                            <button
+                                onClick={() => setActiveTab("site-features")}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    activeTab === "site-features" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                )}
+                            >
+                                <PauseCircle className="w-4 h-4" /> Pause Features
                             </button>
                             <div className="pt-4 mt-4 border-t border-white/5">
                                 <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium text-red-400 hover:bg-red-400/5">
@@ -2238,6 +2280,78 @@ function AdminDashboardContent() {
                                     >
                                         {isSavingDirectorModels ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                                         {isSavingDirectorModels ? "Saving..." : "Save Model Settings"}
+                                    </button>
+                                </div>
+                            </motion.div>
+                        )}
+
+                        {activeTab === "site-features" && (
+                            <motion.div
+                                key="site-features"
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                className="space-y-8"
+                            >
+                                <header>
+                                    <h1 className="text-3xl font-bold tracking-tight mb-2">Pause Features & Navigation</h1>
+                                    <p className="text-white/40 text-sm">Pause any platform feature tab. Once paused, it immediately stops showing in the main page navigation bar.</p>
+                                </header>
+
+                                <div className="glass-card p-6 rounded-2xl border-white/10 space-y-4 max-w-4xl">
+                                    {[
+                                        { key: "calendar" as const, label: "Calendar", path: "/calendar", desc: "Content Calendar & Post Scheduler" },
+                                        { key: "analytics" as const, label: "Analytics", path: "/analytics", desc: "Social Media & Video Analytics Dashboard" },
+                                        { key: "ads" as const, label: "Ads Manager", path: "/ads", desc: "Meta & LinkedIn Ad Campaign Manager" },
+                                        { key: "competitors" as const, label: "Competitors", path: "/competitors", desc: "Competitor Intelligence & Ad Radar" },
+                                        { key: "social" as const, label: "Social", path: "/social", desc: "Social Media Accounts & Publishing" },
+                                        { key: "courses" as const, label: "Courses", path: "/courses", desc: "Public Courses Listing Section" },
+                                        { key: "blog" as const, label: "Blog", path: "/blog", desc: "Blog Articles & Guides" },
+                                    ].map((feat) => {
+                                        const isPaused = !siteFeatures[feat.key]
+                                        return (
+                                            <div key={feat.key} className="flex flex-col gap-4 rounded-xl border border-white/10 bg-white/[0.03] p-4 md:flex-row md:items-center md:justify-between">
+                                                <div>
+                                                    <div className="flex items-center gap-3">
+                                                        <p className="font-bold text-base">{feat.label}</p>
+                                                        <span className={cn("rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider", isPaused ? "bg-amber-500/15 text-amber-300 border border-amber-500/30" : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30")}>
+                                                            {isPaused ? "Paused" : "Active"}
+                                                        </span>
+                                                    </div>
+                                                    <p className="mt-1 text-xs text-white/40">{feat.desc} • <span className="font-mono text-primary">{feat.path}</span></p>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleToggleSiteFeature(feat.key)}
+                                                        className={cn(
+                                                            "flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition",
+                                                            isPaused
+                                                                ? "bg-emerald-500 text-black hover:bg-emerald-400"
+                                                                : "border border-amber-500/30 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
+                                                        )}
+                                                    >
+                                                        {isPaused ? <Play className="h-3.5 w-3.5 fill-current" /> : <Pause className="h-3.5 w-3.5 fill-current" />}
+                                                        {isPaused ? "Resume Feature" : "Pause Feature"}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+
+                                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-xs text-white/45">
+                                        Paused features are immediately removed from the top navigation bar for all regular users.
+                                    </div>
+
+                                    {siteFeaturesMessage && <p className="text-sm font-bold text-primary">{siteFeaturesMessage}</p>}
+
+                                    <button
+                                        onClick={handleSaveSiteFeatures}
+                                        disabled={isSavingSiteFeatures}
+                                        className="btn-primary flex items-center gap-2 px-6 py-3 disabled:opacity-60"
+                                    >
+                                        {isSavingSiteFeatures ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                        {isSavingSiteFeatures ? "Saving..." : "Save Feature Pause Settings"}
                                     </button>
                                 </div>
                             </motion.div>
