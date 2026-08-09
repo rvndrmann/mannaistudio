@@ -47,7 +47,7 @@ export default function LandingPage() {
                     })))
                 }
                 if (!coursesRes.error && coursesRes.data) {
-                    setCourses(coursesRes.data)
+                    setCourses(coursesRes.data.filter((c: any) => !c.is_paused))
                 }
                 setBillingSettings(await fetchBillingSettings(supabase))
             } catch {}

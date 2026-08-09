@@ -9,7 +9,7 @@ import {
     Tv, Settings, LogOut, Plus, Edit2, Trash2,
     Save, X, Download, FileText, Video, Trophy,
     Inbox, Mail, Clock, DollarSign, Loader2, Phone,
-    ChevronLeft, ChevronRight, Calendar
+    ChevronLeft, ChevronRight, Calendar, Pause, PauseCircle, PlayCircle
 } from "lucide-react"
 import { courses, adminShowcase, challenges } from "@/lib/data"
 import { useEffect, useState } from "react"
@@ -257,6 +257,23 @@ function AdminDashboardContent() {
         } catch (err: any) {
             console.error('Delete course error:', err)
             alert('Failed to delete course: ' + (err.message || 'Unknown error'))
+        }
+    }
+
+    const handleTogglePauseCourse = async (course: Course) => {
+        const nextState = !course.is_paused
+        const actionLabel = nextState ? "pause" : "resume"
+        if (!confirm(`Are you sure you want to ${actionLabel} "${course.title}"? ${nextState ? "It will stop appearing in the public courses section." : "It will become visible to all students again."}`)) return
+
+        try {
+            const supabase = await getServiceRequestClient()
+            if (supabase) {
+                const { error } = await supabase.from('courses').update({ is_paused: nextState }).eq('id', course.id)
+                if (error) throw error
+            }
+            setMockCourses(prev => prev.map(c => c.id === course.id ? { ...c, is_paused: nextState } : c))
+        } catch (err: any) {
+            alert(`Could not ${actionLabel} course: ${err.message || 'Unknown error'}`)
         }
     }
 
@@ -1292,7 +1309,18 @@ function AdminDashboardContent() {
                                                         ) : (
                                                             <>
                                                                 <div>
-                                                                    <h3 className="text-xl font-bold mb-1">{course.title}</h3>
+                                                                    <div className="flex items-center gap-3 mb-1">
+                                                                        <h3 className="text-xl font-bold">{course.title}</h3>
+                                                                        {course.is_paused ? (
+                                                                            <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                                                                <PauseCircle className="w-3 h-3" /> Paused
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                                                                <PlayCircle className="w-3 h-3" /> Active
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
                                                                     <p className="text-sm text-white/40 line-clamp-2">{course.description}</p>
                                                                 </div>
                                                                 <div className="flex flex-wrap items-center gap-4 text-[10px] font-bold tracking-widest uppercase text-white/30">
@@ -1309,14 +1337,28 @@ function AdminDashboardContent() {
                                                                     <span className="flex items-center gap-1 text-primary"><FileText className="w-3 h-3 " /> {course.lessons?.length || 0} Lessons with resources</span>
                                                                 </div>
                                                                 <div className="flex items-center gap-3 pt-4 border-t border-white/5">
-                                                                    <button onClick={() => handleEditCourse(course)} className="p-2 bg-white/5 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors">
+                                                                    <button onClick={() => handleEditCourse(course)} className="p-2 bg-white/5 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors" title="Edit Course Details">
                                                                         <Edit2 className="w-4 h-4" />
                                                                     </button>
                                                                     <button
                                                                         onClick={() => handleDeleteCourse(course.id)}
                                                                         className="p-2 bg-white/5 rounded-lg hover:bg-red-500/10 text-white/60 hover:text-red-400 transition-colors"
+                                                                        title="Delete Course"
                                                                     >
                                                                         <Trash2 className="w-4 h-4" />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleTogglePauseCourse(course)}
+                                                                        className={cn(
+                                                                            "px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors",
+                                                                            course.is_paused
+                                                                                ? "bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/30"
+                                                                                : "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/30"
+                                                                        )}
+                                                                        title={course.is_paused ? "Resume course to make it visible to students" : "Pause course to hide it from students"}
+                                                                    >
+                                                                        {course.is_paused ? <Play className="w-3.5 h-3.5 fill-current" /> : <Pause className="w-3.5 h-3.5 fill-current" />}
+                                                                        <span>{course.is_paused ? "Resume Course" : "Pause Course"}</span>
                                                                     </button>
                                                                     <button
                                                                         onClick={() => setEditingChaptersId(course.id)}

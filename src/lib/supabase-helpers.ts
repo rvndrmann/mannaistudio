@@ -31,10 +31,10 @@ export async function fetchCourses() {
 
     if (error || !data || data.length === 0) {
         const { courses } = await import('./data')
-        return courses
+        return courses.filter(c => !c.is_paused)
     }
 
-    return data
+    return data.filter((c: any) => !c.is_paused)
 }
 
 // Fetch a single course with its lessons

@@ -39,9 +39,9 @@ export default function CoursesPage() {
                     .select('*')
                     .order('created_at', { ascending: true })
                 if (error || !data) {
-                    setCourses(mockCourses)
+                    setCourses(mockCourses.filter((c: any) => !c.is_paused))
                 } else {
-                    setCourses(data)
+                    setCourses(data.filter((c: any) => !c.is_paused))
                 }
             } catch {
                 setCourses(mockCourses)

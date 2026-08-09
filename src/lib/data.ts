@@ -22,6 +22,7 @@ export type Course = {
     chapters: number
     instructor: string
     price: string
+    is_paused?: boolean
     lessons: CourseLesson[]
 }
 
