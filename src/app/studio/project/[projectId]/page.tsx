@@ -337,7 +337,16 @@ export default function WorkspacePage({
   };
   return (
     <main className="h-screen overflow-hidden bg-[#070807] text-[#f5f2e5]">
-      <header className="relative flex h-[74px] items-center gap-3 overflow-x-auto border-b border-white/10 bg-[#0b0c0b] px-4">
+      <header className="relative z-50 flex h-[74px] items-center gap-3 border-b border-white/10 bg-[#0b0c0b] px-4">
+        {(projectMenu || episodeMenu) && (
+          <div
+            className="fixed inset-0 z-40 bg-transparent"
+            onClick={() => {
+              setProjectMenu(false);
+              setEpisodeMenu(false);
+            }}
+          />
+        )}
         <Link
           href="/studio"
           className="rounded-lg p-2 text-zinc-400 hover:bg-white/10"
@@ -348,16 +357,57 @@ export default function WorkspacePage({
         <div className="min-w-[120px] border-r border-white/10 pr-4">
           <p className="truncate font-semibold">{data.project.name}</p>
         </div>
-        <button
-          onClick={() => setEpisodeMenu((open) => !open)}
-          className="flex shrink-0 items-center gap-2 text-sm font-semibold hover:text-[#b9f42e] transition"
-        >
-          {episode?.name || "Episode 1"}
-          <ChevronDown className="h-4 w-4" />
-        </button>
+
+        {/* Episode Selector Dropdown */}
+        <div className="relative z-50">
+          <button
+            onClick={() => setEpisodeMenu((open) => !open)}
+            className="flex shrink-0 items-center gap-2 text-sm font-semibold hover:text-[#b9f42e] transition"
+          >
+            {episode?.name || "Episode 1"}
+            <ChevronDown className="h-4 w-4" />
+          </button>
+          {episodeMenu && (
+            <div className="absolute left-0 top-full z-[100] mt-2 w-[330px] overflow-hidden rounded-2xl border border-white/10 bg-[#1a1c1b] p-2 shadow-2xl">
+              <div className="space-y-1">
+                {data.episodes.map((item, index) => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setEpisodeId(item.id);
+                      setEpisodeMenu(false);
+                    }}
+                    className={`flex w-full items-center gap-4 rounded-xl px-4 py-3 text-left ${item.id === episode.id ? "bg-white/5 font-bold" : "hover:bg-white/5"}`}
+                  >
+                    <span className="font-mono text-sm text-zinc-400">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <span className="text-sm">{item.name}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="my-2 border-t border-white/10" />
+              <button
+                onClick={() => {
+                  setShowBasicSettings(true);
+                  setEpisodeMenu(false);
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm text-zinc-300 hover:bg-white/5"
+              >
+                <Settings className="h-4 w-4 text-[#b9f42e]" /> Basic Settings
+              </button>
+              <button
+                onClick={createEpisode}
+                className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold text-zinc-100 hover:bg-[#b9f42e]/10"
+              >
+                <Plus className="h-5 w-5 text-[#b9f42e]" /> Create Next Episode
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Share and Project Options Dropdown */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 relative z-50">
           <button
             type="button"
             onClick={() => alert("Project share link copied to clipboard")}
@@ -376,7 +426,7 @@ export default function WorkspacePage({
               <MoreVertical className="h-4 w-4" />
             </button>
             {projectMenu && (
-              <div className="absolute left-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-2xl border border-white/10 bg-[#1a1c1b] p-2 shadow-2xl">
+              <div className="absolute left-0 top-full z-[100] mt-2 w-52 overflow-hidden rounded-2xl border border-white/10 bg-[#1a1c1b] p-2 shadow-2xl">
                 <button
                   type="button"
                   onClick={() => {
@@ -414,44 +464,6 @@ export default function WorkspacePage({
             )}
           </div>
         </div>
-
-        {episodeMenu && (
-          <div className="absolute left-[180px] top-[66px] z-50 w-[330px] overflow-hidden rounded-2xl border border-white/10 bg-[#1a1c1b] p-2 shadow-2xl">
-            <div className="space-y-1">
-              {data.episodes.map((item, index) => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setEpisodeId(item.id);
-                    setEpisodeMenu(false);
-                  }}
-                  className={`flex w-full items-center gap-4 rounded-xl px-4 py-4 text-left ${item.id === episode.id ? "bg-white/5" : "hover:bg-white/5"}`}
-                >
-                  <span className="font-mono text-sm text-zinc-400">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <span className="font-bold">{item.name}</span>
-                </button>
-              ))}
-            </div>
-            <div className="my-2 border-t border-white/10" />
-            <button
-              onClick={() => {
-                setShowBasicSettings(true);
-                setEpisodeMenu(false);
-              }}
-              className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-zinc-300 hover:bg-white/5"
-            >
-              <Settings className="h-4 w-4 text-[#b9f42e]" /> Basic Settings
-            </button>
-            <button
-              onClick={createEpisode}
-              className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-zinc-100 hover:bg-[#b9f42e]/10"
-            >
-              <Plus className="h-5 w-5 text-[#b9f42e]" /> Create Next Episode
-            </button>
-          </div>
-        )}
         <div className="ml-auto flex shrink-0 items-center gap-2 overflow-x-auto">
           {visibleTabs.map(([id, label, Icon], index) => (
             <div key={id} className="flex items-center gap-2">
