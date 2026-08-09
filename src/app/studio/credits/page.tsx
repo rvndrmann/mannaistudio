@@ -2,12 +2,11 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { Zap, ArrowLeft, Check, Loader2, Sparkles, AlertCircle } from "lucide-react"
+import { Zap, ArrowLeft, Check, Loader2, Sparkles, AlertCircle, CreditCard } from "lucide-react"
 
 export default function CreditsPage() {
   const [credits, setCredits] = useState<number | null>(null)
-  const [isMember, setIsMember] = useState<boolean>(true)
-  const [loading, setLoading] = useState(false)
+  const [loadingPackageId, setLoadingPackageId] = useState<string | null>(null)
   const [topUpSuccess, setTopUpSuccess] = useState<string | null>(null)
   const [topUpError, setTopUpError] = useState<string | null>(null)
 
@@ -17,7 +16,6 @@ export default function CreditsPage() {
       if (res.ok) {
         const json = await res.json()
         setCredits(json.credits)
-        setIsMember(json.isMember)
       }
     } catch (err) {
       console.warn("Could not fetch credits:", err)
@@ -28,24 +26,71 @@ export default function CreditsPage() {
     fetchCredits()
   }, [])
 
+  const loadRazorpayScript = () =>
+    new Promise<boolean>((resolve) => {
+      if (typeof window !== "undefined" && (window as any).Razorpay) return resolve(true)
+      const script = document.createElement("script")
+      script.src = "https://checkout.razorpay.com/v1/checkout.js"
+      script.onload = () => resolve(true)
+      script.onerror = () => resolve(false)
+      document.body.appendChild(script)
+    })
+
   const handleTopUp = async (packageId: string) => {
-    setLoading(true)
+    setLoadingPackageId(packageId)
     setTopUpSuccess(null)
     setTopUpError(null)
     try {
+      const ok = await loadRazorpayScript()
+      if (!ok) throw new Error("Failed to load Razorpay payment gateway.")
+
       const res = await fetch("/api/credits", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ packageId }),
       })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || "Top-up failed")
-      setCredits(json.newBalance)
-      setTopUpSuccess(json.message)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to create payment order")
+
+      const rzp = new (window as any).Razorpay({
+        key: data.keyId,
+        order_id: data.orderId,
+        amount: data.amount,
+        currency: "INR",
+        name: "AI Director Hub Studio",
+        description: `${data.credits.toLocaleString()} Generation Credits`,
+        prefill: { email: data.email, name: data.name },
+        theme: { color: "#b9f42e" },
+        handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+          try {
+            const verifyRes = await fetch("/api/credits/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                packageId,
+              }),
+            })
+            const verifyData = await verifyRes.json()
+            if (!verifyRes.ok) throw new Error(verifyData.error || "Payment verification failed")
+            setCredits(verifyData.newBalance)
+            setTopUpSuccess(verifyData.message)
+          } catch (vErr) {
+            setTopUpError(vErr instanceof Error ? vErr.message : "Payment verification failed")
+          } finally {
+            setLoadingPackageId(null)
+          }
+        },
+        modal: {
+          ondismiss: () => setLoadingPackageId(null),
+        },
+      })
+      rzp.open()
     } catch (err) {
       setTopUpError(err instanceof Error ? err.message : "Top-up failed")
-    } finally {
-      setLoading(false)
+      setLoadingPackageId(null)
     }
   }
 
@@ -76,7 +121,7 @@ export default function CreditsPage() {
           </div>
           <h1 className="text-3xl font-black text-white">AI Generation Credits</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            $10 USD = 1,000 Credits ($0.01 / credit). Use credits for AI video and image generation.
+            Secure Razorpay payment integration. Use credits for AI video and image generation.
           </p>
         </div>
 
@@ -97,10 +142,10 @@ export default function CreditsPage() {
         {/* Credit Packages Grid */}
         <div className="grid gap-4 sm:grid-cols-2">
           {[
-            { id: "1000", credits: 1000, price: "$10 USD", popular: false, desc: "~100 Videos or ~330 Images" },
-            { id: "2500", credits: 2500, price: "$25 USD", popular: true, desc: "~250 Videos or ~830 Images" },
-            { id: "5000", credits: 5000, price: "$50 USD", popular: false, desc: "~500 Videos or ~1,660 Images" },
-            { id: "10000", credits: 10000, price: "$100 USD", popular: false, desc: "~1,000 Videos or ~3,330 Images" },
+            { id: "1000", credits: 1000, price: "₹800 INR", popular: false, desc: "~100 Videos or ~330 Images" },
+            { id: "2500", credits: 2500, price: "₹2,000 INR", popular: true, desc: "~250 Videos or ~830 Images" },
+            { id: "5000", credits: 5000, price: "₹4,000 INR", popular: false, desc: "~500 Videos or ~1,660 Images" },
+            { id: "10000", credits: 10000, price: "₹8,000 INR", popular: false, desc: "~1,000 Videos or ~3,330 Images" },
           ].map((pkg) => (
             <div
               key={pkg.id}
@@ -124,11 +169,18 @@ export default function CreditsPage() {
               <div className="mt-6 flex items-center justify-between border-t border-white/[0.06] pt-4">
                 <span className="text-lg font-black text-white">{pkg.price}</span>
                 <button
-                  disabled={loading}
+                  disabled={loadingPackageId !== null}
                   onClick={() => handleTopUp(pkg.id)}
                   className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-5 py-2.5 text-xs font-black text-black hover:bg-[#a6de25] transition disabled:opacity-50"
                 >
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Top Up Now"}
+                  {loadingPackageId === pkg.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <CreditCard className="h-3.5 w-3.5" />
+                      Buy Now
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -136,7 +188,7 @@ export default function CreditsPage() {
         </div>
 
         <div className="mt-12 rounded-2xl border border-white/[0.06] bg-[#0d0d0d] p-6 text-center text-xs text-zinc-400">
-          ⚡ 1,000 Credits = $10 USD. Full access to Seedance, Flux, GPT-Image, and AI Director models.
+          🔒 Secure Checkout powered by Razorpay. Full access to Seedance, Flux, GPT-Image, and AI Director models.
         </div>
       </main>
     </div>

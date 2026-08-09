@@ -31,7 +31,7 @@ export async function POST(req: Request) {
 
         const supabase = await createClient()
 
-        // --- One-time bid purchase (order.paid) ---
+        // --- One-time bid / credit purchase (order.paid) ---
         if (eventType === 'order.paid') {
             const notes = orderEntity?.notes || {}
             if (notes.type === 'bids' && notes.profile_id) {
@@ -45,6 +45,21 @@ export async function POST(req: Request) {
                         p_payment_id: orderPaymentId,
                         p_amount: orderEntity?.amount ? String(orderEntity.amount / 100) : '',
                         p_product_info: `Bids: ${bidsToAdd}`,
+                        p_status: 'success',
+                        p_profile_id: notes.profile_id,
+                    })
+                }
+            } else if (notes.type === 'credits' && notes.profile_id) {
+                const creditsToAdd = Number(notes.credits)
+                if (Number.isFinite(creditsToAdd) && creditsToAdd > 0) {
+                    await supabase.rpc('add_user_credits', { p_user_id: notes.profile_id, p_amount: creditsToAdd, p_type: 'purchase', p_description: `Credit Package Purchase (${creditsToAdd} Credits)` })
+                    const orderPaymentId = paymentEntity?.id || orderEntity?.id
+                    await supabase.rpc('record_payment', {
+                        p_email: notes.email || paymentEntity?.email || '',
+                        p_txnid: orderPaymentId,
+                        p_payment_id: orderPaymentId,
+                        p_amount: orderEntity?.amount ? String(orderEntity.amount / 100) : '',
+                        p_product_info: `Credits: ${creditsToAdd.toLocaleString()}`,
                         p_status: 'success',
                         p_profile_id: notes.profile_id,
                     })
