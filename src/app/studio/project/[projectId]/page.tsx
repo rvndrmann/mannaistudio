@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models";
 import { getModelLabel, imageGenerationModels, videoGenerationModels } from "@/lib/studio/generation-models";
-import { calculateCreditCost } from "@/lib/studio/credits";
+import { calculateCreditCost, getUserCredits } from "@/lib/studio/credits";
 import { createClient } from "@/lib/supabase/client";
 
 import {
@@ -336,8 +336,8 @@ export default function WorkspacePage({
     }
   };
   return (
-    <main className="h-screen overflow-hidden bg-[#070807] text-[#f5f2e5]">
-      <header className="relative z-50 flex h-[74px] items-center gap-3 border-b border-white/10 bg-[#0b0c0b] px-4">
+    <main className="h-screen overflow-hidden bg-black text-[#e8e6df]">
+      <header className="relative z-50 flex h-12 items-center gap-2 border-b border-white/[0.06] bg-[#0a0a0a] px-3">
         {(projectMenu || episodeMenu) && (
           <div
             className="fixed inset-0 z-40 bg-transparent"
@@ -349,27 +349,26 @@ export default function WorkspacePage({
         )}
         <Link
           href="/studio"
-          className="rounded-lg p-2 text-zinc-400 hover:bg-white/10"
+          className="rounded-md p-1.5 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300"
         >
-          <ArrowLeft />
+          <ArrowLeft className="h-4 w-4" />
         </Link>
-        <Clapperboard className="hidden text-[#b9f42e] sm:block" />
-        <div className="min-w-[120px] border-r border-white/10 pr-4">
-          <p className="truncate font-semibold">{data.project.name}</p>
-        </div>
+        <Clapperboard className="hidden h-4 w-4 text-[#b9f42e] sm:block" />
+        <p className="truncate text-[13px] font-semibold text-zinc-100">{data.project.name}</p>
+        <span className="text-zinc-600">/</span>
 
         {/* Episode Selector Dropdown */}
         <div className="relative z-50">
           <button
             onClick={() => setEpisodeMenu((open) => !open)}
-            className="flex shrink-0 items-center gap-2 text-sm font-semibold hover:text-[#b9f42e] transition"
+            className="flex shrink-0 items-center gap-1.5 text-[13px] font-medium text-zinc-300 hover:text-[#b9f42e] transition"
           >
             {episode?.name || "Episode 1"}
-            <ChevronDown className="h-4 w-4" />
+            <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
           </button>
           {episodeMenu && (
-            <div className="absolute left-0 top-full z-[100] mt-2 w-[330px] overflow-hidden rounded-2xl border border-white/10 bg-[#1a1c1b] p-2 shadow-2xl">
-              <div className="space-y-1">
+            <div className="absolute left-0 top-full z-[100] mt-1.5 w-[280px] overflow-hidden rounded-lg border border-white/[0.08] bg-[#141414] p-1.5 shadow-2xl">
+              <div className="space-y-0.5">
                 {data.episodes.map((item, index) => (
                   <button
                     key={item.id}
@@ -377,65 +376,65 @@ export default function WorkspacePage({
                       setEpisodeId(item.id);
                       setEpisodeMenu(false);
                     }}
-                    className={`flex w-full items-center gap-4 rounded-xl px-4 py-3 text-left ${item.id === episode.id ? "bg-white/5 font-bold" : "hover:bg-white/5"}`}
+                    className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-[12px] ${item.id === episode.id ? "bg-white/[0.06] font-bold text-white" : "text-zinc-300 hover:bg-white/[0.04]"}`}
                   >
-                    <span className="font-mono text-sm text-zinc-400">
+                    <span className="font-mono text-[11px] text-zinc-500">
                       {String(index + 1).padStart(2, "0")}
                     </span>
-                    <span className="text-sm">{item.name}</span>
+                    <span>{item.name}</span>
                   </button>
                 ))}
               </div>
-              <div className="my-2 border-t border-white/10" />
+              <div className="my-1.5 border-t border-white/[0.06]" />
               <button
                 onClick={() => {
                   setShowBasicSettings(true);
                   setEpisodeMenu(false);
                 }}
-                className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm text-zinc-300 hover:bg-white/5"
+                className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-[12px] text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200"
               >
-                <Settings className="h-4 w-4 text-[#b9f42e]" /> Basic Settings
+                <Settings className="h-3.5 w-3.5 text-[#b9f42e]" /> Basic Settings
               </button>
               <button
                 onClick={createEpisode}
-                className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold text-zinc-100 hover:bg-[#b9f42e]/10"
+                className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-[12px] font-bold text-zinc-200 hover:bg-[#b9f42e]/10"
               >
-                <Plus className="h-5 w-5 text-[#b9f42e]" /> Create Next Episode
+                <Plus className="h-4 w-4 text-[#b9f42e]" /> Create Next Episode
               </button>
             </div>
           )}
         </div>
 
         {/* Share and Project Options Dropdown */}
-        <div className="flex items-center gap-1 relative z-50">
+        <div className="flex items-center gap-0.5 relative z-50">
           <button
             type="button"
             onClick={() => alert("Project share link copied to clipboard")}
-            className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/10 hover:text-white"
+            className="rounded-md p-1 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300"
             title="Share project"
           >
-            <Share2 className="h-4 w-4" />
+            <Share2 className="h-3.5 w-3.5" />
           </button>
           <div className="relative">
             <button
               type="button"
               onClick={() => setProjectMenu((open) => !open)}
-              className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/10 hover:text-white"
+              className="rounded-md p-1 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300"
               title="Project settings & options"
             >
-              <MoreVertical className="h-4 w-4" />
+              <MoreVertical className="h-3.5 w-3.5" />
             </button>
             {projectMenu && (
-              <div className="absolute left-0 top-full z-[100] mt-2 w-52 overflow-hidden rounded-2xl border border-white/10 bg-[#1a1c1b] p-2 shadow-2xl">
+              <div className="absolute left-0 top-full z-[100] mt-1.5 w-48 overflow-hidden rounded-lg border border-white/[0.08] bg-[#141414] p-1.5 shadow-2xl">
                 <button
                   type="button"
                   onClick={() => {
                     setShowBasicSettings(true);
                     setProjectMenu(false);
                   }}
-                  className="flex w-full items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-left text-xs font-bold text-zinc-200 hover:bg-white/5 hover:text-[#b9f42e]"
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[11px] font-bold text-zinc-300 hover:bg-white/[0.04] hover:text-[#b9f42e]"
                 >
-                  <Settings className="h-4 w-4 text-[#b9f42e]" />
+                  <Settings className="h-3.5 w-3.5 text-[#b9f42e]" />
                   <span>Settings</span>
                 </button>
                 <button
@@ -444,9 +443,9 @@ export default function WorkspacePage({
                     alert("Exporting project package...");
                     setProjectMenu(false);
                   }}
-                  className="flex w-full items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-left text-xs font-bold text-zinc-200 hover:bg-white/5"
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[11px] font-bold text-zinc-300 hover:bg-white/[0.04]"
                 >
-                  <Download className="h-4 w-4 text-zinc-400" />
+                  <Download className="h-3.5 w-3.5 text-zinc-500" />
                   <span>Export</span>
                 </button>
                 <button
@@ -455,110 +454,110 @@ export default function WorkspacePage({
                     alert("Team sharing link copied!");
                     setProjectMenu(false);
                   }}
-                  className="flex w-full items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-left text-xs font-bold text-zinc-200 hover:bg-white/5"
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[11px] font-bold text-zinc-300 hover:bg-white/[0.04]"
                 >
-                  <Users className="h-4 w-4 text-zinc-400" />
+                  <Users className="h-3.5 w-3.5 text-zinc-500" />
                   <span>Share to Team</span>
                 </button>
               </div>
             )}
           </div>
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-2 overflow-x-auto">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 overflow-x-auto">
           {visibleTabs.map(([id, label, Icon], index) => (
-            <div key={id} className="flex items-center gap-2">
+            <div key={id} className="flex items-center gap-1.5">
               <button
                 onClick={() => setTab(id)}
-                className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-bold transition ${tab === id ? "bg-[#b9f42e] text-[#151609]" : "bg-[#1d1e1d] text-zinc-200 hover:bg-[#292b29]"}`}
+                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-bold transition ${tab === id ? "bg-[#b9f42e] text-black" : "bg-[#141414] text-zinc-300 hover:bg-[#1e1e1e]"}`}
               >
-                <Icon className="h-3.5 w-3.5" />
+                <Icon className="h-3 w-3" />
                 <span>{label}</span>
               </button>
               {index < visibleTabs.length - 1 && (
-                <span className="hidden text-zinc-600 2xl:inline">·</span>
+                <span className="text-[10px] text-zinc-700">·</span>
               )}
             </div>
           ))}
 
-          <span className="h-5 border-l border-white/10 mx-1" />
+          <span className="h-4 border-l border-white/[0.06] mx-0.5" />
 
           {/* AI Marketing & Ads Navigation Dropdown */}
           <div className="relative group">
             <button
               type="button"
-              className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-bold transition ${marketingTabs.some(([id]) => id === tab) ? "bg-[#b9f42e] text-[#151609]" : "bg-[#1d1e1d] text-[#b9f42e] hover:bg-[#292b29]"}`}
+              className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-bold transition ${marketingTabs.some(([id]) => id === tab) ? "bg-[#b9f42e] text-black" : "bg-[#141414] text-[#b9f42e] hover:bg-[#1e1e1e]"}`}
             >
-              <Bot className="h-3.5 w-3.5 text-[#b9f42e]" />
+              <Bot className="h-3 w-3" />
               <span>Marketing Agent</span>
-              <ChevronDown className="h-3.5 w-3.5 text-zinc-400" />
+              <ChevronDown className="h-3 w-3 text-zinc-500" />
             </button>
-            <div className="absolute right-0 top-full z-[90] hidden w-52 rounded-2xl border border-white/10 bg-[#161817] p-2 shadow-2xl group-hover:block">
+            <div className="absolute right-0 top-full z-[90] hidden w-48 rounded-lg border border-white/[0.08] bg-[#141414] p-1.5 shadow-2xl group-hover:block">
               {marketingTabs.map(([id, label, Icon]) => (
                 <button
                   key={id}
                   onClick={() => setTab(id)}
-                  className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-bold transition ${tab === id ? "bg-[#b9f42e] text-black" : "text-zinc-300 hover:bg-white/5"}`}
+                  className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[11px] font-bold transition ${tab === id ? "bg-[#b9f42e] text-black" : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200"}`}
                 >
-                  <Icon className="h-4 w-4 shrink-0 text-[#b9f42e]" />
+                  <Icon className="h-3.5 w-3.5 shrink-0 text-[#b9f42e]" />
                   <span>{label}</span>
                 </button>
               ))}
             </div>
           </div>
+
+          <span className="h-4 border-l border-white/[0.06] mx-0.5" />
+
+          {/* Credits badge */}
+          <Link href="/studio/credits" className="flex items-center gap-1 rounded-full bg-[#141414] px-2.5 py-1.5 text-[11px] font-bold text-[#b9f42e] hover:bg-[#1e1e1e] transition">
+            <Zap className="h-3 w-3" />
+            <span>Credits</span>
+          </Link>
         </div>
       </header>
-      <div className="flex h-[calc(100vh-74px)]">
-        <section className="min-w-0 flex-1 overflow-auto border-r border-white/10">
+      <div className="flex h-[calc(100vh-48px)]">
+        <section className="min-w-0 flex-1 overflow-auto border-r border-white/[0.06]">
           <div
-            className={`${tab === "timeline" ? "max-w-none p-0" : "mx-auto max-w-6xl p-5 lg:p-8"}`}
+            className={`${tab === "timeline" ? "max-w-none p-0" : "mx-auto max-w-6xl p-4 lg:p-6"}`}
           >
-            <div className={`mb-5 flex flex-wrap items-center justify-between gap-3 ${tab === "timeline" ? "hidden" : ""}`}>
-              <div className="flex items-center gap-3">
-                <Link
-                  href="/studio"
-                  className="flex items-center gap-1.5 rounded-xl bg-white/10 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition hover:bg-white/20 hover:text-white"
-                  title="Back to Studio Home"
+            {/* Compact settings bar — visible on storyboard */}
+            {tab === "storyboard" && (
+              <div className="mb-4 flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setShowBasicSettings(true)}
+                  className="flex items-center gap-1.5 rounded-full border border-white/[0.06] bg-[#141414] px-2.5 py-1 text-[11px] font-bold text-zinc-200 hover:border-[#b9f42e]/40 transition"
+                  title="Edit Basic Settings"
                 >
-                  <ArrowLeft className="h-3.5 w-3.5" />
-                  <span>Studio</span>
-                </Link>
-                <div>
-                  <p className="text-xs font-bold tracking-[.2em] text-[#b9f42e]">
-                    AI DIRECTOR HUB STUDIO
-                  </p>
-                  <h1 className="mt-1 text-2xl font-bold">
-                    {visibleTabs.find((x) => x[0] === tab)?.[1] || marketingTabs.find((x) => x[0] === tab)?.[1]}
-                  </h1>
-                </div>
+                  <Settings className="h-3 w-3 text-[#b9f42e]" />
+                  <span>{data.project.default_aspect || "9:16"}</span>
+                </button>
+                <span className="text-[10px] text-zinc-700">•</span>
+                <span className="rounded-full border border-white/[0.06] bg-[#141414] px-2.5 py-1 text-[11px] font-medium text-zinc-300">
+                  {(data.project.metadata as Record<string, unknown> | null)?.basic_settings && typeof ((data.project.metadata as Record<string, unknown>).basic_settings as Record<string, unknown>).videoModel === "string" ? getModelLabel(((data.project.metadata as Record<string, unknown>).basic_settings as Record<string, unknown>).videoModel as string) : "Seedance 2.0 Fast"}
+                </span>
+                <span className="text-[10px] text-zinc-700">•</span>
+                <span className="rounded-full border border-white/[0.06] bg-[#141414] px-2.5 py-1 text-[11px] font-medium text-zinc-300">720p</span>
+                <span className="text-[10px] text-zinc-700">•</span>
+                <button
+                  type="button"
+                  onClick={() => alert("Batch download queued for all shots")}
+                  className="flex items-center gap-1 rounded-full border border-white/[0.06] bg-[#141414] px-2.5 py-1 text-[11px] font-medium text-zinc-300 hover:bg-[#1e1e1e] transition"
+                >
+                  <Download className="h-3 w-3 text-zinc-500" />
+                  <span>Batch Download</span>
+                  <ChevronDown className="h-2.5 w-2.5 text-zinc-600" />
+                </button>
+                <span className="text-[10px] text-zinc-700">•</span>
+                <span className="rounded-full border border-[#b9f42e]/20 bg-[#b9f42e]/[0.06] px-2.5 py-1 text-[11px] font-bold text-[#b9f42e]">
+                  Estimated: {data.shots?.length ? data.shots.length * 10 : 409}
+                </span>
               </div>
-              {tab === "storyboard" && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowBasicSettings(true)}
-                    className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold text-zinc-200 hover:border-[#b9f42e]/50 hover:bg-white/10 transition"
-                    title="Edit Basic Settings"
-                  >
-                    <Settings className="h-3.5 w-3.5 text-[#b9f42e]" />
-                    <span>{data.project.default_aspect || "9:16"}</span>
-                  </button>
-                  <Pill>{(data.project.metadata as Record<string, unknown> | null)?.basic_settings && typeof ((data.project.metadata as Record<string, unknown>).basic_settings as Record<string, unknown>).videoModel === "string" ? getModelLabel(((data.project.metadata as Record<string, unknown>).basic_settings as Record<string, unknown>).videoModel as string) : "Seedance 2.0 Fast"}</Pill>
-                  <Pill>720p</Pill>
-                  <button
-                    type="button"
-                    onClick={() => alert("Batch download queued for all shots")}
-                    className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-white/10 transition"
-                  >
-                    <Download className="h-3.5 w-3.5 text-zinc-400" />
-                    <span>Batch Download</span>
-                    <ChevronDown className="h-3 w-3 text-zinc-500" />
-                  </button>
-                  <span className="rounded-xl border border-[#fff878]/30 bg-[#fff878]/10 px-3 py-1.5 text-xs font-extrabold text-[#fff878]">
-                    ⚡ Estimated: {data.shots?.length ? data.shots.length * 10 : 409}
-                  </span>
-                </div>
-              )}
-            </div>
+            )}
+            {tab !== "storyboard" && tab !== "timeline" && (
+              <h1 className="mb-4 text-lg font-bold text-zinc-100">
+                {visibleTabs.find((x) => x[0] === tab)?.[1] || marketingTabs.find((x) => x[0] === tab)?.[1]}
+              </h1>
+            )}
             {tab === "canvas" && <Canvas data={data} onTab={setTab} />}
             {tab === "script" && (
               <Script
@@ -608,54 +607,55 @@ export default function WorkspacePage({
             {tab === "integrations" && <IntegrationsSettings />}
           </div>
         </section>
-        <aside className="hidden w-[40%] min-w-[380px] max-w-[560px] flex-col bg-[#131514] xl:flex">
-          <div className="border-b border-white/10 p-4">
-            <div className="flex gap-2 rounded-xl border border-white/10 bg-[#1c1e1d] px-3 py-3 text-sm text-zinc-300">
-              <Bot className="h-5 w-5 text-[#b9f42e]" /> AI Director{" "}
-              <span className="ml-auto text-zinc-500">
-                Plan, revise, and direct
-              </span>
+        <aside className="hidden w-[40%] min-w-[360px] max-w-[520px] flex-col bg-[#0d0d0d] xl:flex">
+          <div className="border-b border-white/[0.06] px-4 py-3">
+            <div className="flex items-center gap-2 text-[12px] text-zinc-400">
+              <Bot className="h-4 w-4 text-[#b9f42e]" />
+              <span className="font-bold text-zinc-200">AI Director</span>
+              <span className="ml-auto text-zinc-600">Plan, revise, and direct</span>
             </div>
-            <div className="mt-3 flex gap-2">
-              <Pill>{data.project.default_style || "Cinematic"}</Pill>
-              <Pill>{data.project.default_aspect || "9:16"}</Pill>
-              <Pill>6 sec</Pill>
+            <div className="mt-2 flex gap-1.5">
+              <span className="rounded-full border border-white/[0.06] bg-[#141414] px-2 py-0.5 text-[10px] font-medium text-zinc-400">{data.project.default_style || "Cinematic"}</span>
+              <span className="rounded-full border border-white/[0.06] bg-[#141414] px-2 py-0.5 text-[10px] font-medium text-zinc-400">{data.project.default_aspect || "9:16"}</span>
+              <span className="rounded-full border border-white/[0.06] bg-[#141414] px-2 py-0.5 text-[10px] font-medium text-zinc-400">6 sec</span>
             </div>
           </div>
-          <div className="flex-1 overflow-auto p-5">
+          <div className="flex-1 overflow-auto p-4">
             {!data.chatMessages.length && (
-              <div className="flex h-full items-end pb-3 text-sm leading-6 text-zinc-500">
+              <div className="flex h-full items-end pb-3 text-[13px] leading-6 text-zinc-600">
                 Tell the AI Director what you want to create, revise, or plan.
               </div>
             )}
             {data.chatMessages.map((item) => (
               <div
                 key={item.id}
-                className={`mt-4 max-w-[90%] rounded-2xl p-4 text-sm ${item.role === "user" ? "ml-auto bg-[#b9f42e] text-black" : "bg-[#242624] text-zinc-200"}`}
+                className={`mt-3 max-w-[90%] rounded-xl p-3 text-[13px] ${item.role === "user" ? "ml-auto bg-[#b9f42e] text-black" : "bg-[#1a1a1a] text-zinc-200"}`}
               >
                 {item.content}
               </div>
             ))}
-            {chatError && <p role="alert" className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{chatError}</p>}
-            {voiceState !== "idle" && <p className={`mt-4 rounded-xl border p-3 text-sm ${voiceState === "connected" ? "border-[#b9f42e]/30 bg-[#b9f42e]/10 text-[#d9ff84]" : "border-white/10 bg-white/5 text-zinc-300"}`}>{voiceState === "connecting" ? "Connecting your AI Voice Director…" : voiceState === "connected" ? "AI Voice Director is listening. You can speak naturally." : voiceError}</p>}
+            {chatError && <p role="alert" className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-[12px] text-red-200">{chatError}</p>}
+            {voiceState !== "idle" && <p className={`mt-3 rounded-lg border p-2.5 text-[12px] ${voiceState === "connected" ? "border-[#b9f42e]/30 bg-[#b9f42e]/10 text-[#d9ff84]" : "border-white/[0.06] bg-white/[0.03] text-zinc-300"}`}>{voiceState === "connecting" ? "Connecting your AI Voice Director…" : voiceState === "connected" ? "AI Voice Director is listening. You can speak naturally." : voiceError}</p>}
           </div>
           <form
             onSubmit={sendChat}
-            className="border-t border-[#b9f42e]/50 bg-[#202220] p-4"
+            className="border-t border-white/[0.06] bg-[#111111] p-3"
           >
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Tell the director what to shoot..."
-              className="h-24 w-full resize-none bg-transparent text-lg outline-none placeholder:text-zinc-500"
+              className="h-20 w-full resize-none bg-transparent text-[14px] outline-none placeholder:text-zinc-600"
             />
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-zinc-500">
-                Model
+              <div className="flex items-center gap-1.5">
+                <button type="button" className="rounded-md p-1 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300">
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
                 <select
                   value={directorModel}
                   onChange={(event) => setDirectorModel(event.target.value)}
-                  className="rounded-lg border border-white/10 bg-[#111311] px-3 py-2 text-sm font-semibold normal-case tracking-normal text-zinc-100 outline-none hover:border-[#b9f42e]/50"
+                  className="rounded-full border border-white/[0.06] bg-[#141414] px-2.5 py-1 text-[11px] font-medium text-zinc-300 outline-none hover:border-[#b9f42e]/40"
                 >
                   {directorModels.map((modelOption) => (
                     <option key={modelOption.id} value={modelOption.id}>
@@ -663,14 +663,14 @@ export default function WorkspacePage({
                     </option>
                   ))}
                 </select>
-              </label>
-              <div className="flex items-center justify-end gap-2">
-              <button type="button" onClick={startVoice} disabled={voiceState === "connecting"} aria-label={voiceState === "connected" ? "Stop AI Voice Director" : "Start AI Voice Director"} className={`rounded-full border p-3 ${voiceState === "connected" ? "border-red-400 bg-red-500/15 text-red-200" : "border-white/15 text-zinc-200 hover:border-[#b9f42e] hover:text-[#b9f42e]"}`}>
-                {voiceState === "connected" ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-              </button>
-              <button type="submit" disabled={chatSending} aria-label="Send message to AI Director" className="rounded-full bg-[#b9f42e] p-3 text-black disabled:opacity-50">
-                {chatSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </button>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button type="button" onClick={startVoice} disabled={voiceState === "connecting"} aria-label={voiceState === "connected" ? "Stop AI Voice Director" : "Start AI Voice Director"} className={`rounded-full border p-2 ${voiceState === "connected" ? "border-red-400 bg-red-500/15 text-red-200" : "border-white/[0.08] text-zinc-400 hover:border-[#b9f42e] hover:text-[#b9f42e]"}`}>
+                  {voiceState === "connected" ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+                </button>
+                <button type="submit" disabled={chatSending} aria-label="Send message to AI Director" className="rounded-full bg-[#b9f42e] p-2 text-black disabled:opacity-50">
+                  {chatSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                </button>
               </div>
             </div>
           </form>
@@ -1229,6 +1229,13 @@ function Assets({
   openAdd: (t: Entity["type"]) => void;
 }) {
   const [selectedAsset, setSelectedAsset] = useState<Entity | null>(null);
+
+  useEffect(() => {
+    if (selectedAsset && entities) {
+      const updated = entities.find((e) => e.id === selectedAsset.id);
+      if (updated) setSelectedAsset(updated);
+    }
+  }, [entities]);
   return (
     <div className="space-y-8">
       {(["character", "scene", "prop"] as const).map((type) => (
@@ -1776,6 +1783,12 @@ function AssetWorkspace({
   const [quality, setQuality] = useState<"Low" | "Medium" | "High" | "Ultra">("Medium");
   const [working, setWorking] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [creditBalance, setCreditBalance] = useState<number | null>(null);
+  useEffect(() => {
+    createClient().auth.getUser().then(({ data }) => {
+      if (data.user) getUserCredits(data.user.id).then(setCreditBalance);
+    });
+  }, []);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
   const [picker, setPicker] = useState(false);
   const [referenceSourcePicker, setReferenceSourcePicker] = useState(false);
@@ -2158,14 +2171,30 @@ function AssetWorkspace({
 
           {/* Submit Button with Dynamic Credit Display */}
           <div className="border-t border-white/10 p-6 bg-[#0b0c0b]">
-            <button
-              onClick={requestGeneration}
-              disabled={working}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-3.5 font-black text-black hover:bg-[#a6de25] transition disabled:opacity-50 shadow-xl"
-            >
-              <Sparkles className="h-4 w-4 fill-black" />
-              {working ? "Generating…" : `Generate image (⚡ ${currentCreditCost} Credits)`}
-            </button>
+            {creditBalance !== null && creditBalance < currentCreditCost ? (
+              <div className="space-y-2">
+                <button
+                  disabled
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-700 px-4 py-3.5 font-black text-zinc-400 cursor-not-allowed shadow-xl"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Insufficient Credits (⚡ {currentCreditCost} needed)
+                </button>
+                <p className="flex items-center justify-center gap-1.5 text-xs text-amber-300">
+                  <Zap className="h-3.5 w-3.5" />
+                  You have {creditBalance} credits. <a href="/studio/credits" className="underline font-bold hover:text-[#b9f42e]">Buy more credits</a>
+                </p>
+              </div>
+            ) : (
+              <button
+                onClick={requestGeneration}
+                disabled={working}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-3.5 font-black text-black hover:bg-[#a6de25] transition disabled:opacity-50 shadow-xl"
+              >
+                <Sparkles className="h-4 w-4 fill-black" />
+                {working ? "Generating…" : `Generate image (⚡ ${currentCreditCost} Credits)`}
+              </button>
+            )}
           </div>
         </aside>
       </div>
@@ -2485,6 +2514,13 @@ function Storyboard({
     shot: Shot;
     type: "image" | "video";
   } | null>(null);
+
+  useEffect(() => {
+    if (media && shots) {
+      const updated = shots.find((s) => s.id === media.shot.id);
+      if (updated) setMedia((prev) => (prev ? { ...prev, shot: updated } : null));
+    }
+  }, [shots]);
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2703,6 +2739,12 @@ function ShotMediaWorkspace({
   const [busy, setBusy] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
+  const [creditBalance, setCreditBalance] = useState<number | null>(null);
+  useEffect(() => {
+    createClient().auth.getUser().then(({ data }) => {
+      if (data.user) getUserCredits(data.user.id).then(setCreditBalance);
+    });
+  }, []);
   const [picker, setPicker] = useState(false);
   const [referenceSourcePicker, setReferenceSourcePicker] = useState(false);
   const [referenceTarget, setReferenceTarget] = useState<"references" | "start" | "end">("references");
@@ -2997,6 +3039,11 @@ function ShotMediaWorkspace({
         mediaType: isImage ? "image" : "video",
         mediaUrl: previewSource,
       });
+      if (isImage) {
+        media.shot.keyframe_image = previewSource;
+      } else {
+        media.shot.video_url = previewSource;
+      }
       setGenerationStatus("Chosen as active shot media ✓");
       await reload(true);
     } catch (err) {
@@ -3421,16 +3468,32 @@ function ShotMediaWorkspace({
             {generationError && <p role="alert" className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{generationError}</p>}
           </div>
           <div className="border-t border-white/10 p-6">
-            <button
-              onClick={generate}
-              disabled={busy}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-3.5 font-bold text-black hover:bg-[#a6de25] transition disabled:opacity-50"
-            >
-              <Sparkles className="h-4 w-4 fill-black" />
-              {busy
-                ? isImage ? "Generating image…" : "Generating video…"
-                : `Generate ${isImage ? "image" : "video"} (⚡ ${currentCreditCost} Credits)`}
-            </button>
+            {creditBalance !== null && creditBalance < currentCreditCost ? (
+              <div className="space-y-2">
+                <button
+                  disabled
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-700 px-4 py-3.5 font-bold text-zinc-400 cursor-not-allowed"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Insufficient Credits (⚡ {currentCreditCost} needed)
+                </button>
+                <p className="flex items-center justify-center gap-1.5 text-xs text-amber-300">
+                  <Zap className="h-3.5 w-3.5" />
+                  You have {creditBalance} credits. <a href="/studio/credits" className="underline font-bold hover:text-[#b9f42e]">Buy more credits</a>
+                </p>
+              </div>
+            ) : (
+              <button
+                onClick={generate}
+                disabled={busy}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-3.5 font-bold text-black hover:bg-[#a6de25] transition disabled:opacity-50"
+              >
+                <Sparkles className="h-4 w-4 fill-black" />
+                {busy
+                  ? isImage ? "Generating image…" : "Generating video…"
+                  : `Generate ${isImage ? "image" : "video"} (⚡ ${currentCreditCost} Credits)`}
+              </button>
+            )}
           </div>
         </aside>
       </div>
