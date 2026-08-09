@@ -78,6 +78,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (error) throw error
       return NextResponse.json({ success: true })
     }
+    if (body.action === "saveProjectSettings") {
+      const selectedAspect = body.settings.aspectRatio || body.settings.canvasSpec?.split(" · ")[0] || "9:16"
+      const selectedStyle = body.settings.visualStyle || "Realistic - 3D CG"
+      const { data: projectRecord } = await supabase.from("creator_projects").select("metadata").eq("id", projectId).single()
+      const currentMeta = (projectRecord?.metadata as Record<string, unknown>) || {}
+      const updates = {
+        default_aspect: selectedAspect,
+        default_style: selectedStyle,
+        metadata: {
+          ...currentMeta,
+          basic_settings: body.settings,
+        },
+      }
+      const { data, error } = await supabase.from("creator_projects").update(updates).eq("id", projectId).select().single()
+      if (error) throw error
+
+      // Update default aspect ratio for all shots in the project
+      const { data: episodes } = await supabase.from("creator_episodes").select("id").eq("project_id", projectId)
+      if (episodes && episodes.length > 0) {
+        const episodeIds = episodes.map((e) => e.id)
+        await supabase.from("creator_shots").update({ aspect_ratio: selectedAspect }).in("episode_id", episodeIds)
+      }
+
+      return NextResponse.json(data)
+    }
     if (body.action === "reorderShots") { await Promise.all((body.ids as string[]).map((id, order_index) => supabase.from("creator_shots").update({ order_index }).eq("id", id))); return NextResponse.json({ success: true }) }
     if (body.action === "saveMediaDraft") {
       const { data: current, error: currentError } = await supabase.from("creator_shots").select("metadata").eq("id", body.shotId).single(); if (currentError) throw currentError

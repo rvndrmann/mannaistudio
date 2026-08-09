@@ -15,15 +15,19 @@ import {
   Loader2,
   Mic,
   MicOff,
+  Download,
+  MoreVertical,
   Pencil,
   Plus,
   Send,
+  Settings,
   Sparkles,
   Trash2,
   Upload,
   Users,
   WandSparkles,
   X,
+  Zap,
 } from "lucide-react";
 import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models";
 import { getModelLabel, imageGenerationModels, videoGenerationModels } from "@/lib/studio/generation-models";
@@ -89,6 +93,7 @@ type Workspace = {
     production_mode?: string;
     project_type?: string;
     creative_brief?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
   };
   episodes: Episode[];
   activeEpisode: Episode;
@@ -260,6 +265,9 @@ export default function WorkspacePage({
   const visibleTabs = data.features?.production_modes_enabled
     ? [...tabs, productionTab]
     : tabs;
+  const [showBasicSettings, setShowBasicSettings] = useState(false);
+  const [projectMenu, setProjectMenu] = useState(false);
+
   const createEpisode = async () => {
     const created = await save({ action: "createEpisode" });
     setEpisodeMenu(false);
@@ -342,11 +350,71 @@ export default function WorkspacePage({
         </div>
         <button
           onClick={() => setEpisodeMenu((open) => !open)}
-          className="flex shrink-0 items-center gap-2 text-sm font-semibold"
+          className="flex shrink-0 items-center gap-2 text-sm font-semibold hover:text-[#b9f42e] transition"
         >
           {episode?.name || "Episode 1"}
           <ChevronDown className="h-4 w-4" />
         </button>
+
+        {/* Share and Project Options Dropdown */}
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => alert("Project share link copied to clipboard")}
+            className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/10 hover:text-white"
+            title="Share project"
+          >
+            <Share2 className="h-4 w-4" />
+          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setProjectMenu((open) => !open)}
+              className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/10 hover:text-white"
+              title="Project settings & options"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+            {projectMenu && (
+              <div className="absolute left-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-2xl border border-white/10 bg-[#1a1c1b] p-2 shadow-2xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowBasicSettings(true);
+                    setProjectMenu(false);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-left text-xs font-bold text-zinc-200 hover:bg-white/5 hover:text-[#b9f42e]"
+                >
+                  <Settings className="h-4 w-4 text-[#b9f42e]" />
+                  <span>Settings</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    alert("Exporting project package...");
+                    setProjectMenu(false);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-left text-xs font-bold text-zinc-200 hover:bg-white/5"
+                >
+                  <Download className="h-4 w-4 text-zinc-400" />
+                  <span>Export</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    alert("Team sharing link copied!");
+                    setProjectMenu(false);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-left text-xs font-bold text-zinc-200 hover:bg-white/5"
+                >
+                  <Users className="h-4 w-4 text-zinc-400" />
+                  <span>Share to Team</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
         {episodeMenu && (
           <div className="absolute left-[180px] top-[66px] z-50 w-[330px] overflow-hidden rounded-2xl border border-white/10 bg-[#1a1c1b] p-2 shadow-2xl">
             <div className="space-y-1">
@@ -367,8 +435,14 @@ export default function WorkspacePage({
               ))}
             </div>
             <div className="my-2 border-t border-white/10" />
-            <button className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-zinc-300 hover:bg-white/5">
-              <span className="text-xl">⚙</span> Manage Episodes
+            <button
+              onClick={() => {
+                setShowBasicSettings(true);
+                setEpisodeMenu(false);
+              }}
+              className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-zinc-300 hover:bg-white/5"
+            >
+              <Settings className="h-4 w-4 text-[#b9f42e]" /> Basic Settings
             </button>
             <button
               onClick={createEpisode}
@@ -446,10 +520,30 @@ export default function WorkspacePage({
                 </div>
               </div>
               {tab === "storyboard" && (
-                <div className="flex gap-2">
-                  <Pill>{data.project.default_aspect || "9:16"}</Pill>
-                  <Pill>{data.project.default_style || "Cinematic"}</Pill>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowBasicSettings(true)}
+                    className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold text-zinc-200 hover:border-[#b9f42e]/50 hover:bg-white/10 transition"
+                    title="Edit Basic Settings"
+                  >
+                    <Settings className="h-3.5 w-3.5 text-[#b9f42e]" />
+                    <span>{data.project.default_aspect || "9:16"}</span>
+                  </button>
+                  <Pill>{(data.project.metadata as Record<string, unknown> | null)?.basic_settings && typeof ((data.project.metadata as Record<string, unknown>).basic_settings as Record<string, unknown>).videoModel === "string" ? getModelLabel(((data.project.metadata as Record<string, unknown>).basic_settings as Record<string, unknown>).videoModel as string) : "Seedance 2.0 Fast"}</Pill>
                   <Pill>720p</Pill>
+                  <button
+                    type="button"
+                    onClick={() => alert("Batch download queued for all shots")}
+                    className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-white/10 transition"
+                  >
+                    <Download className="h-3.5 w-3.5 text-zinc-400" />
+                    <span>Batch Download</span>
+                    <ChevronDown className="h-3 w-3 text-zinc-500" />
+                  </button>
+                  <span className="rounded-xl border border-[#fff878]/30 bg-[#fff878]/10 px-3 py-1.5 text-xs font-extrabold text-[#fff878]">
+                    ⚡ Estimated: {data.shots?.length ? data.shots.length * 10 : 409}
+                  </span>
                 </div>
               )}
             </div>
@@ -575,6 +669,14 @@ export default function WorkspacePage({
           type={assetType}
           projectId={projectId}
           close={() => setAssetType(null)}
+          save={save}
+          reload={load}
+        />
+      )}
+      {showBasicSettings && (
+        <BasicSettingsModal
+          data={data}
+          close={() => setShowBasicSettings(false)}
           save={save}
           reload={load}
         />
@@ -1342,6 +1444,242 @@ function ModelMenu({
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function BasicSettingsModal({
+  data,
+  close,
+  save,
+  reload,
+}: {
+  data: Workspace;
+  close: () => void;
+  save: (body: unknown) => Promise<unknown>;
+  reload: () => Promise<void>;
+}) {
+  const metaSettings = (data.project.metadata as Record<string, unknown> | null)?.basic_settings as Record<string, unknown> | undefined;
+
+  const [canvasSpec, setCanvasSpec] = useState<string>((metaSettings?.canvasSpec as string) || `${data.project.default_aspect || "9:16"} · 2K · 720p`);
+  const [storyboardImageModel, setStoryboardImageModel] = useState<string>((metaSettings?.storyboardImageModel as string) || imageGenerationModels[0].id);
+  const [characterImageModel, setCharacterImageModel] = useState<string>((metaSettings?.characterImageModel as string) || imageGenerationModels[0].id);
+  const [videoModel, setVideoModel] = useState<string>((metaSettings?.videoModel as string) || videoGenerationModels[0].id);
+  const [generateAudio, setGenerateAudio] = useState<boolean>(metaSettings?.generateAudio !== false);
+  const [workflow, setWorkflow] = useState<string>((metaSettings?.workflow as string) || "keyframe_images_to_video");
+  const [visualStyle, setVisualStyle] = useState<string>((metaSettings?.visualStyle as string) || (data.project.default_style || "Realistic - 3D CG"));
+  const [saving, setSaving] = useState(false);
+
+  const confirmSettings = async () => {
+    setSaving(true);
+    try {
+      const selectedAspect = canvasSpec.split(" · ")[0] || "9:16";
+      const selectedResolution = canvasSpec.split(" · ")[2] || "720p";
+      await save({
+        action: "saveProjectSettings",
+        settings: {
+          canvasSpec,
+          aspectRatio: selectedAspect,
+          resolution: selectedResolution,
+          storyboardImageModel,
+          characterImageModel,
+          videoModel,
+          generateAudio,
+          workflow,
+          visualStyle,
+        },
+      });
+      await reload();
+      close();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not save settings");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const visualStyles = [
+    { id: "Realistic - 3D CG", label: "Realistic - 3D CG", hot: true, img: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=400&q=80" },
+    { id: "Anime - Japanese/Korean", label: "Anime - Japanese/Korean", hot: false, img: "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400&q=80" },
+    { id: "3D - Pixar Cartoon", label: "3D - Pixar Cartoon", hot: false, img: "https://images.unsplash.com/photo-1563089145-599997674d42?w=400&q=80" },
+    { id: "Realistic - Photorealistic", label: "Realistic - Photorealistic", hot: true, img: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&q=80" },
+    { id: "3D - Chinese Style CG", label: "3D - Chinese Style CG", hot: true, img: "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=400&q=80" },
+    { id: "Anime - Chibi Cute", label: "Anime - Chibi Cute", hot: false, img: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80" },
+    { id: "Anime - Makoto Shinkai", label: "Anime - Makoto Shinkai", hot: false, img: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=400&q=80" },
+    { id: "Anime - Ghibli", label: "Anime - Ghibli", hot: false, img: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=80" },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4 backdrop-blur-md overflow-y-auto">
+      <div className="relative w-full max-w-4xl rounded-2xl border border-white/15 bg-[#141517] p-6 sm:p-8 text-white shadow-2xl my-8">
+        <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
+          <h2 className="text-xl font-bold">Basic Settings</h2>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-zinc-400">Current settings, estimated ⚡ 16/s</span>
+            <button onClick={close} className="rounded-xl p-2 text-zinc-400 hover:bg-white/10 hover:text-white">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          {/* Row 1: Canvas Spec, Storyboard Image Model, Character/Scene Image Model */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Canvas Spec</label>
+              <p className="text-[11px] text-zinc-500 mb-2">Ratio / Size / Resolution</p>
+              <select
+                value={canvasSpec}
+                onChange={(e) => setCanvasSpec(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-[#b9f42e]"
+              >
+                <option value="9:16 · 2K · 720p">9:16 · 2K · 720p</option>
+                <option value="16:9 · 4K · 1080p">16:9 · 4K · 1080p</option>
+                <option value="1:1 · 2K · 720p">1:1 · 2K · 720p</option>
+                <option value="2:3 · 2K · 720p">2:3 · 2K · 720p</option>
+                <option value="21:9 · 4K · 1080p">21:9 · 4K · 1080p</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Storyboard Image Model</label>
+              <p className="text-[11px] text-zinc-500 mb-2">Used for keyframes & shot continuity</p>
+              <select
+                value={storyboardImageModel}
+                onChange={(e) => setStoryboardImageModel(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-[#b9f42e]"
+              >
+                {imageGenerationModels.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Character/Scene Image Model</label>
+              <p className="text-[11px] text-zinc-500 mb-2">Used for character & scene concepts</p>
+              <select
+                value={characterImageModel}
+                onChange={(e) => setCharacterImageModel(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-[#b9f42e]"
+              >
+                {imageGenerationModels.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Row 2: Video Model & Generate Audio */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold uppercase text-zinc-400 mb-2">Video Model</label>
+              <select
+                value={videoModel}
+                onChange={(e) => setVideoModel(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-[#b9f42e]"
+              >
+                {videoGenerationModels.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label} (⚡ 10s ≈ 160 credits)</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase text-zinc-400 mb-2">Generate Audio</label>
+              <div className="flex items-center justify-between rounded-xl border border-white/10 bg-[#0b0c0b] p-3">
+                <span className="text-sm font-bold text-zinc-200">{generateAudio ? "Auto" : "Off"}</span>
+                <button
+                  type="button"
+                  onClick={() => setGenerateAudio(!generateAudio)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${generateAudio ? "bg-[#b9f42e]" : "bg-white/20"}`}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-black shadow transform ring-0 transition duration-200 ease-in-out ${generateAudio ? "translate-x-5" : "translate-x-0"}`} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 3: Generation Workflow */}
+          <div>
+            <label className="block text-xs font-bold uppercase text-zinc-400 mb-2">Generation Workflow (AI Agent Pipeline)</label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {[
+                { id: "keyframe_images_to_video", title: "Keyframes Images to Video", desc: "Generate multi grid keyframe images first, then use them as reference to create the video", icon: LayoutPanelTop },
+                { id: "elements_sequential", title: "Elements to Video Sequential", desc: "Generate video sequentially from character reference images to ensure continuity between clips, slower...", icon: Share2 },
+                { id: "video_reference", title: "Video Reference", desc: "Drive video generation with reference video style and motion rhythm", icon: Film },
+                { id: "elements_parallel", title: "Elements to Video Parallel", desc: "Generate video concurrently from character reference images — no keyframe images needed", icon: Zap },
+              ].map((item) => {
+                const Icon = item.icon;
+                const isSelected = workflow === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setWorkflow(item.id)}
+                    className={`flex items-start gap-3 rounded-xl border p-4 text-left transition ${isSelected ? "border-[#b9f42e] bg-[#b9f42e]/10" : "border-white/10 bg-white/5 hover:border-white/20"}`}
+                  >
+                    <div className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg ${isSelected ? "bg-[#b9f42e] text-black" : "bg-white/10 text-zinc-400"}`}>
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h4 className={`text-sm font-bold ${isSelected ? "text-[#b9f42e]" : "text-white"}`}>{item.title}</h4>
+                      <p className="mt-1 text-xs leading-relaxed text-zinc-400">{item.desc}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Row 4: Visual Style Selector */}
+          <div>
+            <label className="block text-xs font-bold uppercase text-zinc-400 mb-2">Visual Style</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {visualStyles.map((style) => {
+                const isSelected = visualStyle === style.id;
+                return (
+                  <button
+                    key={style.id}
+                    type="button"
+                    onClick={() => setVisualStyle(style.id)}
+                    className={`group relative overflow-hidden rounded-xl border-2 text-left transition aspect-[4/3] ${isSelected ? "border-[#b9f42e] ring-2 ring-[#b9f42e]/40" : "border-white/10 hover:border-white/30"}`}
+                  >
+                    <img src={style.img} alt={style.label} className="h-full w-full object-cover transition group-hover:scale-105" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+                    {style.hot && (
+                      <span className="absolute right-2 top-2 rounded-md bg-red-500/90 px-1.5 py-0.5 text-[9px] font-black uppercase text-white shadow">
+                        🔥 Hot
+                      </span>
+                    )}
+                    <span className={`absolute bottom-2 left-2 right-2 truncate text-xs font-bold ${isSelected ? "text-[#b9f42e]" : "text-white"}`}>
+                      {style.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Modal Actions */}
+        <div className="mt-8 flex justify-end gap-3 border-t border-white/10 pt-6">
+          <button
+            onClick={close}
+            disabled={saving}
+            className="rounded-xl border border-white/10 bg-white/5 px-6 py-3 text-sm font-bold text-zinc-300 hover:bg-white/10"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={confirmSettings}
+            disabled={saving}
+            className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-8 py-3 text-sm font-black text-black hover:bg-[#a6de25] transition disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "✓ Confirm"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
