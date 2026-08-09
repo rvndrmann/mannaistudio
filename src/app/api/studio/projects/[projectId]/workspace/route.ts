@@ -61,6 +61,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (body.shot.entityIds?.length) await supabase.from("creator_shot_assets").insert(body.shot.entityIds.map((entity_id: string, order_index: number) => ({ shot_id: data.id, entity_id, order_index })))
       return NextResponse.json(data)
     }
+    if (body.action === "updateShotChosenMedia") {
+      const updates: Record<string, unknown> = {}
+      if (body.mediaType === "image") {
+        updates.keyframe_image = body.mediaUrl
+      } else {
+        updates.video_url = body.mediaUrl
+        updates.video_status = "completed"
+      }
+      const { data, error } = await supabase.from("creator_shots").update(updates).eq("id", body.shotId).select().single()
+      if (error) throw error
+      return NextResponse.json(data)
+    }
+    if (body.action === "deleteJob") {
+      const { error } = await supabase.from("creator_generation_jobs").delete().eq("id", body.jobId).eq("project_id", projectId)
+      if (error) throw error
+      return NextResponse.json({ success: true })
+    }
     if (body.action === "reorderShots") { await Promise.all((body.ids as string[]).map((id, order_index) => supabase.from("creator_shots").update({ order_index }).eq("id", id))); return NextResponse.json({ success: true }) }
     if (body.action === "saveMediaDraft") {
       const { data: current, error: currentError } = await supabase.from("creator_shots").select("metadata").eq("id", body.shotId).single(); if (currentError) throw currentError

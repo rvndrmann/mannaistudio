@@ -19,6 +19,7 @@ import {
   Plus,
   Send,
   Sparkles,
+  Trash2,
   Upload,
   Users,
   WandSparkles,
@@ -2277,6 +2278,69 @@ function ShotMediaWorkspace({
   };
 
   const currentCreditCost = calculateCreditCost(model, isImage ? "image" : "video", durationSeconds);
+  const currentActiveChosenSource = isImage ? media.shot.keyframe_image : media.shot.video_url;
+  const isCurrentlyChosen = Boolean(previewSource && previewSource === currentActiveChosenSource);
+
+  const chooseCurrentMedia = async () => {
+    if (!previewSource || isCurrentlyChosen) return;
+    setBusy(true);
+    try {
+      await save({
+        action: "updateShotChosenMedia",
+        shotId: media.shot.id,
+        mediaType: isImage ? "image" : "video",
+        mediaUrl: previewSource,
+      });
+      setGenerationStatus("Chosen as active shot media ✓");
+      await reload();
+    } catch (err) {
+      setGenerationError(err instanceof Error ? err.message : "Could not set chosen media");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteGenerationJob = async (jobId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!jobId || jobId === "original") return;
+    if (!confirm("Are you sure you want to delete this generated item?")) return;
+    setBusy(true);
+    try {
+      await save({
+        action: "deleteJob",
+        jobId,
+      });
+      const deletedGen = genHistory.find((g) => g.id === jobId);
+      const remaining = genHistory.filter((g) => g.id !== jobId);
+      setGenHistory(remaining);
+
+      if (deletedGen?.videoUrl && deletedGen.videoUrl === currentActiveChosenSource) {
+        const nextChosen = remaining.find((g) => g.videoUrl)?.videoUrl || null;
+        await save({
+          action: "updateShotChosenMedia",
+          shotId: media.shot.id,
+          mediaType: isImage ? "image" : "video",
+          mediaUrl: nextChosen,
+        });
+      }
+
+      if (activeGenId === jobId) {
+        if (remaining.length > 0) {
+          setActiveGenId(remaining[0].id);
+          if (remaining[0].prompt) setPrompt(remaining[0].prompt);
+          if (remaining[0].model) setModel(remaining[0].model);
+        } else {
+          setActiveGenId(null);
+        }
+      }
+      setGenerationStatus("Item deleted ✓");
+      await reload();
+    } catch (err) {
+      setGenerationError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // Escape key handler to close slide over workspace
   useEffect(() => {
@@ -2311,70 +2375,125 @@ function ShotMediaWorkspace({
             <div className="flex flex-col gap-2">
               {genHistory.map((gen) => {
                 const isActive = activeGenId === gen.id;
+                const isGenChosen = Boolean(gen.videoUrl && gen.videoUrl === currentActiveChosenSource);
                 return (
-                  <button
-                    key={gen.id}
-                    type="button"
-                  onClick={() => {
-                    setActiveGenId(gen.id);
-                    if (gen.prompt) setPrompt(gen.prompt);
-                    if (gen.model) setModel(gen.model);
-                    if (gen.referenceImages && gen.referenceImages.length) setReferences(gen.referenceImages);
-                    if (gen.status === "failed") setGenerationError(gen.error);
-                    else setGenerationError(null);
-                  }}
-                  className={`group relative block w-full overflow-hidden rounded-xl border-2 transition text-left ${
-                    isActive ? "border-[#b9f42e]" : "border-white/10 hover:border-white/25"
-                  }`}
-                >
-                  {gen.status === "generating" ? (
-                    <div className="grid aspect-[3/4] place-items-center bg-black/40">
-                      <div className="flex flex-col items-center gap-2">
-                        <svg className="h-6 w-6 animate-spin text-[#b9f42e]" viewBox="0 0 24 24" fill="none">
-                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-20" />
-                          <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                        </svg>
-                        <span className="text-[10px] text-zinc-400">Generating…</span>
-                      </div>
-                    </div>
-                  ) : gen.status === "failed" ? (
-                    <div className="grid aspect-[3/4] place-items-center bg-red-950/30 p-2">
-                      <div className="flex flex-col items-center gap-1 text-center">
-                        <span className="text-lg">⚠</span>
-                        <span className="line-clamp-3 text-[10px] leading-tight text-red-300">{gen.error || "Failed"}</span>
-                      </div>
-                    </div>
-                  ) : gen.videoUrl ? (
-                    <Preview src={gen.videoUrl} label={gen.id === "original" ? "Original" : "Generated"} type={isImage ? "image" : "video"} />
-                  ) : (
-                    <div className="grid aspect-[3/4] place-items-center bg-black/30 text-xs text-zinc-500">No output</div>
-                  )}
-                  {/* Prompt preview badge */}
-                  {gen.prompt && (
-                    <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/90 to-transparent px-2 py-1.5 text-[10px] text-zinc-300">
-                      {gen.id === "original" ? "Original" : gen.prompt}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+                  <div key={gen.id} className="relative group">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveGenId(gen.id);
+                        if (gen.prompt) setPrompt(gen.prompt);
+                        if (gen.model) setModel(gen.model);
+                        if (gen.referenceImages && gen.referenceImages.length) setReferences(gen.referenceImages);
+                        if (gen.status === "failed") setGenerationError(gen.error);
+                        else setGenerationError(null);
+                      }}
+                      className={`group relative block w-full overflow-hidden rounded-xl border-2 transition text-left ${
+                        isGenChosen
+                          ? "border-[#b9f42e] ring-2 ring-[#b9f42e]/40"
+                          : isActive
+                          ? "border-white/60"
+                          : "border-white/10 hover:border-white/25"
+                      }`}
+                    >
+                      {gen.status === "generating" ? (
+                        <div className="grid aspect-[3/4] place-items-center bg-black/40">
+                          <div className="flex flex-col items-center gap-2">
+                            <svg className="h-6 w-6 animate-spin text-[#b9f42e]" viewBox="0 0 24 24" fill="none">
+                              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-20" />
+                              <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                            </svg>
+                            <span className="text-[10px] text-zinc-400">Generating…</span>
+                          </div>
+                        </div>
+                      ) : gen.status === "failed" ? (
+                        <div className="grid aspect-[3/4] place-items-center bg-red-950/30 p-2">
+                          <div className="flex flex-col items-center gap-1 text-center">
+                            <span className="text-lg">⚠</span>
+                            <span className="line-clamp-3 text-[10px] leading-tight text-red-300">{gen.error || "Failed"}</span>
+                          </div>
+                        </div>
+                      ) : gen.videoUrl ? (
+                        <Preview src={gen.videoUrl} label={gen.id === "original" ? "Original" : "Generated"} type={isImage ? "image" : "video"} />
+                      ) : (
+                        <div className="grid aspect-[3/4] place-items-center bg-black/30 text-xs text-zinc-500">No output</div>
+                      )}
+
+                      {/* Chosen Badge */}
+                      {isGenChosen && (
+                        <span className="absolute right-1.5 top-1.5 rounded-md bg-[#b9f42e] px-1.5 py-0.5 text-[9px] font-black uppercase text-black shadow-md z-10">
+                          ✓ CHOSEN
+                        </span>
+                      )}
+
+                      {/* Prompt preview badge */}
+                      {gen.prompt && (
+                        <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/90 to-transparent px-2 py-1.5 text-[10px] text-zinc-300">
+                          {gen.id === "original" ? "Original" : gen.prompt}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Delete hover button for non-original items */}
+                    {gen.id !== "original" && (
+                      <button
+                        type="button"
+                        onClick={(e) => deleteGenerationJob(gen.id, e)}
+                        className="absolute left-1.5 top-1.5 hidden rounded-md bg-black/80 p-1.5 text-zinc-400 hover:bg-red-600 hover:text-white group-hover:block transition z-20"
+                        title="Delete generation"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      </aside>
+        </aside>
 
         {/* Main preview area */}
         <main className="flex min-w-0 flex-1 flex-col">
           <header className="flex h-16 items-center gap-3 border-b border-white/10 px-6">
+            {isCurrentlyChosen ? (
+              <span className="flex items-center gap-1.5 rounded-lg border border-[#b9f42e]/50 bg-[#b9f42e]/20 px-4 py-2 text-xs font-black text-[#b9f42e]">
+                ✓ Chosen for Storyboard
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={chooseCurrentMedia}
+                disabled={busy || !previewSource}
+                className="flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-4 py-2 text-xs font-black text-black hover:bg-[#a6de25] transition shadow-lg disabled:opacity-40"
+              >
+                ✓ Choose
+              </button>
+            )}
+
+            {activeGen && activeGen.id !== "original" && (
+              <button
+                type="button"
+                onClick={() => deleteGenerationJob(activeGen.id)}
+                disabled={busy}
+                className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300 hover:bg-red-500/20 transition disabled:opacity-40"
+                title="Delete this generation"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Delete</span>
+              </button>
+            )}
+
             {activeGen && activeGen.id !== "original" && (
               <button
                 type="button"
                 onClick={() => loadPromptFromGen(activeGen)}
                 className="rounded-lg bg-white/5 px-3 py-2 text-xs font-semibold text-[#b9f42e] hover:bg-white/10"
               >
-                ♻ Reuse this prompt
+                ♻ Reuse prompt
               </button>
             )}
-            <button onClick={addCurrentSourceAsReference} disabled={!previewSource} className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-300 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40">
+
+            <button onClick={addCurrentSourceAsReference} disabled={!previewSource} className="rounded-lg px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40">
               Use as reference
             </button>
             <button
@@ -2382,7 +2501,7 @@ function ShotMediaWorkspace({
               disabled={registeringAsset || !previewSource}
               className="rounded-lg bg-[#b9f42e]/10 px-3 py-2 text-xs font-bold text-[#b9f42e] hover:bg-[#b9f42e]/20 disabled:opacity-40"
             >
-              {registeringAsset ? "Registering to Asset Library…" : "Verify for Seedance (Asset Library)"}
+              {registeringAsset ? "Registering…" : "Verify for Seedance"}
             </button>
             <span className="h-6 border-l border-white/10" />
             <button
@@ -2393,7 +2512,7 @@ function ShotMediaWorkspace({
               ↻ {busy ? "Generating…" : `Regenerate (⚡ ${currentCreditCost} Credits)`}
             </button>
             <span className="ml-auto text-xs text-zinc-500">
-              {genHistory.length > 1 ? `${genHistory.length} generations` : "Private project asset"}
+              {genHistory.length > 1 ? `${genHistory.length} generations` : "Private asset"}
             </span>
           </header>
           <div className="grid flex-1 place-items-center overflow-auto bg-black/40 p-4 sm:p-8">
