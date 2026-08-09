@@ -45,3 +45,9 @@ export function generationProvider(model: ImageGenerationModelId | VideoGenerati
   if (model.startsWith("fal-")) return "fal"
   return model.startsWith("dreamina-") || model.startsWith("dola-") ? "byteplus" : "openai"
 }
+
+export function getModelLabel(modelId: string) {
+  if (!modelId) return "Default Model"
+  const found = [...imageGenerationModels, ...videoGenerationModels].find((m) => m.id === modelId)
+  return found ? found.label : modelId
+}
