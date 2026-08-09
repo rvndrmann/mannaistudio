@@ -31,6 +31,8 @@ This session introduced the complete **AI Credit & Monetization System**, **Razo
 
 ### 4. 🎛️ Site Features & Navigation Pause Controls
 - Created SQL migration `20260809143000_site_feature_flags.sql` storing feature toggle states in `site_settings` under key `"site_features"`.
+- Created `public.admin_update_site_features(p_features jsonb)` SECURITY DEFINER RPC in Supabase, granted execute permissions to `authenticated`, and executed `NOTIFY pgrst, 'reload schema'`.
+- Added direct table upsert fallback (`site_settings`) in `handleSaveSiteFeatures` (`admin/page.tsx`) to guarantee instant saving.
 - Added **Pause Features** tab in Admin dashboard (`/admin`), allowing admins to toggle and pause:
   - `Calendar` (`/calendar`)
   - `Analytics` (`/analytics`)
@@ -54,4 +56,4 @@ This session introduced the complete **AI Credit & Monetization System**, **Razo
 ## Verification & Build Status
 - **TypeScript**: `npm run typecheck` passed with **0 errors**.
 - **Dev Server**: Running on `http://localhost:3000`.
-- **Database**: Linked and updated via `npx supabase db query`.
+- **Database**: Linked and updated via `npx supabase db query` (RPC function & grants active).
