@@ -1246,7 +1246,17 @@ function AssetCard({
   );
 }
 
-function ModelMenu({ type, value, onChange }: { type: "image" | "video"; value: string; onChange: (value: string) => void }) {
+function ModelMenu({
+  type,
+  value,
+  onChange,
+  options,
+}: {
+  type: "image" | "video";
+  value: string;
+  onChange: (value: string) => void;
+  options?: { quality?: "Low" | "Medium" | "High" | "Ultra"; aspectRatio?: string; resolution?: string; durationSeconds?: number };
+}) {
   const [open, setOpen] = useState(false);
   const models = type === "image" ? imageGenerationModels : videoGenerationModels;
   const selected = models.find((modelOption) => modelOption.id === value) || models[0];
@@ -1279,7 +1289,7 @@ function ModelMenu({ type, value, onChange }: { type: "image" | "video"; value: 
         </span>
         <div className="flex items-center gap-2">
           <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-xs font-bold text-[#b9f42e]">
-            ⚡ {calculateCreditCost(selected.id, type)} Credits
+            ⚡ {calculateCreditCost(selected.id, type, options?.durationSeconds || 5, options)} Credits
           </span>
           <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition ${open ? "rotate-180" : ""}`} />
         </div>
@@ -1299,7 +1309,7 @@ function ModelMenu({ type, value, onChange }: { type: "image" | "video"; value: 
                     </summary>
                     <div className="pb-1 pl-8">
                       {family.models.map((modelOption) => {
-                        const cost = calculateCreditCost(modelOption.id, type);
+                        const cost = calculateCreditCost(modelOption.id, type, options?.durationSeconds || 5, options);
                         const isSelected = modelOption.id === value;
                         return (
                           <button
@@ -2214,13 +2224,13 @@ function ShotMediaWorkspace({
 
     try {
       if (isImage) {
-        const response = await fetch(`/api/studio/projects/${projectId}/images`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references }) });
+        const response = await fetch(`/api/studio/projects/${projectId}/images`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, aspectRatio, quality }) });
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || "Image generation failed");
         setGenHistory((prev) => prev.map((g) => g.id === genId ? { ...g, status: "completed" as const, videoUrl: body.imageUrl || source } : g));
       } else {
-        setGenerationStatus("Submitting to BytePlus…");
-        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, characterEntityIds: selectedCharacterIds, generationMode: videoInputMode, startFrame, endFrame, aspectRatio, resolution, audioEnabled, durationSeconds }) });
+        setGenerationStatus("Submitting generation job…");
+        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, characterEntityIds: selectedCharacterIds, generationMode: videoInputMode, startFrame, endFrame, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
         const body = await response.json();
         if (!response.ok) {
           const errorMsg = body.error || "Video generation failed";
@@ -2277,7 +2287,9 @@ function ShotMediaWorkspace({
     }
   };
 
-  const currentCreditCost = calculateCreditCost(model, isImage ? "image" : "video", durationSeconds);
+  const [quality, setQuality] = useState<"Low" | "Medium" | "High" | "Ultra">("Medium");
+
+  const currentCreditCost = calculateCreditCost(model, isImage ? "image" : "video", durationSeconds, { quality, aspectRatio, resolution });
   const currentActiveChosenSource = isImage ? media.shot.keyframe_image : media.shot.video_url;
   const isCurrentlyChosen = Boolean(previewSource && previewSource === currentActiveChosenSource);
 
@@ -2644,12 +2656,38 @@ function ShotMediaWorkspace({
                 </div>
               </div>
             )}
-            {!isImage && (
-              <div className="mb-5 rounded-2xl border border-white/10 bg-[#0b0c0b] p-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <ModelChip label="Aspect ratio" value={aspectRatio} choices={["9:16", "16:9", "1:1", "3:4", "4:3", "21:9"]} onChange={setAspectRatio} />
-                  <ModelChip label="Resolution" value={resolution} choices={["480p", "720p"]} onChange={setResolution} />
-                  <ModelChip label="Duration" value={`${durationSeconds}s`} choices={["4s", "6s", "8s", "10s", "15s", "20s", "30s"]} onChange={(next) => setDurationSeconds(Number(next.replace(/s$/, "")))} />
+            <div className="mb-5 rounded-2xl border border-white/10 bg-[#0b0c0b] p-4">
+              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-zinc-500">Generation Settings</p>
+              <div className="grid grid-cols-2 gap-3">
+                <ModelChip
+                  label="Aspect ratio"
+                  value={aspectRatio}
+                  choices={["1:1", "2:3", "3:2", "9:16", "16:9", "21:9"]}
+                  onChange={setAspectRatio}
+                />
+                <ModelChip
+                  label="Quality Level"
+                  value={`✨ ${quality}`}
+                  choices={["Low", "Medium", "High", "Ultra"]}
+                  onChange={(val) => setQuality(val.replace(/^✨\s*/, "") as "Low" | "Medium" | "High" | "Ultra")}
+                />
+                {!isImage && (
+                  <ModelChip
+                    label="Resolution"
+                    value={resolution}
+                    choices={["480p", "720p", "1080p", "4K"]}
+                    onChange={setResolution}
+                  />
+                )}
+                {!isImage && (
+                  <ModelChip
+                    label="Duration"
+                    value={`${durationSeconds}s`}
+                    choices={["4s", "6s", "8s", "10s", "15s", "20s", "30s"]}
+                    onChange={(next) => setDurationSeconds(Number(next.replace(/s$/, "")))}
+                  />
+                )}
+                {!isImage && (
                   <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
                     <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">Audio</p>
                     <button type="button" onClick={() => setAudioEnabled((current) => !current)} className={`mt-2 inline-flex items-center gap-3 rounded-full px-3 py-2 text-sm font-bold ${audioEnabled ? "bg-[#fff878] text-black" : "bg-white/10 text-zinc-300"}`}>
@@ -2659,9 +2697,9 @@ function ShotMediaWorkspace({
                       {audioEnabled ? "On" : "Off"}
                     </button>
                   </div>
-                </div>
+                )}
               </div>
-            )}
+            </div>
             <label className="block text-xs font-bold uppercase tracking-wide text-zinc-500">
               {isImage ? "Image prompt" : "Video motion prompt"}
               <textarea
@@ -2675,7 +2713,7 @@ function ShotMediaWorkspace({
                 }
               />
             </label>
-            <ModelMenu type={isImage ? "image" : "video"} value={model} onChange={setModel} />
+            <ModelMenu type={isImage ? "image" : "video"} value={model} onChange={setModel} options={{ quality, aspectRatio, resolution, durationSeconds }} />
             <p className="mt-4 rounded-xl border border-[#b9f42e]/20 bg-[#b9f42e]/5 p-3 text-sm text-zinc-300">
               {isImage ? "Image requests are processed securely on the server." : "Video requests run asynchronously on secure generation servers."}
             </p>

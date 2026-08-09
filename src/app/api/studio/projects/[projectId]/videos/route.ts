@@ -18,7 +18,8 @@ const submitSchema = z.object({
   startFrame: z.string().max(2_000).nullable().optional(),
   endFrame: z.string().max(2_000).nullable().optional(),
   aspectRatio: z.enum(["9:16", "16:9", "1:1", "3:4", "4:3", "21:9"]).default("9:16"),
-  resolution: z.enum(["480p", "720p"]).default("720p"),
+  resolution: z.enum(["480p", "720p", "1080p", "4K"]).default("720p"),
+  quality: z.enum(["Low", "Medium", "High", "Ultra"]).default("Medium"),
   audioEnabled: z.boolean().default(true),
   durationSeconds: z.number().int().min(4).max(30).default(4),
 }).strict()
@@ -52,8 +53,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const shot = await verifyShot(context, projectId, input.shotId)
     if (!shot) return NextResponse.json({ error: "Shot not found" }, { status: 404 })
 
-    // Enforce credit balance & deduction (2x API cost rule)
-    const creditCost = calculateCreditCost(input.model, "video", input.durationSeconds)
+    // Enforce credit balance & deduction
+    const creditCost = calculateCreditCost(input.model, "video", input.durationSeconds, { resolution: input.resolution, aspectRatio: input.aspectRatio, quality: input.quality })
     const deduct = await deductUserCredits(context.user.id, creditCost, input.model, `Video Generation (${input.model})`, context.supabase)
     if (!deduct.success) {
       return NextResponse.json({ error: deduct.errorMessage || "Insufficient credits" }, { status: 402 })

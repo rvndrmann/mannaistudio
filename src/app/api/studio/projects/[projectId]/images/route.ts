@@ -15,6 +15,8 @@ const imageRequestSchema = z.object({
   prompt: z.string().trim().min(1).max(12_000),
   model: z.string().refine(isImageGenerationModel, "Unsupported image model"),
   referenceImages: z.array(z.string().max(2_000)).max(8).default([]),
+  aspectRatio: z.string().max(20).optional(),
+  quality: z.enum(["Low", "Medium", "High", "Ultra"]).optional(),
 }).strict()
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
@@ -23,8 +25,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const context = await requireAuthenticatedProject(projectId)
     const input = imageRequestSchema.parse(await request.json())
 
-    // Enforce credit balance & deduction (2x API cost rule)
-    const creditCost = calculateCreditCost(input.model, "image")
+    // Enforce credit balance & deduction
+    const creditCost = calculateCreditCost(input.model, "image", 5, { quality: input.quality, aspectRatio: input.aspectRatio })
     const deduct = await deductUserCredits(context.user.id, creditCost, input.model, `Image Generation (${input.model})`, context.supabase)
     if (!deduct.success) {
       return NextResponse.json({ error: deduct.errorMessage || "Insufficient credits" }, { status: 402 })

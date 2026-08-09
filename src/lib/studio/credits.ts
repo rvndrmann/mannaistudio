@@ -39,16 +39,40 @@ export const MODEL_CREDIT_COSTS: Record<string, { cost: number; unit: string; de
   "fal-luma-dream-machine": { cost: 16, unit: "per video", description: "Luma Dream Machine" },
 }
 
-export function calculateCreditCost(modelId: string, type: "image" | "video", durationSeconds = 5): number {
+export function calculateCreditCost(
+  modelId: string,
+  type: "image" | "video",
+  durationSeconds = 5,
+  options?: {
+    quality?: "Low" | "Medium" | "High" | "Ultra"
+    aspectRatio?: string
+    resolution?: string
+  },
+): number {
   const modelConfig = MODEL_CREDIT_COSTS[modelId]
-  if (modelConfig) {
-    if (type === "video" && durationSeconds > 5) {
-      return Math.ceil(modelConfig.cost * (durationSeconds / 5))
-    }
-    return modelConfig.cost
+  let baseCost = modelConfig ? modelConfig.cost : (type === "video" ? 10 : 3)
+
+  if (type === "video" && durationSeconds > 5) {
+    baseCost = Math.ceil(baseCost * (durationSeconds / 5))
   }
-  // Default fallback if model not explicitly in matrix
-  return type === "video" ? 10 : 3
+
+  // Quality scaling
+  const quality = options?.quality || "Medium"
+  let qualityMultiplier = 1.0
+  if (quality === "Low") qualityMultiplier = 0.6
+  else if (quality === "Medium") qualityMultiplier = 1.0
+  else if (quality === "High") qualityMultiplier = 2.4 // e.g. 7 -> 17 credits
+  else if (quality === "Ultra") qualityMultiplier = 3.2
+
+  // Resolution scaling
+  const resolution = options?.resolution || "720p"
+  let resolutionMultiplier = 1.0
+  if (resolution === "480p") resolutionMultiplier = 0.85
+  else if (resolution === "1080p") resolutionMultiplier = 1.4
+  else if (resolution === "4K") resolutionMultiplier = 2.5
+
+  const totalCost = Math.round(baseCost * qualityMultiplier * resolutionMultiplier)
+  return Math.max(1, totalCost)
 }
 
 export async function getUserCredits(userId: string, client?: SupabaseClient): Promise<number> {
