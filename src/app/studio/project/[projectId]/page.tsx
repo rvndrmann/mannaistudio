@@ -216,6 +216,8 @@ export default function WorkspacePage({
   const [assetType, setAssetType] = useState<Entity["type"] | null>(null);
   const [episodeId, setEpisodeId] = useState<string | null>(null);
   const [episodeMenu, setEpisodeMenu] = useState(false);
+  const [showBasicSettings, setShowBasicSettings] = useState(false);
+  const [projectMenu, setProjectMenu] = useState(false);
   const load = async () => {
     setLoading(true);
     try {
@@ -265,8 +267,6 @@ export default function WorkspacePage({
   const visibleTabs = data.features?.production_modes_enabled
     ? [...tabs, productionTab]
     : tabs;
-  const [showBasicSettings, setShowBasicSettings] = useState(false);
-  const [projectMenu, setProjectMenu] = useState(false);
 
   const createEpisode = async () => {
     const created = await save({ action: "createEpisode" });
