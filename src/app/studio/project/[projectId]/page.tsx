@@ -2363,10 +2363,10 @@ function ShotMediaWorkspace({
               {genHistory.length > 1 ? `${genHistory.length} generations` : "Private project asset"}
             </span>
           </header>
-          <div className="grid flex-1 place-items-center overflow-auto bg-black/30 p-8">
-            <div className={`w-full overflow-hidden rounded-lg bg-[#151715] shadow-2xl transition-all ${aspectRatio === "9:16" ? "max-w-[360px]" : "max-w-[640px]"}`}>
+          <div className="grid flex-1 place-items-center overflow-auto bg-black/40 p-4 sm:p-8">
+            <div className="flex flex-col items-center overflow-hidden rounded-xl bg-[#151715] shadow-2xl transition-all max-w-4xl">
               {previewGenerating ? (
-                <div className={`grid place-items-center ${aspectRatio === "9:16" ? "aspect-[9/16]" : aspectRatio === "16:9" ? "aspect-[16/9]" : "aspect-square"}`}>
+                <div className={`grid place-items-center p-8 ${aspectRatio === "9:16" ? "aspect-[9/16] h-[55vh] max-h-[580px]" : "aspect-[16/9] w-full max-w-[640px]"}`}>
                   <div className="flex flex-col items-center gap-4">
                     <svg className="h-12 w-12 animate-spin text-[#b9f42e]" viewBox="0 0 24 24" fill="none">
                       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="opacity-20" />
@@ -2379,9 +2379,13 @@ function ShotMediaWorkspace({
               ) : previewError ? (
                 <GenerationPreviewError message={previewError} />
               ) : previewSource ? (
-                <Preview src={previewSource} label="Shot media" type={isImage ? "image" : "video"} aspectRatio={aspectRatio} />
+                <ResolvedMedia
+                  src={previewSource}
+                  type={isImage ? "image" : "video"}
+                  className="max-h-[65vh] w-auto max-w-full rounded-t-xl object-contain mx-auto"
+                />
               ) : (
-                <div className={`grid place-items-center text-center text-zinc-500 ${aspectRatio === "9:16" ? "aspect-[9/16]" : aspectRatio === "16:9" ? "aspect-[16/9]" : "aspect-square"}`}>
+                <div className={`grid place-items-center text-center text-zinc-500 p-8 ${aspectRatio === "9:16" ? "aspect-[9/16] h-[55vh] max-h-[580px]" : "aspect-[16/9] w-full max-w-[640px]"}`}>
                   Click &ldquo;Generate video&rdquo; below<br />to create your first output.
                 </div>
               )}
@@ -2971,11 +2975,13 @@ function Preview({
   label,
   type = "image",
   aspectRatio = "9:16",
+  fit = "contain",
 }: {
   src: string | null;
   label: string;
   type?: "image" | "video";
   aspectRatio?: string;
+  fit?: "cover" | "contain";
 }) {
   const aspectClass =
     aspectRatio === "16:9"
@@ -2989,7 +2995,11 @@ function Preview({
   return (
     <div className={`relative overflow-hidden rounded-lg bg-[#2a2c2b] ${aspectClass}`}>
       {src ? (
-        <ResolvedMedia src={src} type={type} className="h-full w-full object-cover" />
+        <ResolvedMedia
+          src={src}
+          type={type}
+          className={`h-full w-full ${fit === "contain" ? "object-contain bg-black/80" : "object-cover"}`}
+        />
       ) : (
         <div className="grid h-full place-items-center p-2 text-center text-xs text-zinc-500">
           {label}
