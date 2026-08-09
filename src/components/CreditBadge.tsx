@@ -77,7 +77,7 @@ export default function CreditBadge({ className }: { className?: string }) {
               </div>
               <div>
                 <h3 className="text-lg font-bold">Top Up Generation Credits</h3>
-                <p className="text-xs text-zinc-400">$10 USD = 1,000 Credits (2x AI Model Cost)</p>
+                <p className="text-xs text-zinc-400">$10 USD = 1,000 Generation Credits</p>
               </div>
             </div>
 
@@ -124,8 +124,8 @@ export default function CreditBadge({ className }: { className?: string }) {
               ))}
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-black/40 p-3 text-center text-[11px] text-zinc-500">
-              ⚡ Charges double our real provider API cost (Seedance 2.0 Fast = 10 Credits, SeaDream Pro = 3 Credits).
+            <div className="rounded-xl border border-white/10 bg-black/40 p-3 text-center text-[11px] text-zinc-400">
+              ⚡ 1,000 Credits = $10 USD. Full access to AI Video & Image generation.
             </div>
           </div>
         </div>

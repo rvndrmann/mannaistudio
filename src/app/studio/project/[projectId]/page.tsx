@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models";
 import { getModelLabel, imageGenerationModels, videoGenerationModels } from "@/lib/studio/generation-models";
+import { calculateCreditCost } from "@/lib/studio/credits";
 import { createClient } from "@/lib/supabase/client";
 
 import {
@@ -1275,7 +1276,12 @@ function ModelMenu({ type, value, onChange }: { type: "image" | "video"; value: 
           <WandSparkles className="h-4 w-4 shrink-0 text-[#fff878]" />
           <span className="truncate">{selected.label}</span>
         </span>
-        <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition ${open ? "rotate-180" : ""}`} />
+        <div className="flex items-center gap-2">
+          <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-xs font-bold text-[#b9f42e]">
+            ⚡ {calculateCreditCost(selected.id, type)} Credits
+          </span>
+          <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition ${open ? "rotate-180" : ""}`} />
+        </div>
       </button>
       {open && (
         <div className="absolute bottom-[calc(100%+8px)] left-0 z-[80] w-full min-w-[280px] overflow-hidden rounded-xl border border-white/10 bg-[#18191c] p-2 shadow-2xl">
@@ -1291,20 +1297,26 @@ function ModelMenu({ type, value, onChange }: { type: "image" | "video"; value: 
                       <ChevronDown className="h-4 w-4 text-zinc-500 transition group-open:rotate-180" />
                     </summary>
                     <div className="pb-1 pl-8">
-                      {family.models.map((modelOption) => (
-                        <button
-                          key={modelOption.id}
-                          type="button"
-                          onClick={() => {
-                            onChange(modelOption.id);
-                            setOpen(false);
-                          }}
-                          className={`mt-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${modelOption.id === value ? "bg-[#fff878] font-bold text-black" : "text-zinc-300 hover:bg-white/5"}`}
-                        >
-                          {modelOption.label}
-                          {modelOption.id === value && <span>✓</span>}
-                        </button>
-                      ))}
+                      {family.models.map((modelOption) => {
+                        const cost = calculateCreditCost(modelOption.id, type);
+                        const isSelected = modelOption.id === value;
+                        return (
+                          <button
+                            key={modelOption.id}
+                            type="button"
+                            onClick={() => {
+                              onChange(modelOption.id);
+                              setOpen(false);
+                            }}
+                            className={`mt-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${isSelected ? "bg-[#fff878] font-bold text-black" : "text-zinc-300 hover:bg-white/5"}`}
+                          >
+                            <span>{modelOption.label}</span>
+                            <span className={`ml-2 text-xs font-semibold ${isSelected ? "text-black" : "text-[#b9f42e]"}`}>
+                              ⚡ {cost} Credits
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </details>
                 ) : (
@@ -1483,10 +1495,10 @@ function AssetWorkspace({
             <button
               onClick={requestGeneration}
               disabled={working}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-3 font-bold text-black"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-3.5 font-bold text-black hover:bg-[#a6de25] transition disabled:opacity-50"
             >
-              <Sparkles className="h-4 w-4" />
-              {working ? "Saving request…" : "Generate image"}
+              <Sparkles className="h-4 w-4 fill-black" />
+              {working ? "Saving request…" : `Generate image (⚡ ${calculateCreditCost(model, "image")} Credits)`}
             </button>
           </div>
         </aside>
@@ -2263,6 +2275,9 @@ function ShotMediaWorkspace({
       setBusy(false);
     }
   };
+
+  const currentCreditCost = calculateCreditCost(model, isImage ? "image" : "video", durationSeconds);
+
   return (
     <div className="fixed inset-0 z-50 bg-[#080908] text-white">
       <div className="flex h-full">
@@ -2358,9 +2373,9 @@ function ShotMediaWorkspace({
             <button
               onClick={generate}
               disabled={busy}
-              className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-300 hover:bg-white/5"
+              className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3.5 py-2 text-xs font-bold text-[#b9f42e] hover:bg-white/10 disabled:opacity-40"
             >
-              ↻ {busy ? "Generating…" : "Regenerate"}
+              ↻ {busy ? "Generating…" : `Regenerate (⚡ ${currentCreditCost} Credits)`}
             </button>
             <span className="ml-auto text-xs text-zinc-500">
               {genHistory.length > 1 ? `${genHistory.length} generations` : "Private project asset"}
@@ -2528,7 +2543,7 @@ function ShotMediaWorkspace({
             </label>
             <ModelMenu type={isImage ? "image" : "video"} value={model} onChange={setModel} />
             <p className="mt-4 rounded-xl border border-[#b9f42e]/20 bg-[#b9f42e]/5 p-3 text-sm text-zinc-300">
-              {isImage ? "Image requests are processed securely on the server. OpenAI and BytePlus API keys are never sent to this browser." : "Seedance video requests run asynchronously through BytePlus ModelArk. You will approve the billable request before it is submitted."}
+              {isImage ? "Image requests are processed securely on the server." : "Video requests run asynchronously on secure generation servers."}
             </p>
             {generationStatus && <p role="status" className="mt-3 rounded-xl border border-sky-500/30 bg-sky-500/10 p-3 text-sm text-sky-100">{generationStatus}</p>}
             {generationError && <p role="alert" className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{generationError}</p>}
@@ -2537,12 +2552,12 @@ function ShotMediaWorkspace({
             <button
               onClick={generate}
               disabled={busy}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-3 font-bold text-black"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-3.5 font-bold text-black hover:bg-[#a6de25] transition disabled:opacity-50"
             >
-              <Sparkles className="h-4 w-4" />
+              <Sparkles className="h-4 w-4 fill-black" />
               {busy
                 ? isImage ? "Generating image…" : "Generating video…"
-                : `Generate ${isImage ? "image" : "video"}`}
+                : `Generate ${isImage ? "image" : "video"} (⚡ ${currentCreditCost} Credits)`}
             </button>
           </div>
         </aside>
