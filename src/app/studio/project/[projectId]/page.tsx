@@ -218,8 +218,8 @@ export default function WorkspacePage({
   const [episodeMenu, setEpisodeMenu] = useState(false);
   const [showBasicSettings, setShowBasicSettings] = useState(false);
   const [projectMenu, setProjectMenu] = useState(false);
-  const load = async () => {
-    setLoading(true);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const r = await fetch(
         `/api/studio/projects/${projectId}${episodeId ? `?episodeId=${episodeId}` : ""}`,
@@ -228,9 +228,9 @@ export default function WorkspacePage({
       if (!r.ok) throw new Error(json.error);
       setData(json);
     } catch {
-      setData(null);
+      if (!silent) setData(null);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
   useEffect(() => {
@@ -2349,7 +2349,7 @@ function ShotMediaWorkspace({
   projectId: string;
   close: () => void;
   save: (b: unknown) => Promise<void>;
-  reload: () => Promise<void>;
+  reload: (silent?: boolean) => Promise<void>;
 }) {
   const [prompt, setPrompt] = useState(media.shot.prompt || "");
   const [model, setModel] = useState<string>(
@@ -2372,7 +2372,7 @@ function ShotMediaWorkspace({
   const [picker, setPicker] = useState(false);
   const [referenceSourcePicker, setReferenceSourcePicker] = useState(false);
   const [referenceTarget, setReferenceTarget] = useState<"references" | "start" | "end">("references");
-  const [references, setReferences] = useState<string[]>(() => media.type === "video" && media.shot.keyframe_image ? [media.shot.keyframe_image] : []);
+  const [references, setReferences] = useState<string[]>([]);
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>(media.shot.referenced_entities || []);
   const videoReferenceImages = videoInputMode === "keyframe" ? [startFrame, endFrame].filter((item): item is string => Boolean(item)) : references;
   const selectedCharacterEntities = entities.filter((e) => e.type === "character" && selectedCharacterIds.includes(e.id));
@@ -2405,7 +2405,7 @@ function ShotMediaWorkspace({
         status: "completed",
         prompt: media.shot.prompt || "",
         model: media.type === "image" ? imageGenerationModels[0].id : videoGenerationModels[0].id,
-        referenceImages: media.type === "video" && media.shot.keyframe_image ? [media.shot.keyframe_image] : [],
+        referenceImages: [],
         videoUrl: source,
         error: null,
         createdAt: Date.now() - 1,
@@ -2434,7 +2434,7 @@ function ShotMediaWorkspace({
       const videoUrl = (finalJob.result_url as string) || (finalJob.videoUrl as string) || source;
       setGenHistory((prev) => prev.map((g) => g.id === jobId ? { ...g, status: "completed" as const, videoUrl } : g));
       setGenerationStatus("Video ready ✓");
-      await reload();
+      await reload(true);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Generation failed";
       setGenerationError(errorMsg);
@@ -2474,7 +2474,7 @@ function ShotMediaWorkspace({
             status: "completed",
             prompt: media.shot.prompt || "",
             model: media.type === "image" ? imageGenerationModels[0].id : videoGenerationModels[0].id,
-            referenceImages: media.type === "video" && media.shot.keyframe_image ? [media.shot.keyframe_image] : [],
+            referenceImages: [],
             videoUrl: source,
             error: null,
             createdAt: 0,
@@ -2521,7 +2521,7 @@ function ShotMediaWorkspace({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Asset registration failed");
       setGenerationStatus("Registered to BytePlus Asset Library ✓");
-      await reload();
+      await reload(true);
     } catch (err) {
       setGenerationError(err instanceof Error ? err.message : "Asset registration failed");
     } finally {
@@ -2654,7 +2654,7 @@ function ShotMediaWorkspace({
         mediaUrl: previewSource,
       });
       setGenerationStatus("Chosen as active shot media ✓");
-      await reload();
+      await reload(true);
     } catch (err) {
       setGenerationError(err instanceof Error ? err.message : "Could not set chosen media");
     } finally {
@@ -2696,7 +2696,7 @@ function ShotMediaWorkspace({
         }
       }
       setGenerationStatus("Item deleted ✓");
-      await reload();
+      await reload(true);
     } catch (err) {
       setGenerationError(err instanceof Error ? err.message : "Delete failed");
     } finally {
