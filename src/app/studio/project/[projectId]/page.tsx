@@ -2278,29 +2278,43 @@ function ShotMediaWorkspace({
 
   const currentCreditCost = calculateCreditCost(model, isImage ? "image" : "video", durationSeconds);
 
+  // Escape key handler to close slide over workspace
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [close]);
+
   return (
     <div className="fixed inset-0 z-50 bg-[#080908] text-white">
       <div className="flex h-full">
         {/* Left sidebar — Generation History */}
-        <aside className="w-44 shrink-0 overflow-y-auto border-r border-white/10 bg-[#0b0c0b] p-3">
-          <button
-            onClick={close}
-            className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 text-zinc-300 hover:bg-white/10"
-          >
-            <X className="h-4 w-4" />
-          </button>
-          <label className="mb-3 grid aspect-[3/4] cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-xs text-zinc-400 hover:border-[#b9f42e] transition">
-            +<br />Upload
-            <input type="file" accept="image/*,video/*" className="hidden" onChange={(e) => uploadReference(e.target.files?.[0])} />
-          </label>
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600">Generations</p>
-          <div className="flex flex-col gap-2">
-            {genHistory.map((gen) => {
-              const isActive = activeGenId === gen.id;
-              return (
-                <button
-                  key={gen.id}
-                  type="button"
+        <aside className="relative flex w-44 shrink-0 flex-col border-r border-white/10 bg-[#0b0c0b]">
+          <div className="sticky top-0 z-20 flex items-center justify-between border-b border-white/10 bg-[#0b0c0b]/95 p-3 backdrop-blur-md">
+            <button
+              onClick={close}
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white transition hover:bg-white/20 hover:text-[#b9f42e]"
+              title="Close Workspace (Esc)"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Esc</span>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3">
+            <label className="mb-3 grid aspect-[3/4] cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-xs text-zinc-400 hover:border-[#b9f42e] transition">
+              +<br />Upload
+              <input type="file" accept="image/*,video/*" className="hidden" onChange={(e) => uploadReference(e.target.files?.[0])} />
+            </label>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600">Generations</p>
+            <div className="flex flex-col gap-2">
+              {genHistory.map((gen) => {
+                const isActive = activeGenId === gen.id;
+                return (
+                  <button
+                    key={gen.id}
+                    type="button"
                   onClick={() => {
                     setActiveGenId(gen.id);
                     if (gen.prompt) setPrompt(gen.prompt);
@@ -2345,7 +2359,8 @@ function ShotMediaWorkspace({
               );
             })}
           </div>
-        </aside>
+        </div>
+      </aside>
 
         {/* Main preview area */}
         <main className="flex min-w-0 flex-1 flex-col">
