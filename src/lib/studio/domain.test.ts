@@ -14,6 +14,16 @@ describe("Studio domain validation", () => {
     expect(() => directorChatInputSchema.parse({ projectId: "other-user-project", message: "hello", idempotencyKey: "12345678", admin: true })).toThrow()
   })
 
+  it("accepts canonical entity ids on Director chat requests", () => {
+    const parsed = directorChatInputSchema.parse({
+      projectId: "00000000-0000-4000-8000-000000000001",
+      message: "Create an image with @Maya",
+      mentionedEntityIds: ["00000000-0000-4000-8000-000000000002"],
+      idempotencyKey: "mention-test",
+    })
+    expect(parsed.mentionedEntityIds).toEqual(["00000000-0000-4000-8000-000000000002"])
+  })
+
   it("keeps every Studio capability disabled when settings are absent", () => {
     expect(normalizeStudioFeatureFlags(null)).toEqual(studioFeatureFlagDefaults)
   })

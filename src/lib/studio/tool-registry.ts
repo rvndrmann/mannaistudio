@@ -37,6 +37,73 @@ export const inspectCurrentProjectTool = defineDirectorTool({
   },
 })
 
+export const readEpisodeScriptTool = defineDirectorTool({
+  name: "read_episode_script",
+  version: 1,
+  risk: "read",
+  requiresApproval: false,
+  input: z.object({ episodeId: z.string().uuid() }).strict(),
+  async execute(context, input) {
+    const { data, error } = await context.supabase.from("creator_episodes").select("id,name,description,script_content,script_updated_at").eq("id", input.episodeId).eq("project_id", context.project.id).single()
+    if (error) throw error
+    return data
+  },
+})
+
+export const searchEpisodeScriptTool = defineDirectorTool({
+  name: "search_episode_script",
+  version: 1,
+  risk: "read",
+  requiresApproval: false,
+  input: z.object({ episodeId: z.string().uuid(), query: z.string().trim().max(200).default(""), startLine: z.number().int().min(1).default(1), endLine: z.number().int().min(1).max(5_000).default(200) }).strict(),
+  async execute(context, input) {
+    if (input.endLine < input.startLine || input.endLine - input.startLine > 499) throw new Error("Script ranges may contain at most 500 lines")
+    const { data, error } = await context.supabase.from("creator_episodes").select("id,name,script_content").eq("id", input.episodeId).eq("project_id", context.project.id).single()
+    if (error) throw error
+    const text = typeof data.script_content === "string" ? data.script_content : JSON.stringify(data.script_content || {}, null, 2)
+    const lines = text.split("\n")
+    const selected = lines.slice(input.startLine - 1, input.endLine).map((line, index) => ({ line: input.startLine + index, text: line }))
+    const query = input.query.toLowerCase()
+    return { totalLines: lines.length, startLine: input.startLine, endLine: Math.min(input.endLine, lines.length), lines: query ? selected.filter((line) => line.text.toLowerCase().includes(query)) : selected }
+  },
+})
+
+export const listProductionEntitiesTool = defineDirectorTool({
+  name: "list_production_entities",
+  version: 1,
+  risk: "read",
+  requiresApproval: false,
+  input: z.object({
+    types: z.array(z.enum(["character", "scene", "prop"])).max(3).default([]),
+    search: z.string().trim().max(200).default(""),
+    offset: z.number().int().nonnegative().default(0),
+    limit: z.number().int().min(1).max(50).default(25),
+  }).strict(),
+  async execute(context, input) {
+    let query = context.supabase.from("creator_entities").select("id,type,kind,name,handle,description,reference_images,status,approval_status,metadata", { count: "exact" }).eq("project_id", context.project.id).order("created_at").range(input.offset, input.offset + input.limit - 1)
+    if (input.types.length) query = query.in("type", input.types)
+    if (input.search) query = query.ilike("name", `%${input.search.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`)
+    const { data, error, count } = await query
+    if (error) throw error
+    return { items: data || [], total: count || 0, offset: input.offset, limit: input.limit, hasMore: input.offset + input.limit < (count || 0) }
+  },
+})
+
+export const listStoryboardShotsTool = defineDirectorTool({
+  name: "list_storyboard_shots",
+  version: 1,
+  risk: "read",
+  requiresApproval: false,
+  input: z.object({ episodeId: z.string().uuid(), offset: z.number().int().nonnegative().default(0), limit: z.number().int().min(1).max(50).default(25) }).strict(),
+  async execute(context, input) {
+    const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
+    if (!episode) throw new Error("Episode does not belong to this project")
+    const { data, error, count } = await context.supabase.from("creator_shots").select("id,order_index,title,description,script_text,prompt,keyframe_image,video_url,video_status,duration_seconds,aspect_ratio,referenced_entities,metadata", { count: "exact" }).eq("episode_id", input.episodeId).order("order_index").range(input.offset, input.offset + input.limit - 1)
+    if (error) throw error
+    return { items: data || [], total: count || 0, offset: input.offset, limit: input.limit, hasMore: input.offset + input.limit < (count || 0) }
+  },
+})
+
 export const updateCreativeBriefTool = defineDirectorTool({
   name: "update_creative_brief",
   version: 1,
@@ -100,6 +167,86 @@ export const createProductionEntityTool = defineDirectorTool({
   },
 })
 
+export const createProductionEntitiesBatchTool = defineDirectorTool({
+  name: "create_production_entities_batch",
+  version: 1,
+  risk: "write",
+  requiresApproval: true,
+  input: z.object({ entities: z.array(z.object({ kind: entityKindSchema, name: z.string().trim().min(1).max(200), description: z.string().trim().max(10_000).default(""), metadata: z.record(z.string(), z.unknown()).default({}) }).strict()).min(1).max(50), skipExisting: z.boolean().default(true) }).strict(),
+  async execute(context, input) {
+    const handles = input.entities.map((entity) => entityHandle(entity.name))
+    const { data: existing, error: existingError } = await context.supabase.from("creator_entities").select("id,handle,name").eq("project_id", context.project.id).in("handle", handles)
+    if (existingError) throw existingError
+    const existingHandles = new Set((existing || []).map((entity) => entity.handle))
+    if (!input.skipExisting && existingHandles.size) throw new Error(`Entities already exist: ${(existing || []).map((entity) => entity.name).join(", ")}`)
+    const rows = input.entities.filter((entity) => !existingHandles.has(entityHandle(entity.name))).map((entity) => ({ project_id: context.project.id, type: legacyEntityType(entity.kind), kind: entity.kind, name: entity.name, handle: entityHandle(entity.name), description: entity.description || null, metadata: entity.metadata, status: "draft", approval_status: "pending" }))
+    if (!rows.length) return { created: [], skipped: existing || [] }
+    const { data, error } = await context.supabase.from("creator_entities").insert(rows).select("*")
+    if (error) throw error
+    return { created: data || [], skipped: existing || [] }
+  },
+})
+
+export const createStoryboardBatchTool = defineDirectorTool({
+  name: "create_storyboard_batch",
+  version: 1,
+  risk: "write",
+  requiresApproval: true,
+  input: z.object({
+    episodeId: z.string().uuid(),
+    replaceExisting: z.boolean().default(false),
+    shots: z.array(z.object({ title: z.string().trim().min(1).max(200), description: z.string().trim().max(5_000).default(""), scriptText: z.string().trim().max(10_000).default(""), prompt: z.string().trim().min(1).max(20_000), durationSeconds: z.number().positive().max(120).default(4), aspectRatio: z.string().trim().max(20).default("16:9"), referencedEntityIds: z.array(z.string().uuid()).max(30).default([]) }).strict()).min(1).max(100),
+  }).strict(),
+  async execute(context, input) {
+    const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
+    if (!episode) throw new Error("Episode does not belong to this project")
+    const referencedIds = Array.from(new Set(input.shots.flatMap((shot) => shot.referencedEntityIds)))
+    if (referencedIds.length) {
+      const { data: entities, error: entityError } = await context.supabase.from("creator_entities").select("id").eq("project_id", context.project.id).in("id", referencedIds)
+      if (entityError) throw entityError
+      if ((entities || []).length !== referencedIds.length) throw new Error("One or more storyboard entity references are invalid")
+    }
+    if (input.replaceExisting) {
+      const { error } = await context.supabase.from("creator_shots").delete().eq("episode_id", input.episodeId)
+      if (error) throw error
+    }
+    const { count } = await context.supabase.from("creator_shots").select("id", { count: "exact", head: true }).eq("episode_id", input.episodeId)
+    const offset = input.replaceExisting ? 0 : count || 0
+    const rows = input.shots.map((shot, index) => ({ episode_id: input.episodeId, order_index: offset + index, title: shot.title, description: shot.description || null, script_text: shot.scriptText || null, prompt: shot.prompt, duration_seconds: shot.durationSeconds, aspect_ratio: shot.aspectRatio, referenced_entities: shot.referencedEntityIds }))
+    const { data, error } = await context.supabase.from("creator_shots").insert(rows).select("*")
+    if (error) throw error
+    return { created: data || [], replacedExisting: input.replaceExisting }
+  },
+})
+
+export const validateProductionTool = defineDirectorTool({
+  name: "validate_production",
+  version: 1,
+  risk: "read",
+  requiresApproval: false,
+  input: z.object({ episodeId: z.string().uuid() }).strict(),
+  async execute(context, input) {
+    const { data: episode } = await context.supabase.from("creator_episodes").select("id,script_content").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
+    if (!episode) throw new Error("Episode does not belong to this project")
+    const [{ data: shots, error: shotError }, { data: entities, error: entityError }] = await Promise.all([
+      context.supabase.from("creator_shots").select("id,title,prompt,referenced_entities,keyframe_image,video_url,aspect_ratio").eq("episode_id", input.episodeId).order("order_index"),
+      context.supabase.from("creator_entities").select("id,name,handle,type,description,reference_images,status").eq("project_id", context.project.id),
+    ])
+    if (shotError) throw shotError
+    if (entityError) throw entityError
+    const entityIds = new Set((entities || []).map((entity) => entity.id))
+    const issues = (shots || []).flatMap((shot) => {
+      const values: Array<{ severity: "warning" | "blocking"; code: string; shotId: string; message: string }> = []
+      if (!shot.prompt?.trim()) values.push({ severity: "blocking", code: "missing_prompt", shotId: shot.id, message: `${shot.title} has no generation prompt.` })
+      const missing = (shot.referenced_entities || []).filter((id: string) => !entityIds.has(id))
+      if (missing.length) values.push({ severity: "blocking", code: "invalid_entity_reference", shotId: shot.id, message: `${shot.title} references ${missing.length} missing entities.` })
+      if (!(shot.referenced_entities || []).length) values.push({ severity: "warning", code: "no_entity_references", shotId: shot.id, message: `${shot.title} has no linked production entities.` })
+      return values
+    })
+    return { valid: !issues.some((issue) => issue.severity === "blocking"), issues, counts: { shots: (shots || []).length, entities: (entities || []).length }, scriptPresent: Boolean(episode.script_content) }
+  },
+})
+
 export const recordContinuityFactTool = defineDirectorTool({
   name: "record_continuity_fact",
   version: 1,
@@ -145,6 +292,31 @@ export const estimateGenerationCostTool = defineDirectorTool({
   },
 })
 
+export const inspectGenerationJobsTool = defineDirectorTool({
+  name: "inspect_generation_jobs",
+  version: 1,
+  risk: "read",
+  requiresApproval: false,
+  input: z.object({ episodeId: z.string().uuid().optional(), statuses: z.array(z.enum(["queued", "awaiting_approval", "approved", "processing", "completed", "failed", "cancelled"])).max(7).default([]), limit: z.number().int().min(1).max(100).default(25) }).strict(),
+  async execute(context, input) {
+    let shotIds: string[] | null = null
+    if (input.episodeId) {
+      const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
+      if (!episode) throw new Error("Episode does not belong to this project")
+      const { data: shots, error } = await context.supabase.from("creator_shots").select("id").eq("episode_id", input.episodeId)
+      if (error) throw error
+      shotIds = (shots || []).map((shot) => shot.id)
+    }
+    let query = context.supabase.from("creator_generation_jobs").select("id,shot_id,type,status,model,provider,prompt,estimated_credits,credits_used,result_url,result_thumbnail,error,created_at,started_at,completed_at").eq("project_id", context.project.id).order("created_at", { ascending: false }).limit(input.limit)
+    if (input.statuses.length) query = query.in("status", input.statuses)
+    if (shotIds) query = shotIds.length ? query.in("shot_id", shotIds) : query.is("shot_id", null)
+    const { data, error } = await query
+    if (error) throw error
+    const jobs = data || []
+    return { jobs, counts: jobs.reduce((counts: Record<string, number>, job) => ({ ...counts, [job.status]: (counts[job.status] || 0) + 1 }), {}) }
+  },
+})
+
 export const submitGenerationTool = defineDirectorTool({
   name: "submit_generation",
   version: 1,
@@ -160,6 +332,22 @@ export const submitGenerationTool = defineDirectorTool({
     const { data: shots, error: shotError } = episodeIds.length ? await context.supabase.from("creator_shots").select("id").in("episode_id", episodeIds).in("id", input.request.shotIds) : { data: [], error: null }
     if (shotError) throw shotError
     if ((shots ?? []).length !== input.request.shotIds.length) throw new Error("One or more shots do not belong to this project")
+    const { data: generationShots, error: validationError } = await context.supabase.from("creator_shots").select("id,prompt,referenced_entities").in("id", input.request.shotIds)
+    if (validationError) throw validationError
+    const referencedIds = Array.from(new Set([...(generationShots || []).flatMap((shot) => shot.referenced_entities || []), ...input.request.mentionedEntityIds]))
+    if (referencedIds.length) {
+      const { data: references, error: referenceError } = await context.supabase.from("creator_entities").select("id").eq("project_id", context.project.id).in("id", referencedIds)
+      if (referenceError) throw referenceError
+      if ((references || []).length !== referencedIds.length) throw new Error("Generation blocked: one or more shot entity references are stale")
+    }
+    if (input.request.mentionedEntityIds.length) {
+      const updates = await Promise.all((generationShots || []).map((shot) => context.supabase
+        .from("creator_shots")
+        .update({ referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...input.request.mentionedEntityIds])) })
+        .eq("id", shot.id)))
+      const updateError = updates.find((result) => result.error)?.error
+      if (updateError) throw updateError
+    }
     const jobs = input.request.shotIds.map((shotId, index) => ({ user_id: context.user.id, project_id: context.project.id, shot_id: shotId, type: input.request.type, status: "approved", model: routing.selected.model, provider: routing.selected.provider, prompt: input.prompts[shotId], settings: input.request, estimated_credits: routing.creditsPerShot, requires_approval: true, approved_at: new Date().toISOString(), operation: input.request.type === "video" ? "submit_video_generation" : "submit_image_generation", idempotency_key: `${input.idempotencyKey}:${index}`, routing_decision: routing, cost_estimate: { credits: routing.creditsPerShot } }))
     if (jobs.some((job) => !job.prompt)) throw new Error("Every shot requires a validated prompt")
     const { data, error } = await context.supabase.from("creator_generation_jobs").insert(jobs).select("*")
@@ -396,13 +584,21 @@ export const createRevisionRequestTool = defineDirectorTool({
 
 export const directorTools = {
   inspect_current_project: inspectCurrentProjectTool,
+  read_episode_script: readEpisodeScriptTool,
+  search_episode_script: searchEpisodeScriptTool,
+  list_production_entities: listProductionEntitiesTool,
+  list_storyboard_shots: listStoryboardShotsTool,
   update_creative_brief: updateCreativeBriefTool,
   create_series: createSeriesTool,
   write_series_bible: writeSeriesBibleTool,
   create_production_entity: createProductionEntityTool,
+  create_production_entities_batch: createProductionEntitiesBatchTool,
+  create_storyboard_batch: createStoryboardBatchTool,
+  validate_production: validateProductionTool,
   record_continuity_fact: recordContinuityFactTool,
   inspect_continuity: inspectContinuityTool,
   estimate_generation_cost: estimateGenerationCostTool,
+  inspect_generation_jobs: inspectGenerationJobsTool,
   submit_generation: submitGenerationTool,
   update_script: updateScriptTool,
   update_shot: updateShotTool,

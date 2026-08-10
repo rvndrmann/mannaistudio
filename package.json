@@ -3,12 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --hostname 0.0.0.0",
+    "dev": "next dev --webpack --hostname 0.0.0.0",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "director:cli": "node scripts/ai-director-cli.mjs",
+    "director:mcp": "node scripts/ai-director-mcp-server.mjs"
   },
   "dependencies": {
     "@fal-ai/client": "^1.10.1",

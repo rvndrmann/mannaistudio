@@ -29,9 +29,10 @@ import {
 } from "@/lib/service-requests"
 import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, type BillingSettings } from "@/lib/membership"
 import { defaultDirectorModels, normalizeDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models"
-import { defaultSiteFeatures, fetchSiteFeatures, type SiteFeatures } from "@/lib/studio/feature-flags"
+import { defaultSiteFeatures, fetchSiteFeatures, fetchStudioFeatureFlags, studioFeatureFlagDefaults, type SiteFeatures, type StudioFeatureFlags } from "@/lib/studio/feature-flags"
 import { defaultDirectorWorkflows, fetchDirectorWorkflows, normalizeDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows"
 import { defaultDirectorGlobalInstructions, normalizeDirectorGlobalInstructions } from "@/lib/studio/instructions"
+import { defaultDirectorRuntimeSettings, fetchDirectorRuntimeSettings, normalizeDirectorRuntimeSettings, specialistInstructionKeys, type DirectorRuntimeSettings } from "@/lib/studio/director-runtime-settings"
 import BlogManager from "@/components/admin/BlogManager"
 
 type EnrolledStudent = {
@@ -195,6 +196,12 @@ function AdminDashboardContent() {
     const [directorGlobalInstructions, setDirectorGlobalInstructions] = useState(defaultDirectorGlobalInstructions)
     const [isSavingDirectorGlobalInstructions, setIsSavingDirectorGlobalInstructions] = useState(false)
     const [directorGlobalInstructionsMessage, setDirectorGlobalInstructionsMessage] = useState("")
+    const [directorRuntimeSettings, setDirectorRuntimeSettings] = useState<DirectorRuntimeSettings>(() => structuredClone(defaultDirectorRuntimeSettings))
+    const [isSavingDirectorRuntimeSettings, setIsSavingDirectorRuntimeSettings] = useState(false)
+    const [directorRuntimeSettingsMessage, setDirectorRuntimeSettingsMessage] = useState("")
+    const [studioFeatureFlags, setStudioFeatureFlags] = useState<StudioFeatureFlags>({ ...studioFeatureFlagDefaults })
+    const [isSavingStudioFeatureFlags, setIsSavingStudioFeatureFlags] = useState(false)
+    const [studioFeatureFlagsMessage, setStudioFeatureFlagsMessage] = useState("")
     const [siteFeatures, setSiteFeatures] = useState<SiteFeatures>(defaultSiteFeatures)
     const [isSavingSiteFeatures, setIsSavingSiteFeatures] = useState(false)
     const [siteFeaturesMessage, setSiteFeaturesMessage] = useState("")
@@ -438,6 +445,53 @@ function AdminDashboardContent() {
         if (!supabase) return
         const { data } = await supabase.from("site_settings").select("value").eq("key", "ai_director_global_instructions").maybeSingle()
         setDirectorGlobalInstructions(normalizeDirectorGlobalInstructions(data?.value))
+    }
+
+    const loadDirectorRuntimeSettings = async () => {
+        const supabase = await getServiceRequestClient()
+        if (!supabase) return
+        setDirectorRuntimeSettings(await fetchDirectorRuntimeSettings(supabase))
+    }
+
+    const loadStudioFeatureFlags = async () => {
+        const supabase = await getServiceRequestClient()
+        if (!supabase) return
+        setStudioFeatureFlags(await fetchStudioFeatureFlags(supabase))
+    }
+
+    const handleSaveStudioFeatureFlags = async () => {
+        setIsSavingStudioFeatureFlags(true)
+        setStudioFeatureFlagsMessage("")
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) throw new Error("No Supabase client")
+            const { data, error } = await supabase.rpc("admin_update_studio_feature_flags", { p_features: studioFeatureFlags })
+            if (error) throw error
+            setStudioFeatureFlags({ ...studioFeatureFlagDefaults, ...(data as Partial<StudioFeatureFlags>) })
+            setStudioFeatureFlagsMessage("Studio runtime controls saved.")
+        } catch (err: any) {
+            setStudioFeatureFlagsMessage(`Could not save runtime controls: ${err.message || "Unknown error"}`)
+        } finally {
+            setIsSavingStudioFeatureFlags(false)
+        }
+    }
+
+    const handleSaveDirectorRuntimeSettings = async () => {
+        setIsSavingDirectorRuntimeSettings(true)
+        setDirectorRuntimeSettingsMessage("")
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) throw new Error("No Supabase client")
+            const payload = normalizeDirectorRuntimeSettings(directorRuntimeSettings)
+            const { data, error } = await supabase.rpc("admin_update_ai_director_runtime_settings", { p_settings: payload })
+            if (error) throw error
+            setDirectorRuntimeSettings(normalizeDirectorRuntimeSettings(data))
+            setDirectorRuntimeSettingsMessage("Agent orchestration settings saved.")
+        } catch (err: any) {
+            setDirectorRuntimeSettingsMessage(`Could not save orchestration settings: ${err.message || "Unknown error"}`)
+        } finally {
+            setIsSavingDirectorRuntimeSettings(false)
+        }
     }
 
     const handleSaveDirectorGlobalInstructions = async () => {
@@ -1079,6 +1133,8 @@ function AdminDashboardContent() {
         loadDirectorModels()
         loadDirectorWorkflows()
         loadDirectorGlobalInstructions()
+        loadDirectorRuntimeSettings()
+        loadStudioFeatureFlags()
         loadSiteFeatures()
         loadAdminData()
         loadShowcaseItems()
@@ -2409,6 +2465,33 @@ function AdminDashboardContent() {
                                     <p className="text-white/40 text-sm">Define reusable workflow instructions and skills for scripts, characters, storyboard images, and video generation.</p>
                                 </header>
 
+                                <div className="glass-card rounded-2xl border-white/10 p-6 space-y-5">
+                                    <div>
+                                        <h2 className="text-xl font-bold text-white">Studio Runtime Controls</h2>
+                                        <p className="mt-1 text-sm leading-6 text-white/45">Enable or pause AI Director tools, approval proposals, continuity checks, and generation pipelines without changing code.</p>
+                                    </div>
+                                    <div className="grid gap-3 md:grid-cols-2">
+                                        {(Object.keys(studioFeatureFlagDefaults) as Array<keyof StudioFeatureFlags>).map((key) => (
+                                            <label key={key} className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-black/20 p-4">
+                                                <span className="text-sm font-medium text-white/75">{key.replaceAll("_", " ")}</span>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={studioFeatureFlags[key]}
+                                                    onChange={(event) => setStudioFeatureFlags((flags) => ({ ...flags, [key]: event.target.checked }))}
+                                                    className="h-5 w-5 accent-lime-300"
+                                                />
+                                            </label>
+                                        ))}
+                                    </div>
+                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                        {studioFeatureFlagsMessage ? <p className="text-sm text-white/50">{studioFeatureFlagsMessage}</p> : <span />}
+                                        <button type="button" onClick={handleSaveStudioFeatureFlags} disabled={isSavingStudioFeatureFlags} className="btn-primary flex shrink-0 items-center gap-2 px-5 py-3 disabled:opacity-60">
+                                            {isSavingStudioFeatureFlags ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                            {isSavingStudioFeatureFlags ? "Saving..." : "Save Runtime Controls"}
+                                        </button>
+                                    </div>
+                                </div>
+
                                 <div className="glass-card p-6 rounded-2xl border-white/10 space-y-4">
                                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                         <div>
@@ -2447,6 +2530,55 @@ function AdminDashboardContent() {
                                         </button>
                                     </div>
                                     {directorGlobalInstructionsMessage && <p className="text-sm text-white/50">{directorGlobalInstructionsMessage}</p>}
+                                </div>
+
+                                <div className="glass-card rounded-2xl border-white/10 p-6 space-y-5">
+                                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                        <div>
+                                            <h2 className="text-xl font-bold text-white">Agent Orchestration</h2>
+                                            <p className="mt-1 text-sm leading-6 text-white/45">Control how the Director chooses tools, delegates specialist responsibilities, recovers from errors, and limits each chat run.</p>
+                                        </div>
+                                        <button type="button" onClick={() => setDirectorRuntimeSettings(structuredClone(defaultDirectorRuntimeSettings))} className="rounded-xl border border-white/10 px-4 py-2 text-xs font-bold text-white/60 hover:bg-white/10">Restore Default</button>
+                                    </div>
+
+                                    <label className="block space-y-2">
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Orchestrator Instructions</span>
+                                        <textarea value={directorRuntimeSettings.orchestrationInstructions} onChange={(event) => setDirectorRuntimeSettings((settings) => ({ ...settings, orchestrationInstructions: event.target.value }))} rows={6} className="w-full resize-y rounded-xl border border-white/10 bg-black/30 px-4 py-3 font-mono text-sm leading-6 text-white outline-none focus:border-primary" placeholder="Rules for choosing tools, approvals, status reporting, and failure recovery..." />
+                                    </label>
+
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <label className="space-y-2">
+                                            <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Maximum Tool Steps Per Reply</span>
+                                            <input type="number" min={1} max={25} value={directorRuntimeSettings.maxToolSteps} onChange={(event) => setDirectorRuntimeSettings((settings) => ({ ...settings, maxToolSteps: Math.max(1, Math.min(25, Number(event.target.value) || 1)) }))} className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-primary" />
+                                            <p className="text-xs text-white/35">Higher values allow longer autonomous workflows but increase latency and model usage.</p>
+                                        </label>
+                                        <label className="space-y-2">
+                                            <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Maximum Next Actions</span>
+                                            <input type="number" min={1} max={5} value={directorRuntimeSettings.nextActionLimit} onChange={(event) => setDirectorRuntimeSettings((settings) => ({ ...settings, nextActionLimit: Math.max(1, Math.min(5, Number(event.target.value) || 1)) }))} className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-primary" />
+                                            <p className="text-xs text-white/35">Limits the number of contextual options shown after an agent response.</p>
+                                        </label>
+                                    </div>
+
+                                    <div>
+                                        <h3 className="text-sm font-bold text-white">Specialist Instructions</h3>
+                                        <p className="mt-1 text-xs leading-5 text-white/35">These instructions are injected into every Director run alongside the selected production workflow.</p>
+                                    </div>
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        {specialistInstructionKeys.map((key) => (
+                                            <label key={key} className="space-y-2">
+                                                <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">{key} specialist</span>
+                                                <textarea value={directorRuntimeSettings.specialists[key]} onChange={(event) => setDirectorRuntimeSettings((settings) => ({ ...settings, specialists: { ...settings.specialists, [key]: event.target.value } }))} rows={5} className="w-full resize-y rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm leading-6 text-white outline-none focus:border-primary" />
+                                            </label>
+                                        ))}
+                                    </div>
+
+                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                        {directorRuntimeSettingsMessage ? <p className="text-sm text-white/50">{directorRuntimeSettingsMessage}</p> : <span />}
+                                        <button type="button" onClick={handleSaveDirectorRuntimeSettings} disabled={isSavingDirectorRuntimeSettings} className="btn-primary flex shrink-0 items-center gap-2 px-5 py-3 disabled:opacity-60">
+                                            {isSavingDirectorRuntimeSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                            {isSavingDirectorRuntimeSettings ? "Saving..." : "Save Orchestration Settings"}
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <div className="glass-card p-6 rounded-2xl border-white/10 space-y-5">

@@ -7,6 +7,7 @@ import { getGoogleVideoTask, GoogleProviderError, submitGoogleVideo } from "@/li
 import { generationProvider, isVideoGenerationModel } from "@/lib/studio/generation-models"
 import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
+import { buildEntityMentionContext, type MentionableEntity } from "@/lib/studio/entity-mentions"
 
 const submitSchema = z.object({
   shotId: z.string().uuid(),
@@ -14,6 +15,7 @@ const submitSchema = z.object({
   model: z.string().refine(isVideoGenerationModel, "Unsupported video model"),
   referenceImages: z.array(z.string().max(2_000)).max(50).default([]),
   characterEntityIds: z.array(z.string().uuid()).max(10).default([]),
+  mentionedEntityIds: z.array(z.string().uuid()).max(20).default([]),
   generationMode: z.enum(["keyframe", "multi_image"]).default("keyframe"),
   startFrame: z.string().max(2_000).nullable().optional(),
   endFrame: z.string().max(2_000).nullable().optional(),
@@ -25,7 +27,7 @@ const submitSchema = z.object({
 }).strict()
 
 async function verifyShot(context: Awaited<ReturnType<typeof requireAuthenticatedProject>>, projectId: string, shotId: string) {
-  const { data: shot } = await context.supabase.from("creator_shots").select("id, episode_id, duration_seconds, aspect_ratio, resolution, keyframe_image, metadata").eq("id", shotId).maybeSingle()
+  const { data: shot } = await context.supabase.from("creator_shots").select("id, episode_id, duration_seconds, aspect_ratio, resolution, keyframe_image, metadata, referenced_entities").eq("id", shotId).maybeSingle()
   if (!shot) return null
   const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", shot.episode_id).eq("project_id", projectId).maybeSingle()
   return episode ? shot : null
@@ -52,15 +54,29 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const input = submitSchema.parse(await request.json())
     const shot = await verifyShot(context, projectId, input.shotId)
     if (!shot) return NextResponse.json({ error: "Shot not found" }, { status: 404 })
+    const provider = generationProvider(input.model)
 
-    // Enforce credit balance & deduction
+    const resolvedEntityIds = Array.from(new Set([...input.characterEntityIds, ...input.mentionedEntityIds]))
+    const { data: resolvedEntities, error: resolvedEntityError } = resolvedEntityIds.length
+      ? await context.supabase
+        .from("creator_entities")
+        .select("id,name,type,description,reference_images,metadata")
+        .eq("project_id", projectId)
+        .in("id", resolvedEntityIds)
+      : { data: [], error: null }
+    if (resolvedEntityError) throw resolvedEntityError
+    if ((resolvedEntities || []).length !== resolvedEntityIds.length) {
+      return NextResponse.json({ error: "One or more referenced entities do not belong to this project." }, { status: 400 })
+    }
+
+    // Validate the full request before reserving credits.
     const creditCost = calculateCreditCost(input.model, "video", input.durationSeconds, { resolution: input.resolution, aspectRatio: input.aspectRatio, quality: input.quality })
     const deduct = await deductUserCredits(context.user.id, creditCost, input.model, `Video Generation (${input.model})`, context.supabase)
     if (!deduct.success) {
       return NextResponse.json({ error: deduct.errorMessage || "Insufficient credits" }, { status: 402 })
     }
 
-    // Resolve character entity face references and direct shot references
+    // Resolve canonical character, scene, and prop references plus direct shot references.
     let combinedReferencePaths: string[] = []
     const rawImagesToOmit = new Set<string>()
 
@@ -68,39 +84,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const shotMeta = (shot.metadata as Record<string, unknown>) || {}
     const shotBytePlusAssetId = typeof shotMeta.byteplus_asset_id === "string" && shotMeta.byteplus_asset_id.trim() ? shotMeta.byteplus_asset_id.trim() : null
 
-    if (shotBytePlusAssetId) {
+    if (provider === "byteplus" && shotBytePlusAssetId) {
       combinedReferencePaths.push(shotBytePlusAssetId)
       if (shot.keyframe_image) rawImagesToOmit.add(shot.keyframe_image)
     } else if (shot.keyframe_image && !input.startFrame) {
       combinedReferencePaths.push(shot.keyframe_image)
     }
 
-    if (input.characterEntityIds.length > 0) {
-      const { data: entities } = await context.supabase
-        .from("creator_entities")
-        .select("id, name, reference_images, metadata")
-        .eq("project_id", projectId)
-        .in("id", input.characterEntityIds)
+    if (resolvedEntities && resolvedEntities.length > 0) {
+      for (const entity of resolvedEntities) {
+        const byteplusAssetId = typeof entity.metadata === "object" && entity.metadata !== null ? (entity.metadata as Record<string, unknown>).byteplus_asset_id : null
 
-      if (entities && entities.length > 0) {
-        for (const entity of entities) {
-          const byteplusAssetId = typeof entity.metadata === "object" && entity.metadata !== null ? (entity.metadata as Record<string, unknown>).byteplus_asset_id : null
-
-          if (typeof byteplusAssetId === "string" && byteplusAssetId.trim()) {
-            combinedReferencePaths.push(byteplusAssetId.trim())
-            // Omit raw reference images for this character so BytePlus receives ONLY the asset:// ID
-            if (Array.isArray(entity.reference_images)) {
-              for (const img of entity.reference_images) {
-                if (typeof img === "string" && img.trim()) {
-                  rawImagesToOmit.add(img.trim())
-                }
-              }
-            }
-          } else if (Array.isArray(entity.reference_images)) {
+        if (provider === "byteplus" && typeof byteplusAssetId === "string" && byteplusAssetId.trim()) {
+          combinedReferencePaths.push(byteplusAssetId.trim())
+          // Omit raw duplicates when BytePlus can use its canonical provider asset.
+          if (Array.isArray(entity.reference_images)) {
             for (const img of entity.reference_images) {
               if (typeof img === "string" && img.trim()) {
-                combinedReferencePaths.push(img.trim())
+                rawImagesToOmit.add(img.trim())
               }
+            }
+          }
+        } else if (Array.isArray(entity.reference_images)) {
+          for (const img of entity.reference_images) {
+            if (typeof img === "string" && img.trim()) {
+              combinedReferencePaths.push(img.trim())
             }
           }
         }
@@ -117,9 +125,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     combinedReferencePaths = Array.from(new Set(combinedReferencePaths))
 
     const references = await signedReferenceUrls(context, combinedReferencePaths)
-    const providerRequest = { prompt: input.prompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceImages: combinedReferencePaths, characterEntityIds: input.characterEntityIds, generationMode: input.generationMode, startFrame: input.startFrame || null, endFrame: input.endFrame || null, audioEnabled: input.audioEnabled }
-
-    const provider = generationProvider(input.model)
+    const mentionContext = buildEntityMentionContext((resolvedEntities || []) as MentionableEntity[])
+    const resolvedPrompt = mentionContext ? `${input.prompt}\n\n${mentionContext}` : input.prompt
+    const providerRequest = { prompt: resolvedPrompt, originalPrompt: input.prompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceImages: combinedReferencePaths, characterEntityIds: input.characterEntityIds, mentionedEntityIds: input.mentionedEntityIds, resolvedEntityIds, generationMode: input.generationMode, startFrame: input.startFrame || null, endFrame: input.endFrame || null, audioEnabled: input.audioEnabled }
 
     const { data: job, error: jobError } = await context.supabase.from("creator_generation_jobs").insert({
       user_id: context.user.id,
@@ -130,7 +138,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       provider,
       model: input.model,
       prompt: input.prompt,
-      input_images: input.referenceImages,
+      input_images: combinedReferencePaths,
       settings: providerRequest,
       provider_request: providerRequest,
       requires_approval: true,
@@ -144,18 +152,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     try {
       let task: { id: string; response?: unknown }
       if (provider === "fal") {
-        const falRes = await submitFalVideo({ model: input.model, prompt: input.prompt, duration: input.durationSeconds || Number(shot.duration_seconds || 4), ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references })
+        const falRes = await submitFalVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 4), ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references })
         task = { id: falRes.id, response: falRes }
       } else if (provider === "google") {
-        const gRes = await submitGoogleVideo({ model: input.model, prompt: input.prompt, duration: input.durationSeconds || Number(shot.duration_seconds || 4), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references })
+        const gRes = await submitGoogleVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 4), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references })
         task = { id: gRes.id, response: gRes.response }
       } else {
-        const bpRes = await submitBytePlusVideo({ model: input.model, prompt: input.prompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references, generationMode: input.generationMode, audioEnabled: input.audioEnabled })
+        const bpRes = await submitBytePlusVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references, generationMode: input.generationMode, audioEnabled: input.audioEnabled })
         task = { id: bpRes.id, response: bpRes.response }
       }
       await Promise.all([
         context.supabase.from("creator_generation_jobs").update({ status: "processing", provider_job_id: task.id, provider_response: task.response }).eq("id", job.id),
-        context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, metadata: { ...(shot.metadata || {}), video_generation: { provider, model: input.model, prompt: input.prompt, reference_images: input.referenceImages, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
+        context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...resolvedEntityIds])), metadata: { ...(shot.metadata || {}), video_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, reference_images: combinedReferencePaths, character_entity_ids: input.characterEntityIds, mentioned_entity_ids: input.mentionedEntityIds, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
       ])
       return NextResponse.json({ jobId: job.id, providerJobId: task.id, status: "processing", provider, model: input.model }, { status: 202 })
     } catch (error) {

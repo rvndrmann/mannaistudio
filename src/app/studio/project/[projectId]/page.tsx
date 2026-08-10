@@ -34,6 +34,9 @@ import { getModelLabel, imageGenerationModels, videoGenerationModels } from "@/l
 import { defaultDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows";
 import { calculateCreditCost, getUserCredits } from "@/lib/studio/credits";
 import { createClient } from "@/lib/supabase/client";
+import { parseDirectorTimeline, type DirectorTimelineBlock } from "@/lib/studio/timeline";
+import { EntityMentionInput } from "@/components/studio/EntityMentionInput";
+import { findMentionedEntityIds } from "@/lib/studio/entity-mentions";
 
 import {
   Share2,
@@ -106,7 +109,7 @@ type Workspace = {
     summary: string;
     status: string;
   }[];
-  chatMessages: { id: string; role: string; content: string | null; media?: Array<Record<string, unknown>> | null; suggested_actions?: Array<Record<string, unknown>> | null }[];
+  chatMessages: { id: string; role: string; content: string | null; media?: Array<Record<string, unknown>> | null; suggested_actions?: Array<Record<string, unknown>> | null; timeline_blocks?: unknown; referenced_entity_ids?: string[] | null }[];
   activeSessionId?: string | null;
   chatSessions: { id: string; title: string; model?: string | null; created_at: string; updated_at?: string | null }[];
   actionProposals: {
@@ -262,6 +265,14 @@ export default function WorkspacePage({
     load();
   }, [projectId, episodeId, chatSessionId]);
   useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase.channel(`director-workflow-${projectId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "creator_workflow_runs", filter: `project_id=eq.${projectId}` }, () => load(true))
+      .on("postgres_changes", { event: "*", schema: "public", table: "creator_generation_jobs", filter: `project_id=eq.${projectId}` }, () => load(true))
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [projectId, episodeId, chatSessionId]);
+  useEffect(() => {
     if (!data || openedInitialSettingsRef.current || typeof window === "undefined") return;
     const url = new URL(window.location.href);
     if (url.searchParams.get("openSettings") !== "1") return;
@@ -314,24 +325,24 @@ export default function WorkspacePage({
     setChatSessionId(created.id);
     await load(true);
   };
-  const sendChat = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!message.trim() || chatSending) return;
-    const outgoing = message.trim();
+  const sendDirectorMessage = async (outgoing: string) => {
+    if (!outgoing.trim() || chatSending) return;
+    outgoing = outgoing.trim();
+    const mentionedEntityIds = findMentionedEntityIds(outgoing, data.entities);
     setChatSending(true);
     setChatError(null);
     setData((current) => current ? {
       ...current,
       chatMessages: [
         ...current.chatMessages,
-        { id: `local-user-${Date.now()}`, role: "user", content: outgoing },
+        { id: `local-user-${Date.now()}`, role: "user", content: outgoing, referenced_entity_ids: mentionedEntityIds },
       ],
     } : current);
     try {
       const response = await fetch(`/api/studio/projects/${projectId}/director/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ episodeId: episode.id, sessionId: data.activeSessionId || chatSessionId || undefined, message: outgoing, model: directorModel, idempotencyKey: crypto.randomUUID() }),
+        body: JSON.stringify({ episodeId: episode.id, sessionId: data.activeSessionId || chatSessionId || undefined, message: outgoing, mentionedEntityIds, model: directorModel, idempotencyKey: crypto.randomUUID() }),
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || "AI Director could not respond");
@@ -352,6 +363,10 @@ export default function WorkspacePage({
     } finally {
       setChatSending(false);
     }
+  };
+  const sendChat = async (e: FormEvent) => {
+    e.preventDefault();
+    await sendDirectorMessage(message);
   };
   const uploadChatFiles = async (files: FileList | null) => {
     const selected = Array.from(files || []);
@@ -779,12 +794,18 @@ export default function WorkspacePage({
                 className={`mt-3 max-w-[90%] rounded-xl p-3 text-[13px] ${item.role === "user" ? "ml-auto bg-[#b9f42e] text-black" : "bg-[#1a1a1a] text-zinc-200"}`}
               >
                 {item.content}
+                <ChatTimeline blocks={item.timeline_blocks} onAction={sendDirectorMessage} disabled={chatSending} />
                 <ChatMedia media={item.media} />
                 <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} busyId={proposalBusy} onDecide={decideProposal} />
               </div>
             ))}
             {chatSending && <ThinkingBubble />}
-            <PendingProposalCards proposals={data.actionProposals} busyId={proposalBusy} onDecide={decideProposal} />
+            <PendingProposalCards
+              proposals={data.actionProposals}
+              excludeIds={data.chatMessages.flatMap((item) => proposalIdsFromActions(item.suggested_actions))}
+              busyId={proposalBusy}
+              onDecide={decideProposal}
+            />
             {chatError && <p role="alert" className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-[12px] text-red-200">{chatError}</p>}
             {voiceState !== "idle" && <p className={`mt-3 rounded-lg border p-2.5 text-[12px] ${voiceState === "connected" ? "border-[#b9f42e]/30 bg-[#b9f42e]/10 text-[#d9ff84]" : "border-white/[0.06] bg-white/[0.03] text-zinc-300"}`}>{voiceState === "connecting" ? "Connecting your AI Voice Director…" : voiceState === "connected" ? "AI Voice Director is listening. You can speak naturally." : voiceError}</p>}
             <div ref={chatEndRef} />
@@ -793,9 +814,11 @@ export default function WorkspacePage({
             onSubmit={sendChat}
             className="border-t border-white/[0.06] bg-[#111111] p-3"
           >
-            <textarea
+            <EntityMentionInput
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              onChange={setMessage}
+              entities={data.entities}
+              menuPlacement="top"
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
@@ -804,7 +827,9 @@ export default function WorkspacePage({
               }}
               placeholder="Tell the director what to shoot..."
               className="h-20 w-full resize-none bg-transparent text-[14px] outline-none placeholder:text-zinc-600"
+              ariaLabel="AI Director message. Type @ to mention a character, scene, or asset."
             />
+            <p className="mb-2 mt-1 text-[10px] text-zinc-600">Type @ to mention a character, scene, or asset.</p>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5">
                 <input
@@ -1982,6 +2007,7 @@ function AssetWorkspace({
     setGenerationError(null);
     setGenerationStatus("Submitting image generation request…");
     try {
+      const mentionedEntityIds = findMentionedEntityIds(prompt, entities);
       const response = await fetch(`/api/studio/projects/${projectId}/images`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1991,6 +2017,7 @@ function AssetWorkspace({
           prompt,
           model,
           referenceImages: references,
+          mentionedEntityIds,
           aspectRatio,
           quality,
         }),
@@ -2252,11 +2279,13 @@ function AssetWorkspace({
               <label className="block text-xs font-bold uppercase tracking-wide text-zinc-500 mb-2">
                 Visual Prompt
               </label>
-              <textarea
+              <EntityMentionInput
                 value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
+                onChange={setPrompt}
+                entities={entities}
                 className="h-44 w-full resize-none rounded-xl border border-white/10 bg-[#0b0c0b] p-4 text-sm leading-relaxed text-zinc-200 outline-none focus:border-[#b9f42e]/60"
-                placeholder="Describe character appearance, outfit, facial features, lighting, style and materials…"
+                placeholder="Describe the image. Type @ to mention a character, scene, or asset…"
+                ariaLabel="Asset image prompt"
               />
             </div>
 
@@ -3046,14 +3075,20 @@ function ShotMediaWorkspace({
     setActiveGenId(genId);
 
     try {
+      const mentionedEntityIds = findMentionedEntityIds(prompt, entities);
+      const mentionedCharacterIds = entities
+        .filter((entity) => entity.type === "character" && mentionedEntityIds.includes(entity.id))
+        .map((entity) => entity.id);
+      // Explicit @mentions take priority if the provider's character-reference limit is reached.
+      const characterEntityIds = Array.from(new Set([...mentionedCharacterIds, ...selectedCharacterIds])).slice(0, 10);
       if (isImage) {
-        const response = await fetch(`/api/studio/projects/${projectId}/images`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, aspectRatio, quality }) });
+        const response = await fetch(`/api/studio/projects/${projectId}/images`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, mentionedEntityIds, aspectRatio, quality }) });
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || "Image generation failed");
         setGenHistory((prev) => prev.map((g) => g.id === genId ? { ...g, status: "completed" as const, videoUrl: body.imageUrl || source } : g));
       } else {
         setGenerationStatus("Submitting generation job…");
-        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, characterEntityIds: selectedCharacterIds, generationMode: videoInputMode, startFrame, endFrame, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
+        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, characterEntityIds, mentionedEntityIds, generationMode: videoInputMode, startFrame, endFrame, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
         const body = await response.json();
         if (!response.ok) {
           const errorMsg = body.error || "Video generation failed";
@@ -3544,19 +3579,21 @@ function ShotMediaWorkspace({
                 )}
               </div>
             </div>
-            <label className="block text-xs font-bold uppercase tracking-wide text-zinc-500">
+            <div className="block text-xs font-bold uppercase tracking-wide text-zinc-500">
               {isImage ? "Image prompt" : "Video motion prompt"}
-              <textarea
+              <EntityMentionInput
                 value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
+                onChange={setPrompt}
+                entities={entities}
                 className="mt-2 h-52 w-full resize-none rounded-xl border border-white/10 bg-[#0b0c0b] p-4 text-base leading-7 text-zinc-200 outline-none focus:border-[#b9f42e]/60"
                 placeholder={
                   isImage
-                    ? "Describe composition, lighting, character consistency and visual style…"
-                    : "Describe camera movement, subject motion, timing and continuity…"
+                    ? "Describe composition and lighting. Type @ to bind project characters and assets…"
+                    : "Describe motion and timing. Type @ to bind project characters and assets…"
                 }
+                ariaLabel={isImage ? "Shot image prompt" : "Shot video prompt"}
               />
-            </label>
+            </div>
             <ModelMenu type={isImage ? "image" : "video"} value={model} onChange={setModel} options={{ quality, aspectRatio, resolution, durationSeconds }} />
             <p className="mt-4 rounded-xl border border-[#b9f42e]/20 bg-[#b9f42e]/5 p-3 text-sm text-zinc-300">
               {isImage ? "Image requests are processed securely on the server." : "Video requests run asynchronously on secure generation servers."}
@@ -3670,6 +3707,39 @@ function ChatMedia({ media }: { media?: Array<Record<string, unknown>> | null })
   );
 }
 
+function ChatTimeline({ blocks, onAction, disabled }: { blocks: unknown; onAction: (intent: string) => void; disabled: boolean }) {
+  const timeline = parseDirectorTimeline(blocks);
+  if (!timeline.length) return null;
+  return (
+    <div className="mt-3 space-y-2">
+      {timeline.map((block, index) => <ChatTimelineBlock key={`${block.type}-${index}`} block={block} onAction={onAction} disabled={disabled} />)}
+    </div>
+  );
+}
+
+function ChatTimelineBlock({ block, onAction, disabled }: { block: DirectorTimelineBlock; onAction: (intent: string) => void; disabled: boolean }) {
+  if (block.type === "tool_execution") {
+    const failed = block.status === "failed";
+    const waiting = block.status === "awaiting_approval";
+    return (
+      <details className={`rounded-lg border ${failed ? "border-red-500/30 bg-red-500/10" : waiting ? "border-amber-400/25 bg-amber-400/[0.07]" : "border-white/[0.08] bg-black/20"}`} open={failed}>
+        <summary className="flex cursor-pointer list-none items-center gap-2 p-2.5 text-[12px] font-semibold">
+          <span className={`grid h-5 w-5 place-items-center rounded-full text-[10px] ${failed ? "bg-red-500/20 text-red-300" : waiting ? "bg-amber-400/15 text-amber-200" : "bg-emerald-500/15 text-emerald-300"}`}>{failed ? "×" : waiting ? "…" : "✓"}</span>
+          <span>{block.label}</span>
+          <span className="ml-auto text-[9px] uppercase tracking-wider text-zinc-500">{block.status.replaceAll("_", " ")}</span>
+        </summary>
+        {(block.detail || block.error) && <p className={`border-t p-2.5 text-[11px] leading-5 ${failed ? "border-red-500/20 text-red-200" : "border-white/[0.06] text-zinc-400"}`}>{block.error || block.detail}</p>}
+      </details>
+    );
+  }
+  if (block.type === "plan") return <div className="rounded-lg border border-white/[0.08] bg-black/20 p-2.5"><p className="text-[12px] font-semibold">{block.title}</p><div className="mt-2 space-y-1.5">{block.steps.map((step) => <div key={step.id} className="flex gap-2 text-[11px] text-zinc-400"><span>{step.status === "completed" ? "✓" : step.status === "failed" ? "×" : "○"}</span><span>{step.label}</span></div>)}</div></div>;
+  if (block.type === "suggested_actions") return <div className="space-y-1.5">{block.actions.map((action) => <button key={action.id} type="button" disabled={disabled} onClick={() => onAction(action.intent)} className={`w-full rounded-lg border px-3 py-2.5 text-left text-[12px] font-semibold transition disabled:opacity-50 ${action.recommended ? "border-[#b9f42e]/35 bg-[#b9f42e]/10 text-[#dfff8c] hover:bg-[#b9f42e]/15" : "border-white/[0.08] bg-white/[0.03] text-zinc-300 hover:bg-white/[0.06]"}`}>{action.label}</button>)}</div>;
+  if (block.type === "warning") return <div className="rounded-lg border border-amber-400/25 bg-amber-400/[0.07] p-2.5 text-[11px] leading-5 text-amber-100"><strong>{block.code}</strong><p>{block.message}</p>{block.actions.map((action) => <button key={action.id} type="button" disabled={disabled} onClick={() => onAction(action.intent)} className="mt-2 mr-2 rounded-md border border-amber-300/25 px-2 py-1 font-semibold">{action.label}</button>)}</div>;
+  if (block.type === "workflow_summary") return <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] p-2.5 text-[11px] text-emerald-100"><strong>{block.title}</strong><p className="mt-1 text-emerald-100/75">{block.summary}</p></div>;
+  if (block.type === "media_result") return <ChatMedia media={block.media} />;
+  return null;
+}
+
 function ChatSuggestedActions({
   actions,
   proposals,
@@ -3681,10 +3751,7 @@ function ChatSuggestedActions({
   busyId: string | null;
   onDecide: (proposalId: string, decision: "approved" | "rejected") => void;
 }) {
-  const ids = (actions || [])
-    .map((action) => action.proposal)
-    .filter((proposal): proposal is { id: string } => Boolean(proposal && typeof proposal === "object" && "id" in proposal && typeof (proposal as { id?: unknown }).id === "string"))
-    .map((proposal) => proposal.id);
+  const ids = proposalIdsFromActions(actions);
   const matched = proposals.filter((proposal) => ids.includes(proposal.id));
   if (!matched.length) return null;
   return (
@@ -3696,20 +3763,30 @@ function ChatSuggestedActions({
 
 function PendingProposalCards({
   proposals,
+  excludeIds,
   busyId,
   onDecide,
 }: {
   proposals: ChatProposal[];
+  excludeIds: string[];
   busyId: string | null;
   onDecide: (proposalId: string, decision: "approved" | "rejected") => void;
 }) {
-  const pending = proposals.filter((proposal) => proposal.status === "pending").slice(0, 3);
+  const excluded = new Set(excludeIds);
+  const pending = proposals.filter((proposal) => proposal.status === "pending" && !excluded.has(proposal.id)).slice(0, 3);
   if (!pending.length) return null;
   return (
     <div className="mt-4 space-y-2">
       {pending.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} busy={busyId === proposal.id} onDecide={onDecide} />)}
     </div>
   );
+}
+
+function proposalIdsFromActions(actions?: Array<Record<string, unknown>> | null) {
+  return (actions || [])
+    .map((action) => action.proposal)
+    .filter((proposal): proposal is { id: string } => Boolean(proposal && typeof proposal === "object" && "id" in proposal && typeof (proposal as { id?: unknown }).id === "string"))
+    .map((proposal) => proposal.id);
 }
 
 function ProposalCard({
@@ -3929,11 +4006,12 @@ function ShotForm({
     <form
       onSubmit={async (e) => {
         e.preventDefault();
+        const mentionedIds = findMentionedEntityIds(prompt, entities);
         await save({
           action: "saveShot",
           episodeId,
           orderIndex: 9999,
-          shot: { title, prompt, entityIds: ids },
+          shot: { title, prompt, entityIds: Array.from(new Set([...ids, ...mentionedIds])) },
         });
         await reload();
         close();
@@ -3947,11 +4025,13 @@ function ShotForm({
         placeholder="Shot title"
         className="w-full rounded-lg border border-white/10 bg-black/20 p-3 outline-none"
       />
-      <textarea
+      <EntityMentionInput
         value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        placeholder="Describe camera, framing, visual direction and continuity…"
+        onChange={setPrompt}
+        entities={entities}
+        placeholder="Describe the shot. Type @ to bind characters, scenes, or assets…"
         className="mt-3 h-24 w-full rounded-lg border border-white/10 bg-black/20 p-3 outline-none"
+        ariaLabel="Storyboard shot prompt"
       />
       <div className="mt-3 flex flex-wrap gap-2">
         {entities.map((e) => (

@@ -3,7 +3,7 @@ import { ZodError } from "zod"
 import { buildDirectorInstructions, selectConversationWindow } from "@/lib/studio/conversation"
 import { activeDirectorModels } from "@/lib/studio/ai-models"
 import { directorChatInputSchema } from "@/lib/studio/domain"
-import { createDirectorResponse, defaultOpenAIDirectorModel, OpenAIProviderError } from "@/lib/studio/openai"
+import { defaultOpenAIDirectorModel, OpenAIProviderError } from "@/lib/studio/openai"
 import { generateOpenAIImage } from "@/lib/studio/openai"
 import { buildProjectContext } from "@/lib/studio/project-context"
 import { requireAuthenticatedProject, studioErrorStatus } from "@/lib/studio/server-context"
@@ -11,6 +11,9 @@ import { requireProjectFromRequest } from "@/lib/studio/external-auth"
 import { requestDirectorTool } from "@/lib/studio/tool-service"
 import { fetchDirectorWorkflows } from "@/lib/studio/workflows"
 import { normalizeDirectorGlobalInstructions } from "@/lib/studio/instructions"
+import { runDirectorAgent } from "@/lib/studio/director-agent"
+import { fetchDirectorRuntimeSettings } from "@/lib/studio/director-runtime-settings"
+import { buildEntityMentionContext, type MentionableEntity } from "@/lib/studio/entity-mentions"
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   try {
@@ -19,6 +22,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const body = directorChatInputSchema.parse({ ...(await request.json()), projectId })
     const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", body.episodeId).eq("project_id", projectId).maybeSingle()
     if (!episode) return NextResponse.json({ error: "Episode not found" }, { status: 404 })
+    const uniqueMentionIds = Array.from(new Set(body.mentionedEntityIds))
+    const { data: mentionedEntities, error: mentionedEntityError } = uniqueMentionIds.length
+      ? await context.supabase
+        .from("creator_entities")
+        .select("id,name,type,description,reference_images,metadata")
+        .eq("project_id", projectId)
+        .in("id", uniqueMentionIds)
+      : { data: [], error: null }
+    if (mentionedEntityError) throw mentionedEntityError
+    if ((mentionedEntities || []).length !== uniqueMentionIds.length) {
+      return NextResponse.json({ error: "One or more mentioned entities do not belong to this project." }, { status: 400 })
+    }
+    const mentionContext = buildEntityMentionContext((mentionedEntities || []) as MentionableEntity[])
+    const modelMessage = mentionContext ? `${body.message}\n\n${mentionContext}` : body.message
     const { data: modelSettings } = await context.supabase.from("site_settings").select("value").eq("key", "ai_director_models").maybeSingle()
     const activeModels = activeDirectorModels(modelSettings?.value)
     const fallbackModel = activeModels.find((item) => item.id === defaultOpenAIDirectorModel())?.id || activeModels[0]?.id || defaultOpenAIDirectorModel()
@@ -32,9 +49,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     await context.supabase.from("creator_chat_sessions").update({ model }).eq("id", sessionId).eq("user_id", context.user.id)
     const { data: history, error: historyError } = await context.supabase.from("creator_chat_messages").select("role, content").eq("session_id", sessionId).order("created_at", { ascending: true }).limit(40)
     if (historyError) throw historyError
-    const { data: userMessage, error: userError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, role: "user", content: body.message }).select().single()
+    const { data: userMessage, error: userError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, role: "user", content: body.message, referenced_entity_ids: uniqueMentionIds }).select().single()
     if (userError) throw userError
-    const workflow = await maybeHandleWorkflowRequest({ context, projectId, episodeId: episode.id, sessionId, message: body.message, history: history || [], idempotencyKey: body.idempotencyKey })
+    const workflow = await maybeHandleWorkflowRequest({ context, projectId, episodeId: episode.id, sessionId, message: body.message, history: history || [], idempotencyKey: body.idempotencyKey, mentionedEntities: (mentionedEntities || []) as ResolvedMention[] })
     if (workflow) {
       const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert(workflow.message).select().single()
       if (assistantError) throw assistantError
@@ -43,8 +60,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const project = await buildProjectContext(context.supabase, context.project)
     const { data: instructionSettings } = await context.supabase.from("site_settings").select("value").eq("key", "ai_director_global_instructions").maybeSingle()
     const globalInstructions = normalizeDirectorGlobalInstructions(instructionSettings?.value)
-    const response = await createDirectorResponse({ userId: context.user.id, model, instructions: await buildWorkflowInstructions(context, episode.id, sessionId, buildDirectorInstructions(project, globalInstructions)), messages: selectConversationWindow([...(history || []).filter((item) => item.content).map((item) => ({ role: item.role as "user" | "assistant", content: item.content as string })), { role: "user", content: body.message }]) })
-    const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, role: "assistant", content: response.content }).select().single()
+    const runtimeSettings = await fetchDirectorRuntimeSettings(context.supabase)
+    const response = await runDirectorAgent({ context, model, instructions: await buildWorkflowInstructions(context, episode.id, sessionId, buildDirectorInstructions(project, globalInstructions)), messages: selectConversationWindow([...(history || []).filter((item) => item.content).map((item) => ({ role: item.role as "user" | "assistant", content: item.content as string })), { role: "user", content: modelMessage }]), sessionId, idempotencyKey: body.idempotencyKey, runtimeSettings, episodeId: episode.id, objective: modelMessage })
+    const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, role: "assistant", content: response.content, tool_calls: response.toolCalls, suggested_actions: response.suggestedActions, timeline_blocks: response.timeline, timeline_version: 1 }).select().single()
     if (assistantError) throw assistantError
     return NextResponse.json({ sessionId, userMessage, assistantMessage, provider: "openai", model, usage: response.usage })
   } catch (error) {
@@ -98,13 +116,18 @@ async function recentUploadContext(context: Awaited<ReturnType<typeof requireAut
   ]
 }
 
-async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<typeof requireAuthenticatedProject>>; projectId: string; episodeId: string; sessionId: string; message: string; history: { role: string; content: string | null }[]; idempotencyKey: string }) {
+type ResolvedMention = MentionableEntity & { metadata?: Record<string, unknown> }
+
+async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<typeof requireAuthenticatedProject>>; projectId: string; episodeId: string; sessionId: string; message: string; history: { role: string; content: string | null }[]; idempotencyKey: string; mentionedEntities: ResolvedMention[] }) {
   const normalized = input.message.toLowerCase()
+  const forbidsAllMediaGeneration = /\b(?:do not|don't|never)\s+(?:yet\s+)?(?:generate|create|make|draw)\s+(?:any\s+)?media\b/.test(normalized)
+    || /\bno\s+media\b/.test(normalized)
+  const forbidsImageGeneration = /\b(?:do not|don't|never)\s+(?:yet\s+)?(?:generate|create|make|draw)\s+(?!(?:any\s+)?other\b)(?:any\s+)?(?:images?|keyframes?|posters?|visuals?)\b/.test(normalized)
+    || /\bno\s+(?:images?|keyframes?)\b/.test(normalized)
+  const forbidsVideoGeneration = /\b(?:do not|don't|never)\s+(?:yet\s+)?(?:generate|create|make|render|produce)\s+(?:any\s+)?(?:videos?|motion|animation)\b/.test(normalized)
+    || /\bno\s+(?:videos?|animation)\b/.test(normalized)
   const scriptIntent = await maybeHandleScriptWrite(input, normalized)
   if (scriptIntent) return scriptIntent
-  if (/\b(character|asset|prop|location)\b/.test(normalized) && /\b(image|images|visual|reference|references|create|make|generate)\b/.test(normalized)) {
-    return textMessage(input.sessionId, "I can help create character and asset references from the saved script. First I need you to choose each character or asset in the Characters & Assets tab, then generate images from those asset prompts so the references stay organized.")
-  }
   if (/\b(full auto|full-auto|autopilot)\b/.test(normalized) && /\b(enable|turn on|start|activate)\b/.test(normalized)) {
     const result = await requestDirectorTool(input.context, {
       tool: "update_full_auto_mode",
@@ -114,7 +137,7 @@ async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<t
     })
     return proposalMessage(input.sessionId, "I prepared a full-auto mode proposal with credit and job guardrails. Approve it here before I can run the workflow automatically.", result)
   }
-  if (/\b(video|animate|motion)\b/.test(normalized) && /\b(generate|create|make|render|produce)\b/.test(normalized)) {
+  if (!forbidsAllMediaGeneration && !forbidsVideoGeneration && /\b(video|animate|motion)\b/.test(normalized) && /\b(generate|create|make|render|produce)\b/.test(normalized)) {
     const { data: shots, error } = await input.context.supabase.from("creator_shots").select("id,prompt,title").eq("episode_id", input.episodeId).order("order_index").limit(6)
     if (error) throw error
     const selectedShots = (shots ?? []).filter((shot) => shot.prompt).slice(0, 3)
@@ -122,7 +145,7 @@ async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<t
     const result = await requestDirectorTool(input.context, {
       tool: "submit_generation",
       input: {
-        request: { type: "video", shotIds: selectedShots.map((shot) => shot.id), preference: "balanced", durationSeconds: 4 },
+        request: { type: "video", shotIds: selectedShots.map((shot) => shot.id), mentionedEntityIds: input.mentionedEntities.map((entity) => entity.id), preference: "balanced", durationSeconds: 4 },
         prompts: Object.fromEntries(selectedShots.map((shot) => [shot.id, shot.prompt || shot.title])),
         idempotencyKey: `${input.idempotencyKey}:video`,
       },
@@ -131,31 +154,86 @@ async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<t
     })
     return proposalMessage(input.sessionId, `I prepared video generation for ${selectedShots.length} shot${selectedShots.length === 1 ? "" : "s"}. Review and approve before credits are reserved.`, result)
   }
-  if (/\b(image|keyframe|poster|visual)\b/.test(normalized) && /\b(generate|create|make|draw)\b/.test(normalized)) {
-    const prompt = input.message.replace(/^.*?\b(generate|create|make|draw)\b/i, "").trim() || input.message
-    const image = await generateOpenAIImage({ userId: input.context.user.id, model: "gpt-image-2", prompt })
+  if (!forbidsAllMediaGeneration && !forbidsImageGeneration && /\b(image|keyframe|poster|visual)\b/.test(normalized) && /\b(generate|create|make|draw)\b/.test(normalized)) {
+    const shotNumberMatch = normalized.match(/\b(?:storyboard\s+)?shot\s*(?:#\s*)?(\d+)\b/)
+    const requestedShotNumber = shotNumberMatch ? Number(shotNumberMatch[1]) : /\bfirst\s+(?:storyboard\s+)?shot\b/.test(normalized) ? 1 : null
+    const { data: targetShot } = requestedShotNumber
+      ? await input.context.supabase
+        .from("creator_shots")
+        .select("id,order_index,prompt,metadata,referenced_entities")
+        .eq("episode_id", input.episodeId)
+        .order("order_index", { ascending: true })
+        .range(requestedShotNumber - 1, requestedShotNumber - 1)
+        .maybeSingle()
+      : { data: null }
+    const prompt = (typeof targetShot?.prompt === "string" && targetShot.prompt.trim())
+      ? targetShot.prompt
+      : input.message.replace(/^.*?\b(generate|create|make|draw)\b/i, "").trim() || input.message
+    const mentionContext = buildEntityMentionContext(input.mentionedEntities)
+    const resolvedPrompt = mentionContext ? `${prompt}\n\n${mentionContext}` : prompt
+    const referencePaths = Array.from(new Set(input.mentionedEntities.flatMap((entity) => entity.reference_images || []))).slice(0, 8)
+    const referenceUrls = await signedMentionReferences(input.context, referencePaths)
+    const image = await generateOpenAIImage({ userId: input.context.user.id, model: "gpt-image-2", prompt: resolvedPrompt, referenceUrls })
     const path = `${input.context.user.id}/${input.projectId}/chat/${crypto.randomUUID()}.png`
     const { error: uploadError } = await input.context.supabase.storage.from("creator-studio-media").upload(path, image, { contentType: "image/png", upsert: false })
     if (uploadError) throw uploadError
+    if (targetShot) {
+      const currentMetadata = targetShot.metadata && typeof targetShot.metadata === "object" ? targetShot.metadata as Record<string, unknown> : {}
+      const completedAt = new Date().toISOString()
+      const { error: shotUpdateError } = await input.context.supabase.from("creator_shots").update({
+        keyframe_image: path,
+        referenced_entities: Array.from(new Set([...(targetShot.referenced_entities || []), ...input.mentionedEntities.map((entity) => entity.id)])),
+        metadata: {
+          ...currentMetadata,
+          image_generation: { provider: "openai", model: "gpt-image-2", prompt, resolved_prompt: resolvedPrompt, reference_images: referencePaths, mentioned_entity_ids: input.mentionedEntities.map((entity) => entity.id), status: "completed", completed_at: completedAt },
+        },
+      }).eq("id", targetShot.id)
+      if (shotUpdateError) throw shotUpdateError
+      await input.context.supabase.from("creator_generation_jobs").insert({
+        user_id: input.context.user.id,
+        project_id: input.projectId,
+        episode_id: input.episodeId,
+        shot_id: targetShot.id,
+        type: "image",
+        status: "completed",
+        model: "gpt-image-2",
+        provider: "openai",
+        prompt,
+        input_images: referencePaths,
+        result_url: path,
+        completed_at: completedAt,
+      })
+    }
     const { data: signed } = await input.context.supabase.storage.from("creator-studio-media").createSignedUrl(path, 60 * 60)
     return {
       provider: "openai",
-      result: { type: "image", path },
+      result: { type: "image", path, shotId: targetShot?.id || null },
       message: {
         session_id: input.sessionId,
         role: "assistant",
-        content: "Generated the image and attached it here for review.",
-        media: [{ type: "image", path, url: signed?.signedUrl, prompt, provider: "openai", model: "gpt-image-2" }],
+        content: targetShot
+          ? `Generated one GPT Image 2 keyframe and attached it to storyboard shot ${requestedShotNumber}.`
+          : "Generated the image and attached it here for review.",
+        referenced_entity_ids: input.mentionedEntities.map((entity) => entity.id),
+        media: [{ type: "image", path, url: signed?.signedUrl, prompt, referencedEntityIds: input.mentionedEntities.map((entity) => entity.id), provider: "openai", model: "gpt-image-2" }],
       },
     }
   }
-  if (/\b(script|shot|storyboard|asset|character|prop|location)\b/.test(normalized) && /\b(delete|remove)\b/.test(normalized)) {
-    return textMessage(input.sessionId, "I can delete saved script, asset, or storyboard content after you choose the exact item. Tell me the asset or shot name, then I will show an approval card before deleting anything.")
-  }
-  if (/\b(script|shot|storyboard|asset|character|prop|location)\b/.test(normalized) && /\b(edit|update|change|rewrite|save)\b/.test(normalized)) {
-    return textMessage(input.sessionId, "I can prepare that saved edit, but I need the exact target and replacement text. Send the shot, asset, or script section plus the new content, and I will show an approval card before applying it.")
-  }
   return null
+}
+
+async function signedMentionReferences(context: Awaited<ReturnType<typeof requireAuthenticatedProject>>, paths: string[]) {
+  const urls: string[] = []
+  for (const path of paths) {
+    if (/^https?:\/\//i.test(path)) {
+      urls.push(path)
+      continue
+    }
+    const { data, error } = await context.supabase.storage.from("creator-studio-media").createSignedUrl(path, 60 * 60)
+    if (error) throw error
+    urls.push(data.signedUrl)
+  }
+  return urls
 }
 
 async function maybeHandleScriptWrite(input: { context: Awaited<ReturnType<typeof requireAuthenticatedProject>>; episodeId: string; sessionId: string; message: string; history: { role: string; content: string | null }[] }, normalized: string) {

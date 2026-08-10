@@ -46,6 +46,7 @@ export const directorChatInputSchema = z.object({
   episodeId: z.string().uuid().optional(),
   sessionId: z.string().uuid().optional(),
   message: z.string().trim().min(1).max(12_000),
+  mentionedEntityIds: z.array(z.string().uuid()).max(20).default([]),
   model: z.string().trim().min(1).max(120).optional(),
   idempotencyKey: z.string().trim().min(8).max(200),
 }).strict()

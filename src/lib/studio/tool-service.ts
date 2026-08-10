@@ -4,7 +4,7 @@ import type { AuthenticatedProjectContext } from "./server-context"
 import { directorTools, type DirectorToolName } from "./tool-registry"
 
 export const toolRequestSchema = z.object({
-  tool: z.enum(["inspect_current_project", "update_creative_brief", "create_series", "write_series_bible", "create_production_entity", "record_continuity_fact", "inspect_continuity", "estimate_generation_cost", "submit_generation", "update_script", "update_shot", "delete_shot", "update_asset", "attach_media_to_asset", "delete_asset", "attach_media_to_shot", "update_full_auto_mode", "create_revision_request"]),
+  tool: z.enum(["inspect_current_project", "read_episode_script", "search_episode_script", "list_production_entities", "list_storyboard_shots", "update_creative_brief", "create_series", "write_series_bible", "create_production_entity", "create_production_entities_batch", "create_storyboard_batch", "validate_production", "record_continuity_fact", "inspect_continuity", "estimate_generation_cost", "inspect_generation_jobs", "submit_generation", "update_script", "update_shot", "delete_shot", "update_asset", "attach_media_to_asset", "delete_asset", "attach_media_to_shot", "update_full_auto_mode", "create_revision_request"]),
   input: z.unknown(),
   idempotencyKey: z.string().trim().min(8).max(200),
   sessionId: z.string().uuid().optional(),
@@ -88,6 +88,8 @@ function describeProposal(toolName: string, input: unknown) {
     create_series: "Create series",
     write_series_bible: "Write series bible",
     create_production_entity: "Create asset",
+    create_production_entities_batch: "Create production assets",
+    create_storyboard_batch: "Create storyboard shots",
     record_continuity_fact: "Record continuity fact",
     update_script: "Update saved script",
     update_shot: "Update storyboard shot",

@@ -3,6 +3,7 @@ import { z } from "zod"
 export const generationRequestSchema = z.object({
   type: z.enum(["image", "video"]),
   shotIds: z.array(z.string().uuid()).min(1).max(100),
+  mentionedEntityIds: z.array(z.string().uuid()).max(20).default([]),
   source: z.enum(["text", "image"]).default("text"),
   referenceImageRequired: z.boolean().default(false),
   characterConsistencyPriority: z.boolean().default(false),

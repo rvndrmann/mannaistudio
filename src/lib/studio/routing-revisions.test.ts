@@ -17,6 +17,12 @@ describe("generation routing and cost", () => {
     expect(result.selected.dialogue).toBe(true)
   })
 
+  it("preserves mentioned production entities in generation routing", () => {
+    const entityId = "00000000-0000-4000-8000-000000000012"
+    const result = routeGeneration({ type: "video", shotIds: [shotId], mentionedEntityIds: [entityId] })
+    expect(result.request.mentionedEntityIds).toEqual([entityId])
+  })
+
   it("requires approval for every generation submission", () => {
     expect(submitGenerationTool.risk).toBe("costly")
     expect(submitGenerationTool.requiresApproval).toBe(true)

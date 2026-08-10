@@ -20,7 +20,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       activeSessionId ? supabase.from("creator_chat_messages").select("*").eq("session_id", activeSessionId).order("created_at") : Promise.resolve({ data: [] }),
       supabase.from("creator_action_proposals").select("*").eq("project_id", projectId).in("status", ["pending", "approved", "rejected", "executed", "failed"]).order("created_at", { ascending: false }).limit(25),
     ])
-    let production = { series: [], scenes: [], referenceAssets: [], continuityIssues: [], revisions: [], generationJobs: [], creditAccount: null } as Record<string, unknown>
+    const { data: workflowRuns } = await supabase.from("creator_workflow_runs").select("*").eq("project_id", projectId).order("started_at", { ascending: false }).limit(25)
+    let production = { series: [], scenes: [], referenceAssets: [], continuityIssues: [], revisions: [], generationJobs: [], creditAccount: null, workflowRuns: workflowRuns || [] } as Record<string, unknown>
     if (features.series_hierarchy_enabled || features.continuity_checks_enabled || features.generation_jobs_enabled) {
       const [{ data: series }, { data: scenes }, { data: referenceAssets }, { data: continuityIssues }, { data: revisions }, { data: generationJobs }, { data: creditAccount }] = await Promise.all([
         supabase.from("creator_series").select("*").eq("project_id", projectId).order("created_at"),
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         supabase.from("creator_generation_jobs").select("*").eq("project_id", projectId).order("created_at", { ascending: false }).limit(50),
         supabase.from("creator_credit_accounts").select("balance,reserved").eq("user_id", user.id).maybeSingle(),
       ])
-      production = { series: series || [], scenes: scenes || [], referenceAssets: referenceAssets || [], continuityIssues: continuityIssues || [], revisions: revisions || [], generationJobs: generationJobs || [], creditAccount: creditAccount || null }
+      production = { series: series || [], scenes: scenes || [], referenceAssets: referenceAssets || [], continuityIssues: continuityIssues || [], revisions: revisions || [], generationJobs: generationJobs || [], creditAccount: creditAccount || null, workflowRuns: workflowRuns || [] }
     }
     return NextResponse.json({ project, episodes, activeEpisode, entities: entities || [], shots: shots || [], scriptSuggestions: scriptSuggestions || [], chatSessions: chatSessions || [], activeSessionId, chatMessages: chatMessages || [], actionProposals: actionProposals || [], directorWorkflows, userId: user.id, features, production })
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Could not load project" }, { status: 404 }) }

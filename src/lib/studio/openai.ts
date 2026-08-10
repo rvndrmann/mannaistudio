@@ -65,6 +65,52 @@ export async function createDirectorResponse(input: { userId: string; model?: Op
   return { id: data.id || "", content, usage: data.usage || {} }
 }
 
+export type OpenAIDirectorFunction = {
+  name: string
+  description: string
+  parameters: Record<string, unknown>
+}
+
+export type OpenAIDirectorToolCall = { callId: string; name: string; arguments: unknown }
+
+export async function createDirectorToolTurn(input: {
+  userId: string
+  model?: OpenAIDirectorModel
+  instructions: string
+  items: Array<Record<string, unknown>>
+  tools: OpenAIDirectorFunction[]
+}) {
+  const model = input.model || defaultOpenAIDirectorModel()
+  const response = await openAIRequest("/v1/responses", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      instructions: input.instructions,
+      input: input.items,
+      // Zod validates every tool call before execution. Provider-side strict mode
+      // rejects otherwise-valid optional/defaulted fields unless all are required.
+      tools: input.tools.map((tool) => ({ type: "function", ...tool, strict: false })),
+      tool_choice: "auto",
+    }),
+  }, input.userId)
+  const data = await response.json() as {
+    id?: string
+    output_text?: string
+    output?: Array<{ type?: string; call_id?: string; name?: string; arguments?: string; content?: Array<{ type?: string; text?: string }> }>
+    usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number }
+  }
+  const calls: OpenAIDirectorToolCall[] = (data.output || [])
+    .filter((item) => item.type === "function_call" && item.call_id && item.name)
+    .map((item) => {
+      let args: unknown = {}
+      try { args = JSON.parse(item.arguments || "{}") } catch { args = {} }
+      return { callId: item.call_id as string, name: item.name as string, arguments: args }
+    })
+  const content = data.output_text?.trim() || (data.output || []).flatMap((item) => item.content || []).filter((item) => item.type === "output_text" || item.type === "text").map((item) => item.text || "").join("\n").trim()
+  return { id: data.id || "", content, calls, usage: data.usage || {} }
+}
+
 export async function createOpenAIRealtimeClientSecret(input: { userId: string; voice: string; instructions: string }) {
   const response = await openAIRequest("/v1/realtime/client_secrets", {
     method: "POST",

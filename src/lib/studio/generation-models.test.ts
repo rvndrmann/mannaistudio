@@ -10,13 +10,14 @@ describe("studio generation model registry", () => {
   })
 
   it("exposes BytePlus Seedance video models", () => {
-    expect(videoGenerationModels.map((model) => model.id)).toEqual([
+    const bytePlusModels = videoGenerationModels.filter((model) => model.provider === "byteplus")
+    expect(bytePlusModels.map((model) => model.id)).toEqual([
       "dreamina-seedance-2-5-260628",
       "dreamina-seedance-2-0-260128",
       "dreamina-seedance-2-0-fast-260128",
       "dreamina-seedance-2-0-mini-260615",
     ])
-    expect(videoGenerationModels.every((model) => generationProvider(model.id) === "byteplus" && isVideoGenerationModel(model.id))).toBe(true)
+    expect(bytePlusModels.every((model) => generationProvider(model.id) === "byteplus" && isVideoGenerationModel(model.id))).toBe(true)
   })
 
   it("rejects unknown model identifiers", () => {
