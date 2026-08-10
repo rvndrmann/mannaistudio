@@ -167,7 +167,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         context.supabase.from("creator_generation_jobs").update({ status: "processing", provider_job_id: task.id, provider_response: task.response }).eq("id", job.id),
         context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...resolvedEntityIds])), metadata: { ...(shot.metadata || {}), video_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, style, reference_images: combinedReferencePaths, character_entity_ids: input.characterEntityIds, mentioned_entity_ids: input.mentionedEntityIds, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
       ])
-      return NextResponse.json({ jobId: job.id, providerJobId: task.id, status: "processing", provider, model: input.model }, { status: 202 })
+      return NextResponse.json({
+        jobId: job.id,
+        providerJobId: task.id,
+        status: "processing",
+        provider,
+        model: input.model,
+        creditsCharged: creditCost,
+        creditBalance: deduct.newBalance,
+      }, { status: 202 })
     } catch (error) {
       await Promise.all([
         context.supabase.from("creator_generation_jobs").update({ status: "failed", error: studioErrorMessage(error, "Submission failed"), completed_at: new Date().toISOString() }).eq("id", job.id),

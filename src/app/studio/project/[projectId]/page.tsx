@@ -33,6 +33,7 @@ import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, ty
 import { getModelLabel, imageGenerationModels, videoGenerationModels } from "@/lib/studio/generation-models";
 import { defaultDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows";
 import { calculateCreditCost, getUserCredits } from "@/lib/studio/credits";
+import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
 import { createClient } from "@/lib/supabase/client";
 import { parseDirectorTimeline, type DirectorTimelineBlock } from "@/lib/studio/timeline";
 import { EntityMentionInput } from "@/components/studio/EntityMentionInput";
@@ -356,6 +357,7 @@ export default function WorkspacePage({
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || "AI Director could not respond");
+      notifyCreditBalanceChanged(typeof json.creditBalance === "number" ? json.creditBalance : undefined);
       if (json.sessionId) setChatSessionId(json.sessionId);
       setData((current) => current && json.assistantMessage ? {
         ...current,
@@ -367,6 +369,7 @@ export default function WorkspacePage({
       } : current);
       await load(true);
     } catch (error) {
+      notifyCreditBalanceChanged();
       setChatError(error instanceof Error ? error.message : "AI Director could not respond");
       await load(true);
     } finally {
@@ -417,8 +420,10 @@ export default function WorkspacePage({
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || "Could not update proposal");
+      notifyCreditBalanceChanged(typeof json.creditBalance === "number" ? json.creditBalance : undefined);
       await load(true);
     } catch (error) {
+      notifyCreditBalanceChanged();
       setChatError(error instanceof Error ? error.message : "Could not update proposal");
     } finally {
       setProposalBusy(null);
@@ -2057,6 +2062,8 @@ function AssetWorkspace({
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Image generation failed");
+      notifyCreditBalanceChanged(typeof body.creditBalance === "number" ? body.creditBalance : undefined);
+      if (typeof body.creditBalance === "number") setCreditBalance(body.creditBalance);
       if (typeof body.path === "string") {
         const nextLibrary = [body.path, ...libraryImages.filter((img) => img !== body.path)];
         setLibraryImages(nextLibrary);
@@ -2065,6 +2072,7 @@ function AssetWorkspace({
       setGenerationStatus("Asset image generated ✓");
       await reload(true);
     } catch (error) {
+      notifyCreditBalanceChanged();
       setGenerationError(error instanceof Error ? error.message : "Image generation failed");
     } finally {
       setWorking(false);
@@ -3118,6 +3126,7 @@ function ShotMediaWorkspace({
         const response = await fetch(`/api/studio/projects/${projectId}/images`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, mentionedEntityIds, aspectRatio, quality }) });
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || "Image generation failed");
+        notifyCreditBalanceChanged(typeof body.creditBalance === "number" ? body.creditBalance : undefined);
         setGenHistory((prev) => prev.map((g) => g.id === genId ? { ...g, status: "completed" as const, videoUrl: body.imageUrl || source } : g));
       } else {
         setGenerationStatus("Submitting generation job…");
@@ -3128,11 +3137,13 @@ function ShotMediaWorkspace({
           setGenHistory((prev) => prev.map((g) => g.id === genId ? { ...g, status: "failed" as const, error: errorMsg } : g));
           throw new Error(errorMsg);
         }
+        notifyCreditBalanceChanged(typeof body.creditBalance === "number" ? body.creditBalance : undefined);
         const dbJobId = body.jobId;
         setGenHistory((prev) => prev.map((g) => g.id === genId ? { ...g, id: dbJobId } : g));
         await pollJobStatus(dbJobId);
       }
     } catch (error) {
+      notifyCreditBalanceChanged();
       const errorMsg = error instanceof Error ? error.message : "Generation failed";
       setGenerationError(errorMsg);
       setGenHistory((prev) => prev.map((g) => g.id === genId ? { ...g, status: "failed" as const, error: errorMsg } : g));

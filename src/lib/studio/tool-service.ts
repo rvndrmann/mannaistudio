@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { z } from "zod"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { directorTools, type DirectorToolName } from "./tool-registry"
+import { getUserCredits } from "./credits"
 
 export const toolRequestSchema = z.object({
   tool: z.enum(["inspect_current_project", "read_episode_script", "search_episode_script", "list_production_entities", "list_storyboard_shots", "update_creative_brief", "create_series", "write_series_bible", "create_production_entity", "create_production_entities_batch", "create_storyboard_batch", "validate_production", "record_continuity_fact", "inspect_continuity", "estimate_generation_cost", "inspect_generation_jobs", "submit_generation", "update_script", "update_shot", "delete_shot", "update_asset", "attach_media_to_asset", "delete_asset", "attach_media_to_shot", "update_full_auto_mode", "create_revision_request"]),
@@ -115,7 +116,7 @@ export async function decideDirectorProposal(context: AuthenticatedProjectContex
   if (proposal.project_id !== context.project.id || proposal.user_id !== context.user.id) throw new Error("Proposal does not belong to this project")
   if (decision === "rejected") {
     await audit(context, "tool.proposal_rejected", "creator_action_proposals", proposalId, { tool: proposal.action_type })
-    return { proposal, executed: false }
+    return { proposal, executed: false, creditBalance: await getUserCredits(context.user.id, context.supabase) }
   }
   const tool = directorTools[proposal.action_type as DirectorToolName]
   if (!tool) throw new Error("Unknown proposal action")
@@ -125,7 +126,7 @@ export async function decideDirectorProposal(context: AuthenticatedProjectContex
     await context.supabase.rpc("creator_finish_action_proposal", { p_proposal_id: proposalId, p_status: "executed" })
     if (proposal.tool_execution_id) await context.supabase.rpc("creator_finish_tool_execution", { p_execution_id: proposal.tool_execution_id, p_status: "completed", p_output: data, p_error: null })
     await audit(context, "tool.proposal_executed", "creator_action_proposals", proposalId, { tool: tool.name })
-    return { proposal, executed: true, data }
+    return { proposal, executed: true, data, creditBalance: await getUserCredits(context.user.id, context.supabase) }
   } catch (cause) {
     await context.supabase.rpc("creator_finish_action_proposal", { p_proposal_id: proposalId, p_status: "failed" })
     if (proposal.tool_execution_id) await context.supabase.rpc("creator_finish_tool_execution", { p_execution_id: proposal.tool_execution_id, p_status: "failed", p_output: null, p_error: { message: cause instanceof Error ? cause.message : "Tool failed" } })

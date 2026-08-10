@@ -216,7 +216,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         result_url: storagePath,
       })
     }
-    return NextResponse.json({ path: storagePath, provider, model: input.model, byteplusAssetId, byteplusAssetUri })
+    return NextResponse.json({
+      path: storagePath,
+      provider,
+      model: input.model,
+      byteplusAssetId,
+      byteplusAssetUri,
+      creditsCharged: creditCost,
+      creditBalance: deduct.newBalance,
+    })
   } catch (error) {
     if (pendingAssetGeneration) {
       try {

@@ -6,6 +6,7 @@ import { continuityFactSchema, findContinuityConflicts } from "./continuity"
 import { entityHandle, entityKindSchema, legacyEntityType, seriesBibleSchema } from "./story"
 import { generationRequestSchema, routeGeneration } from "./model-routing"
 import { revisionRequestSchema } from "./revisions"
+import { deductUserCredits } from "./credits"
 
 export type ToolRisk = "read" | "write" | "costly" | "destructive"
 
@@ -353,12 +354,27 @@ export const submitGenerationTool = defineDirectorTool({
     const { data, error } = await context.supabase.from("creator_generation_jobs").insert(jobs).select("*")
     if (error) throw error
     const jobIds = (data ?? []).map((job) => job.id)
-    const { error: reserveError } = await context.supabase.rpc("creator_reserve_generation_credits_batch", { p_job_ids: jobIds })
-    if (reserveError) {
+    // Chat proposal approvals must charge the same account used by the Studio
+    // credit badge and direct image/video endpoints. The legacy reservation
+    // table is a separate ledger and therefore could leave the visible balance
+    // unchanged after an approved Director generation.
+    const deduction = await deductUserCredits(
+      context.user.id,
+      routing.estimatedCredits,
+      routing.selected.model,
+      `AI Director approved ${input.request.type} generation (${input.request.shotIds.length} shot${input.request.shotIds.length === 1 ? "" : "s"})`,
+      context.supabase,
+    )
+    if (!deduction.success) {
       await context.supabase.rpc("creator_cancel_unreserved_jobs", { p_job_ids: jobIds })
-      throw reserveError
+      throw new Error(deduction.errorMessage || "Insufficient credits")
     }
-    return { jobs: data, estimatedCredits: routing.estimatedCredits }
+    return {
+      jobs: data,
+      estimatedCredits: routing.estimatedCredits,
+      creditsCharged: routing.estimatedCredits,
+      creditBalance: deduction.newBalance,
+    }
   },
 })
 

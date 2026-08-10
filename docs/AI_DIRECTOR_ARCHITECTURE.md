@@ -71,7 +71,7 @@ The AI Director does not write directly to tables. Requests pass through:
 8. Domain handler execution
 9. Tool and audit records
 
-Costly tools must declare `requiresApproval: true`. Generation also requires an atomic credit reservation. Provider workers must process only jobs with a valid reservation.
+Costly tools must declare `requiresApproval: true`. Approved Director generation and direct Studio generation both use the atomic `deduct_user_credits` RPC against `profiles.credits_balance`, the same balance displayed by the global credit badge. Provider requests are submitted only after that debit succeeds.
 
 ## Generation lifecycle
 
@@ -80,6 +80,8 @@ Costly tools must declare `requiresApproval: true`. Generation also requires an 
 The asset and storyboard image workspaces support `gpt-image-2` and `gpt-image-1.5` through an authenticated server route. Results are uploaded to the existing private `creator-studio-media` bucket and written back to the selected asset or shot. A missing `OPENAI_API_KEY` produces an explicit configuration error; no fake output is generated.
 
 The image workspaces also support BytePlus Seedream 5.0 Pro (`dola-seedream-5-0-pro-260628`), fal.ai Flux 3 (`fal-flux-3`), Flux Dev (`fal-flux-dev`), Flux Realism (`fal-flux-realism`), and Google AI Studio Nano Banana 2 (`google-nano-banana-2`).
+
+Every completed debit response includes `creditBalance`. The Studio broadcasts it to mounted credit badges immediately; failed generation requests force a fresh balance read so the UI stays correct even when a provider fails after charging.
 
 ### Entity references, aspect ratio, and recovery
 

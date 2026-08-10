@@ -16,6 +16,7 @@ import { fetchDirectorRuntimeSettings } from "@/lib/studio/director-runtime-sett
 import { buildEntityMentionContext, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { buildEntityReferenceImagePrompt, parseBulkEntityImageIntent, projectVisualStyle, visualStyleDirective, type BulkEntityImageIntent } from "@/lib/studio/entity-image-workflow"
 import { createBytePlusAsset } from "@/lib/studio/byteplus"
+import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   try {
@@ -57,7 +58,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (workflow) {
       const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert(workflow.message).select().single()
       if (assistantError) throw assistantError
-      return NextResponse.json({ sessionId, userMessage, assistantMessage, workflow: workflow.result, provider: workflow.provider, model })
+      const workflowCredits = workflow.result && typeof workflow.result === "object"
+        ? workflow.result as Record<string, unknown>
+        : {}
+      return NextResponse.json({
+        sessionId,
+        userMessage,
+        assistantMessage,
+        workflow: workflow.result,
+        provider: workflow.provider,
+        model,
+        creditsCharged: typeof workflowCredits.creditsCharged === "number" ? workflowCredits.creditsCharged : 0,
+        creditBalance: typeof workflowCredits.creditBalance === "number" ? workflowCredits.creditBalance : undefined,
+      })
     }
     const project = await buildProjectContext(context.supabase, context.project)
     const { data: instructionSettings } = await context.supabase.from("site_settings").select("value").eq("key", "ai_director_global_instructions").maybeSingle()
@@ -180,6 +193,15 @@ async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<t
     const resolvedPrompt = [prompt, `Required composition: ${aspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
     const referencePaths = Array.from(new Set(input.mentionedEntities.flatMap((entity) => entity.reference_images || []))).slice(0, 8)
     const referenceUrls = await signedMentionReferences(input.context, referencePaths)
+    const creditCost = calculateCreditCost("gpt-image-2", "image", 5, { quality: "Medium", aspectRatio })
+    const deduction = await deductUserCredits(
+      input.context.user.id,
+      creditCost,
+      "gpt-image-2",
+      "AI Director chat image generation",
+      input.context.supabase,
+    )
+    if (!deduction.success) throw new OpenAIProviderError(deduction.errorMessage || "Insufficient credits", 402)
     const image = await generateOpenAIImage({ userId: input.context.user.id, model: "gpt-image-2", prompt: resolvedPrompt, referenceUrls, aspectRatio })
     const path = `${input.context.user.id}/${input.projectId}/chat/${crypto.randomUUID()}.png`
     const { error: uploadError } = await input.context.supabase.storage.from("creator-studio-media").upload(path, image, { contentType: "image/png", upsert: false })
@@ -214,7 +236,13 @@ async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<t
     const { data: signed } = await input.context.supabase.storage.from("creator-studio-media").createSignedUrl(path, 60 * 60)
     return {
       provider: "openai",
-      result: { type: "image", path, shotId: targetShot?.id || null },
+      result: {
+        type: "image",
+        path,
+        shotId: targetShot?.id || null,
+        creditsCharged: creditCost,
+        creditBalance: deduction.newBalance,
+      },
       message: {
         session_id: input.sessionId,
         role: "assistant",
@@ -250,6 +278,8 @@ async function generateBulkEntityReferenceImages(
   const style = projectVisualStyle(input.context.project)
   const completed: Array<{ entityId: string; entityName: string; path: string; url?: string; prompt: string }> = []
   const failed: Array<{ entityName: string; error: string }> = []
+  let creditsCharged = 0
+  let creditBalance: number | null = null
   const batchSize = 3
 
   for (let offset = 0; offset < requested.length; offset += batchSize) {
@@ -258,6 +288,17 @@ async function generateBulkEntityReferenceImages(
       const prompt = buildEntityReferenceImagePrompt(entity as MentionableEntity, style)
       const existingReferences = Array.isArray(entity.reference_images) ? entity.reference_images.slice(0, 3) : []
       const referenceUrls = await signedMentionReferences(input.context, existingReferences)
+      const creditCost = calculateCreditCost("gpt-image-2", "image", 5, { quality: "Medium", aspectRatio: "2:3" })
+      const deduction = await deductUserCredits(
+        input.context.user.id,
+        creditCost,
+        "gpt-image-2",
+        `AI Director character/asset reference: ${entity.name}`,
+        input.context.supabase,
+      )
+      if (!deduction.success) throw new OpenAIProviderError(deduction.errorMessage || "Insufficient credits", 402)
+      creditsCharged += creditCost
+      creditBalance = deduction.newBalance
       const image = await generateOpenAIImage({ userId: input.context.user.id, model: "gpt-image-2", prompt, referenceUrls, aspectRatio: "2:3" })
       const path = `${input.context.user.id}/${input.projectId}/entities/${entity.id}/gpt-image-2-${crypto.randomUUID()}.png`
       const { error: uploadError } = await input.context.supabase.storage.from("creator-studio-media").upload(path, image, { contentType: "image/png", upsert: false })
@@ -323,7 +364,15 @@ async function generateBulkEntityReferenceImages(
   ].filter(Boolean).join(" ")
   return {
     provider: "openai",
-    result: { type: "entity_images", generated: completed.length, failed, entityIds: completed.map((item) => item.entityId), style },
+    result: {
+      type: "entity_images",
+      generated: completed.length,
+      failed,
+      entityIds: completed.map((item) => item.entityId),
+      style,
+      creditsCharged,
+      creditBalance,
+    },
     message: {
       session_id: input.sessionId,
       role: "assistant",

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Zap, Plus, X, Check, Loader2, CreditCard, AlertCircle } from "lucide-react"
+import { creditBalanceChangedEvent } from "@/lib/credit-balance-events"
 
 export default function CreditBadge({ className }: { className?: string }) {
   const [credits, setCredits] = useState<number | null>(null)
@@ -24,8 +25,17 @@ export default function CreditBadge({ className }: { className?: string }) {
 
   useEffect(() => {
     fetchCredits()
+    const handleBalanceChanged = (event: Event) => {
+      const balance = (event as CustomEvent<{ balance?: number }>).detail?.balance
+      if (typeof balance === "number") setCredits(balance)
+      else void fetchCredits()
+    }
+    window.addEventListener(creditBalanceChangedEvent, handleBalanceChanged)
     const interval = setInterval(fetchCredits, 15_000)
-    return () => clearInterval(interval)
+    return () => {
+      window.removeEventListener(creditBalanceChangedEvent, handleBalanceChanged)
+      clearInterval(interval)
+    }
   }, [])
 
   const loadRazorpayScript = () =>
