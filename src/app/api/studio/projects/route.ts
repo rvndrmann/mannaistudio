@@ -17,10 +17,21 @@ export async function GET() {
     // is not filtered by owner. Each row is tagged so the UI can mark shared work.
     const { data, error } = await supabase.from("creator_projects").select("*").order("created_at", { ascending: false })
     if (error) throw error
-    const projects = (data || []).map((project) => ({
-      ...project,
-      shared: project.user_id !== user.id,
-    }))
+    // Shared rows carry who they belong to, so a client engagement reads as one
+    // rather than appearing as an unexplained extra project.
+    const { data: owners } = await supabase.rpc("accessible_project_owners")
+    const ownerById = new Map<string, { owner_name: string | null; owner_email: string | null }>(
+      (owners || []).map((row: { project_id: string; owner_name: string | null; owner_email: string | null }) => [row.project_id, row]),
+    )
+    const projects = (data || []).map((project) => {
+      const owner = ownerById.get(project.id)
+      return {
+        ...project,
+        shared: project.user_id !== user.id,
+        ownerName: project.user_id === user.id ? null : owner?.owner_name || null,
+        ownerEmail: project.user_id === user.id ? null : owner?.owner_email || null,
+      }
+    })
     const projectIds = projects.map((project) => project.id)
     const { data: entities, error: entitiesError } = projectIds.length
       ? await supabase

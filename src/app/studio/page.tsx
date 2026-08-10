@@ -30,6 +30,10 @@ type Project = {
   default_aspect?: string;
   gallery_images?: string[];
   created_at: string;
+  shared?: boolean;
+  ownerName?: string | null;
+  ownerEmail?: string | null;
+  enterprise_status?: string | null;
 };
 type ProductionMode = "legacy" | "quick_video" | "story_campaign" | "ai_show";
 type ProjectType = "unspecified" | "ai_ad" | "brand_series" | "short_drama";
@@ -296,9 +300,20 @@ function ProjectGalleryCard({ project }: { project: Project }) {
       ) : (
         <div className="absolute inset-0 grid place-items-center bg-gradient-to-br from-[#363b30] via-[#1b1e1a] to-[#0c0d0c] text-zinc-600"><Image className="h-12 w-12" /></div>
       )}
+      {project.shared && (
+        <span className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full border border-[#b9f42e]/35 bg-black/70 px-2.5 py-1 text-[10px] font-bold text-[#b9f42e] backdrop-blur">
+          <Users className="h-3 w-3" />
+          {project.enterprise_status ? "Client work" : "Shared with you"}
+        </span>
+      )}
       <div className="absolute inset-x-0 bottom-0 min-h-24 bg-gradient-to-t from-black via-black/80 to-transparent p-4 pt-10">
         <p className="text-xs font-semibold text-[#d9ff84]">{project.default_style || "Cinematic"}</p>
         <p className="mt-1 truncate text-xl font-bold text-white">{project.name}</p>
+        {project.shared && (project.ownerName || project.ownerEmail) ? (
+          <p className="mt-1 truncate text-xs text-[#d9ff84]/80">
+            {project.enterprise_status ? "Producing for" : "Owned by"} {project.ownerName || project.ownerEmail}
+          </p>
+        ) : null}
         <p className="mt-1 text-xs text-zinc-400">Edited {new Date(project.created_at).toLocaleDateString()}</p>
       </div>
     </Link>
