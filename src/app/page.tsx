@@ -10,9 +10,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import {
     ArrowRight,
     ArrowUpRight,
-    BadgeCheck,
     Bot,
-    Boxes,
     Brain,
     Clapperboard,
     Film,
@@ -21,26 +19,14 @@ import {
     Mic2,
     PenLine,
     Play,
-    PlugZap,
     Plus,
     Sparkles,
-    Video,
     Wand2,
     X,
     Zap,
 } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-
-const quickTools = [
-    { label: "Image", href: "/studio?mode=image", icon: ImageIcon },
-    { label: "Video", href: "/studio?mode=quick_video", icon: Video },
-    { label: "AI Director", href: "/studio", icon: Bot, active: true },
-    { label: "Characters", href: "/studio?tab=assets", icon: Boxes },
-    { label: "Storyboard", href: "/studio?tab=storyboard", icon: Clapperboard },
-    { label: "MCP & CLI", href: "/studio/external", icon: PlugZap },
-    { label: "Academy", href: "/courses", icon: BadgeCheck },
-]
 
 const featureCards = [
     {
@@ -181,37 +167,9 @@ export default function LandingPage() {
             />
             <Navbar />
 
-            {/* Navbar is fixed and already owns the membership offer. Reserve room
-                for it before the secondary tool bar so the two headers never overlap. */}
+            {/* Navbar is fixed and owns the membership offer. Reserve room for it
+                before the homepage content so it never overlaps the hero. */}
             <div className="h-28" aria-hidden="true" />
-
-            <nav className="relative z-20 border-y border-white/10 bg-[#0b0d0c]/95 px-4 py-3 backdrop-blur">
-                <div className="mx-auto flex max-w-[1540px] items-center gap-3 overflow-x-auto">
-                    {quickTools.map((tool) => (
-                        <Link
-                            key={tool.label}
-                            href={tool.href}
-                            className={cn(
-                                "inline-flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-white/55 transition hover:bg-white/10 hover:text-white",
-                                tool.active && "bg-primary/15 text-primary ring-1 ring-primary/30",
-                            )}
-                        >
-                            <tool.icon className="h-4 w-4" />
-                            {tool.label}
-                        </Link>
-                    ))}
-                    <span className="ml-auto hidden h-6 w-px shrink-0 bg-white/10 lg:block" />
-                    {user ? (
-                        <Link href="/studio" className="btn-primary shrink-0 px-5 py-2">
-                            Open Studio
-                        </Link>
-                    ) : (
-                        <button onClick={signInWithGoogle} className="btn-primary shrink-0 px-5 py-2">
-                            Sign up
-                        </button>
-                    )}
-                </div>
-            </nav>
 
             <section className="mx-auto max-w-[1540px] px-4 pb-10 pt-5 md:px-6">
                 <div className="grid gap-4 lg:grid-cols-[1.05fr_.95fr]">
