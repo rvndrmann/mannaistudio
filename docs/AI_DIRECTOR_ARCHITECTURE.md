@@ -81,6 +81,18 @@ The asset and storyboard image workspaces support `gpt-image-2` and `gpt-image-1
 
 The image workspaces also support BytePlus Seedream 5.0 Pro (`dola-seedream-5-0-pro-260628`), fal.ai Flux 3 (`fal-flux-3`), Flux Dev (`fal-flux-dev`), Flux Realism (`fal-flux-realism`), and Google AI Studio Nano Banana 2 (`google-nano-banana-2`).
 
+### Entity references, aspect ratio, and recovery
+
+- `@mentions` resolve to project-scoped entity IDs in Director chat, character/asset image prompts, storyboard keyframes, and video prompts. The server validates every mentioned entity before adding its description and selected reference images to provider input.
+- A request such as **“Create all missing character images”** is routed as one image request per entity, never as a contact sheet. Each completed image is appended to that entity's `reference_images` and appears in **Characters & Assets**.
+- The selected project visual style is appended at the provider boundary. `Realistic - Photorealistic` explicitly requests live-action photography and rejects anime, illustrations, cartoons, CG, collages, labels, and text overlays.
+- OpenAI image canvas selection follows the requested composition: landscape requests including `16:9` use `1536x1024`, portrait requests including `9:16` use `1024x1536`, and `1:1` uses `1024x1024`. GPT Image's native landscape canvas is 3:2, so 16:9 is composed as widescreen but is not pixel-exact at the provider level.
+- Asset-image requests persist `metadata.image_generation.status` as `generating`, `completed`, or `failed`. Returning to the asset tab therefore retains visible progress and polls until the generated reference image is saved.
+
+### Studio project gallery
+
+`GET /api/studio/projects` returns a signed `gallery_images` collection for each owned project. The collection is built from saved character reference images first, followed by scene and prop references; the project cover image is only a fallback. The Studio home uses this collection in a horizontally scrollable, arrow-controlled project gallery.
+
 Storyboard video generation supports:
 - **Google AI Studio**: Veo 3.1 (`google-veo-3-1`), Gemini 2.5 Pro (`google-gemini-2-5-pro`), Omni Flash (`google-omni-flash`).
 - **fal.ai Provider**: Seedance 2.5 (`fal-seedance-2-5`), Seedance 2.0 (`fal-seedance-2-0`), Seedance 2.0 Fast (`fal-seedance-2-0-fast`), Seedance 2.0 Mini (`fal-seedance-2-0-mini`), Kling 3 (`fal-kling-3`), Kling O3 (`fal-kling-o3`), Kling 1.6 Pro (`fal-kling-1-6-pro`), MiniMax H3 (`fal-minimax-h3`), MiniMax Video-01 (`fal-minimax-video-01`), Hunyuan Video (`fal-hunyuan-video`), Luma Dream Machine (`fal-luma-dream-machine`).
@@ -94,7 +106,9 @@ Continuity combines approved reference assets, entity metadata, scoped facts, lo
 
 ## Voice architecture
 
-Text and voice share project context, messages, tools, proposals, and audit logs. The browser requests an authenticated, short-lived OpenAI Realtime client secret from the server, then creates a WebRTC connection directly to OpenAI. The permanent `OPENAI_API_KEY` stays server-only. Database records track session and usage metadata without storing permanent credentials.
+Text and voice share project context and workflow instructions. The browser requests an authenticated, short-lived OpenAI Realtime client secret from the server, then creates a WebRTC connection directly to OpenAI. The permanent `OPENAI_API_KEY` stays server-only. Database records track session and usage metadata without storing permanent credentials.
+
+Realtime voice tool execution is not yet connected to the Director tool registry. It can discuss the active project but cannot currently create assets, write a storyboard, or submit generation jobs by voice. When added, realtime calls must use the same validated tool service and approval UI as text chat.
 
 ## Verification commands
 

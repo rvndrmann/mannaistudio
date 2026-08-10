@@ -129,17 +129,40 @@ export async function createOpenAIRealtimeClientSecret(input: { userId: string; 
   return { sessionId: data.id || crypto.randomUUID(), ephemeralCredential: data.value, expiresAt: new Date((data.expires_at || Math.floor(Date.now() / 1000) + 60) * 1000).toISOString(), model: process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1" }
 }
 
-export async function generateOpenAIImage(input: { userId: string; model: OpenAIImageModel; prompt: string; referenceUrls?: string[] }) {
+/**
+ * GPT Image supports three output canvases. Keep the requested composition
+ * direction intact even where its canvas cannot exactly match a cinematic
+ * ratio such as 16:9 (the landscape canvas is 3:2).
+ */
+export function openAIImageSizeForAspectRatio(aspectRatio?: string): "1024x1024" | "1536x1024" | "1024x1536" {
+  switch (aspectRatio) {
+    case "1:1":
+      return "1024x1024"
+    case "16:9":
+    case "21:9":
+    case "4:3":
+    case "3:2":
+      return "1536x1024"
+    case "9:16":
+    case "3:4":
+    case "2:3":
+    default:
+      return "1024x1536"
+  }
+}
+
+export async function generateOpenAIImage(input: { userId: string; model: OpenAIImageModel; prompt: string; referenceUrls?: string[]; aspectRatio?: string }) {
   const referenceUrls = input.referenceUrls || []
+  const size = openAIImageSizeForAspectRatio(input.aspectRatio)
   const response = referenceUrls.length
     ? await openAIRequest("/v1/images/edits", {
       method: "POST",
-      body: await openAIImageEditForm(input.model, input.prompt, referenceUrls),
+      body: await openAIImageEditForm(input.model, input.prompt, referenceUrls, size),
     }, input.userId)
     : await openAIRequest("/v1/images/generations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: input.model, prompt: input.prompt, size: "1024x1536", quality: "medium", output_format: "png" }),
+      body: JSON.stringify({ model: input.model, prompt: input.prompt, size, quality: "medium", output_format: "png" }),
     }, input.userId)
   const data = await response.json() as { data?: Array<{ b64_json?: string }> }
   const base64 = data.data?.[0]?.b64_json
@@ -147,11 +170,11 @@ export async function generateOpenAIImage(input: { userId: string; model: OpenAI
   return Buffer.from(base64, "base64")
 }
 
-async function openAIImageEditForm(model: OpenAIImageModel, prompt: string, referenceUrls: string[]) {
+async function openAIImageEditForm(model: OpenAIImageModel, prompt: string, referenceUrls: string[], size: ReturnType<typeof openAIImageSizeForAspectRatio>) {
   const form = new FormData()
   form.append("model", model)
   form.append("prompt", prompt)
-  form.append("size", "1024x1536")
+  form.append("size", size)
   form.append("quality", "medium")
   form.append("output_format", "png")
   form.append("input_fidelity", "high")

@@ -15,7 +15,36 @@ export async function GET() {
     const { supabase, user } = await currentUser()
     const { data, error } = await supabase.from("creator_projects").select("*").eq("user_id", user.id).order("created_at", { ascending: false })
     if (error) throw error
-    return NextResponse.json(data || [])
+    const projects = data || []
+    const projectIds = projects.map((project) => project.id)
+    const { data: entities, error: entitiesError } = projectIds.length
+      ? await supabase
+        .from("creator_entities")
+        .select("project_id,type,reference_images,created_at")
+        .in("project_id", projectIds)
+        .order("created_at", { ascending: false })
+      : { data: [], error: null }
+    if (entitiesError) throw entitiesError
+
+    const projectsWithGallery = await Promise.all(projects.map(async (project) => {
+      const projectEntities = (entities || []).filter((entity) => entity.project_id === project.id)
+      // Lead with characters, then use locations/props to fill a project visual strip.
+      const orderedEntities = [
+        ...projectEntities.filter((entity) => entity.type === "character"),
+        ...projectEntities.filter((entity) => entity.type !== "character"),
+      ]
+      const paths = orderedEntities
+        .flatMap((entity) => Array.isArray(entity.reference_images) ? entity.reference_images : [])
+        .filter((path): path is string => typeof path === "string" && path.trim().length > 0)
+      if (!paths.length && typeof project.cover_image === "string" && project.cover_image.trim()) paths.push(project.cover_image)
+      const gallery_images = (await Promise.all(Array.from(new Set(paths)).slice(0, 4).map(async (path) => {
+        if (/^https?:\/\//i.test(path)) return path
+        const { data: signed } = await supabase.storage.from("creator-studio-media").createSignedUrl(path, 60 * 60)
+        return signed?.signedUrl || null
+      }))).filter((path): path is string => Boolean(path))
+      return { ...project, gallery_images }
+    }))
+    return NextResponse.json(projectsWithGallery)
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Could not load bases" }, { status: 401 }) }
 }
 

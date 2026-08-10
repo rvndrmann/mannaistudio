@@ -66,6 +66,13 @@ type Entity = {
   voice_id: string | null;
   status: string;
 };
+
+function entityImageGenerationStatus(entity: Entity): "generating" | "completed" | "failed" | null {
+  const generation = entity.metadata?.image_generation
+  if (!generation || typeof generation !== "object") return null
+  const status = (generation as Record<string, unknown>).status
+  return status === "generating" || status === "completed" || status === "failed" ? status : null
+}
 type Shot = {
   id: string;
   title: string;
@@ -1411,8 +1418,9 @@ function AssetCard({
   openWorkspace: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const imageGenerationStatus = entityImageGenerationStatus(entity);
   return (
-    <article className="overflow-hidden rounded-xl border border-white/10 bg-[#1b1d1c] transition hover:border-[#b9f42e]/55">
+    <article className="relative overflow-hidden rounded-xl border border-white/10 bg-[#1b1d1c] transition hover:border-[#b9f42e]/55">
       <button onClick={openWorkspace} className="block w-full text-left">
         <AssetImage src={entity.reference_images?.[0]} />
       </button>
@@ -1452,6 +1460,17 @@ function AssetCard({
           </button>
         </div>
       </div>
+      {imageGenerationStatus === "generating" && (
+        <div className="absolute inset-0 grid place-items-center bg-black/65 backdrop-blur-[1px]">
+          <div className="flex items-center gap-2 rounded-full border border-[#b9f42e]/35 bg-[#151715] px-3 py-2 text-xs font-bold text-[#d9ff84]">
+            <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" /><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></svg>
+            Generating reference image…
+          </div>
+        </div>
+      )}
+      {imageGenerationStatus === "failed" && (
+        <p className="border-t border-red-500/20 bg-red-500/10 px-4 py-2 text-xs text-red-200">Image generation failed. Open this asset to retry.</p>
+      )}
       {editing && (
         <AssetModal
           type={entity.type}
@@ -1907,7 +1926,8 @@ function AssetWorkspace({
   const [model, setModel] = useState<string>(imageGenerationModels[0].id);
   const [aspectRatio, setAspectRatio] = useState<string>("9:16");
   const [quality, setQuality] = useState<"Low" | "Medium" | "High" | "Ultra">("Medium");
-  const [working, setWorking] = useState(false);
+  const persistedGenerationStatus = entityImageGenerationStatus(asset);
+  const [working, setWorking] = useState(persistedGenerationStatus === "generating");
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   useEffect(() => {
@@ -1924,6 +1944,17 @@ function AssetWorkspace({
       ? asset.metadata.generation_reference_images.filter((value): value is string => typeof value === "string")
       : []
   );
+
+  useEffect(() => {
+    if (persistedGenerationStatus !== "generating") setWorking(false);
+    setLibraryImages(asset.reference_images || []);
+  }, [asset, persistedGenerationStatus]);
+
+  useEffect(() => {
+    if (persistedGenerationStatus !== "generating") return;
+    const interval = window.setInterval(() => { void reload(true); }, 3_000);
+    return () => window.clearInterval(interval);
+  }, [persistedGenerationStatus, reload]);
 
   const activeImage = libraryImages[selected] || null;
   const chosenImage = libraryImages[0] || null;

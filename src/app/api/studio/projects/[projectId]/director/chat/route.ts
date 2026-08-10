@@ -14,6 +14,8 @@ import { normalizeDirectorGlobalInstructions } from "@/lib/studio/instructions"
 import { runDirectorAgent } from "@/lib/studio/director-agent"
 import { fetchDirectorRuntimeSettings } from "@/lib/studio/director-runtime-settings"
 import { buildEntityMentionContext, type MentionableEntity } from "@/lib/studio/entity-mentions"
+import { buildEntityReferenceImagePrompt, parseBulkEntityImageIntent, projectVisualStyle, visualStyleDirective, type BulkEntityImageIntent } from "@/lib/studio/entity-image-workflow"
+import { createBytePlusAsset } from "@/lib/studio/byteplus"
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   try {
@@ -137,6 +139,8 @@ async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<t
     })
     return proposalMessage(input.sessionId, "I prepared a full-auto mode proposal with credit and job guardrails. Approve it here before I can run the workflow automatically.", result)
   }
+  const bulkEntityImageIntent = !forbidsAllMediaGeneration && !forbidsImageGeneration ? parseBulkEntityImageIntent(input.message) : null
+  if (bulkEntityImageIntent) return generateBulkEntityReferenceImages(input, bulkEntityImageIntent)
   if (!forbidsAllMediaGeneration && !forbidsVideoGeneration && /\b(video|animate|motion)\b/.test(normalized) && /\b(generate|create|make|render|produce)\b/.test(normalized)) {
     const { data: shots, error } = await input.context.supabase.from("creator_shots").select("id,prompt,title").eq("episode_id", input.episodeId).order("order_index").limit(6)
     if (error) throw error
@@ -160,7 +164,7 @@ async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<t
     const { data: targetShot } = requestedShotNumber
       ? await input.context.supabase
         .from("creator_shots")
-        .select("id,order_index,prompt,metadata,referenced_entities")
+        .select("id,order_index,prompt,aspect_ratio,metadata,referenced_entities")
         .eq("episode_id", input.episodeId)
         .order("order_index", { ascending: true })
         .range(requestedShotNumber - 1, requestedShotNumber - 1)
@@ -170,10 +174,13 @@ async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<t
       ? targetShot.prompt
       : input.message.replace(/^.*?\b(generate|create|make|draw)\b/i, "").trim() || input.message
     const mentionContext = buildEntityMentionContext(input.mentionedEntities)
-    const resolvedPrompt = mentionContext ? `${prompt}\n\n${mentionContext}` : prompt
+    const style = projectVisualStyle(input.context.project)
+    const projectDefaultAspect = typeof input.context.project.default_aspect === "string" ? input.context.project.default_aspect : null
+    const aspectRatio = targetShot?.aspect_ratio || projectDefaultAspect || "9:16"
+    const resolvedPrompt = [prompt, `Required composition: ${aspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
     const referencePaths = Array.from(new Set(input.mentionedEntities.flatMap((entity) => entity.reference_images || []))).slice(0, 8)
     const referenceUrls = await signedMentionReferences(input.context, referencePaths)
-    const image = await generateOpenAIImage({ userId: input.context.user.id, model: "gpt-image-2", prompt: resolvedPrompt, referenceUrls })
+    const image = await generateOpenAIImage({ userId: input.context.user.id, model: "gpt-image-2", prompt: resolvedPrompt, referenceUrls, aspectRatio })
     const path = `${input.context.user.id}/${input.projectId}/chat/${crypto.randomUUID()}.png`
     const { error: uploadError } = await input.context.supabase.storage.from("creator-studio-media").upload(path, image, { contentType: "image/png", upsert: false })
     if (uploadError) throw uploadError
@@ -220,6 +227,111 @@ async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<t
     }
   }
   return null
+}
+
+async function generateBulkEntityReferenceImages(
+  input: { context: Awaited<ReturnType<typeof requireAuthenticatedProject>>; projectId: string; episodeId: string; sessionId: string; message: string; history: { role: string; content: string | null }[]; idempotencyKey: string; mentionedEntities: ResolvedMention[] },
+  intent: BulkEntityImageIntent,
+) {
+  const { data: entities, error } = await input.context.supabase
+    .from("creator_entities")
+    .select("id,name,type,description,reference_images,metadata,status")
+    .eq("project_id", input.projectId)
+    .in("type", intent.types)
+    .order("created_at")
+  if (error) throw error
+
+  const requested = (entities || []).filter((entity) => intent.regenerate || !Array.isArray(entity.reference_images) || entity.reference_images.length === 0)
+  if (!requested.length) {
+    const label = intent.types.length === 1 && intent.types[0] === "character" ? "characters" : "characters and assets"
+    return textMessage(input.sessionId, `All matching ${label} already have reference images. Say “regenerate all” if you want to replace or refresh them.`)
+  }
+
+  const style = projectVisualStyle(input.context.project)
+  const completed: Array<{ entityId: string; entityName: string; path: string; url?: string; prompt: string }> = []
+  const failed: Array<{ entityName: string; error: string }> = []
+  const batchSize = 3
+
+  for (let offset = 0; offset < requested.length; offset += batchSize) {
+    const batch = requested.slice(offset, offset + batchSize)
+    const results = await Promise.allSettled(batch.map(async (entity) => {
+      const prompt = buildEntityReferenceImagePrompt(entity as MentionableEntity, style)
+      const existingReferences = Array.isArray(entity.reference_images) ? entity.reference_images.slice(0, 3) : []
+      const referenceUrls = await signedMentionReferences(input.context, existingReferences)
+      const image = await generateOpenAIImage({ userId: input.context.user.id, model: "gpt-image-2", prompt, referenceUrls, aspectRatio: "2:3" })
+      const path = `${input.context.user.id}/${input.projectId}/entities/${entity.id}/gpt-image-2-${crypto.randomUUID()}.png`
+      const { error: uploadError } = await input.context.supabase.storage.from("creator-studio-media").upload(path, image, { contentType: "image/png", upsert: false })
+      if (uploadError) throw uploadError
+
+      const completedAt = new Date().toISOString()
+      const currentMetadata = entity.metadata && typeof entity.metadata === "object" ? entity.metadata as Record<string, unknown> : {}
+      let byteplusAssetId: string | null = null
+      const { data: signedOutput } = await input.context.supabase.storage.from("creator-studio-media").createSignedUrl(path, 60 * 60)
+      if (signedOutput?.signedUrl && process.env.ARK_ACCESS_KEY && process.env.ARK_SECRET_KEY) {
+        try {
+          byteplusAssetId = (await createBytePlusAsset({ imageUrl: signedOutput.signedUrl, name: entity.name })).assetId
+        } catch (registrationError) {
+          console.warn(`Could not register ${entity.name} as a BytePlus asset:`, registrationError)
+        }
+      }
+      const referenceImages = intent.regenerate ? [path, ...existingReferences.filter((item) => item !== path)] : [...existingReferences, path]
+      const metadata = {
+        ...currentMetadata,
+        ...(byteplusAssetId ? { byteplus_asset_id: byteplusAssetId } : {}),
+        image_generation: { provider: "openai", model: "gpt-image-2", prompt, style, target: "entity", entity_id: entity.id, status: "completed", completed_at: completedAt },
+      }
+      const updates: Record<string, unknown> = { reference_images: referenceImages, metadata, status: entity.status || "draft" }
+      if (byteplusAssetId) {
+        updates.byteplus_asset_id = byteplusAssetId
+        updates.byteplus_asset_uri = `asset://${byteplusAssetId}`
+        updates.source_type = "byteplus_virtual_portrait"
+        updates.byteplus_asset_class = "private_virtual_portrait"
+        updates.verification_status = "verified"
+      }
+      const { error: updateError } = await input.context.supabase.from("creator_entities").update(updates).eq("id", entity.id).eq("project_id", input.projectId)
+      if (updateError) throw updateError
+
+      await input.context.supabase.from("creator_generation_jobs").insert({
+        user_id: input.context.user.id,
+        project_id: input.projectId,
+        session_id: input.sessionId,
+        type: "image",
+        status: "completed",
+        model: "gpt-image-2",
+        provider: "openai",
+        prompt,
+        input_images: existingReferences,
+        settings: { target: "entity", entityId: entity.id, entityType: entity.type, style },
+        requires_approval: false,
+        result_url: path,
+        completed_at: completedAt,
+      })
+      return { entityId: entity.id, entityName: entity.name, path, url: signedOutput?.signedUrl, prompt }
+    }))
+    results.forEach((result, index) => {
+      if (result.status === "fulfilled") completed.push(result.value)
+      else failed.push({ entityName: batch[index].name, error: result.reason instanceof Error ? result.reason.message : "Image generation failed" })
+    })
+  }
+
+  if (!completed.length) throw new Error(failed[0]?.error || "No entity reference images could be generated")
+  const skippedCount = (entities || []).length - requested.length
+  const details = [
+    `Generated ${completed.length} separate ${style} reference image${completed.length === 1 ? "" : "s"} and saved each one to its matching card in Characters & Assets.`,
+    skippedCount ? `${skippedCount} existing reference image${skippedCount === 1 ? " was" : "s were"} kept.` : "",
+    failed.length ? `${failed.length} failed: ${failed.map((item) => item.entityName).join(", ")}.` : "",
+  ].filter(Boolean).join(" ")
+  return {
+    provider: "openai",
+    result: { type: "entity_images", generated: completed.length, failed, entityIds: completed.map((item) => item.entityId), style },
+    message: {
+      session_id: input.sessionId,
+      role: "assistant",
+      content: details,
+      referenced_entity_ids: completed.map((item) => item.entityId),
+      media: completed.map((item) => ({ type: "image", path: item.path, url: item.url, prompt: item.prompt, entityId: item.entityId, entityName: item.entityName, target: "entity", provider: "openai", model: "gpt-image-2" })),
+    },
+  }
 }
 
 async function signedMentionReferences(context: Awaited<ReturnType<typeof requireAuthenticatedProject>>, paths: string[]) {

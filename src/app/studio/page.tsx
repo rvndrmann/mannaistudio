@@ -5,6 +5,8 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   Bot,
+  ChevronLeft,
+  ChevronRight,
   Clapperboard,
   FolderKanban,
   Image,
@@ -25,6 +27,7 @@ type Project = {
   cover_image?: string | null;
   default_style?: string;
   default_aspect?: string;
+  gallery_images?: string[];
   created_at: string;
 };
 type ProductionMode = "legacy" | "quick_video" | "story_campaign" | "ai_show";
@@ -79,6 +82,7 @@ export default function StudioHome() {
   const [mode, setMode] =
     useState<Exclude<ProductionMode, "legacy">>("quick_video");
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const projectsScrollerRef = useRef<HTMLDivElement>(null);
 
   const focusComposer = () => {
     composerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -149,6 +153,9 @@ export default function StudioHome() {
     if (!prompt.trim()) return;
     await createProject(prompt);
   };
+  const scrollProjects = (direction: "left" | "right") => {
+    projectsScrollerRef.current?.scrollBy({ left: direction === "right" ? 440 : -440, behavior: "smooth" });
+  };
   return (
     <main className="min-h-screen bg-[#070807] text-[#f5f2e5]">
       <TopBar />
@@ -216,57 +223,30 @@ export default function StudioHome() {
               <h1 className="text-3xl font-bold tracking-tight">
                 Recent projects
               </h1>
-              <Link
-                href="#projects"
-                className="text-sm font-semibold tracking-[.18em] text-[#b9f42e]"
-              >
-                VIEW ALL →
-              </Link>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => scrollProjects("left")} aria-label="Show previous projects" className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 text-zinc-300 transition hover:border-[#b9f42e] hover:text-[#b9f42e]"><ChevronLeft className="h-4 w-4" /></button>
+                <button type="button" onClick={() => scrollProjects("right")} aria-label="Show more projects" className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 text-zinc-300 transition hover:border-[#b9f42e] hover:text-[#b9f42e]"><ChevronRight className="h-4 w-4" /></button>
+                <Link href="#projects" className="ml-2 text-sm font-semibold tracking-[.18em] text-[#b9f42e]">VIEW ALL →</Link>
+              </div>
             </div>
             {loading ? (
               <div className="flex h-52 items-center justify-center">
                 <Loader2 className="animate-spin text-[#b9f42e]" />
               </div>
             ) : (
-              <div id="projects" className="flex gap-4 overflow-x-auto pb-3">
+              <div ref={projectsScrollerRef} id="projects" className="flex snap-x snap-mandatory gap-5 overflow-x-auto scroll-smooth pb-4 [scrollbar-width:thin]">
                 <button
                   type="button"
                   onClick={() => createProject("Untitled production")}
                   disabled={creating}
-                  className="flex h-44 w-64 shrink-0 flex-col items-center justify-center rounded-xl border border-dashed border-[#b9f42e]/60 bg-[#202119] text-[#b9f42e] transition hover:bg-[#292b20] disabled:cursor-wait disabled:opacity-60"
+                  className="flex h-56 w-[360px] shrink-0 snap-start flex-col items-center justify-center rounded-2xl border border-dashed border-[#b9f42e]/60 bg-[#202119] text-[#b9f42e] transition hover:bg-[#292b20] disabled:cursor-wait disabled:opacity-60"
                 >
                   <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[#b9f42e]/15">
                     {creating ? <Loader2 className="animate-spin" /> : <Plus />}
                   </span>
                   <span className="font-semibold">{creating ? "Creating..." : "New project"}</span>
                 </button>
-                {projects.map((project) => (
-                  <Link
-                    key={project.id}
-                    href={`/studio/project/${project.id}`}
-                    className="group relative h-44 w-64 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-[#1b1c1b]"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-br from-[#33372a] via-[#161817] to-[#0d0e0d] transition group-hover:scale-105" />
-                    {project.cover_image && (
-                      <img
-                        src={project.cover_image}
-                        alt=""
-                        className="absolute inset-0 h-full w-full object-cover opacity-70"
-                      />
-                    )}
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-4">
-                      <p className="text-xs text-[#b9f42e]">
-                        {project.default_style || "Cinematic"}
-                      </p>
-                      <p className="mt-1 truncate text-lg font-bold">
-                        {project.name}
-                      </p>
-                      <p className="text-xs text-zinc-400">
-                        {new Date(project.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </Link>
-                ))}
+                {projects.map((project) => <ProjectGalleryCard key={project.id} project={project} />)}
               </div>
             )}
           </section>
@@ -301,6 +281,26 @@ export default function StudioHome() {
         </div>
       </section>
     </main>
+  );
+}
+
+function ProjectGalleryCard({ project }: { project: Project }) {
+  const images = project.gallery_images || [];
+  return (
+    <Link href={`/studio/project/${project.id}`} className="group relative h-56 w-[360px] shrink-0 snap-start overflow-hidden rounded-2xl border border-white/10 bg-[#171817] shadow-[0_12px_36px_rgba(0,0,0,.24)] transition hover:-translate-y-1 hover:border-[#b9f42e]/55">
+      {images.length ? (
+        <div className={`absolute inset-0 grid h-full gap-px bg-black ${images.length === 1 ? "grid-cols-1" : images.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
+          {images.slice(0, 3).map((image, index) => <img key={`${image}-${index}`} src={image} alt="" className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.035]" />)}
+        </div>
+      ) : (
+        <div className="absolute inset-0 grid place-items-center bg-gradient-to-br from-[#363b30] via-[#1b1e1a] to-[#0c0d0c] text-zinc-600"><Image className="h-12 w-12" /></div>
+      )}
+      <div className="absolute inset-x-0 bottom-0 min-h-24 bg-gradient-to-t from-black via-black/80 to-transparent p-4 pt-10">
+        <p className="text-xs font-semibold text-[#d9ff84]">{project.default_style || "Cinematic"}</p>
+        <p className="mt-1 truncate text-xl font-bold text-white">{project.name}</p>
+        <p className="mt-1 text-xs text-zinc-400">Edited {new Date(project.created_at).toLocaleDateString()}</p>
+      </div>
+    </Link>
   );
 }
 

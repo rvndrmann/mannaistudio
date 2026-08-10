@@ -9,6 +9,7 @@ import { generationProvider, isImageGenerationModel, type ImageGenerationModelId
 import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 import { buildEntityMentionContext, type MentionableEntity } from "@/lib/studio/entity-mentions"
+import { projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
 
 const imageRequestSchema = z.object({
   target: z.enum(["asset", "shot"]),
@@ -22,6 +23,7 @@ const imageRequestSchema = z.object({
 }).strict()
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
+  let pendingAssetGeneration: { context: Awaited<ReturnType<typeof requireAuthenticatedProject>>; projectId: string; entityId: string } | null = null
   try {
     const { projectId } = await params
     const context = await requireAuthenticatedProject(projectId)
@@ -33,7 +35,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const { data } = await context.supabase.from("creator_entities").select("id, reference_images, metadata").eq("id", input.targetId).eq("project_id", projectId).maybeSingle()
       if (!data) return NextResponse.json({ error: "Asset not found" }, { status: 404 })
     } else {
-      const { data } = await context.supabase.from("creator_shots").select("id, episode_id, metadata, referenced_entities").eq("id", input.targetId).maybeSingle()
+      const { data } = await context.supabase.from("creator_shots").select("id, episode_id, aspect_ratio, metadata, referenced_entities").eq("id", input.targetId).maybeSingle()
       if (!data) return NextResponse.json({ error: "Shot not found" }, { status: 404 })
       shotData = data
       const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", data.episode_id).eq("project_id", projectId).maybeSingle()
@@ -68,7 +70,42 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     const combinedReferencePaths = Array.from(new Set([...mentionReferencePaths, ...input.referenceImages])).slice(0, 8)
     const mentionContext = buildEntityMentionContext((mentionedEntities || []) as MentionableEntity[])
-    const resolvedPrompt = mentionContext ? `${input.prompt}\n\n${mentionContext}` : input.prompt
+    const style = projectVisualStyle(context.project)
+    const projectDefaultAspect = typeof context.project.default_aspect === "string" ? context.project.default_aspect : null
+    const effectiveAspectRatio = input.aspectRatio || (shotData && typeof shotData.aspect_ratio === "string" ? shotData.aspect_ratio : null) || projectDefaultAspect || "9:16"
+    const resolvedPrompt = [input.prompt, `Required composition: ${effectiveAspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
+
+    // The provider request can take a while. Persist this state before it starts
+    // so leaving/re-entering the tab never makes the request appear to vanish.
+    if (input.target === "asset") {
+      const { data: asset, error: assetReadError } = await context.supabase
+        .from("creator_entities")
+        .select("metadata")
+        .eq("id", input.targetId)
+        .eq("project_id", projectId)
+        .single()
+      if (assetReadError) throw assetReadError
+      const currentMetadata = asset.metadata && typeof asset.metadata === "object" ? asset.metadata as Record<string, unknown> : {}
+      const { error: pendingError } = await context.supabase.from("creator_entities").update({
+        metadata: {
+          ...currentMetadata,
+          image_generation: {
+            provider,
+            model: input.model,
+            prompt: input.prompt,
+            resolved_prompt: resolvedPrompt,
+            style,
+            aspect_ratio: effectiveAspectRatio,
+            reference_images: combinedReferencePaths,
+            mentioned_entity_ids: input.mentionedEntityIds,
+            status: "generating",
+            requested_at: new Date().toISOString(),
+          },
+        },
+      }).eq("id", input.targetId).eq("project_id", projectId)
+      if (pendingError) throw pendingError
+      pendingAssetGeneration = { context, projectId, entityId: input.targetId }
+    }
     const referenceUrls: string[] = []
     for (const reference of combinedReferencePaths) {
       if (/^https?:\/\//i.test(reference) || /^asset:\/\//i.test(reference) || /^asset-[a-z0-9-]+$/i.test(reference)) referenceUrls.push(reference)
@@ -84,7 +121,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     let byteplusAssetUri: string | null = null
 
     if (provider === "openai") {
-      image = await generateOpenAIImage({ userId: context.user.id, model: input.model as (typeof openAIImageModels)[number], prompt: resolvedPrompt, referenceUrls })
+      image = await generateOpenAIImage({ userId: context.user.id, model: input.model as (typeof openAIImageModels)[number], prompt: resolvedPrompt, referenceUrls, aspectRatio: effectiveAspectRatio })
     } else if (provider === "fal") {
       const generated = await generateFalImage({ model: input.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls })
       const download = await fetch(generated.url)
@@ -138,7 +175,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const metadata = {
         ...currentMeta,
         ...(byteplusAssetId ? { byteplus_asset_id: byteplusAssetId } : {}),
-        image_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, reference_images: combinedReferencePaths, mentioned_entity_ids: input.mentionedEntityIds, status: "completed", completed_at: new Date().toISOString() },
+        image_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, style, aspect_ratio: effectiveAspectRatio, reference_images: combinedReferencePaths, mentioned_entity_ids: input.mentionedEntityIds, status: "completed", completed_at: new Date().toISOString() },
       }
       const updates: Record<string, unknown> = {
         reference_images: [...(asset.reference_images || []), storagePath],
@@ -161,7 +198,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         metadata: {
           ...currentMeta,
           ...(byteplusAssetId ? { byteplus_asset_id: byteplusAssetId } : {}),
-          image_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, reference_images: combinedReferencePaths, mentioned_entity_ids: input.mentionedEntityIds, status: "completed", completed_at: new Date().toISOString() },
+          image_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, style, reference_images: combinedReferencePaths, mentioned_entity_ids: input.mentionedEntityIds, status: "completed", completed_at: new Date().toISOString() },
         },
       }).eq("id", input.targetId)
       if (error) throw error
@@ -181,6 +218,30 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     return NextResponse.json({ path: storagePath, provider, model: input.model, byteplusAssetId, byteplusAssetUri })
   } catch (error) {
+    if (pendingAssetGeneration) {
+      try {
+        const { data: asset } = await pendingAssetGeneration.context.supabase
+          .from("creator_entities")
+          .select("metadata")
+          .eq("id", pendingAssetGeneration.entityId)
+          .eq("project_id", pendingAssetGeneration.projectId)
+          .maybeSingle()
+        const metadata = asset?.metadata && typeof asset.metadata === "object" ? asset.metadata as Record<string, unknown> : {}
+        await pendingAssetGeneration.context.supabase.from("creator_entities").update({
+          metadata: {
+            ...metadata,
+            image_generation: {
+              ...(metadata.image_generation && typeof metadata.image_generation === "object" ? metadata.image_generation : {}),
+              status: "failed",
+              error: studioErrorMessage(error, "Image generation failed"),
+              completed_at: new Date().toISOString(),
+            },
+          },
+        }).eq("id", pendingAssetGeneration.entityId).eq("project_id", pendingAssetGeneration.projectId)
+      } catch (stateError) {
+        console.error("Could not persist failed asset image generation state", stateError)
+      }
+    }
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid image request", issues: error.flatten() }, { status: 400 })
     return NextResponse.json({ error: studioErrorMessage(error, "Image generation failed") }, { status: error instanceof OpenAIProviderError || error instanceof BytePlusProviderError ? error.status : studioErrorStatus(error) })
   }
