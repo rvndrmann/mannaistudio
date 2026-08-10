@@ -336,6 +336,9 @@ export default function WorkspacePage({
     if (!outgoing.trim() || chatSending) return;
     outgoing = outgoing.trim();
     const mentionedEntityIds = findMentionedEntityIds(outgoing, data.entities);
+    // The timeline owns the sent copy. Clear the composer before awaiting the
+    // network response so the same message never appears as an unsent draft.
+    setMessage("");
     setChatSending(true);
     setChatError(null);
     setData((current) => current ? {
@@ -353,7 +356,6 @@ export default function WorkspacePage({
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || "AI Director could not respond");
-      setMessage("");
       if (json.sessionId) setChatSessionId(json.sessionId);
       setData((current) => current && json.assistantMessage ? {
         ...current,
