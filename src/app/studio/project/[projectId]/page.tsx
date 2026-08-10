@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Clapperboard,
   Gem,
+  History,
   FileText,
   Film,
   Image as ImageIcon,
@@ -41,6 +42,7 @@ import { parseDirectorTimeline, type DirectorTimelineBlock } from "@/lib/studio/
 import { EntityMentionInput } from "@/components/studio/EntityMentionInput";
 import ShareProjectDialog from "@/components/studio/ShareProjectDialog";
 import ConvertToEnterpriseDialog from "@/components/enterprise/ConvertToEnterpriseDialog";
+import ProjectActivityDialog from "@/components/studio/ProjectActivityDialog";
 import { findMentionedEntityIds } from "@/lib/studio/entity-mentions";
 
 import {
@@ -263,6 +265,7 @@ export default function WorkspacePage({
   const [projectMenu, setProjectMenu] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [enterpriseOpen, setEnterpriseOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -538,6 +541,7 @@ export default function WorkspacePage({
   return (
     <main className="h-screen overflow-hidden bg-black text-[#e8e6df]">
       {shareOpen && <ShareProjectDialog projectId={projectId} onClose={() => setShareOpen(false)} />}
+      {activityOpen && <ProjectActivityDialog projectId={projectId} onClose={() => setActivityOpen(false)} />}
       {enterpriseOpen && (
         <ConvertToEnterpriseDialog
           projectId={projectId}
@@ -667,6 +671,17 @@ export default function WorkspacePage({
                 >
                   <Users className="h-3.5 w-3.5 text-zinc-500" />
                   <span>Share to Team</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActivityOpen(true);
+                    setProjectMenu(false);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[11px] font-bold text-zinc-300 hover:bg-white/[0.04]"
+                >
+                  <History className="h-3.5 w-3.5 text-zinc-500" />
+                  <span>Project activity</span>
                 </button>
               </div>
             )}
