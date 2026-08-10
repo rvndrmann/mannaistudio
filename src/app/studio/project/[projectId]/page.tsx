@@ -37,6 +37,7 @@ import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
 import { createClient } from "@/lib/supabase/client";
 import { parseDirectorTimeline, type DirectorTimelineBlock } from "@/lib/studio/timeline";
 import { EntityMentionInput } from "@/components/studio/EntityMentionInput";
+import ShareProjectDialog from "@/components/studio/ShareProjectDialog";
 import { findMentionedEntityIds } from "@/lib/studio/entity-mentions";
 
 import {
@@ -256,6 +257,7 @@ export default function WorkspacePage({
   const [showBasicSettings, setShowBasicSettings] = useState(false);
   const openedInitialSettingsRef = useRef(false);
   const [projectMenu, setProjectMenu] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -504,6 +506,7 @@ export default function WorkspacePage({
   };
   return (
     <main className="h-screen overflow-hidden bg-black text-[#e8e6df]">
+      {shareOpen && <ShareProjectDialog projectId={projectId} onClose={() => setShareOpen(false)} />}
       <header className="relative z-50 flex h-12 items-center gap-2 border-b border-white/[0.06] bg-[#0a0a0a] px-3">
         {(projectMenu || episodeMenu) && (
           <div
@@ -576,9 +579,9 @@ export default function WorkspacePage({
         <div className="flex items-center gap-0.5 relative z-50">
           <button
             type="button"
-            onClick={() => alert("Project share link copied to clipboard")}
+            onClick={() => setShareOpen(true)}
             className="rounded-md p-1 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300"
-            title="Share project"
+            title="Share project with team members"
           >
             <Share2 className="h-3.5 w-3.5" />
           </button>
@@ -618,7 +621,7 @@ export default function WorkspacePage({
                 <button
                   type="button"
                   onClick={() => {
-                    alert("Team sharing link copied!");
+                    setShareOpen(true);
                     setProjectMenu(false);
                   }}
                   className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[11px] font-bold text-zinc-300 hover:bg-white/[0.04]"
@@ -673,6 +676,12 @@ export default function WorkspacePage({
           </div>
 
           <span className="h-4 border-l border-white/[0.06] mx-0.5" />
+
+          {/* Team */}
+          <Link href="/studio/team" className="flex items-center gap-1 rounded-full bg-[#141414] px-2.5 py-1.5 text-[11px] font-bold text-zinc-300 hover:bg-[#1e1e1e] hover:text-white transition" title="Add and manage team members">
+            <Users className="h-3 w-3" />
+            <span>Team</span>
+          </Link>
 
           {/* Credits badge */}
           <Link href="/studio/credits" className="flex items-center gap-1 rounded-full bg-[#141414] px-2.5 py-1.5 text-[11px] font-bold text-[#b9f42e] hover:bg-[#1e1e1e] transition">

@@ -3,12 +3,23 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Zap, ArrowLeft, Check, Loader2, Sparkles, AlertCircle, CreditCard } from "lucide-react"
+import CreditUsageTab from "@/components/credits/CreditUsageTab"
+import TeamTab from "@/components/credits/TeamTab"
+
+type CreditsTab = "topup" | "usage" | "team"
+
+const creditsTabs: { id: CreditsTab; label: string }[] = [
+  { id: "topup", label: "Top Up" },
+  { id: "usage", label: "Credit Usage" },
+  { id: "team", label: "My Team" },
+]
 
 export default function CreditsPage() {
   const [credits, setCredits] = useState<number | null>(null)
   const [loadingPackageId, setLoadingPackageId] = useState<string | null>(null)
   const [topUpSuccess, setTopUpSuccess] = useState<string | null>(null)
   const [topUpError, setTopUpError] = useState<string | null>(null)
+  const [tab, setTab] = useState<CreditsTab>("topup")
 
   const fetchCredits = async () => {
     try {
@@ -121,10 +132,34 @@ export default function CreditsPage() {
           </div>
           <h1 className="text-3xl font-black text-white">AI Generation Credits</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Secure Razorpay payment integration. Use credits for AI video and image generation.
+            {tab === "usage"
+              ? "Every credit movement on your account, newest first."
+              : tab === "team"
+                ? "Share credits with your team and manage who can spend them."
+                : "Secure Razorpay payment integration. Use credits for AI video and image generation."}
           </p>
         </div>
 
+        <div className="mb-8 flex justify-center gap-1 border-b border-white/[0.08]">
+          {creditsTabs.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setTab(item.id)}
+              className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
+                tab === item.id ? "border-[#b9f42e] text-[#b9f42e]" : "border-transparent text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        {tab === "usage" && <CreditUsageTab />}
+        {tab === "team" && <TeamTab />}
+
+        {tab === "topup" && (
+        <>
         {topUpSuccess && (
           <div className="mb-8 flex items-center gap-3 rounded-xl border border-[#b9f42e]/40 bg-[#b9f42e]/10 p-4 text-sm font-semibold text-[#b9f42e]">
             <Check className="h-5 w-5 shrink-0" />
@@ -190,6 +225,8 @@ export default function CreditsPage() {
         <div className="mt-12 rounded-2xl border border-white/[0.06] bg-[#0d0d0d] p-6 text-center text-xs text-zinc-400">
           🔒 Secure Checkout powered by Razorpay. Full access to Seedance, Flux, GPT-Image, and AI Director models.
         </div>
+        </>
+        )}
       </main>
     </div>
   )

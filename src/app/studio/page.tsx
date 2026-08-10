@@ -16,6 +16,7 @@ import {
   Plus,
   Sparkles,
   Upload,
+  Users,
   WandSparkles,
 } from "lucide-react";
 import CreditBadge from "@/components/CreditBadge";
@@ -377,6 +378,14 @@ function TopBar() {
         </div>
         <div className="flex items-center gap-3">
           <CreditBadge />
+          <Link
+            href="/studio/team"
+            title="Add and manage team members"
+            className="flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+          >
+            <Users className="h-4 w-4" />
+            Team
+          </Link>
           <button className="rounded-xl bg-gradient-to-r from-orange-400 to-violet-600 px-4 py-2 text-sm font-semibold">
             Upgrade
           </button>

@@ -22,11 +22,13 @@ export async function requireAuthenticatedProject(
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) throw new StudioAccessError("Unauthorized", 401)
 
+  // RLS already restricts this row to the owner and anyone the project is shared
+  // with, so no explicit user_id filter is applied here. Filtering by owner would
+  // lock shared team members out of projects they were given access to.
   const { data: project, error } = await supabase
     .from("creator_projects")
     .select("*")
     .eq("id", projectId)
-    .eq("user_id", user.id)
     .maybeSingle()
 
   if (error) throw new StudioAccessError("Could not verify project access", 403)

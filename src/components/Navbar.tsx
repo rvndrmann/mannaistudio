@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { motion } from "framer-motion"
-import { Clapperboard, Play, Zap, User, Menu, X, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, MessageSquare, BookOpen, PlugZap, Sparkles } from "lucide-react"
+import { Clapperboard, Play, Zap, User, Menu, X, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, MessageSquare, BookOpen, PlugZap, Sparkles, Users } from "lucide-react"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -114,6 +114,14 @@ export default function Navbar() {
                     ) : user ? (
                         <div className="flex items-center gap-3">
                             <CreditBadge />
+                            <Link
+                                href="/studio/team"
+                                title="Add and manage team members"
+                                className="flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-sm font-medium text-white/70 transition-all hover:bg-white/10 hover:text-white"
+                            >
+                                <Users className="h-4 w-4" />
+                                <span className="hidden lg:inline">Team</span>
+                            </Link>
                             <NotificationBell />
                             <Link href="/profile" className="flex items-center gap-2 px-4 py-2 bg-white/10 rounded-xl hover:bg-white/20 transition-all group">
                                 {user.user_metadata?.avatar_url ? (

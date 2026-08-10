@@ -5,7 +5,9 @@ import { fetchDirectorWorkflows } from "@/lib/studio/workflows"
 
 async function ownedProject(projectId: string) {
   const supabase = await createClient(); const { data: { user } } = await supabase.auth.getUser(); if (!user) throw new Error("Unauthorized")
-  const { data: project, error } = await supabase.from("creator_projects").select("*").eq("id", projectId).eq("user_id", user.id).single(); if (error || !project) throw new Error("Project not found")
+  // RLS grants this row to the owner and to shared team members; an explicit
+  // owner filter here would hide projects that were shared with the caller.
+  const { data: project, error } = await supabase.from("creator_projects").select("*").eq("id", projectId).single(); if (error || !project) throw new Error("Project not found")
   return { supabase, user, project }
 }
 

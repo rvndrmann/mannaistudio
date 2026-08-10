@@ -13,9 +13,14 @@ async function currentUser() {
 export async function GET() {
   try {
     const { supabase, user } = await currentUser()
-    const { data, error } = await supabase.from("creator_projects").select("*").eq("user_id", user.id).order("created_at", { ascending: false })
+    // RLS returns owned projects plus any shared with this account, so the list
+    // is not filtered by owner. Each row is tagged so the UI can mark shared work.
+    const { data, error } = await supabase.from("creator_projects").select("*").order("created_at", { ascending: false })
     if (error) throw error
-    const projects = data || []
+    const projects = (data || []).map((project) => ({
+      ...project,
+      shared: project.user_id !== user.id,
+    }))
     const projectIds = projects.map((project) => project.id)
     const { data: entities, error: entitiesError } = projectIds.length
       ? await supabase

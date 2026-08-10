@@ -1,12 +1,27 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { createPortal } from "react-dom"
 import { Zap, Plus, X, Check, Loader2, CreditCard, AlertCircle } from "lucide-react"
 import { creditBalanceChangedEvent } from "@/lib/credit-balance-events"
+import CreditUsageTab from "@/components/credits/CreditUsageTab"
+import TeamTab from "@/components/credits/TeamTab"
+
+type AccountTab = "topup" | "usage" | "team"
+
+const accountTabs: { id: AccountTab; label: string }[] = [
+  { id: "topup", label: "Top Up" },
+  { id: "usage", label: "Credit Usage" },
+  { id: "team", label: "My Team" },
+]
 
 export default function CreditBadge({ className }: { className?: string }) {
   const [credits, setCredits] = useState<number | null>(null)
   const [showModal, setShowModal] = useState(false)
+  const [tab, setTab] = useState<AccountTab>("topup")
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => { setMounted(true) }, [])
   const [loadingPkgId, setLoadingPkgId] = useState<string | null>(null)
   const [topUpSuccess, setTopUpSuccess] = useState<string | null>(null)
   const [topUpError, setTopUpError] = useState<string | null>(null)
@@ -119,9 +134,14 @@ export default function CreditBadge({ className }: { className?: string }) {
         <Plus className="h-3 w-3 opacity-70 group-hover:opacity-100" />
       </button>
 
-      {showModal && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4 backdrop-blur-md">
-          <div className="relative w-full max-w-md rounded-2xl border border-white/15 bg-[#121412] p-6 text-white shadow-2xl">
+      {/*
+        Rendered through a portal: the Navbar wrapper uses backdrop-filter, which
+        makes it the containing block for fixed-position descendants and would
+        anchor this overlay to the navbar box instead of the viewport.
+      */}
+      {showModal && mounted && createPortal(
+        <div className="fixed inset-0 z-[100] grid place-items-center bg-black/80 p-4 backdrop-blur-md">
+          <div className={`relative max-h-[88vh] w-full overflow-y-auto rounded-2xl border border-white/15 bg-[#121412] p-6 text-white shadow-2xl ${tab === "topup" ? "max-w-md" : "max-w-3xl"}`}>
             <button
               onClick={() => setShowModal(false)}
               className="absolute right-4 top-4 rounded-xl p-2 text-zinc-400 hover:bg-white/10 hover:text-white"
@@ -129,16 +149,36 @@ export default function CreditBadge({ className }: { className?: string }) {
               <X className="h-5 w-5" />
             </button>
 
-            <div className="mb-6 flex items-center gap-3">
+            <div className="mb-4 flex items-center gap-3">
               <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#b9f42e]/15 text-[#b9f42e]">
                 <Zap className="h-6 w-6 fill-[#b9f42e]" />
               </div>
               <div>
-                <h3 className="text-lg font-bold">Top Up Generation Credits</h3>
-                <p className="text-xs text-zinc-400">Secure Razorpay Payment Gateway</p>
+                <h3 className="text-lg font-bold">Generation Credits</h3>
+                <p className="text-xs text-zinc-400">{credits !== null ? `${credits.toLocaleString()} credits available` : "Loading balance…"}</p>
               </div>
             </div>
 
+            <div className="mb-5 flex gap-1 border-b border-white/[0.08]">
+              {accountTabs.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setTab(item.id)}
+                  className={`-mb-px border-b-2 px-3 py-2 text-xs font-semibold transition ${
+                    tab === item.id ? "border-[#b9f42e] text-[#b9f42e]" : "border-transparent text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            {tab === "usage" && <CreditUsageTab />}
+            {tab === "team" && <TeamTab />}
+
+            {tab === "topup" && (
+            <>
             {topUpSuccess && (
               <div className="mb-4 flex items-center gap-2 rounded-xl border border-[#b9f42e]/40 bg-[#b9f42e]/15 p-3 text-xs font-semibold text-[#b9f42e]">
                 <Check className="h-4 w-4 shrink-0" />
@@ -199,8 +239,11 @@ export default function CreditBadge({ className }: { className?: string }) {
             <div className="rounded-xl border border-white/10 bg-black/40 p-3 text-center text-[11px] text-zinc-400">
               🔒 Powered by Razorpay. Full access to AI Video & Image generation.
             </div>
+            </>
+            )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   )
