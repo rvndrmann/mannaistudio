@@ -34,6 +34,7 @@ import { defaultDirectorWorkflows, fetchDirectorWorkflows, normalizeDirectorWork
 import { defaultDirectorGlobalInstructions, normalizeDirectorGlobalInstructions } from "@/lib/studio/instructions"
 import { defaultDirectorRuntimeSettings, fetchDirectorRuntimeSettings, normalizeDirectorRuntimeSettings, specialistInstructionKeys, type DirectorRuntimeSettings } from "@/lib/studio/director-runtime-settings"
 import { defaultDirectorTeam, directorAgentKeys, fetchDirectorTeam, normalizeDirectorTeam, type DirectorTeam } from "@/lib/studio/director-team"
+import AdminEnterpriseOrders from "@/components/enterprise/AdminEnterpriseOrders"
 import BlogManager from "@/components/admin/BlogManager"
 
 type EnrolledStudent = {
@@ -2654,6 +2655,12 @@ function AdminDashboardContent() {
                                             {isSavingDirectorTeam ? "Saving..." : "Save Agent Team"}
                                         </button>
                                     </div>
+
+                                    <div className="border-t border-white/10 pt-6">
+                                        <h3 className="text-sm font-bold text-white">Enterprise Requests</h3>
+                                        <p className="mt-1 text-xs leading-5 text-white/35">Clients who asked to hire the production team. Moving a request to quoted or in production badges their Studio project as Enterprise.</p>
+                                    </div>
+                                    <AdminEnterpriseOrders />
                                 </div>
 
                                 <div className="glass-card p-6 rounded-2xl border-white/10 space-y-5">

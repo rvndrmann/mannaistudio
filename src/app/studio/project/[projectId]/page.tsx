@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, use, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  BadgeCheck,
   Bot,
   ChevronDown,
   Clapperboard,
@@ -39,6 +40,7 @@ import { createClient } from "@/lib/supabase/client";
 import { parseDirectorTimeline, type DirectorTimelineBlock } from "@/lib/studio/timeline";
 import { EntityMentionInput } from "@/components/studio/EntityMentionInput";
 import ShareProjectDialog from "@/components/studio/ShareProjectDialog";
+import ConvertToEnterpriseDialog from "@/components/enterprise/ConvertToEnterpriseDialog";
 import { findMentionedEntityIds } from "@/lib/studio/entity-mentions";
 
 import {
@@ -107,6 +109,7 @@ type Workspace = {
     production_mode?: string;
     project_type?: string;
     creative_brief?: Record<string, unknown>;
+    enterprise_status?: string | null;
     metadata?: Record<string, unknown>;
   };
   episodes: Episode[];
@@ -259,6 +262,7 @@ export default function WorkspacePage({
   const openedInitialSettingsRef = useRef(false);
   const [projectMenu, setProjectMenu] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [enterpriseOpen, setEnterpriseOpen] = useState(false);
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -534,6 +538,14 @@ export default function WorkspacePage({
   return (
     <main className="h-screen overflow-hidden bg-black text-[#e8e6df]">
       {shareOpen && <ShareProjectDialog projectId={projectId} onClose={() => setShareOpen(false)} />}
+      {enterpriseOpen && (
+        <ConvertToEnterpriseDialog
+          projectId={projectId}
+          projectName={data.project.name || "this project"}
+          onClose={() => setEnterpriseOpen(false)}
+          onPlaced={() => load(true)}
+        />
+      )}
       <header className="relative z-50 flex h-12 items-center gap-2 border-b border-white/[0.06] bg-[#0a0a0a] px-3">
         {(projectMenu || episodeMenu) && (
           <div
@@ -703,6 +715,24 @@ export default function WorkspacePage({
           </div>
 
           <span className="h-4 border-l border-white/[0.06] mx-0.5" />
+
+          {/* Hand the project to the AI Director Hub production team */}
+          {data.project.enterprise_status ? (
+            <span className="flex items-center gap-1 rounded-full border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2.5 py-1.5 text-[11px] font-bold text-[#b9f42e]" title="This project is with the AI Director Hub production team">
+              <BadgeCheck className="h-3 w-3" />
+              <span>{data.project.enterprise_status === "delivered" ? "Delivered" : data.project.enterprise_status === "active" ? "Enterprise" : "Enterprise requested"}</span>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEnterpriseOpen(true)}
+              className="flex items-center gap-1 rounded-full border border-[#b9f42e]/25 bg-[#b9f42e]/[0.07] px-2.5 py-1.5 text-[11px] font-bold text-[#b9f42e] transition hover:bg-[#b9f42e]/15"
+              title="Hire the AI Director Hub team to finish this project"
+            >
+              <BadgeCheck className="h-3 w-3" />
+              <span>Hire our team</span>
+            </button>
+          )}
 
           {/* Team */}
           <Link href="/studio/team" className="flex items-center gap-1 rounded-full bg-[#141414] px-2.5 py-1.5 text-[11px] font-bold text-zinc-300 hover:bg-[#1e1e1e] hover:text-white transition" title="Add and manage team members">
