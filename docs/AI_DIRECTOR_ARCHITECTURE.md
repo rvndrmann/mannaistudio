@@ -93,6 +93,10 @@ The image workspaces also support BytePlus Seedream 5.0 Pro (`dola-seedream-5-0-
 
 `GET /api/studio/projects` returns a signed `gallery_images` collection for each owned project. The collection is built from saved character reference images first, followed by scene and prop references; the project cover image is only a fallback. The Studio home uses this collection in a horizontally scrollable, arrow-controlled project gallery.
 
+### Home navigation and external access
+
+The public home page uses the global primary navigation only; the duplicate Image/Video/AI Director quick-tool bar was removed to prevent header overlap. Authenticated users see **MCP & CLI** directly after **Billing** in that primary navigation. It opens the active `/studio/external` page, where users can create/revoke scoped external tokens and copy either an MCP server configuration or CLI setup instructions for supported clients.
+
 Storyboard video generation supports:
 - **Google AI Studio**: Veo 3.1 (`google-veo-3-1`), Gemini 2.5 Pro (`google-gemini-2-5-pro`), Omni Flash (`google-omni-flash`).
 - **fal.ai Provider**: Seedance 2.5 (`fal-seedance-2-5`), Seedance 2.0 (`fal-seedance-2-0`), Seedance 2.0 Fast (`fal-seedance-2-0-fast`), Seedance 2.0 Mini (`fal-seedance-2-0-mini`), Kling 3 (`fal-kling-3`), Kling O3 (`fal-kling-o3`), Kling 1.6 Pro (`fal-kling-1-6-pro`), MiniMax H3 (`fal-minimax-h3`), MiniMax Video-01 (`fal-minimax-video-01`), Hunyuan Video (`fal-hunyuan-video`), Luma Dream Machine (`fal-luma-dream-machine`).
