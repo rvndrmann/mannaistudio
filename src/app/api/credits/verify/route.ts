@@ -3,7 +3,7 @@ import crypto from "node:crypto"
 import { z, ZodError } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { addUserCredits, getUserCredits } from "@/lib/studio/credits"
-import { CREDIT_PACKAGES } from "../route"
+import { CREDIT_PACKAGES } from "@/lib/credits-packages"
 
 const verifySchema = z.object({
   razorpay_order_id: z.string().min(1),

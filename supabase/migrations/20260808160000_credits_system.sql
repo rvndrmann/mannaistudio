@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
 -- RLS policies for credit_transactions
 ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own credit transactions" ON credit_transactions;
+
 CREATE POLICY "Users can view own credit transactions"
   ON credit_transactions FOR SELECT
   TO authenticated

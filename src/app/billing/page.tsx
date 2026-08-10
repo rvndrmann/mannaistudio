@@ -1,408 +1,299 @@
 "use client"
 
-import Navbar from "@/components/Navbar"
 import Footer from "@/components/Footer"
+import Navbar from "@/components/Navbar"
 import { useAuth } from "@/components/auth/auth-provider"
-import { createClient } from "@/lib/supabase/client"
-import { defaultBillingSettings, fetchBillingSettings, fetchMyMembership, fetchMyPayments, getActivePlanPrice, isMembershipActive, membershipPlan, type PaymentRecord } from "@/lib/membership"
-import { fbTrack } from "@/lib/fbpixel"
-import Countdown from "@/components/Countdown"
-import { CheckCircle2, CreditCard, Loader2, Lock, Play, Receipt, Sparkles, XCircle, Zap, AlertTriangle } from "lucide-react"
-import { useEffect, useState } from "react"
+import { BadgeCheck, Bot, Check, ChevronDown, Clapperboard, Image as ImageIcon, Layers3, Lock, Sparkles, Video, Wand2, X, Zap } from "lucide-react"
+import Link from "next/link"
+import { useState } from "react"
+
+const plans = [
+  {
+    name: "Starter",
+    price: "$9",
+    subtitle: "For first AI creators",
+    credits: "120 credits/mo.",
+    imageGenerations: "~60 AI image generations",
+    videoGenerations: "~6 short video clips",
+    cta: "Get Starter",
+    accent: "border-white/12 bg-[#191b1b]",
+    button: "bg-white text-black hover:bg-white/90",
+    badge: "",
+    features: [
+      "AI Director chat workflow",
+      "Script and storyboard planning",
+      "Image generation access",
+      "Upload image, video, and audio references",
+      "2 parallel generation jobs",
+      "Basic workflow skills",
+    ],
+    locked: ["Full-auto video workflow", "MCP & CLI access", "Lowest credit cost"],
+  },
+  {
+    name: "Pro",
+    price: "$29",
+    subtitle: "For everyday AI creation",
+    credits: "600 credits/mo.",
+    imageGenerations: "~300 AI image generations",
+    videoGenerations: "~27 short video clips",
+    cta: "Get Pro",
+    accent: "border-primary/35 bg-[linear-gradient(160deg,rgba(185,255,24,.16),#191b1b_58%)]",
+    button: "bg-primary text-black hover:bg-primary/90",
+    badge: "Most Popular",
+    features: [
+      "Everything in Starter",
+      "AI Director voice workflow",
+      "Storyboard image generation",
+      "Character and asset continuity",
+      "MCP & CLI access",
+      "4 parallel generation jobs",
+      "Advanced workflow skills",
+    ],
+    locked: ["Full-auto high volume runs"],
+  },
+  {
+    name: "Studio",
+    price: "$99",
+    subtitle: "For teams and serious AI projects",
+    credits: "2,400 credits/mo.",
+    imageGenerations: "~1,200 AI image generations",
+    videoGenerations: "~100 short video clips",
+    cta: "Get Studio",
+    accent: "border-pink-500/35 bg-[linear-gradient(160deg,rgba(255,0,102,.24),#191b1b_62%)]",
+    button: "bg-[#ff0a63] text-white hover:bg-[#ff2a77]",
+    badge: "Best Value",
+    features: [
+      "Everything in Pro",
+      "Full-auto production mode",
+      "Priority AI Director workflows",
+      "Team-style episode production",
+      "8 parallel generation jobs",
+      "Lowest credit cost",
+      "Priority support",
+    ],
+    locked: [],
+  },
+]
+
+const faqs = [
+  ["How do credits work?", "Credits are used when generating AI images and videos. Planning, script writing, workflow instructions, and chat guidance are included in your plan."],
+  ["Can I generate images without approval?", "Yes. Image generation can run directly when the user asks for it. Video generation remains approval-first unless full-auto mode is enabled."],
+  ["Do these plans include MCP and CLI?", "Pro and Studio include MCP and CLI access so users can talk to the AI Director from Claude, ChatGPT-style clients, or terminal."],
+  ["When will Razorpay checkout work?", "The buttons are ready as pricing placeholders. Add the Razorpay subscription links later and connect each button to the matching plan."],
+]
+
+const billingHighlights = [
+  { icon: Bot, label: "AI Director Agent" },
+  { icon: ImageIcon, label: "AI Image Creation" },
+  { icon: Video, label: "AI Video Production" },
+  { icon: Clapperboard, label: "Storyboard Workflow" },
+  { icon: Layers3, label: "Asset Library" },
+  { icon: Wand2, label: "Workflow Skills" },
+  { icon: Zap, label: "Generation Credits" },
+  { icon: BadgeCheck, label: "MCP & CLI" },
+]
 
 export default function BillingPage() {
-    const { user, loading, signInWithGoogle } = useAuth()
-    const [membership, setMembership] = useState<any>(null)
-    const [billingSettings, setBillingSettings] = useState(defaultBillingSettings)
-    const [isLoadingPlan, setIsLoadingPlan] = useState(true)
-    const [isCheckingOut, setIsCheckingOut] = useState(false)
-    const [isCancelling, setIsCancelling] = useState(false)
-    const [cancelMsg, setCancelMsg] = useState("")
-    const [payments, setPayments] = useState<PaymentRecord[]>([])
-    const [loadingCreditPkg, setLoadingCreditPkg] = useState<string | null>(null)
-    const [creditMsg, setCreditMsg] = useState<string | null>(null)
+  const { user, signInWithGoogle } = useAuth()
+  const [annual, setAnnual] = useState(true)
+  const [openFaq, setOpenFaq] = useState(0)
 
-    const reloadData = async () => {
-        if (!user) return
-        const supabase = createClient()
-        const [nextMembership, nextSettings, nextPayments] = await Promise.all([
-            fetchMyMembership(supabase, user.id),
-            fetchBillingSettings(supabase),
-            fetchMyPayments(supabase, user.id),
-        ])
-        setMembership(nextMembership)
-        setBillingSettings(nextSettings)
-        setPayments(nextPayments)
+  const handlePlanClick = () => {
+    if (!user) {
+      signInWithGoogle()
+      return
     }
+    window.alert("Razorpay subscription link will be added here soon.")
+  }
 
-    useEffect(() => {
-        if (!loading) {
-            reloadData().finally(() => setIsLoadingPlan(false))
-        }
-    }, [user, loading])
+  return (
+    <main className="min-h-screen bg-[#080908] text-white">
+      <Navbar />
 
-    const active = isMembershipActive(membership)
-    const activePrice = getActivePlanPrice(billingSettings)
-    const expiresAt = membership?.membership_expires_at
-        ? new Date(membership.membership_expires_at).toLocaleDateString()
-        : ""
-    const creditBalance = typeof membership?.credits_balance === "number" ? membership.credits_balance : 0
+      <section className="px-4 pt-28 md:px-6">
+        <div className="mx-auto max-w-[1540px] overflow-hidden rounded-[28px] border border-pink-500/25 bg-[radial-gradient(circle_at_82%_40%,rgba(255,0,102,.34),transparent_28%),linear-gradient(135deg,#33101f,#171010_58%,#260817)] p-8 md:p-12">
+          <div className="inline-flex items-center gap-2 rounded-lg bg-[#ff0a63] px-3 py-1.5 text-xs font-black uppercase italic text-white">
+            <Sparkles className="h-4 w-4 fill-white" />
+            Launch pricing
+          </div>
+          <h1 className="mt-8 max-w-5xl text-4xl font-black uppercase leading-tight tracking-tight md:text-6xl">
+            AI Director Hub plans for images, video, storyboard, and full workflow.
+          </h1>
+          <p className="mt-5 max-w-3xl text-lg font-medium text-white/55">
+            Start with chat. Generate images. Approve videos. Let the AI Director manage script, assets, storyboard, references, and production.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link href="/studio" className="rounded-2xl bg-white px-7 py-4 font-black text-black transition hover:bg-white/90">
+              Open Studio
+            </Link>
+            <Link href="/studio/external" className="rounded-2xl border border-white/15 bg-white/10 px-7 py-4 font-black text-white transition hover:border-primary hover:text-primary">
+              MCP & CLI Access
+            </Link>
+          </div>
+        </div>
+      </section>
 
-    const loadRazorpayScript = () =>
-        new Promise<boolean>((resolve) => {
-            if (typeof window !== "undefined" && (window as any).Razorpay) return resolve(true)
-            const script = document.createElement("script")
-            script.src = "https://checkout.razorpay.com/v1/checkout.js"
-            script.onload = () => resolve(true)
-            script.onerror = () => resolve(false)
-            document.body.appendChild(script)
-        })
+      <section className="mx-auto max-w-[1200px] px-4 py-20 md:px-6">
+        <div className="mb-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-4xl font-black tracking-tight md:text-6xl">Upgrade your plan</h2>
+            <p className="mt-3 text-white/45">Choose the monthly plan that matches your AI production volume.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button className="rounded-2xl border border-white/10 bg-white/[.05] px-5 py-3 text-sm font-bold text-white/70">
+              Not sure which plan? <span className="ml-2 rounded bg-primary px-2 py-0.5 text-xs text-black">NEW</span>
+            </button>
+            <button
+              onClick={() => setAnnual((value) => !value)}
+              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[.05] px-5 py-3 text-sm font-bold"
+            >
+              Monthly
+              <span className={`relative h-6 w-11 rounded-full transition ${annual ? "bg-primary" : "bg-white/15"}`}>
+                <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${annual ? "left-6" : "left-1"}`} />
+              </span>
+              Annual
+            </button>
+          </div>
+        </div>
 
-    const handleCancel = async () => {
-        if (!window.confirm("Cancel your membership? You'll keep access until the end of your current paid period.")) return
-        setIsCancelling(true)
-        setCancelMsg("")
-        try {
-            const res = await fetch('/api/razorpay/subscription/cancel', { method: 'POST' })
-            const data = await res.json()
-            if (!res.ok) throw new Error(data?.error || "Could not cancel.")
-            setCancelMsg("Subscription cancelled. You keep access until " + (expiresAt || "your period ends") + ".")
-            setMembership((m: any) => ({ ...m, razorpay_subscription_id: null }))
-            await reloadData()
-        } catch (e: any) {
-            setCancelMsg(e?.message || "Could not cancel subscription.")
-        } finally {
-            setIsCancelling(false)
-        }
-    }
-
-    const handleCheckout = async () => {
-        if (!user) {
-            signInWithGoogle()
-            return
-        }
-
-        setIsCheckingOut(true)
-        fbTrack('InitiateCheckout', { content_name: billingSettings.planName, content_category: 'membership', value: activePrice, currency: 'INR' })
-        try {
-            const ok = await loadRazorpayScript()
-            if (!ok) throw new Error("Failed to load payment gateway.")
-
-            const res = await fetch('/api/razorpay/subscription', { method: 'POST' })
-            const data = await res.json()
-            if (!res.ok) throw new Error(data?.error || "Could not start subscription.")
-
-            const rzp = new (window as any).Razorpay({
-                key: data.keyId,
-                subscription_id: data.subscriptionId,
-                name: billingSettings.planName,
-                description: "Monthly membership",
-                prefill: { name: data.name, email: data.email },
-                theme: { color: "#C4F52B" },
-                handler: () => {
-                    fbTrack('Subscribe', { value: activePrice, currency: 'INR', predicted_ltv: activePrice * 12 })
-                    fbTrack('Purchase', { content_name: billingSettings.planName, content_category: 'membership', value: activePrice, currency: 'INR' })
-                    window.location.href = "/billing?subscription=success"
-                },
-                modal: {
-                    ondismiss: () => setIsCheckingOut(false),
-                },
-            })
-            rzp.open()
-        } catch {
-            setIsCheckingOut(false)
-        }
-    }
-
-    const handleCreditTopUp = async (packageId: string) => {
-        if (!user) {
-            signInWithGoogle()
-            return
-        }
-
-        setLoadingCreditPkg(packageId)
-        setCreditMsg(null)
-        try {
-            const ok = await loadRazorpayScript()
-            if (!ok) throw new Error("Failed to load payment gateway.")
-
-            const res = await fetch("/api/credits", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ packageId }),
-            })
-            const data = await res.json()
-            if (!res.ok) throw new Error(data.error || "Order creation failed")
-
-            const rzp = new (window as any).Razorpay({
-                key: data.keyId,
-                order_id: data.orderId,
-                amount: data.amount,
-                currency: "INR",
-                name: "AI Director Hub Studio",
-                description: `${data.credits.toLocaleString()} Generation Credits`,
-                prefill: { email: data.email, name: data.name },
-                theme: { color: "#b9f42e" },
-                handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
-                    try {
-                        const verifyRes = await fetch("/api/credits/verify", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                razorpay_order_id: response.razorpay_order_id,
-                                razorpay_payment_id: response.razorpay_payment_id,
-                                razorpay_signature: response.razorpay_signature,
-                                packageId,
-                            }),
-                        })
-                        const verifyData = await verifyRes.json()
-                        if (!verifyRes.ok) throw new Error(verifyData.error || "Payment verification failed")
-                        setCreditMsg(verifyData.message)
-                        await reloadData()
-                    } catch (vErr) {
-                        setCreditMsg(vErr instanceof Error ? vErr.message : "Verification failed")
-                    } finally {
-                        setLoadingCreditPkg(null)
-                    }
-                },
-                modal: {
-                    ondismiss: () => setLoadingCreditPkg(null),
-                },
-            })
-            rzp.open()
-        } catch (err) {
-            setCreditMsg(err instanceof Error ? err.message : "Top-up failed")
-            setLoadingCreditPkg(null)
-        }
-    }
-
-    return (
-        <main className="min-h-screen pb-20">
-            <Navbar />
-            <section className="pt-32 px-6 max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-8 items-start">
-                <div className="space-y-6">
-                    <div>
-                        <p className="text-sm font-bold uppercase tracking-widest text-primary mb-3">Plan & Billing</p>
-                        <h1 className="text-4xl font-bold tracking-tight">{billingSettings.planName}</h1>
-                        <p className="text-white/50 mt-3 max-w-2xl">One monthly membership for premium course access, credits, and a larger creator portfolio.</p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {[
-                            { icon: Play, title: "Paid course access", text: "Unlock premium lessons while your plan is active." },
-                            { icon: Sparkles, title: "10 portfolio videos", text: "Members can showcase up to 10 works." },
-                            { icon: Zap, title: "AI Generation Credits", text: "Buy credits to render Seedance 2.5 & Flux AI videos/images." },
-                        ].map((item) => (
-                            <div key={item.title} className="glass-card p-5 rounded-2xl border-white/10">
-                                <item.icon className="w-5 h-5 text-primary mb-4" />
-                                <h2 className="font-bold">{item.title}</h2>
-                                <p className="text-sm text-white/40 mt-2">{item.text}</p>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* AI Credits Purchase Section */}
-                    <div className="glass-card rounded-2xl border-white/10 p-6 space-y-6">
-                        <div className="flex flex-wrap items-center justify-between gap-4">
-                            <div>
-                                <div className="flex items-center gap-2 text-primary font-bold">
-                                    <Zap className="w-5 h-5 fill-primary" />
-                                    <span>AI Generation Credits</span>
-                                </div>
-                                <p className="text-sm text-white/40 mt-1">Power your AI Video & Image generations in AI Director Hub Studio.</p>
-                            </div>
-                            <div className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-2 text-right">
-                                <p className="text-[11px] uppercase tracking-wider text-white/50">Current Balance</p>
-                                <p className="text-xl font-black text-primary">{creditBalance.toLocaleString()} Credits</p>
-                            </div>
-                        </div>
-
-                        {creditMsg && (
-                            <div className="rounded-xl border border-primary/30 bg-primary/10 p-3 text-xs font-bold text-primary">
-                                {creditMsg}
-                            </div>
-                        )}
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {[
-                                { id: "1000", credits: "1,000 Credits", price: "₹800", popular: false, desc: "~100 Videos or ~330 Images" },
-                                { id: "2500", credits: "2,500 Credits", price: "₹2,000", popular: true, desc: "~250 Videos or ~830 Images" },
-                                { id: "5000", credits: "5,000 Credits", price: "₹4,000", popular: false, desc: "~500 Videos or ~1,660 Images" },
-                                { id: "10000", credits: "10,000 Credits", price: "₹8,000", popular: false, desc: "~1,000 Videos or ~3,330 Images" },
-                            ].map((pkg) => (
-                                <div
-                                    key={pkg.id}
-                                    className={`flex items-center justify-between p-4 rounded-xl border transition ${
-                                        pkg.popular ? "border-primary bg-primary/10" : "border-white/10 bg-white/5 hover:border-white/20"
-                                    }`}
-                                >
-                                    <div>
-                                        <div className="flex items-center gap-2 font-bold text-sm">
-                                            <span>{pkg.credits}</span>
-                                            {pkg.popular && <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary text-black">Popular</span>}
-                                        </div>
-                                        <p className="text-xs text-white/40 mt-0.5">{pkg.desc}</p>
-                                    </div>
-                                    <button
-                                        disabled={loadingCreditPkg !== null}
-                                        onClick={() => handleCreditTopUp(pkg.id)}
-                                        className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-black text-black hover:bg-primary/90 transition disabled:opacity-50"
-                                    >
-                                        {loadingCreditPkg === pkg.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : pkg.price}
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="glass-card rounded-2xl border-white/10 p-6">
-                        <h2 className="font-bold mb-1">What's included in your membership</h2>
-                        <p className="text-sm text-white/40 mb-5">Everything you need to go from idea to a finished film with AI.</p>
-                        <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-                            {[
-                                "Full AI Filmmaking Crash Course (idea → finished film)",
-                                "Script Writer AI Agent — turn ideas into shoot-ready scripts",
-                                "Seedance Prompt AI Agent — master prompts for cinematic shots",
-                                "Access to all premium courses & downloadable resources",
-                                "Showcase up to 10 portfolio videos",
-                                "Downloadable prompt docs & resources",
-                                "Priority access to new tools & lessons",
-                            ].map((feature) => (
-                                <li key={feature} className="flex items-start gap-2 text-sm text-white/70">
-                                    <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
-                                    <span>{feature}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-
-                    {/* Combined Transaction History (Paid, Cancelled, Failed) */}
-                    <div className="glass-card rounded-2xl border-white/10 overflow-hidden">
-                        <div className="p-5 border-b border-white/5 flex items-center gap-2">
-                            <Receipt className="w-4 h-4 text-primary" />
-                            <h2 className="font-bold">Transaction & Payment History</h2>
-                        </div>
-                        {payments.length === 0 ? (
-                            <p className="p-6 text-sm text-white/35">No transaction records yet. Your membership, credit purchases, and usage history will appear here.</p>
-                        ) : (
-                            <div className="divide-y divide-white/5">
-                                {payments.map((payment) => {
-                                    const isPaid = payment.status === "success" || payment.status === "paid"
-                                    const isCancelled = payment.status === "cancelled" || payment.status === "halted"
-                                    const isUsed = payment.status === "used"
-
-                                    return (
-                                        <div key={payment.id} className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                                            <div className="flex items-start gap-3">
-                                                {isPaid ? (
-                                                    <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
-                                                ) : isCancelled ? (
-                                                    <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
-                                                ) : isUsed ? (
-                                                    <Zap className="w-4 h-4 text-[#b9f42e] mt-0.5 shrink-0" />
-                                                ) : (
-                                                    <XCircle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
-                                                )}
-                                                <div>
-                                                    <p className="text-sm font-bold">{payment.productInfo}</p>
-                                                    <p className="text-xs text-white/35 mt-0.5">
-                                                        {new Date(payment.createdAt).toLocaleDateString()} • Ref {payment.txnid}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-3 md:text-right">
-                                                <span className={
-                                                    isPaid
-                                                        ? "text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-emerald-400/10 text-emerald-300"
-                                                        : isCancelled
-                                                            ? "text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-amber-400/10 text-amber-300"
-                                                            : isUsed
-                                                                ? "text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-white/10 text-zinc-300"
-                                                                : "text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-red-400/10 text-red-300"
-                                                }>
-                                                    {isPaid ? "Paid" : isCancelled ? "Cancelled" : isUsed ? "Generation" : "Failed"}
-                                                </span>
-                                                <p className="font-bold">{payment.amount}</p>
-                                            </div>
-                                        </div>
-                                    )
-                                })}
-                            </div>
-                        )}
-                    </div>
+        <div className="grid gap-5 lg:grid-cols-3">
+          {plans.map((plan) => (
+            <article key={plan.name} className={`rounded-[28px] border p-5 ${plan.accent}`}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-3xl font-black uppercase">{plan.name}</h3>
+                    {plan.badge && <span className="rounded bg-[#ff0a63] px-2 py-1 text-xs font-black uppercase text-white">{plan.badge}</span>}
+                  </div>
+                  <p className="mt-2 text-sm text-white/45">{plan.subtitle}</p>
                 </div>
+              </div>
 
-                <div className="glass-card p-6 rounded-2xl border-white/10 space-y-6">
-                    <div className="flex items-start justify-between gap-4">
-                        <div>
-                            <h2 className="text-xl font-bold">{billingSettings.planName}</h2>
-                            <p className="text-sm text-white/40 mt-1">Monthly membership</p>
-                        </div>
-                        <CheckCircle2 className={active ? "w-6 h-6 text-emerald-400" : "w-6 h-6 text-white/30"} />
-                    </div>
-
-                    <div>
-                        {billingSettings.offerEnabled && (
-                            <div className="mb-2 text-sm font-bold text-emerald-300">{billingSettings.offerText}</div>
-                        )}
-                        {billingSettings.offerEnabled && (
-                            <span className="mr-3 text-xl font-bold text-white/30 line-through">₹{billingSettings.monthlyPrice}</span>
-                        )}
-                        <span className="text-4xl font-bold">₹{activePrice}</span>
-                        <span className="text-white/40"> / month</span>
-                    </div>
-
-                    {billingSettings.offerEnabled && billingSettings.offerEndsAt && (
-                        <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 text-center">
-                            <p className="text-xs font-bold uppercase tracking-widest text-primary mb-3">Offer ends in</p>
-                            <Countdown endsAt={billingSettings.offerEndsAt} />
-                        </div>
-                    )}
-
-                    <div className="rounded-xl bg-white/5 border border-white/10 p-4">
-                        {loading || isLoadingPlan ? (
-                            <div className="flex items-center gap-2 text-sm text-white/50">
-                                <Loader2 className="w-4 h-4 animate-spin" /> Checking plan
-                            </div>
-                        ) : active ? (
-                            <p className="text-sm text-emerald-300">
-                                {membership?.is_trial ? "Free trial" : "Active membership"}{expiresAt ? ` until ${expiresAt}` : ""}.
-                                {membership?.is_trial && " Upgrade to keep access after your trial ends."}
-                            </p>
-                        ) : (
-                            <p className="text-sm text-white/50">You are on the free plan. Portfolio limit is {membershipPlan.freePortfolioLimit} videos.</p>
-                        )}
-                    </div>
-
-                    {billingSettings.paymentsEnabled ? (
-                        <button
-                            onClick={handleCheckout}
-                            disabled={isCheckingOut || loading || isLoadingPlan}
-                            className="btn-primary w-full flex items-center justify-center gap-2 py-3 disabled:opacity-60"
-                        >
-                            {isCheckingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
-                            {active ? "Manage Subscription" : user ? "Subscribe Now" : "Sign In to Subscribe"}
-                        </button>
-                    ) : (
-                        <div className="rounded-xl bg-primary/10 border border-primary/20 p-4 text-center">
-                            <p className="text-sm font-bold text-primary">Early Access — Free Pro!</p>
-                            <p className="text-xs text-white/40 mt-1">Sign up now and enjoy free Pro access. Paid plans coming soon.</p>
-                        </div>
-                    )}
-
-                    {active && !membership?.is_trial && membership?.razorpay_subscription_id && (
-                        <button
-                            onClick={handleCancel}
-                            disabled={isCancelling}
-                            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-sm font-medium text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-60"
-                        >
-                            {isCancelling ? "Cancelling…" : "Cancel subscription"}
-                        </button>
-                    )}
-                    {cancelMsg && <p className="text-xs text-center text-white/50">{cancelMsg}</p>}
+              <div className="mt-6 rounded-3xl bg-white/[.06] p-5">
+                <div className="flex items-start gap-3">
+                  <Sparkles className="mt-1 h-5 w-5 shrink-0 text-white" />
+                  <div>
+                    <p className="text-xl font-black">{plan.credits}</p>
+                    <p className="mt-1 text-sm text-white/45">{plan.imageGenerations}</p>
+                    <p className="mt-1 text-sm text-white/45">{plan.videoGenerations}</p>
+                  </div>
                 </div>
-            </section>
-            <Footer />
-        </main>
-    )
+                <div className="mt-5 h-2 rounded-full bg-white/15">
+                  <div className={`h-full rounded-full ${plan.name === "Starter" ? "w-1/4 bg-white/60" : plan.name === "Pro" ? "w-2/3 bg-primary" : "w-full bg-[#ff0a63]"}`} />
+                </div>
+              </div>
+
+              <div className="mt-7">
+                <span className="text-5xl font-black">{plan.price}</span>
+                <span className="ml-2 text-white/45">per month</span>
+                {annual && <p className="mt-2 text-sm font-bold text-primary">Annual billing selected</p>}
+              </div>
+
+              <button onClick={handlePlanClick} className={`mt-6 w-full rounded-2xl px-5 py-4 text-base font-black shadow-lg transition ${plan.button}`}>
+                {plan.cta}
+              </button>
+              <p className="mt-3 text-center text-xs text-white/35">Razorpay subscription link coming soon</p>
+
+              <div className="mt-6 rounded-3xl border border-white/10 bg-black/20 p-5">
+                <div className="mb-4 flex items-center gap-2 text-sm font-black uppercase">
+                  <Lock className="h-4 w-4" />
+                  Included features
+                </div>
+                <ul className="space-y-3">
+                  {plan.features.map((feature) => (
+                    <li key={feature} className="flex items-start gap-3 text-sm text-white/75">
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                      <span>{feature}</span>
+                    </li>
+                  ))}
+                  {plan.locked.map((feature) => (
+                    <li key={feature} className="flex items-start gap-3 text-sm text-white/30">
+                      <X className="mt-0.5 h-4 w-4 shrink-0" />
+                      <span>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <p className="mx-auto mt-8 max-w-4xl text-center text-sm leading-6 text-white/35">
+          Prices are shown in USD. Local taxes and payment gateway fees may apply at checkout. Final Razorpay subscription links will be connected when provided.
+        </p>
+      </section>
+
+      <section className="mx-auto max-w-[1200px] px-4 py-10 md:px-6">
+        <h2 className="text-4xl font-black tracking-tight md:text-5xl">Compare features</h2>
+        <p className="mt-3 text-white/45">See which plan suits your AI video and image workflow.</p>
+
+        <div className="mt-8 overflow-hidden rounded-[28px] border border-white/10 bg-[#101211]">
+          <div className="grid grid-cols-4 gap-4 border-b border-white/10 p-6 text-left">
+            <div className="flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/10 px-4 py-3 font-black text-primary">
+              Annual 30% off
+              <span className="h-6 w-11 rounded-full bg-primary p-1"><span className="block h-4 w-4 translate-x-5 rounded-full bg-white" /></span>
+            </div>
+            {plans.map((plan) => (
+              <div key={plan.name}>
+                <h3 className="text-2xl font-black">{plan.name}</h3>
+                <p className="mt-3 text-white/70">{plan.price}/month</p>
+                <button onClick={handlePlanClick} className={`mt-4 w-full rounded-xl px-4 py-3 font-black ${plan.name === "Studio" ? "bg-primary text-black" : "bg-white/15 text-white"}`}>
+                  Get Plan
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {[
+            ["Concurrent jobs", "2", "4", "8"],
+            ["AI Director chat", "Yes", "Yes", "Yes"],
+            ["AI Director voice", "No", "Yes", "Yes"],
+            ["MCP & CLI", "No", "Yes", "Yes"],
+            ["Full-auto video workflow", "No", "Limited", "Yes"],
+            ["Monthly credits", "120", "600", "2,400"],
+            ["Workflow skills", "Basic", "Advanced", "Priority"],
+          ].map((row) => (
+            <div key={row[0]} className="grid grid-cols-4 gap-4 border-b border-white/5 px-6 py-5 text-sm last:border-b-0">
+              <div className="font-bold text-white/75">{row[0]}</div>
+              {row.slice(1).map((cell, index) => (
+                <div key={`${row[0]}-${index}`} className="text-white/55">{cell}</div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-4xl px-4 py-20 md:px-6">
+        <h2 className="text-center text-4xl font-black tracking-tight md:text-5xl">Frequently Asked Questions</h2>
+        <div className="mt-10 space-y-3">
+          {faqs.map(([question, answer], index) => (
+            <button
+              key={question}
+              onClick={() => setOpenFaq(openFaq === index ? -1 : index)}
+              className="w-full rounded-2xl border border-white/10 bg-[#101211] p-5 text-left"
+            >
+              <span className="flex items-center justify-between gap-4 text-lg font-black">
+                {question}
+                <ChevronDown className={`h-5 w-5 transition ${openFaq === index ? "rotate-180" : ""}`} />
+              </span>
+              {openFaq === index && <p className="mt-4 text-sm leading-6 text-white/50">{answer}</p>}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-[1200px] px-4 pb-20 md:px-6">
+        <div className="grid gap-4 rounded-[28px] border border-white/10 bg-white/[.04] p-6 md:grid-cols-4">
+          {billingHighlights.map((item) => (
+            <div key={item.label} className="flex items-center gap-3 rounded-2xl bg-black/25 p-4">
+              <item.icon className="h-5 w-5 text-primary" />
+              <span className="text-sm font-bold text-white/70">{item.label}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <Footer />
+    </main>
+  )
 }

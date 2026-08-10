@@ -1,25 +1,112 @@
 "use client"
 
-import Navbar from "@/components/Navbar"
 import Footer from "@/components/Footer"
-import { motion } from "framer-motion"
-import { ArrowRight, Play, Zap, Trophy, Briefcase, Clapperboard, PenLine, Wand2, Film, ShieldCheck, ChevronRight, ArrowUpRight, X, Star } from "lucide-react"
-import { AnimatePresence } from "framer-motion"
-import Link from "next/link"
-import { cn } from "@/lib/utils"
-import { adminShowcase as mockShowcase } from "@/lib/data"
-import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
+import Navbar from "@/components/Navbar"
 import { useAuth } from "@/components/auth/auth-provider"
-import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, membershipPlan } from "@/lib/membership"
-import { CheckCircle2 } from "lucide-react"
-import Countdown from "@/components/Countdown"
+import { adminShowcase as mockShowcase } from "@/lib/data"
+import { createClient } from "@/lib/supabase/client"
+import { cn } from "@/lib/utils"
+import { AnimatePresence, motion } from "framer-motion"
+import {
+    ArrowRight,
+    ArrowUpRight,
+    BadgeCheck,
+    Bot,
+    Boxes,
+    Brain,
+    Clapperboard,
+    Film,
+    Image as ImageIcon,
+    Layers3,
+    Mic2,
+    PenLine,
+    Play,
+    PlugZap,
+    Plus,
+    Sparkles,
+    Video,
+    Wand2,
+    X,
+    Zap,
+} from "lucide-react"
+import Link from "next/link"
+import { useEffect, useMemo, useState } from "react"
+
+const quickTools = [
+    { label: "Image", href: "/studio?mode=image", icon: ImageIcon },
+    { label: "Video", href: "/studio?mode=quick_video", icon: Video },
+    { label: "AI Director", href: "/studio", icon: Bot, active: true },
+    { label: "Characters", href: "/studio?tab=assets", icon: Boxes },
+    { label: "Storyboard", href: "/studio?tab=storyboard", icon: Clapperboard },
+    { label: "MCP & CLI", href: "/studio/external", icon: PlugZap },
+    { label: "Academy", href: "/courses", icon: BadgeCheck },
+]
+
+const featureCards = [
+    {
+        title: "AI Director Agent",
+        description: "Chat or speak with an AI employee that plans scripts, shots, assets, images, approvals, and video generation.",
+        icon: Bot,
+        accent: "from-primary/30 to-primary/5",
+    },
+    {
+        title: "AI Image Studio",
+        description: "Generate product visuals, character references, storyboards, keyframes, thumbnails, and campaign images.",
+        icon: ImageIcon,
+        accent: "from-cyan-400/25 to-primary/5",
+    },
+    {
+        title: "AI Video Workflow",
+        description: "Move from storyboard images to generated clips with approval-first or full-auto production control.",
+        icon: Film,
+        accent: "from-fuchsia-400/20 to-primary/5",
+    },
+    {
+        title: "Asset Memory",
+        description: "Upload image, video, and audio references so the Director can attach them to characters, assets, and shots.",
+        icon: Layers3,
+        accent: "from-amber-300/20 to-primary/5",
+    },
+    {
+        title: "Voice Control",
+        description: "Run the workflow hands-free with a ChatGPT voice agent that understands your production context.",
+        icon: Mic2,
+        accent: "from-emerald-300/20 to-primary/5",
+    },
+    {
+        title: "Workflow Skills",
+        description: "Choose instruction sets for storyboard images, character continuity, video generation, and episode-wide style.",
+        icon: Brain,
+        accent: "from-blue-400/20 to-primary/5",
+    },
+]
+
+const galleryFallbacks = [
+    ["Product Ad", "Cinematic perfume bottle, glass reflections, macro lighting", "bg-[radial-gradient(circle_at_30%_20%,rgba(190,255,30,.55),transparent_28%),linear-gradient(135deg,#0d2116,#111318_58%,#273b14)]"],
+    ["Character Film", "Reusable hero character with matching wardrobe and mood", "bg-[radial-gradient(circle_at_72%_24%,rgba(81,202,255,.48),transparent_26%),linear-gradient(135deg,#15151c,#182b32_52%,#08090b)]"],
+    ["Storyboard", "Six-shot ad board with camera, action, and generation notes", "bg-[linear-gradient(135deg,#1b1d1f,#293118_45%,#0b0d0d)]"],
+    ["Social Campaign", "Vertical reels, thumbnails, captions, hooks, and variations", "bg-[radial-gradient(circle_at_68%_32%,rgba(255,85,172,.38),transparent_28%),linear-gradient(135deg,#121318,#2c1832_55%,#070708)]"],
+    ["Music Visual", "Fast-cut surreal visuals with audio and style references", "bg-[radial-gradient(circle_at_28%_30%,rgba(255,199,64,.42),transparent_30%),linear-gradient(135deg,#1b150c,#1b1d22_48%,#07151a)]"],
+    ["Full Episode", "Script, characters, scenes, storyboard, clips, and final plan", "bg-[linear-gradient(135deg,#0a1310,#17251d_46%,#303517)]"],
+]
+
+const workflowSteps = [
+    ["01", "Ask", "Describe an ad, short film, product demo, reel, or full episode in normal language."],
+    ["02", "Plan", "The Director creates the script, production notes, workflow, assets, and shot strategy."],
+    ["03", "Create", "Generate images immediately, or approve storyboard and video jobs before spending credits."],
+    ["04", "Revise", "Keep every output attached to script, assets, storyboard shots, and references."],
+]
+
+const productionCards = [
+    { title: "Script", description: "Write and revise shoot-ready scenes", icon: PenLine },
+    { title: "Storyboard", description: "Generate keyframes and shot cards", icon: Clapperboard },
+    { title: "Full Auto", description: "Let the agent run the workflow", icon: Zap },
+]
 
 export default function LandingPage() {
     const { user, signInWithGoogle } = useAuth()
     const [adminShowcase, setAdminShowcase] = useState(mockShowcase)
     const [courses, setCourses] = useState<any[]>([])
-    const [billingSettings, setBillingSettings] = useState(defaultBillingSettings)
     const [playingVideo, setPlayingVideo] = useState<{ url: string; title: string } | null>(null)
 
     useEffect(() => {
@@ -28,35 +115,55 @@ export default function LandingPage() {
                 const supabase = createClient()
                 const [showcaseRes, coursesRes] = await Promise.all([
                     supabase
-                        .from('showcase_items')
-                        .select('*')
-                        .order('created_at', { ascending: false }),
+                        .from("showcase_items")
+                        .select("*")
+                        .order("created_at", { ascending: false }),
                     supabase
-                        .from('courses')
-                        .select('*')
-                        .order('created_at', { ascending: true })
-                        .limit(3),
+                        .from("courses")
+                        .select("*")
+                        .order("created_at", { ascending: true })
+                        .limit(4),
                 ])
                 if (!showcaseRes.error && showcaseRes.data) {
                     setAdminShowcase(showcaseRes.data.map((s: any) => ({
                         id: s.id,
                         title: s.title,
                         description: s.description,
-                        thumbnail: s.thumbnail || '',
-                        videoUrl: s.video_url || '',
+                        thumbnail: s.thumbnail || "",
+                        videoUrl: s.video_url || "",
                     })))
                 }
                 if (!coursesRes.error && coursesRes.data) {
                     setCourses(coursesRes.data.filter((c: any) => !c.is_paused))
                 }
-                setBillingSettings(await fetchBillingSettings(supabase))
             } catch {}
         }
         load()
     }, [])
 
+    const heroShowcase = adminShowcase.slice(0, 3)
+    const galleryItems = useMemo(() => {
+        const realItems = adminShowcase.slice(0, 6).map((item, index) => ({
+            title: item.title,
+            description: item.description || "AI Director Hub creation",
+            thumbnail: item.thumbnail,
+            videoUrl: item.videoUrl,
+            fallback: galleryFallbacks[index % galleryFallbacks.length][2],
+        }))
+        const fillers = galleryFallbacks.slice(realItems.length).map(([title, description, fallback]) => ({
+            title,
+            description,
+            thumbnail: "",
+            videoUrl: "",
+            fallback,
+        }))
+        return [...realItems, ...fillers].slice(0, 6)
+    }, [adminShowcase])
+
+    const openStudio = user ? "/studio" : undefined
+
     return (
-        <main className="min-h-screen">
+        <main className="min-h-screen bg-[#070806] text-white">
             <script
                 type="application/ld+json"
                 dangerouslySetInnerHTML={{
@@ -67,542 +174,330 @@ export default function LandingPage() {
                         url: "https://www.aidirectorhub.com",
                         logo: "https://www.aidirectorhub.com/logo.png",
                         description:
-                            "AI Director Hub teaches AI video creation and filmmaking through project-based courses, AI scriptwriting and prompt agents, and a creator portfolio.",
+                            "AI Director Hub is an AI video and image creation studio with an AI Director agent that turns simple requests into scripts, assets, storyboards, images, and full videos.",
                         sameAs: [],
                     }),
                 }}
             />
             <Navbar />
 
-            {/* Hero Section */}
-            <section className="relative pt-32 pb-20 px-6 overflow-hidden">
-                {/* Animated Background Orbs */}
-                <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-[128px] -z-10 animate-pulse-slow" />
-                <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-lime-400/10 rounded-full blur-[96px] -z-10 animate-pulse-slow delay-1000" />
+            {/* Navbar is fixed and already owns the membership offer. Reserve room
+                for it before the secondary tool bar so the two headers never overlap. */}
+            <div className="h-28" aria-hidden="true" />
 
-                <div className="max-w-6xl mx-auto text-center">
-                    <motion.img
-                        src="/logo.png"
-                        alt="AI Director Hub"
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="w-28 h-28 md:w-32 md:h-32 rounded-full mx-auto mb-8 shadow-[0_0_60px_-15px] shadow-primary/50"
-                    />
+            <nav className="relative z-20 border-y border-white/10 bg-[#0b0d0c]/95 px-4 py-3 backdrop-blur">
+                <div className="mx-auto flex max-w-[1540px] items-center gap-3 overflow-x-auto">
+                    {quickTools.map((tool) => (
+                        <Link
+                            key={tool.label}
+                            href={tool.href}
+                            className={cn(
+                                "inline-flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-white/55 transition hover:bg-white/10 hover:text-white",
+                                tool.active && "bg-primary/15 text-primary ring-1 ring-primary/30",
+                            )}
+                        >
+                            <tool.icon className="h-4 w-4" />
+                            {tool.label}
+                        </Link>
+                    ))}
+                    <span className="ml-auto hidden h-6 w-px shrink-0 bg-white/10 lg:block" />
+                    {user ? (
+                        <Link href="/studio" className="btn-primary shrink-0 px-5 py-2">
+                            Open Studio
+                        </Link>
+                    ) : (
+                        <button onClick={signInWithGoogle} className="btn-primary shrink-0 px-5 py-2">
+                            Sign up
+                        </button>
+                    )}
+                </div>
+            </nav>
+
+            <section className="mx-auto max-w-[1540px] px-4 pb-10 pt-5 md:px-6">
+                <div className="grid gap-4 lg:grid-cols-[1.05fr_.95fr]">
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border-white/10 mb-8"
+                        className="relative overflow-hidden rounded-[28px] border border-white/10 bg-[#111312] p-5 md:p-8"
                     >
-                        <span className="flex h-2 w-2 rounded-full bg-primary animate-pulse" />
-                        <span className="text-xs font-medium tracking-widest text-white/80">AI FILMMAKING &bull; TAUGHT BY A WORKING PRO</span>
-                        <ChevronRight className="w-3 h-3 text-white/40" />
+                        <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(181,255,22,.16),transparent_35%,rgba(64,202,255,.1)_78%)]" />
+                        <div className="relative z-10 flex min-h-[520px] flex-col justify-between">
+                            <div>
+                                <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-bold uppercase tracking-[.18em] text-primary">
+                                    <Sparkles className="h-4 w-4" />
+                                    Your AI creative employee
+                                </div>
+                                <h1 className="mt-7 max-w-4xl text-5xl font-black leading-[.9] tracking-tight md:text-7xl lg:text-8xl">
+                                    Create AI videos and images with an AI Director.
+                                </h1>
+                                <p className="mt-6 max-w-2xl text-lg leading-8 text-white/60">
+                                    Ask for a product ad, short film, reel, music visual, or episode. The Director writes, plans,
+                                    organizes assets, makes storyboards, generates images, and prepares video with approvals.
+                                </p>
+                            </div>
+
+                            <div className="mt-10 grid gap-3 sm:grid-cols-2">
+                                {user ? (
+                                    <Link href="/studio" className="btn-primary flex items-center justify-center gap-2 py-4 text-base">
+                                        Start Creating <ArrowRight className="h-5 w-5" />
+                                    </Link>
+                                ) : (
+                                    <button onClick={signInWithGoogle} className="btn-primary flex items-center justify-center gap-2 py-4 text-base">
+                                        Start Creating Free <ArrowRight className="h-5 w-5" />
+                                    </button>
+                                )}
+                                <Link href="/billing" className="flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[.05] px-6 py-4 font-bold text-white transition hover:border-primary/50 hover:text-primary">
+                                    View Plans <ArrowUpRight className="h-5 w-5" />
+                                </Link>
+                            </div>
+                        </div>
                     </motion.div>
 
-                    <motion.h1
-                        initial={{ opacity: 0, y: 30 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 }}
-                        className="text-5xl md:text-7xl font-bold tracking-tight mb-6"
-                    >
-                        Learn AI Filmmaking From a<br />
-                        <span className="text-gradient">Top Rated Upwork Creator</span>
-                    </motion.h1>
+                    <div className="grid gap-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                            {heroShowcase.length > 0 ? heroShowcase.map((item, index) => (
+                                <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => item.videoUrl && setPlayingVideo({ url: item.videoUrl, title: item.title })}
+                                    className={cn(
+                                        "group relative min-h-[250px] overflow-hidden rounded-[24px] border border-white/10 bg-[#151716] text-left",
+                                        index === 0 && "md:col-span-2",
+                                    )}
+                                >
+                                    {item.thumbnail ? (
+                                        <img src={item.thumbnail} alt={item.title} className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+                                    ) : item.videoUrl ? (
+                                        <video src={`${item.videoUrl}#t=0.1`} muted preload="metadata" playsInline className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+                                    ) : (
+                                        <div className={cn("absolute inset-0", galleryFallbacks[index][2])} />
+                                    )}
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
+                                    <div className="absolute bottom-0 left-0 right-0 p-5">
+                                        <div className="mb-3 inline-flex rounded-full bg-primary px-3 py-1 text-xs font-black text-black">Video</div>
+                                        <h2 className="text-2xl font-black">{item.title}</h2>
+                                        <p className="mt-2 line-clamp-2 text-sm text-white/60">{item.description}</p>
+                                    </div>
+                                    {item.videoUrl && (
+                                        <span className="absolute right-5 top-5 grid h-12 w-12 place-items-center rounded-full bg-primary text-black transition group-hover:scale-105">
+                                            <Play className="h-5 w-5 fill-black" />
+                                        </span>
+                                    )}
+                                </button>
+                            )) : galleryFallbacks.slice(0, 3).map(([title, description, fallback], index) => (
+                                <div key={title} className={cn("relative min-h-[250px] overflow-hidden rounded-[24px] border border-white/10 p-5", fallback, index === 0 && "md:col-span-2")}>
+                                    <div className="absolute inset-x-5 bottom-5">
+                                        <div className="mb-3 inline-flex rounded-full bg-primary px-3 py-1 text-xs font-black text-black">Studio</div>
+                                        <h2 className="text-2xl font-black">{title}</h2>
+                                        <p className="mt-2 text-sm text-white/65">{description}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
 
-                    <motion.p
-                        initial={{ opacity: 0, y: 30 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.2 }}
-                        className="text-lg md:text-xl text-white/60 max-w-2xl mx-auto mb-10 leading-relaxed"
-                    >
-                        I earned $18,000+ making AI videos for global brands — UGC ads, cinematic
-                        scenes, and short-form content. Now I&apos;ll teach you the exact system, tools,
-                        and prompts I use every day.
-                    </motion.p>
-
-                    <motion.div
-                        initial={{ opacity: 0, y: 30 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.3 }}
-                        className="flex flex-col sm:flex-row items-center justify-center gap-4"
-                    >
-                        {user ? (
-                            <Link href="/courses" className="btn-primary flex items-center gap-2 px-8 py-4 text-lg">
-                                Start Learning Free <ArrowRight className="w-5 h-5" />
-                            </Link>
-                        ) : (
-                            <button onClick={signInWithGoogle} className="btn-primary flex items-center gap-2 px-8 py-4 text-lg">
-                                Start Learning Free <ArrowRight className="w-5 h-5" />
-                            </button>
-                        )}
-                        <Link href="/courses" className="px-8 py-4 text-lg font-medium text-white hover:text-primary transition-colors flex items-center gap-2">
-                            Explore Courses <ShieldCheck className="w-5 h-5 text-primary" />
-                        </Link>
-                    </motion.div>
-
-                    <motion.section
-                        initial={{ opacity: 0, y: 30 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.38 }}
-                        className="mt-16 rounded-3xl border border-primary/20 bg-black/30 p-6 text-left backdrop-blur md:p-9"
-                    >
-                        <p className="text-xs font-bold tracking-[.22em] text-primary">AI DIRECTOR STUDIO</p>
-                        <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-5xl">Talk to your AI Director. Create an entire video universe.</h2>
-                        <p className="mt-4 max-w-4xl text-base leading-7 text-white/60 md:text-lg">Create AI ads, recurring branded stories, and complete short-form shows with consistent characters, scenes, voices, and creative direction.</p>
-                        <div className="mt-7 grid gap-3 md:grid-cols-3">
-                            {[
-                                ["Create an AI Ad", "quick_video", "A focused UGC video, product ad, property video, app ad, or cinematic social story."],
-                                ["Create a Brand Series", "story_campaign", "Connected branded entertainment with recurring characters, products, and campaign memory."],
-                                ["Create a Short Drama", "ai_show", "Vertical episodes with season planning, character arcs, cliffhangers, and continuity."],
-                            ].map(([label, mode, description]) => (
-                                <Link key={mode} href={`/studio?mode=${mode}`} className="group rounded-2xl border border-white/10 bg-white/[.04] p-5 transition hover:border-primary/50 hover:bg-primary/[.06]">
-                                    <Clapperboard className="h-5 w-5 text-primary" />
-                                    <h3 className="mt-4 font-bold">{label}</h3>
-                                    <p className="mt-2 text-sm leading-6 text-white/50">{description}</p>
-                                    <span className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-primary">Open Studio <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" /></span>
+                        <div className="grid gap-4 sm:grid-cols-3">
+                            {productionCards.map((card) => (
+                                <Link key={card.title} href="/studio" className="rounded-[20px] border border-white/10 bg-white/[.05] p-5 transition hover:border-primary/50 hover:bg-primary/[.08]">
+                                    <card.icon className="h-6 w-6 text-primary" />
+                                    <h3 className="mt-5 text-lg font-black">{card.title}</h3>
+                                    <p className="mt-2 text-sm leading-6 text-white/50">{card.description}</p>
                                 </Link>
                             ))}
                         </div>
-                        <p className="mt-7 border-t border-white/10 pt-6 text-sm leading-6 text-white/50">Unlike AI video generators that create disconnected clips, AI Director Hub helps users create connected stories, recurring characters, and complete video campaigns through a conversation with a personal AI director.</p>
-                    </motion.section>
-
-                    {/* Featured video — front and center */}
-                    {adminShowcase[0] && (
-                        <motion.div
-                            initial={{ opacity: 0, y: 30 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.4 }}
-                            className="mt-12 max-w-3xl mx-auto"
-                        >
-                            <div
-                                className="glass-card group overflow-hidden cursor-pointer rounded-2xl border-white/10"
-                                onClick={() => adminShowcase[0].videoUrl && setPlayingVideo({ url: adminShowcase[0].videoUrl, title: adminShowcase[0].title })}
-                            >
-                                <div className="relative aspect-video bg-white/5">
-                                    {adminShowcase[0].thumbnail ? (
-                                        <img src={adminShowcase[0].thumbnail} alt={adminShowcase[0].title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-                                    ) : adminShowcase[0].videoUrl ? (
-                                        <video src={`${adminShowcase[0].videoUrl}#t=0.1`} muted preload="metadata" playsInline className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-                                    ) : null}
-                                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                                        <div className="bg-primary p-5 rounded-full shadow-2xl scale-90 group-hover:scale-100 transition-transform">
-                                            <Play className="w-8 h-8 fill-black text-black" />
-                                        </div>
-                                    </div>
-                                    <div className="absolute top-4 left-4 glass px-3 py-1 rounded-full text-[10px] font-bold tracking-widest uppercase">
-                                        Watch the demo
-                                    </div>
-                                </div>
-                            </div>
-                        </motion.div>
-                    )}
-
-                    {/* Proof Section */}
-                    <div className="mt-24">
-                        <motion.div
-                            initial={{ opacity: 0, y: 30 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            viewport={{ once: true }}
-                            className="space-y-4 mb-12"
-                        >
-                            <h2 className="text-3xl md:text-5xl font-bold tracking-tight">
-                                Why Learn <span className="text-primary">From Me</span>
-                            </h2>
-                            <p className="text-white/60 max-w-2xl mx-auto">
-                                I&apos;m not a guru — I&apos;m a working AI video freelancer. These are my real,
-                                verifiable Upwork stats.
-                            </p>
-                        </motion.div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                            {[
-                                { value: "$18,142", label: "Earned in the last 12 months" },
-                                { value: "Top Rated", label: "Upwork badge, top 10% of freelancers" },
-                                { value: "95%", label: "Job Success Score" },
-                                { value: "81", label: "Jobs completed for global clients" },
-                            ].map((stat, i) => (
-                                <motion.div
-                                    key={stat.label}
-                                    initial={{ opacity: 0, y: 30 }}
-                                    whileInView={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: i * 0.1 }}
-                                    viewport={{ once: true }}
-                                    className="glass-card p-8 text-center"
-                                >
-                                    <div className="text-3xl md:text-4xl font-bold text-primary mb-2">{stat.value}</div>
-                                    <p className="text-white/60 text-sm leading-relaxed">{stat.label}</p>
-                                </motion.div>
-                            ))}
-                        </div>
-
-                        <motion.p
-                            initial={{ opacity: 0, y: 20 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            viewport={{ once: true }}
-                            className="text-white/60 max-w-2xl mx-auto mt-10"
-                        >
-                            Every course on this platform teaches the same workflows I use on real client
-                            projects — Seedance, Veo, Kling, and the prompting system behind them.
-                        </motion.p>
-
-                        <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl mx-auto">
-                            <motion.figure
-                                initial={{ opacity: 0, y: 30 }}
-                                whileInView={{ opacity: 1, y: 0 }}
-                                viewport={{ once: true }}
-                            >
-                                <div className="glass-card rounded-2xl border-white/10 overflow-hidden">
-                                    <img
-                                        src="/proof/upwork-profile.png"
-                                        alt="Upwork profile of Ravinderdeep S. showing the Top Rated badge and 95% Job Success score"
-                                        className="w-full h-auto"
-                                        loading="lazy"
-                                    />
-                                </div>
-                                <figcaption className="text-sm text-white/50 mt-3">
-                                    My Upwork profile — Ravinderdeep S., AI Video Ads &amp; UGC Creator
-                                </figcaption>
-                            </motion.figure>
-                            <motion.figure
-                                initial={{ opacity: 0, y: 30 }}
-                                whileInView={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.1 }}
-                                viewport={{ once: true }}
-                            >
-                                <div className="glass-card rounded-2xl border-white/10 overflow-hidden">
-                                    <img
-                                        src="/proof/upwork-stats.png"
-                                        alt="Upwork My Stats page showing $18,142 earned in 12 months and a 95% Job Success Score"
-                                        className="w-full h-auto"
-                                        loading="lazy"
-                                    />
-                                </div>
-                                <figcaption className="text-sm text-white/50 mt-3">
-                                    My Upwork stats — 12-month earnings &amp; Job Success Score
-                                </figcaption>
-                            </motion.figure>
-                        </div>
-
-                        {/* Client Reviews */}
-                        <div className="mt-16">
-                            <motion.h3
-                                initial={{ opacity: 0, y: 20 }}
-                                whileInView={{ opacity: 1, y: 0 }}
-                                viewport={{ once: true }}
-                                className="text-2xl md:text-3xl font-bold tracking-tight mb-8"
-                            >
-                                What Upwork Clients <span className="text-primary">Say</span>
-                            </motion.h3>
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl mx-auto">
-                                {[
-                                    {
-                                        quote: "One word will not describe the experience….INCREDIBLE, AMAZING, AWESOME….and most of all KIND!!! My good fortune to have worked with him.",
-                                        job: "promotion",
-                                        tags: ["Collaborative"],
-                                    },
-                                    {
-                                        quote: "The ultimate in professionalism…..The most talented and understanding professional in his field….Always ready to accommodate and knows exactly what the project calls……The sky is the limit of praise for this freelancer…..",
-                                        job: "video ads for kdp amazon",
-                                        tags: ["Collaborative", "Committed to Quality", "Solution Oriented", "Clear Communicator", "Professional"],
-                                    },
-                                ].map((review, i) => (
-                                    <motion.figure
-                                        key={review.job}
-                                        initial={{ opacity: 0, y: 30 }}
-                                        whileInView={{ opacity: 1, y: 0 }}
-                                        transition={{ delay: i * 0.1 }}
-                                        viewport={{ once: true }}
-                                        className="glass-card p-8 text-left flex flex-col"
-                                    >
-                                        <div className="flex items-center gap-1 mb-4">
-                                            {[...Array(5)].map((_, s) => (
-                                                <Star key={s} className="w-4 h-4 fill-amber-400 text-amber-400" />
-                                            ))}
-                                            <span className="ml-2 text-sm font-bold text-white/80">5.0</span>
-                                        </div>
-                                        <blockquote className="text-white/70 leading-relaxed italic mb-6">
-                                            &ldquo;{review.quote}&rdquo;
-                                        </blockquote>
-                                        <figcaption className="mt-auto">
-                                            <p className="text-sm font-bold text-white/80">Upwork client — &ldquo;{review.job}&rdquo;</p>
-                                            <div className="flex flex-wrap gap-2 mt-3">
-                                                {review.tags.map((tag) => (
-                                                    <span key={tag} className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs text-white/60">
-                                                        {tag}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </figcaption>
-                                    </motion.figure>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Feature Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-24">
-                        {[
-                            {
-                                title: "Project-Based Courses",
-                                desc: "Step-by-step video courses where you build real AI films — scriptwriting agents, prompt engineering, character & scene generation, and editing. Every chapter comes with prompt docs and downloadable resources.",
-                                icon: Clapperboard,
-                                color: "text-primary"
-                            },
-                            {
-                                title: "Built-in AI Agents",
-                                desc: "Work faster with our Script Writer Agent — turn ideas into shoot-ready scripts — and the Seedance Prompt Agent that crafts master prompts for cinematic shots.",
-                                icon: Trophy,
-                                color: "text-amber-400"
-                            },
-                            {
-                                title: "Creator Portfolio",
-                                desc: "Upload your best AI videos to a shareable creator portfolio that shows off your work and skills as an AI video director.",
-                                icon: Briefcase,
-                                color: "text-lime-300"
-                            }
-                        ].map((feature, i) => (
-                            <motion.div
-                                key={feature.title}
-                                initial={{ opacity: 0, y: 30 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.4 + (i * 0.1) }}
-                                className="glass-card p-8 text-left group"
-                            >
-                                <div className={cn("inline-flex p-3 rounded-xl bg-white/5 mb-6 transition-colors group-hover:bg-white/10", feature.color)}>
-                                    <feature.icon className="w-6 h-6" />
-                                </div>
-                                <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
-                                <p className="text-white/60 leading-relaxed text-sm">
-                                    {feature.desc}
-                                </p>
-                            </motion.div>
-                        ))}
                     </div>
                 </div>
             </section>
 
-            {/* What You'll Learn Section */}
-            <section className="py-24 px-6 max-w-7xl mx-auto">
-                <div className="text-center mb-16 space-y-4">
-                    <h2 className="text-3xl md:text-5xl font-bold tracking-tight">
-                        Learn the Complete <span className="text-primary">AI Filmmaking Workflow</span>
-                    </h2>
-                    <p className="text-white/60 max-w-2xl mx-auto">
-                        No film school. No expensive gear. Just you, AI tools, and a proven step-by-step
-                        process — the same workflow we use to produce our own agency films.
-                    </p>
+            <section className="mx-auto max-w-[1540px] px-4 py-8 md:px-6">
+                <div className="mb-5 flex items-end justify-between gap-4">
+                    <div>
+                        <p className="text-xs font-black uppercase tracking-[.22em] text-primary">Create gallery</p>
+                        <h2 className="mt-2 text-3xl font-black tracking-tight md:text-5xl">What your AI Director can make</h2>
+                    </div>
+                    <Link href="/studio" className="hidden items-center gap-2 text-sm font-bold text-primary hover:underline md:flex">
+                        Open Studio <ArrowRight className="h-4 w-4" />
+                    </Link>
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {[
-                        {
-                            step: "01",
-                            title: "Write with AI Agents",
-                            desc: "Turn ideas into shoot-ready scripts using AI scriptwriter agents and master prompts that structure your story scene by scene.",
-                            icon: PenLine,
-                        },
-                        {
-                            step: "02",
-                            title: "Master Prompt Engineering",
-                            desc: "Learn the exact prompting techniques for tools like Seedance to control camera, lighting, mood, and motion in every shot.",
-                            icon: Wand2,
-                        },
-                        {
-                            step: "03",
-                            title: "Generate Characters & Scenes",
-                            desc: "Build consistent characters, environments, and assets across an entire film so your story looks like one production, not random clips.",
-                            icon: Clapperboard,
-                        },
-                        {
-                            step: "04",
-                            title: "Edit & Publish",
-                            desc: "Assemble your generated shots into a finished film — pacing, sound, and final polish — then publish it to your portfolio.",
-                            icon: Film,
-                        },
-                    ].map((item, i) => (
-                        <motion.div
-                            key={item.step}
-                            initial={{ opacity: 0, y: 30 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.1 }}
-                            viewport={{ once: true }}
-                            className="glass-card p-8 relative overflow-hidden group"
+                <div className="grid auto-rows-[210px] gap-4 md:grid-cols-4">
+                    {galleryItems.map((item, index) => (
+                        <button
+                            key={`${item.title}-${index}`}
+                            type="button"
+                            onClick={() => item.videoUrl && setPlayingVideo({ url: item.videoUrl, title: item.title })}
+                            className={cn(
+                                "group relative overflow-hidden rounded-[22px] border border-white/10 bg-[#121412] text-left",
+                                index === 0 && "md:col-span-2 md:row-span-2",
+                                index === 3 && "md:row-span-2",
+                            )}
                         >
-                            <span className="absolute -top-2 -right-2 text-7xl font-black text-white/5 group-hover:text-primary/10 transition-colors">{item.step}</span>
-                            <div className="inline-flex p-3 rounded-xl bg-primary/10 text-primary mb-6">
-                                <item.icon className="w-6 h-6" />
+                            {item.thumbnail ? (
+                                <img src={item.thumbnail} alt={item.title} className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+                            ) : (
+                                <div className={cn("absolute inset-0", item.fallback)} />
+                            )}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
+                            <div className="absolute bottom-0 left-0 right-0 p-5">
+                                <h3 className="text-xl font-black">{item.title}</h3>
+                                <p className="mt-1 line-clamp-2 text-sm leading-6 text-white/55">{item.description}</p>
                             </div>
-                            <h3 className="text-lg font-bold mb-3">{item.title}</h3>
-                            <p className="text-white/60 leading-relaxed text-sm">{item.desc}</p>
-                        </motion.div>
+                        </button>
                     ))}
                 </div>
             </section>
 
-            {/* Featured Courses Section */}
-            {courses.length > 0 && (
-            <section className="py-24 px-6 max-w-7xl mx-auto">
-                <div className="flex flex-col md:flex-row items-end justify-between gap-6 mb-12">
-                    <div className="space-y-4">
-                        <h2 className="text-3xl md:text-5xl font-bold tracking-tight">
-                            Explore <span className="text-primary">Courses</span>
-                        </h2>
-                        <p className="text-white/60 max-w-xl">
-                            Project-based AI video courses with clear, fixed pricing. Learn at your own pace with downloadable resources.
+            <section className="mx-auto max-w-[1540px] px-4 py-12 md:px-6">
+                <div className="grid gap-4 lg:grid-cols-[.9fr_1.1fr]">
+                    <div className="rounded-[28px] border border-primary/25 bg-primary p-8 text-black">
+                        <p className="text-xs font-black uppercase tracking-[.24em]">AI employee</p>
+                        <h2 className="mt-4 text-4xl font-black leading-none md:text-6xl">One agent. Full creative workflow.</h2>
+                        <p className="mt-5 max-w-xl text-base font-semibold leading-7 text-black/65">
+                            Your Director can read and update scripts, assets, storyboard images, uploaded references, and video plans from chat.
                         </p>
+                        <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                            {["Image generation can run instantly", "Video generation asks for approval", "Full-auto mode can run end to end", "Workflow skills guide each episode"].map((item) => (
+                                <div key={item} className="rounded-2xl bg-black/10 p-4 text-sm font-bold">
+                                    {item}
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                    <Link href="/courses" className="text-sm font-bold text-primary hover:underline flex items-center gap-2">
-                        View All Courses <ArrowUpRight className="w-4 h-4" />
-                    </Link>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    {courses.map((course, i) => {
-                        const isFree = course.price === "Free" || course.price === "$0" || course.price === 0 || course.price === "0" || !course.price
-                        return (
-                        <motion.div
-                            key={course.id}
-                            initial={{ opacity: 0, y: 30 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.1 }}
-                            viewport={{ once: true }}
-                            className="glass-card group overflow-hidden flex flex-col"
-                        >
-                            <Link href={`/courses/${course.id}`} className="relative aspect-video bg-white/5 block overflow-hidden">
-                                {course.thumbnail && (
-                                    <img
-                                        src={course.thumbnail}
-                                        alt={course.title}
-                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                                    />
-                                )}
-                                <div className="absolute top-3 right-3 px-3 py-1 glass rounded-full text-[10px] font-bold tracking-widest uppercase">
-                                    {course.level}
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        {featureCards.map((feature) => (
+                            <Link
+                                key={feature.title}
+                                href={openStudio || "/studio"}
+                                onClick={(event) => {
+                                    if (!user) {
+                                        event.preventDefault()
+                                        signInWithGoogle()
+                                    }
+                                }}
+                                className="group rounded-[24px] border border-white/10 bg-[#141615] p-5 transition hover:border-primary/50"
+                            >
+                                <div className={cn("rounded-2xl bg-gradient-to-br p-4", feature.accent)}>
+                                    <feature.icon className="h-7 w-7 text-primary" />
+                                </div>
+                                <h3 className="mt-5 text-xl font-black">{feature.title}</h3>
+                                <p className="mt-3 text-sm leading-6 text-white/55">{feature.description}</p>
+                                <span className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-primary">
+                                    Use it <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+                                </span>
+                            </Link>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            <section className="mx-auto max-w-[1540px] px-4 py-12 md:px-6">
+                <div className="rounded-[28px] border border-white/10 bg-[#111312] p-5 md:p-8">
+                    <div className="grid gap-8 lg:grid-cols-[.75fr_1.25fr]">
+                        <div>
+                            <p className="text-xs font-black uppercase tracking-[.22em] text-primary">Workflow</p>
+                            <h2 className="mt-3 text-4xl font-black tracking-tight md:text-6xl">From request to final video.</h2>
+                            <p className="mt-5 text-white/55 leading-7">
+                                Choose a workflow once in settings and apply it to the full storyboard of an episode.
+                                Change it any time when the creative direction changes.
+                            </p>
+                        </div>
+                        <div className="grid gap-4 md:grid-cols-4">
+                            {workflowSteps.map(([step, title, description]) => (
+                                <div key={step} className="relative min-h-[260px] rounded-[22px] border border-white/10 bg-white/[.04] p-5">
+                                    <div className="grid h-12 w-12 place-items-center rounded-full bg-white/10 text-lg font-black text-primary">{step}</div>
+                                    <h3 className="mt-14 text-xl font-black">{title}</h3>
+                                    <p className="mt-3 text-sm leading-6 text-white/50">{description}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {courses.length > 0 && (
+                <section className="mx-auto max-w-[1540px] px-4 py-12 md:px-6">
+                    <div className="mb-6 flex items-end justify-between gap-4">
+                        <div>
+                            <h2 className="text-4xl font-black tracking-tight md:text-5xl">Watch and learn</h2>
+                            <p className="mt-3 text-white/55">Training for AI filmmaking, prompting, storyboard workflows, and creator systems.</p>
+                        </div>
+                        <Link href="/courses" className="hidden items-center gap-2 text-sm font-bold text-primary hover:underline md:flex">
+                            View courses <ArrowUpRight className="h-4 w-4" />
+                        </Link>
+                    </div>
+                    <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+                        {courses.map((course) => (
+                            <Link key={course.id} href={`/courses/${course.id}`} className="group overflow-hidden rounded-[24px] border border-white/10 bg-[#141615] transition hover:border-primary/50">
+                                <div className="relative aspect-[16/10] bg-white/[.04]">
+                                    {course.thumbnail ? (
+                                        <img src={course.thumbnail} alt={course.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+                                    ) : (
+                                        <div className="h-full w-full bg-[linear-gradient(135deg,#151715,#33400d,#b9ff18)]" />
+                                    )}
+                                    <div className="absolute left-4 top-4 rounded-full bg-primary px-3 py-1 text-xs font-black text-black">{course.level || "Course"}</div>
+                                </div>
+                                <div className="p-5">
+                                    <h3 className="line-clamp-2 text-lg font-black">{course.title}</h3>
+                                    <p className="mt-2 line-clamp-2 text-sm leading-6 text-white/50">{course.description}</p>
                                 </div>
                             </Link>
-                            <div className="p-6 flex flex-col flex-grow">
-                                <div className="flex items-center gap-2 mb-3">
-                                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-400">
-                                        <Zap className="w-3.5 h-3.5" /> +{course.xp} XP
-                                    </span>
-                                    <span className="text-white/20">|</span>
-                                    <span className="text-xs text-white/50">{course.chapters} Chapters</span>
-                                </div>
-                                <Link href={`/courses/${course.id}`}>
-                                    <h3 className="text-xl font-bold group-hover:text-primary transition-colors line-clamp-1">{course.title}</h3>
-                                </Link>
-                                <p className="text-white/50 text-sm mt-2 mb-6 line-clamp-2 leading-relaxed">{course.description}</p>
-                                <div className="mt-auto pt-6 border-t border-white/5 flex items-center justify-between">
-                                    <span className="text-lg font-bold text-emerald-400">
-                                        {isFree ? "Free" : isNaN(Number(course.price)) ? course.price : `₹${course.price}`}
-                                    </span>
-                                    <Link href={`/courses/${course.id}`} className="text-sm font-medium text-white hover:text-primary transition-colors flex items-center gap-1.5">
-                                        Enroll Now <Play className="w-3.5 h-3.5" />
-                                    </Link>
-                                </div>
-                            </div>
-                        </motion.div>
-                    )})}
-                </div>
-            </section>
+                        ))}
+                    </div>
+                </section>
             )}
 
-            {/* Membership Pricing Section */}
-            <section className="py-24 px-6 max-w-3xl mx-auto">
-                <div className="text-center mb-10 space-y-3">
-                    <h2 className="text-3xl md:text-5xl font-bold tracking-tight">
-                        Simple <span className="text-primary">Pricing</span>
-                    </h2>
-                    <p className="text-white/60">One membership unlocks all premium courses and creator tools.</p>
-                </div>
-
-                <div className="mb-8 max-w-md mx-auto rounded-2xl border border-primary/30 bg-primary/5 p-5 text-center">
-                    <p className="text-sm font-bold text-primary">Free account — no payment to start</p>
-                    <p className="text-sm text-white/60 mt-1">
-                        Sign up free, preview the course, and build your creator portfolio — upgrade to Pro whenever you're ready.
-                    </p>
-                </div>
-
-                <div className="glass-card rounded-3xl border-white/10 p-8 md:p-10 max-w-md mx-auto text-center relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-48 h-48 bg-primary/10 blur-[80px] rounded-full -z-10" />
-                    <h3 className="text-xl font-bold">{billingSettings.planName}</h3>
-                    <p className="text-sm text-white/40 mt-1">Monthly membership</p>
-
-                    <div className="my-6">
-                        {billingSettings.offerEnabled && (
-                            <div className="mb-2 text-sm font-bold text-emerald-300">{billingSettings.offerText}</div>
-                        )}
-                        {billingSettings.offerEnabled && (
-                            <span className="mr-3 text-2xl font-bold text-white/30 line-through">₹{billingSettings.monthlyPrice}</span>
-                        )}
-                        <span className="text-5xl font-bold">₹{getActivePlanPrice(billingSettings)}</span>
-                        <span className="text-white/40"> / month</span>
+            <section className="mx-auto max-w-[1540px] px-4 py-12 md:px-6">
+                <div className="rounded-[28px] border border-white/10 bg-[#111312] p-8 text-center md:p-12">
+                    <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-primary text-black">
+                        <Plus className="h-8 w-8" />
                     </div>
-
-                    {billingSettings.offerEnabled && billingSettings.offerEndsAt && (
-                        <div className="mb-6 rounded-xl bg-primary/5 border border-primary/20 p-4">
-                            <p className="text-xs font-bold uppercase tracking-widest text-primary mb-3">Early member price ends in</p>
-                            <Countdown endsAt={billingSettings.offerEndsAt} />
-                        </div>
-                    )}
-
-                    <p className="text-sm font-bold text-white/80 mb-3 text-center">Everything included in your membership:</p>
-                    <ul className="text-left space-y-3 mb-8 max-w-sm mx-auto">
-                        {[
-                            "Full AI Filmmaking Crash Course (idea → finished film)",
-                            "Script Writer AI Agent — turn ideas into shoot-ready scripts",
-                            "Seedance Prompt AI Agent — master prompts for cinematic shots",
-                            "Access to all premium courses & resources",
-                            `Showcase up to ${membershipPlan.portfolioLimit} portfolio videos`,
-                            "Downloadable prompt docs & resources",
-                            "Priority access to new tools & lessons",
-                        ].map((feature) => (
-                            <li key={feature} className="flex items-start gap-2 text-sm text-white/70">
-                                <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
-                                <span>{feature}</span>
-                            </li>
-                        ))}
-                    </ul>
-
-                    <Link href="/billing" className="btn-primary w-full flex items-center justify-center gap-2 py-3">
-                        View Plan Details <ArrowRight className="w-4 h-4" />
-                    </Link>
+                    <h2 className="mx-auto mt-6 max-w-3xl text-4xl font-black tracking-tight md:text-6xl">Build your first AI video with a chat request.</h2>
+                    <p className="mx-auto mt-5 max-w-2xl text-white/55">
+                        Upload references, ask the Director for a script, generate images instantly, approve videos when ready, and keep the whole episode organized.
+                    </p>
+                    <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+                        {user ? (
+                            <Link href="/studio" className="btn-primary px-8 py-4">Open AI Director Studio</Link>
+                        ) : (
+                            <button onClick={signInWithGoogle} className="btn-primary px-8 py-4">Start free</button>
+                        )}
+                        <Link href="/billing" className="rounded-2xl border border-white/15 px-8 py-4 font-bold text-white transition hover:border-primary/50 hover:text-primary">See credits and plans</Link>
+                    </div>
                 </div>
             </section>
 
-            {/* Trust Bar */}
-            <section className="py-12 border-y border-white/5 bg-white/[0.02]">
-                <div className="max-w-6xl mx-auto px-6 flex flex-wrap justify-between items-center gap-8 opacity-40">
-                    <span className="text-xl font-bold italic tracking-widest">CHATGPT IMAGE 2</span>
-                    <span className="text-xl font-bold italic tracking-widest">SEEDANCE 2.0</span>
-                    <span className="text-xl font-bold italic tracking-widest">KLING 3.0</span>
-                    <span className="text-xl font-bold italic tracking-widest">NANO BANANA 2</span>
-                    <span className="text-xl font-bold italic tracking-widest">CLAUDE AI</span>
+            <section className="border-y border-white/5 bg-white/[0.02] py-8">
+                <div className="mx-auto flex max-w-[1540px] flex-wrap items-center justify-between gap-4 px-6 text-sm font-black uppercase tracking-[.18em] text-white/35">
+                    <span>AI Director Agent</span>
+                    <span>Image Generation</span>
+                    <span>Storyboard Workflow</span>
+                    <span>Video Approvals</span>
+                    <span>Voice Control</span>
                 </div>
             </section>
-            {/* Video Player Modal */}
+
             <AnimatePresence>
                 {playingVideo && (
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8 bg-black/95 backdrop-blur-xl"
+                        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-4 backdrop-blur-xl md:p-8"
                         onClick={() => setPlayingVideo(null)}
                     >
                         <motion.div
-                            initial={{ scale: 0.9, opacity: 0 }}
+                            initial={{ scale: 0.94, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.9, opacity: 0 }}
-                            className="bg-[#0f0f15] rounded-3xl border border-white/10 overflow-hidden w-full max-w-5xl shadow-2xl"
-                            onClick={e => e.stopPropagation()}
+                            exit={{ scale: 0.94, opacity: 0 }}
+                            className="w-full max-w-5xl overflow-hidden rounded-3xl border border-white/10 bg-[#0f0f15] shadow-2xl"
+                            onClick={(event) => event.stopPropagation()}
                         >
-                            <div className="p-5 border-b border-white/5 flex items-center justify-between">
+                            <div className="flex items-center justify-between border-b border-white/5 p-5">
                                 <h3 className="text-xl font-bold">{playingVideo.title}</h3>
                                 <button
                                     onClick={() => setPlayingVideo(null)}
-                                    className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition-all"
+                                    className="rounded-2xl p-2 text-white/40 transition hover:bg-white/10 hover:text-white"
                                 >
-                                    <X className="w-7 h-7" />
+                                    <X className="h-7 w-7" />
                                 </button>
                             </div>
                             <div className="aspect-video bg-black">
@@ -613,14 +508,17 @@ export default function LandingPage() {
                                     autoPlay
                                     playsInline
                                     preload="auto"
-                                    className="w-full h-full"
-                                    onCanPlay={(e) => { (e.target as HTMLVideoElement).play().catch(() => {}) }}
+                                    className="h-full w-full"
+                                    onCanPlay={(event) => {
+                                        ;(event.target as HTMLVideoElement).play().catch(() => {})
+                                    }}
                                 />
                             </div>
                         </motion.div>
                     </motion.div>
                 )}
             </AnimatePresence>
+
             <Footer />
         </main>
     )
