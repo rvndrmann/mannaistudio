@@ -25,13 +25,26 @@ export default function AdminEnterpriseOrders() {
   const [orders, setOrders] = useState<AdminOrder[] | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [rate, setRate] = useState("200")
+  const [enabled, setEnabled] = useState(true)
+  const [savingRate, setSavingRate] = useState(false)
+  const [rateMessage, setRateMessage] = useState("")
 
   const load = useCallback(async () => {
     try {
-      const response = await fetch("/api/admin/enterprise", { cache: "no-store" })
-      const json = await response.json()
-      if (!response.ok) throw new Error(json.error || "Could not load orders")
+      const [ordersResponse, rateResponse] = await Promise.all([
+        fetch("/api/admin/enterprise", { cache: "no-store" }),
+        fetch("/api/enterprise", { cache: "no-store" }),
+      ])
+      const json = await ordersResponse.json()
+      if (!ordersResponse.ok) throw new Error(json.error || "Could not load orders")
       setOrders(json.orders)
+
+      const rateJson = await rateResponse.json()
+      if (rateResponse.ok && rateJson.rate) {
+        setRate(String(rateJson.rate.usdPerMinute))
+        setEnabled(Boolean(rateJson.rate.enabled))
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load orders")
       setOrders([])
@@ -39,6 +52,31 @@ export default function AdminEnterpriseOrders() {
   }, [])
 
   useEffect(() => { void load() }, [load])
+
+  const saveRate = async (nextEnabled = enabled) => {
+    const parsed = Number(rate)
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      setRateMessage("Enter a whole dollar rate above zero")
+      return
+    }
+    setSavingRate(true)
+    setRateMessage("")
+    try {
+      const response = await fetch("/api/admin/enterprise", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usdPerMinute: parsed, enabled: nextEnabled }),
+      })
+      const json = await response.json()
+      if (!response.ok) throw new Error(json.error || "Could not update the rate")
+      setEnabled(Boolean(json.rate?.enabled))
+      setRateMessage("Rate saved. Existing orders keep the price they were quoted.")
+    } catch (err) {
+      setRateMessage(err instanceof Error ? err.message : "Could not update the rate")
+    } finally {
+      setSavingRate(false)
+    }
+  }
 
   const update = async (orderId: string, status: string, adminNote?: string) => {
     setBusyId(orderId)
@@ -63,6 +101,47 @@ export default function AdminEnterpriseOrders() {
 
   return (
     <div className="space-y-4">
+      <div className="rounded-2xl border border-primary/25 bg-primary/[0.05] p-5">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Enterprise rate</p>
+            <p className="mt-1 text-xs text-white/40">Charged per finished minute of delivered video.</p>
+            <div className="mt-3 flex items-center gap-2">
+              <span className="text-lg font-black text-white">$</span>
+              <input
+                value={rate}
+                onChange={(event) => setRate(event.target.value)}
+                inputMode="numeric"
+                className="w-28 rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-lg font-black text-white outline-none focus:border-primary"
+              />
+              <span className="text-xs font-medium text-white/40">USD / minute</span>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => saveRate()}
+              disabled={savingRate}
+              className="btn-primary flex items-center gap-2 px-5 py-2.5 text-sm disabled:opacity-60"
+            >
+              {savingRate ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Save rate
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEnabled(!enabled); void saveRate(!enabled) }}
+              disabled={savingRate}
+              className={`rounded-xl border px-4 py-2.5 text-xs font-bold transition disabled:opacity-60 ${
+                enabled ? "border-white/10 text-white/60 hover:bg-white/10" : "border-amber-500/40 bg-amber-500/10 text-amber-200"
+              }`}
+            >
+              {enabled ? "Accepting orders" : "Orders paused"}
+            </button>
+          </div>
+        </div>
+        {rateMessage && <p className="mt-3 text-xs text-white/50">{rateMessage}</p>}
+      </div>
+
       {error && <p className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">{error}</p>}
 
       {!orders.length ? (
