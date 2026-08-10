@@ -34,6 +34,7 @@ import { getModelLabel, imageGenerationModels, videoGenerationModels } from "@/l
 import { defaultDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows";
 import { calculateCreditCost, getUserCredits } from "@/lib/studio/credits";
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
+import { parseVoiceToolCall, type VoiceToolCall } from "@/lib/studio/voice";
 import { createClient } from "@/lib/supabase/client";
 import { parseDirectorTimeline, type DirectorTimelineBlock } from "@/lib/studio/timeline";
 import { EntityMentionInput } from "@/components/studio/EntityMentionInput";
@@ -461,34 +462,60 @@ export default function WorkspacePage({
       peer.ontrack = (event) => { audio.srcObject = event.streams[0]; };
       stream.getTracks().forEach((track) => peer.addTrack(track, stream));
       const events = peer.createDataChannel("oai-events");
-      const runVoiceTool = async (call: { call_id?: string; name?: string; arguments?: string }) => {
-        if (!call.call_id || !call.name) return;
+      const runVoiceTool = async (call: VoiceToolCall) => {
         let output: Record<string, unknown>;
+        let status: "completed" | "awaiting_approval" | "failed" = "completed";
+        let summary = "";
+        let proposalId: string | undefined;
+        let executionId: string | undefined;
         try {
-          let toolInput: unknown = {};
-          try { toolInput = JSON.parse(call.arguments || "{}"); } catch { toolInput = {}; }
           const response = await fetch(`/api/studio/projects/${projectId}/director/tools`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ tool: call.name, input: toolInput, sessionId: chatSession, idempotencyKey: `voice:${crypto.randomUUID()}` }),
+            body: JSON.stringify({ tool: call.name, input: call.arguments, sessionId: chatSession, idempotencyKey: `voice:${crypto.randomUUID()}` }),
           });
           const json = await response.json();
           if (!response.ok) throw new Error(json.error || "Voice Director tool failed");
           output = json;
+          proposalId = json.proposal?.id;
+          executionId = json.executionId || json.execution?.id;
+          status = json.approvalRequired ? "awaiting_approval" : "completed";
+          const label = call.name.replaceAll("_", " ");
+          summary = json.approvalRequired
+            ? `Voice Director prepared “${label}” and is waiting for your approval.`
+            : `Voice Director ran “${label}”.`;
           const creditBalance = (json.data as Record<string, unknown> | undefined)?.creditBalance;
           if (typeof creditBalance === "number") notifyCreditBalanceChanged(creditBalance);
-          await load(true);
         } catch (toolError) {
-          output = { error: toolError instanceof Error ? toolError.message : "Voice Director tool failed" };
+          const message = toolError instanceof Error ? toolError.message : "Voice Director tool failed";
+          output = { error: message };
+          status = "failed";
+          summary = `Voice Director could not run “${call.name.replaceAll("_", " ")}”: ${message}`;
         }
+        // Mirror the spoken action into the chat timeline so approvals and audit
+        // history do not depend on the user remembering what they said.
+        if (chatSession) {
+          try {
+            await fetch(`/api/studio/projects/${projectId}/director/voice-activity`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId: chatSession, tool: call.name, status, summary, proposalId, executionId }),
+            });
+          } catch {
+            // Logging must never break the voice turn.
+          }
+        }
+        await load(true);
         if (events.readyState !== "open") return;
-        events.send(JSON.stringify({ type: "conversation.item.create", item: { type: "function_call_output", call_id: call.call_id, output: JSON.stringify(output) } }));
+        events.send(JSON.stringify({ type: "conversation.item.create", item: { type: "function_call_output", call_id: call.callId, output: JSON.stringify(output) } }));
         events.send(JSON.stringify({ type: "response.create" }));
       };
       events.addEventListener("message", (event) => {
-        const payload = JSON.parse(event.data) as { type?: string; transcript?: string; item?: { type?: string; call_id?: string; name?: string; arguments?: string } };
-        if (payload.type === "response.output_item.done" && payload.item?.type === "function_call") void runVoiceTool(payload.item);
-        else if (payload.type?.includes("error")) setVoiceError("The Voice Director connection reported an error. Please retry.");
+        let payload: unknown;
+        try { payload = JSON.parse(event.data); } catch { return; }
+        const call = parseVoiceToolCall(payload);
+        if (call) { void runVoiceTool(call); return; }
+        if ((payload as { type?: string })?.type?.includes("error")) setVoiceError("The Voice Director connection reported an error. Please retry.");
       });
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);

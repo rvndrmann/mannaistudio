@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Crown, Eye, Loader2, Shield, Trash2, UserPlus, Users, Zap } from "lucide-react"
+import { Crown, Eye, Loader2, Pencil, Shield, Trash2, UserPlus, Users, Zap } from "lucide-react"
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events"
 
 type TeamMember = {
@@ -34,6 +34,8 @@ export default function TeamTab() {
   const [allocateFor, setAllocateFor] = useState<TeamMember | null>(null)
   const [allocateAmount, setAllocateAmount] = useState("")
   const [allocateMode, setAllocateMode] = useState<"allocate" | "reclaim">("allocate")
+  const [renaming, setRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState("")
   const [transferOpen, setTransferOpen] = useState(false)
   const [transferAmount, setTransferAmount] = useState("")
   const [transferMode, setTransferMode] = useState<"in" | "out">("in")
@@ -94,6 +96,12 @@ export default function TeamTab() {
 
   const disband = async () => {
     await act(() => fetch("/api/teams", { method: "DELETE" }))
+  }
+
+  const renameTeam = async () => {
+    if (!renameValue.trim()) return
+    const result = await act(() => fetch("/api/teams", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: renameValue.trim() }) }))
+    if (result) setRenaming(false)
   }
 
   const submitAllocation = async () => {
@@ -174,7 +182,29 @@ export default function TeamTab() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="flex items-center gap-2 text-sm font-bold text-white">{state.team.name}{isOwner && <Crown className="h-3.5 w-3.5 text-[#b9f42e]" />}</p>
+          {renaming ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                value={renameValue}
+                onChange={(event) => setRenameValue(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") void renameTeam() }}
+                autoFocus
+                className="w-52 rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-white outline-none focus:border-[#b9f42e]/50"
+              />
+              <button type="button" onClick={renameTeam} disabled={busy || !renameValue.trim()} className="rounded-lg bg-[#b9f42e] px-3 py-1.5 text-[11px] font-bold text-black disabled:opacity-50">Save</button>
+              <button type="button" onClick={() => setRenaming(false)} className="rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-semibold text-zinc-300">Cancel</button>
+            </div>
+          ) : (
+            <p className="flex items-center gap-2 text-sm font-bold text-white">
+              {state.team.name}
+              {isOwner && <Crown className="h-3.5 w-3.5 text-[#b9f42e]" />}
+              {canManage && (
+                <button type="button" onClick={() => { setRenameValue(state.team?.name || ""); setRenaming(true) }} title="Rename team" className="rounded-md p-1 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200">
+                  <Pencil className="h-3 w-3" />
+                </button>
+              )}
+            </p>
+          )}
           <p className="text-[11px] text-zinc-500">{state.members.length} member{state.members.length === 1 ? "" : "s"} · your role: {state.role}</p>
         </div>
         {canManage && (

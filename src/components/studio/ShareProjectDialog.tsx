@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { createPortal } from "react-dom"
 import { Loader2, Trash2, UserPlus, X } from "lucide-react"
 
-type Share = { profile_id: string; full_name: string | null; email: string | null; created_at: string }
+type Share = { profile_id: string; full_name: string | null; email: string | null; created_at: string; role?: string }
 type Member = { profile_id: string; full_name: string | null; email: string | null; role: string }
 
 export default function ShareProjectDialog({ projectId, onClose }: { projectId: string; onClose: () => void }) {
@@ -86,7 +86,9 @@ export default function ShareProjectDialog({ projectId, onClose }: { projectId: 
                 >
                   <option value="">{shareable.length ? "Choose a team member…" : "No team members available"}</option>
                   {shareable.map((member) => (
-                    <option key={member.profile_id} value={member.profile_id}>{member.full_name || member.email}</option>
+                    <option key={member.profile_id} value={member.profile_id}>
+                      {member.full_name || member.email}{member.role === "viewer" ? " — view only" : ""}
+                    </option>
                   ))}
                 </select>
                 <button
@@ -115,7 +117,12 @@ export default function ShareProjectDialog({ projectId, onClose }: { projectId: 
                   {shares.map((share) => (
                     <li key={share.profile_id} className="flex items-center justify-between px-3 py-2.5">
                       <div>
-                        <p className="text-xs font-semibold text-zinc-100">{share.full_name || "Creator"}</p>
+                        <p className="text-xs font-semibold text-zinc-100">
+                          {share.full_name || "Creator"}
+                          {members.find((member) => member.profile_id === share.profile_id)?.role === "viewer" && (
+                            <span className="ml-2 rounded-full border border-white/10 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">view only</span>
+                          )}
+                        </p>
                         <p className="text-[11px] text-zinc-500">{share.email}</p>
                       </div>
                       {isOwner && (

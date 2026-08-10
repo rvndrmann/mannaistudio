@@ -55,6 +55,23 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function PATCH(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const { data: { user }, error } = await supabase.auth.getUser()
+    if (error || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const input = createTeamSchema.parse(await request.json())
+    const { error: renameError } = await supabase.rpc("rename_team", { p_name: input.name })
+    if (renameError) return NextResponse.json({ error: renameError.message }, { status: 400 })
+
+    return NextResponse.json({ renamed: true })
+  } catch (err) {
+    if (err instanceof ZodError) return NextResponse.json({ error: "A team name is required" }, { status: 400 })
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Could not rename team" }, { status: 500 })
+  }
+}
+
 export async function DELETE() {
   try {
     const supabase = await createClient()

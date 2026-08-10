@@ -23,6 +23,36 @@ export function voiceToolInstructions(input: { projectId: string; episodeId?: st
   ].join("\n")
 }
 
+export type VoiceToolCall = { callId: string; name: string; arguments: unknown }
+
+/**
+ * The Realtime API announces a completed function call on more than one event
+ * shape depending on model and transport. Both are accepted so a shape change
+ * cannot silently stop voice from executing tools.
+ */
+export function parseVoiceToolCall(payload: unknown): VoiceToolCall | null {
+  if (!payload || typeof payload !== "object") return null
+  const event = payload as { type?: string; item?: Record<string, unknown>; call_id?: string; name?: string; arguments?: string }
+
+  const source = event.type === "response.output_item.done" && event.item?.type === "function_call"
+    ? event.item
+    : event.type === "response.function_call_arguments.done"
+      ? event
+      : null
+  if (!source) return null
+
+  const callId = typeof source.call_id === "string" ? source.call_id : ""
+  const name = typeof source.name === "string" ? source.name : ""
+  if (!callId || !name) return null
+
+  let args: unknown = {}
+  const raw = typeof source.arguments === "string" ? source.arguments : ""
+  if (raw) {
+    try { args = JSON.parse(raw) } catch { args = {} }
+  }
+  return { callId, name, arguments: args }
+}
+
 export type VoiceConnectionState = "idle" | "requesting_microphone" | "connecting" | "connected" | "reconnecting" | "ended" | "error"
 export type VoiceSessionRequest = z.infer<typeof voiceSessionRequestSchema>
 
