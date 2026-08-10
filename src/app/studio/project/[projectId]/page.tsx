@@ -129,6 +129,7 @@ type Workspace = {
     estimated_credits: number;
     payload: Record<string, unknown>;
     created_at: string;
+    session_id?: string | null;
   }[];
   directorWorkflows?: DirectorWorkflowConfig[];
   features?: Record<string, boolean>;
@@ -226,6 +227,7 @@ export default function WorkspacePage({
   const chatFileInputRef = useRef<HTMLInputElement | null>(null);
   const voiceConnectionRef = useRef<RTCPeerConnection | null>(null);
   const voiceStreamRef = useRef<MediaStream | null>(null);
+  const hasLoadedRef = useRef(false);
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [data?.chatMessages.length, chatSending, chatError, voiceState]);
@@ -270,7 +272,11 @@ export default function WorkspacePage({
     }
   };
   useEffect(() => {
-    load();
+    // Only the first load may blank the workspace. Switching chat session or
+    // episode swaps data in place, so the full-screen loader would read as an
+    // unexpected page reload.
+    load(hasLoadedRef.current);
+    hasLoadedRef.current = true;
   }, [projectId, episodeId, chatSessionId]);
   useEffect(() => {
     const supabase = createClient();
@@ -330,8 +336,9 @@ export default function WorkspacePage({
   const createChatSession = async () => {
     const created = await save({ action: "createChatSession", episodeId: episode.id, model: directorModel, title: "New Chat" }) as { id: string };
     setChatSessionMenu(false);
+    // Setting the session id triggers the silent reload effect; loading here too
+    // would fetch the same workspace twice.
     setChatSessionId(created.id);
-    await load(true);
   };
   const sendDirectorMessage = async (outgoing: string) => {
     if (!outgoing.trim() || chatSending) return;
@@ -441,7 +448,8 @@ export default function WorkspacePage({
     setVoiceState("connecting");
     setVoiceError(null);
     try {
-      const sessionResponse = await fetch(`/api/studio/projects/${projectId}/voice/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ voice: "marin", language: "en", interactionMode: "hands_free" }) });
+      const chatSession = data.activeSessionId || chatSessionId || undefined;
+      const sessionResponse = await fetch(`/api/studio/projects/${projectId}/voice/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ voice: "marin", language: "en", interactionMode: "hands_free", episodeId: episode?.id, chatSessionId: chatSession }) });
       const session = await sessionResponse.json();
       if (!sessionResponse.ok) throw new Error(session.error || "Could not start the Voice Director");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -451,9 +459,34 @@ export default function WorkspacePage({
       peer.ontrack = (event) => { audio.srcObject = event.streams[0]; };
       stream.getTracks().forEach((track) => peer.addTrack(track, stream));
       const events = peer.createDataChannel("oai-events");
+      const runVoiceTool = async (call: { call_id?: string; name?: string; arguments?: string }) => {
+        if (!call.call_id || !call.name) return;
+        let output: Record<string, unknown>;
+        try {
+          let toolInput: unknown = {};
+          try { toolInput = JSON.parse(call.arguments || "{}"); } catch { toolInput = {}; }
+          const response = await fetch(`/api/studio/projects/${projectId}/director/tools`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tool: call.name, input: toolInput, sessionId: chatSession, idempotencyKey: `voice:${crypto.randomUUID()}` }),
+          });
+          const json = await response.json();
+          if (!response.ok) throw new Error(json.error || "Voice Director tool failed");
+          output = json;
+          const creditBalance = (json.data as Record<string, unknown> | undefined)?.creditBalance;
+          if (typeof creditBalance === "number") notifyCreditBalanceChanged(creditBalance);
+          await load(true);
+        } catch (toolError) {
+          output = { error: toolError instanceof Error ? toolError.message : "Voice Director tool failed" };
+        }
+        if (events.readyState !== "open") return;
+        events.send(JSON.stringify({ type: "conversation.item.create", item: { type: "function_call_output", call_id: call.call_id, output: JSON.stringify(output) } }));
+        events.send(JSON.stringify({ type: "response.create" }));
+      };
       events.addEventListener("message", (event) => {
-        const payload = JSON.parse(event.data) as { type?: string; transcript?: string };
-        if (payload.type?.includes("error")) setVoiceError("The Voice Director connection reported an error. Please retry.");
+        const payload = JSON.parse(event.data) as { type?: string; transcript?: string; item?: { type?: string; call_id?: string; name?: string; arguments?: string } };
+        if (payload.type === "response.output_item.done" && payload.item?.type === "function_call") void runVoiceTool(payload.item);
+        else if (payload.type?.includes("error")) setVoiceError("The Voice Director connection reported an error. Please retry.");
       });
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
@@ -817,6 +850,7 @@ export default function WorkspacePage({
             <PendingProposalCards
               proposals={data.actionProposals}
               excludeIds={data.chatMessages.flatMap((item) => proposalIdsFromActions(item.suggested_actions))}
+              sessionId={data.activeSessionId}
               busyId={proposalBusy}
               onDecide={decideProposal}
             />
@@ -3808,16 +3842,21 @@ function ChatSuggestedActions({
 function PendingProposalCards({
   proposals,
   excludeIds,
+  sessionId,
   busyId,
   onDecide,
 }: {
   proposals: ChatProposal[];
   excludeIds: string[];
+  sessionId?: string | null;
   busyId: string | null;
   onDecide: (proposalId: string, decision: "approved" | "rejected") => void;
 }) {
   const excluded = new Set(excludeIds);
-  const pending = proposals.filter((proposal) => proposal.status === "pending" && !excluded.has(proposal.id)).slice(0, 3);
+  // Only the current conversation's approvals belong in this timeline. Without
+  // the session check, opening a new chat inherits every unresolved card from
+  // earlier chats in the same project.
+  const pending = proposals.filter((proposal) => proposal.status === "pending" && !excluded.has(proposal.id) && proposal.session_id === sessionId).slice(0, 3);
   if (!pending.length) return null;
   return (
     <div className="mt-4 space-y-2">

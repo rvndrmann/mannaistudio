@@ -4,7 +4,7 @@
 
 Build the Studio chat agent as the user's primary production controller. The agent should understand the whole project workspace, help plan creative decisions, and operate on scripts, assets, storyboard images, and videos through a controlled tool workflow.
 
-The agent must feel like the AI Director already described in the platform, but with concrete workspace powers:
+The agent must feel like the AI Director already described in the platform, with concrete, project-scoped workspace powers:
 
 - read project context, script, assets, storyboard, generation jobs, and approval history
 - write and edit script content, asset metadata, shot prompts, storyboard keyframes, and video generation requests
@@ -12,7 +12,65 @@ The agent must feel like the AI Director already described in the platform, but 
 - show proposed work inside chat before applying sensitive changes
 - generate images directly when the user asks for image generation
 - require approval before video generation unless the project is in full-auto mode
-- support voice control through the OpenAI Realtime voice director
+- support an OpenAI Realtime voice director that can execute the same validated tool registry as text chat, including approval proposals
+
+## Current Implemented Flow
+
+```text
+User message (+ optional @mentions)
+        |
+        v
+Project ownership, feature, model, and entity validation
+        |
+        +-- Direct image intent --------------------------+
+        |                                                  |
+        |                                      Atomic credit debit
+        |                                                  |
+        |                                      Provider image request
+        |                                                  |
+        |                              Save image to entity or shot
+        |                                                  |
+        |                           Chat media card + badge refresh
+        |
+        +-- Video intent --> Proposal card --> User approval
+        |                                       |
+        |                              Atomic credit debit + job creation
+        |                                       |
+        |                           Provider job submission and polling
+        |
+        +-- Write/destructive intent --> Proposal card --> User approval --> Validated tool execution
+        |
+        +-- Other intent --> Contextual AI Director response
+```
+
+### 1. Context and mention resolution
+
+The Studio sends the selected episode, session, message, and `@mentioned` entity IDs to `POST /api/studio/projects/:projectId/director/chat`. The server verifies that the user owns the project and every mentioned character, scene, or prop belongs to it. It then supplies the entity descriptions and selected reference images to the relevant prompt.
+
+### 2. Deterministic workflow routing before model chat
+
+The chat route handles several high-confidence requests directly before falling back to the text agent:
+
+- Script write/append/replace requests update the stored script through the workflow route.
+- **“Create all missing character images”** and related bulk requests generate one reference image per matching entity, then save it to that entity’s `reference_images`.
+- Direct image/keyframe requests generate a GPT Image 2 output, save it to Studio storage, and attach it to the named storyboard shot when one was requested.
+- Video requests create an approval proposal; they do not submit a video until the user approves.
+- All other production questions pass to `runDirectorAgent`, which receives the selected workflow, project context, session history, global admin instructions, and current runtime settings.
+
+### 3. Generation, credits, and feedback
+
+- Direct chat images and bulk entity-reference images are charged through the atomic `deduct_user_credits` RPC before provider submission.
+- An approved generation proposal is charged through that same RPC when the user approves it. It no longer uses the separate legacy reservation account.
+- The direct image/video routes return `creditsCharged` and `creditBalance`; the chat route returns the same fields for direct chat workflows.
+- `credit-balance-events.ts` broadcasts the returned balance to the global `CreditBadge`. On any error, the badge immediately refreshes `/api/credits`, so a provider or storage failure cannot leave a stale visible balance.
+- Every charge is written to `credit_transactions`. A failed provider request does not automatically refund credits; refunds must be an explicit, auditable policy action.
+
+### 4. Saved results
+
+- Entity references are saved to `creator_entities.reference_images` and become available in **Characters & Assets**, mentions, and later image/video prompts.
+- Storyboard keyframes are saved to `creator_shots.keyframe_image`, with generation metadata recording the model, prompt, references, status, style, aspect ratio, and mention IDs.
+- Generation jobs capture provider/model/prompt/status details for the storyboard and job history.
+- The chat timeline stores the assistant response and attached generated media for immediate review.
 
 ## Permission Model
 
@@ -20,8 +78,9 @@ The agent must feel like the AI Director already described in the platform, but 
 | :--- | :--- | :--- |
 | Read script, assets, storyboard, project status | Run immediately | No |
 | Summarize, critique, brainstorm, rewrite draft in chat | Run immediately | No |
+| Explicit script append/replace request handled by the script workflow | Save after the user gives the instruction; replacement needs clear confirmation | No additional proposal |
 | Generate image because the user directly asked for an image | Run immediately, then show result in chat | No |
-| Edit saved script, saved asset records, shot prompts, storyboard structure | Create proposal card | Yes |
+| Edit saved asset records, shot prompts, or storyboard structure through a tool | Create proposal card | Yes |
 | Delete script sections, assets, shots, generated media, or jobs | Create proposal card | Yes |
 | Generate video | Create proposal card with cost/model/shot preview | Yes |
 | Generate video in full-auto mode | Run if full-auto is enabled and user has accepted mode guardrails | No per-job approval |
@@ -109,9 +168,11 @@ The chat agent should expose workflow skills as structured tools, not free-form 
 ### Voice Skill
 
 - start Realtime voice session with the same director instructions as text chat
-- let voice commands create the same proposals and tool calls as text
 - keep permanent OpenAI credentials server-only
-- show transcript, proposed actions, generated media, and approvals in the chat timeline
+- provide project-aware spoken guidance and a server-issued short-lived Realtime credential
+- expose the full Director tool registry to the Realtime session; the browser relays each model function call to the authenticated `POST /director/tools` endpoint, so voice tool calls pass through the same Zod validation, ownership checks, approval proposals, credit charges, and audit records as text chat
+- approval-required voice tool calls create the same proposal cards in the Studio chat panel; the voice agent tells the user to approve them there, and nothing is applied until they do
+- tool results are returned to the Realtime session as `function_call_output` items so the agent can speak the outcome; the workspace and credit badge refresh after each executed tool
 
 ## Chat UX Contract
 
@@ -122,7 +183,7 @@ The chat panel should render more than plain text.
 - image result cards with thumbnail, prompt, model, provider, and actions like Use for Shot or Add to Asset
 - video proposal cards with shot list, duration, model, provider, credit estimate, and approval controls
 - generation status cards for queued, processing, completed, failed, and cancelled jobs
-- audit chips for applied edits, deleted content, credit reservations, and full-auto actions
+- audit chips for applied edits, deleted content, credit deductions, and full-auto actions
 
 The user should never have to leave chat to understand what the agent is about to change or generate.
 
@@ -142,14 +203,20 @@ Existing pieces already align with this design:
 - `src/lib/studio/conversation.ts`
 - `src/lib/studio/project-context.ts`
 
-Needed increments:
+Implemented components:
 
-1. Add tools for script edits, asset edits/deletes, shot edits/deletes, direct image generation, media attachment, video status inspection, and full-auto runs.
-2. Extend director chat responses so the model can request tools or emit structured action proposals instead of only returning text.
-3. Persist proposal and generation references into `creator_chat_messages` metadata, or add a companion table for chat timeline attachments.
-4. Render proposal/media/status cards in the Studio chat UI.
-5. Add full-auto settings to project metadata or a dedicated automation table.
-6. Add tests proving video generation cannot bypass approval outside full-auto mode.
+1. Project ownership checks, model validation, project-scoped `@mentions`, contextual instructions, and conversation history.
+2. Direct image workflows, bulk entity-reference generation, media timeline cards, and entity/shot persistence.
+3. Proposal cards for costly and write/destructive tools, with approval/rejection handling and tool/audit records.
+4. Image/video generation endpoints with server-side credit accounting and immediate badge synchronization.
+
+5. Realtime voice sessions declare the Director tool registry, relay function calls through the validated tools endpoint, and honor the same approval cards as text chat.
+
+Remaining increments:
+
+1. Execute approved proposal jobs through a durable provider worker/webhook path and complete their lifecycle in the timeline.
+2. Add regression tests for direct-chat credits, badge events, approval boundaries, provider failure/refund policy, and destructive operations.
+3. Replace or formally retire the legacy `creator_credit_accounts` reservation subsystem after data migration/audit.
 
 ## Safety Rules
 
@@ -162,13 +229,6 @@ Needed increments:
 
 ## Suggested Build Order
 
-1. Add chat timeline attachments for proposals, images, videos, and tool executions.
-2. Add missing director tools for script, asset, storyboard, and media operations.
-3. Update chat route to support structured tool requests.
-4. Render proposal cards and generated media inside chat.
-5. Wire direct image generation from chat.
-6. Wire video generation proposal approval from chat.
-7. Add full-auto mode settings and guardrails.
-8. Connect voice commands to the same text/tool workflow.
-9. Add regression tests for approval boundaries, credit use, and destructive operations.
-
+1. Finish durable execution of approved generation jobs and status callbacks.
+2. Add regression tests for approval boundaries, credit use, badge updates, and destructive operations.
+3. Define and implement an explicit credit-refund policy for provider failures.

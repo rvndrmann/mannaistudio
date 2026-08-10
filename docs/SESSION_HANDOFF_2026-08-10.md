@@ -26,6 +26,14 @@ All of these use the atomic `deduct_user_credits` RPC and save a credit-transact
 
 Credits are deducted before submitting an image/video provider request. A provider failure does not silently restore the balance; the failure is surfaced and the current saved balance is refreshed. Any refund policy should be implemented explicitly as a separate, auditable credit transaction.
 
+## Chat Agent Workflow Documentation
+
+`docs/AI_DIRECTOR_CHAT_AGENT_WORKFLOW.md` now distinguishes what is already live from what remains on the roadmap. It documents the text-chat request flow from `@mention` validation through deterministic image/video routing, proposal approval, one-ledger credit charging, result persistence, and chat/badge feedback.
+
+## Voice Director Tool Execution
+
+The Realtime voice director can now execute the same Director tools as text chat. The voice session endpoint declares the full tool registry (`directorFunctionDefinitions()`) plus project/episode-scoped tool instructions in the Realtime session. When the model emits a `function_call`, the Studio client relays it to the authenticated `POST /director/tools` endpoint — the identical validated path text chat uses — so ownership checks, Zod input validation, approval proposals, atomic credit deduction, rate limits, and audit events all apply unchanged. Approval-required calls surface the standard proposal cards in the chat panel; the result is sent back to the Realtime session as a `function_call_output` so the agent can speak the outcome, and the workspace plus credit badge refresh after each call.
+
 ## Validation performed
 
 - `npm run typecheck` — passed.

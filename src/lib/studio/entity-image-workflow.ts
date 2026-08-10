@@ -10,8 +10,11 @@ export function parseBulkEntityImageIntent(message: string): BulkEntityImageInte
   const wantsGeneration = /\b(generate|create|make|draw|render)\b/.test(normalized)
   const mentionsImages = /\b(images?|portraits?|references?|visuals?)\b/.test(normalized)
   const mentionsEntities = /\b(characters?|assets?|props?|locations?|scenes?)\b/.test(normalized)
-  const requestsMultiple = /\b(all|every|each|remaining|missing)\b/.test(normalized)
-    || /\b(characters|assets|props|locations|scenes)\s+(?:reference\s+)?images?\b/.test(normalized)
+  // "pending"/"draft"/"empty" describe entities that still have no reference
+  // image, which is the same set "missing" selects. Singular nouns are accepted
+  // because users write "scene and prop images" as often as "scenes and props".
+  const requestsMultiple = /\b(all|every|each|remaining|missing|pending|draft|empty|outstanding)\b/.test(normalized)
+    || /\b(?:characters?|assets?|props?|locations?|scenes?)\s+(?:and\s+\w+\s+)?(?:reference\s+)?images?\b/.test(normalized)
   if (!wantsGeneration || !mentionsImages || !mentionsEntities || !requestsMultiple) return null
 
   const types = new Set<"character" | "scene" | "prop">()

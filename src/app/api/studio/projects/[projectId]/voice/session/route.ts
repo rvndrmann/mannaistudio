@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { ZodError } from "zod"
 import { buildDirectorInstructions } from "@/lib/studio/conversation"
+import { directorFunctionDefinitions } from "@/lib/studio/director-agent"
 import { createOpenAIRealtimeClientSecret, OpenAIProviderError } from "@/lib/studio/openai"
 import { buildProjectContext } from "@/lib/studio/project-context"
 import { requireAuthenticatedProject, studioErrorStatus } from "@/lib/studio/server-context"
-import { voiceSessionRequestSchema } from "@/lib/studio/voice"
+import { voiceSessionRequestSchema, voiceToolInstructions } from "@/lib/studio/voice"
 import { fetchDirectorWorkflows } from "@/lib/studio/workflows"
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
@@ -13,7 +14,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const context = await requireAuthenticatedProject(projectId)
     const input = voiceSessionRequestSchema.parse({ ...(await request.json()), projectId })
     const project = await buildProjectContext(context.supabase, context.project)
-    const session = await createOpenAIRealtimeClientSecret({ userId: context.user.id, voice: input.voice, instructions: await buildVoiceWorkflowInstructions(context, buildDirectorInstructions(project)) })
+    const instructions = [
+      await buildVoiceWorkflowInstructions(context, buildDirectorInstructions(project)),
+      voiceToolInstructions({ projectId, episodeId: input.episodeId }),
+    ].join("\n\n")
+    const session = await createOpenAIRealtimeClientSecret({ userId: context.user.id, voice: input.voice, instructions, tools: directorFunctionDefinitions() })
     return NextResponse.json({ provider: "openai", ...session, realtimeUrl: "https://api.openai.com/v1/realtime/calls" })
   } catch (error) {
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid voice session request", issues: error.flatten() }, { status: 400 })

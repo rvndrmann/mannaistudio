@@ -10,6 +10,20 @@ describe("entity image workflow", () => {
     expect(parseBulkEntityImageIntent("Generate all asset images")).toEqual({ types: ["prop", "scene"], regenerate: false })
   })
 
+  it("treats pending entities as the missing-reference set without touching characters", () => {
+    expect(parseBulkEntityImageIntent("create pending scene and prop images")).toEqual({ types: ["prop", "scene"], regenerate: false })
+  })
+
+  it("accepts singular entity nouns", () => {
+    expect(parseBulkEntityImageIntent("create character images")).toEqual({ types: ["character"], regenerate: false })
+    expect(parseBulkEntityImageIntent("generate prop images")).toEqual({ types: ["prop"], regenerate: false })
+  })
+
+  it("keeps ignoring requests that are not bulk entity image work", () => {
+    expect(parseBulkEntityImageIntent("generate an image for storyboard shot 2")).toBeNull()
+    expect(parseBulkEntityImageIntent("what characters are pending?")).toBeNull()
+  })
+
   it("turns photorealistic settings into a strict anti-cartoon directive", () => {
     const directive = visualStyleDirective("Realistic - Photorealistic")
     expect(directive).toContain("live-action photorealism")

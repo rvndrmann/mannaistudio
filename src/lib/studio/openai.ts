@@ -111,7 +111,7 @@ export async function createDirectorToolTurn(input: {
   return { id: data.id || "", content, calls, usage: data.usage || {} }
 }
 
-export async function createOpenAIRealtimeClientSecret(input: { userId: string; voice: string; instructions: string }) {
+export async function createOpenAIRealtimeClientSecret(input: { userId: string; voice: string; instructions: string; tools?: OpenAIDirectorFunction[] }) {
   const response = await openAIRequest("/v1/realtime/client_secrets", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -121,6 +121,7 @@ export async function createOpenAIRealtimeClientSecret(input: { userId: string; 
         model: process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1",
         instructions: input.instructions,
         audio: { output: { voice: input.voice } },
+        ...(input.tools?.length ? { tools: input.tools.map((tool) => ({ type: "function", ...tool })), tool_choice: "auto" } : {}),
       },
     }),
   }, input.userId)
