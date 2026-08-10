@@ -30,6 +30,8 @@ import {
 import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, type BillingSettings } from "@/lib/membership"
 import { defaultDirectorModels, normalizeDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models"
 import { defaultSiteFeatures, fetchSiteFeatures, type SiteFeatures } from "@/lib/studio/feature-flags"
+import { defaultDirectorWorkflows, fetchDirectorWorkflows, normalizeDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows"
+import { defaultDirectorGlobalInstructions, normalizeDirectorGlobalInstructions } from "@/lib/studio/instructions"
 import BlogManager from "@/components/admin/BlogManager"
 
 type EnrolledStudent = {
@@ -187,6 +189,12 @@ function AdminDashboardContent() {
     const [directorModels, setDirectorModels] = useState<DirectorModelConfig[]>(defaultDirectorModels.map((model) => ({ ...model })))
     const [isSavingDirectorModels, setIsSavingDirectorModels] = useState(false)
     const [directorModelsMessage, setDirectorModelsMessage] = useState("")
+    const [directorWorkflows, setDirectorWorkflows] = useState<DirectorWorkflowConfig[]>(defaultDirectorWorkflows.map((workflow) => ({ ...workflow })))
+    const [isSavingDirectorWorkflows, setIsSavingDirectorWorkflows] = useState(false)
+    const [directorWorkflowsMessage, setDirectorWorkflowsMessage] = useState("")
+    const [directorGlobalInstructions, setDirectorGlobalInstructions] = useState(defaultDirectorGlobalInstructions)
+    const [isSavingDirectorGlobalInstructions, setIsSavingDirectorGlobalInstructions] = useState(false)
+    const [directorGlobalInstructionsMessage, setDirectorGlobalInstructionsMessage] = useState("")
     const [siteFeatures, setSiteFeatures] = useState<SiteFeatures>(defaultSiteFeatures)
     const [isSavingSiteFeatures, setIsSavingSiteFeatures] = useState(false)
     const [siteFeaturesMessage, setSiteFeaturesMessage] = useState("")
@@ -417,6 +425,89 @@ function AdminDashboardContent() {
 
     const setDirectorModelStatus = (id: string, status: "active" | "paused") => {
         setDirectorModels((models) => models.map((model) => model.id === id ? { ...model, status } : model))
+    }
+
+    const loadDirectorWorkflows = async () => {
+        const supabase = await getServiceRequestClient()
+        if (!supabase) return
+        setDirectorWorkflows(await fetchDirectorWorkflows(supabase))
+    }
+
+    const loadDirectorGlobalInstructions = async () => {
+        const supabase = await getServiceRequestClient()
+        if (!supabase) return
+        const { data } = await supabase.from("site_settings").select("value").eq("key", "ai_director_global_instructions").maybeSingle()
+        setDirectorGlobalInstructions(normalizeDirectorGlobalInstructions(data?.value))
+    }
+
+    const handleSaveDirectorGlobalInstructions = async () => {
+        setIsSavingDirectorGlobalInstructions(true)
+        setDirectorGlobalInstructionsMessage("")
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) throw new Error("No Supabase client")
+            const payload = { instructions: directorGlobalInstructions.trim() || defaultDirectorGlobalInstructions }
+            const { data, error } = await supabase.rpc("admin_update_ai_director_global_instructions", {
+                p_instructions: payload,
+            })
+            if (error) {
+                const { error: directError } = await supabase
+                    .from("site_settings")
+                    .upsert({ key: "ai_director_global_instructions", value: payload }, { onConflict: "key" })
+                if (directError) throw error
+            } else {
+                setDirectorGlobalInstructions(normalizeDirectorGlobalInstructions(data))
+            }
+            setDirectorGlobalInstructionsMessage("Global AI Director instructions saved.")
+        } catch (err: any) {
+            setDirectorGlobalInstructionsMessage(`Could not save instructions: ${err.message || "Unknown error"}`)
+        } finally {
+            setIsSavingDirectorGlobalInstructions(false)
+        }
+    }
+
+    const handleSaveDirectorWorkflows = async () => {
+        setIsSavingDirectorWorkflows(true)
+        setDirectorWorkflowsMessage("")
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) throw new Error("No Supabase client")
+            const { data, error } = await supabase.rpc("admin_update_ai_director_workflows", {
+                p_workflows: directorWorkflows,
+            })
+            if (error) throw error
+            setDirectorWorkflows(normalizeDirectorWorkflows(data))
+            setDirectorWorkflowsMessage("AI Director workflows saved.")
+        } catch (err: any) {
+            setDirectorWorkflowsMessage(`Could not save workflows: ${err.message || "Unknown error"}`)
+        } finally {
+            setIsSavingDirectorWorkflows(false)
+        }
+    }
+
+    const updateDirectorWorkflow = (id: string, patch: Partial<DirectorWorkflowConfig>) => {
+        setDirectorWorkflows((workflows) => workflows.map((workflow) => workflow.id === id ? { ...workflow, ...patch } : workflow))
+    }
+
+    const addDirectorWorkflow = () => {
+        const id = `custom_workflow_${Date.now()}`
+        setDirectorWorkflows((workflows) => [
+            ...workflows,
+            {
+                id,
+                title: "New AI Workflow",
+                description: "Describe when the AI Director should use this workflow.",
+                skill: "Describe the skill set this workflow activates.",
+                instructions: "Write step-by-step workflow instructions for scripts, characters, storyboard images, and video generation.",
+                appliesTo: "project_default",
+                status: "active",
+            },
+        ])
+    }
+
+    const deleteDirectorWorkflow = (id: string) => {
+        if (!confirm("Delete this workflow? Existing projects using its id will fall back to the default workflow.")) return
+        setDirectorWorkflows((workflows) => workflows.filter((workflow) => workflow.id !== id))
     }
 
     const loadShowcaseItems = async () => {
@@ -986,6 +1077,8 @@ function AdminDashboardContent() {
         loadBillingSettings()
         loadTrialSettings()
         loadDirectorModels()
+        loadDirectorWorkflows()
+        loadDirectorGlobalInstructions()
         loadSiteFeatures()
         loadAdminData()
         loadShowcaseItems()
@@ -1080,6 +1173,15 @@ function AdminDashboardContent() {
                                 )}
                             >
                                 <Settings className="w-4 h-4" /> AI Models
+                            </button>
+                            <button
+                                onClick={() => setActiveTab("ai-workflows")}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    activeTab === "ai-workflows" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                )}
+                            >
+                                <LayoutDashboard className="w-4 h-4" /> AI Workflows
                             </button>
                             <button
                                 onClick={() => setActiveTab("site-features")}
@@ -2289,6 +2391,182 @@ function AdminDashboardContent() {
                                     >
                                         {isSavingDirectorModels ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                                         {isSavingDirectorModels ? "Saving..." : "Save Model Settings"}
+                                    </button>
+                                </div>
+                            </motion.div>
+                        )}
+
+                        {activeTab === "ai-workflows" && (
+                            <motion.div
+                                key="ai-workflows"
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                className="space-y-8"
+                            >
+                                <header>
+                                    <h1 className="text-3xl font-bold tracking-tight mb-2">AI Director Workflows</h1>
+                                    <p className="text-white/40 text-sm">Define reusable workflow instructions and skills for scripts, characters, storyboard images, and video generation.</p>
+                                </header>
+
+                                <div className="glass-card p-6 rounded-2xl border-white/10 space-y-4">
+                                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                        <div>
+                                            <h2 className="text-xl font-bold text-white">Global Agent Instructions</h2>
+                                            <p className="mt-1 text-sm leading-6 text-white/45">
+                                                These rules are added to every AI Director chat before workflow-specific instructions.
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setDirectorGlobalInstructions(defaultDirectorGlobalInstructions)}
+                                            className="rounded-xl border border-white/10 px-4 py-2 text-xs font-bold text-white/60 hover:bg-white/10"
+                                        >
+                                            Restore Default
+                                        </button>
+                                    </div>
+                                    <textarea
+                                        value={directorGlobalInstructions}
+                                        onChange={(event) => setDirectorGlobalInstructions(event.target.value)}
+                                        rows={10}
+                                        className="w-full resize-y rounded-xl border border-white/10 bg-black/30 px-4 py-3 font-mono text-sm leading-6 text-white outline-none focus:border-primary"
+                                        placeholder="Rules for how the AI Director should handle script saves, normal conversation, asset creation, approvals, and production commands..."
+                                    />
+                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                        <p className="text-xs leading-5 text-white/35">
+                                            Keep script-save rules strict so normal chat messages do not get appended to the Script tab.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={handleSaveDirectorGlobalInstructions}
+                                            disabled={isSavingDirectorGlobalInstructions}
+                                            className="btn-primary flex shrink-0 items-center gap-2 px-5 py-3 disabled:opacity-60"
+                                        >
+                                            {isSavingDirectorGlobalInstructions ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                            {isSavingDirectorGlobalInstructions ? "Saving..." : "Save Global Instructions"}
+                                        </button>
+                                    </div>
+                                    {directorGlobalInstructionsMessage && <p className="text-sm text-white/50">{directorGlobalInstructionsMessage}</p>}
+                                </div>
+
+                                <div className="glass-card p-6 rounded-2xl border-white/10 space-y-5">
+                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                        <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm text-white/55">
+                                            Project-default workflows apply to every episode automatically. Episode workflows can be selected later to override the default for one episode.
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={addDirectorWorkflow}
+                                            className="btn-primary flex shrink-0 items-center gap-2 px-4 py-3"
+                                        >
+                                            <Plus className="h-4 w-4" /> Add Workflow
+                                        </button>
+                                    </div>
+
+                                    {directorWorkflows.map((workflow, index) => (
+                                        <div key={workflow.id} className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+                                            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                                <div>
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] font-bold text-white/40">#{index + 1}</span>
+                                                        <span className={cn("rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wider", workflow.status === "active" ? "bg-lime-400/10 text-lime-300" : "bg-amber-400/10 text-amber-300")}>
+                                                            {workflow.status}
+                                                        </span>
+                                                        <span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
+                                                            {workflow.appliesTo === "episode" ? "Episode override" : "Project default"}
+                                                        </span>
+                                                    </div>
+                                                    <p className="mt-2 font-mono text-xs text-white/30">{workflow.id}</p>
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => updateDirectorWorkflow(workflow.id, { status: workflow.status === "active" ? "paused" : "active" })}
+                                                        className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-white/60 hover:bg-white/10"
+                                                    >
+                                                        {workflow.status === "active" ? "Pause" : "Activate"}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => deleteDirectorWorkflow(workflow.id)}
+                                                        className="rounded-xl border border-red-500/20 px-3 py-2 text-xs font-bold text-red-300 hover:bg-red-500/10"
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                                <label className="space-y-2">
+                                                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Workflow Title</span>
+                                                    <input
+                                                        value={workflow.title}
+                                                        onChange={(event) => updateDirectorWorkflow(workflow.id, { title: event.target.value })}
+                                                        className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-primary"
+                                                    />
+                                                </label>
+                                                <label className="space-y-2">
+                                                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Workflow ID</span>
+                                                    <input
+                                                        value={workflow.id}
+                                                        onChange={(event) => updateDirectorWorkflow(workflow.id, { id: event.target.value.toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "") || workflow.id })}
+                                                        className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 font-mono text-sm text-white outline-none focus:border-primary"
+                                                    />
+                                                </label>
+                                                <label className="space-y-2 md:col-span-2">
+                                                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Short Description</span>
+                                                    <textarea
+                                                        value={workflow.description}
+                                                        onChange={(event) => updateDirectorWorkflow(workflow.id, { description: event.target.value })}
+                                                        rows={2}
+                                                        className="w-full resize-none rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-primary"
+                                                    />
+                                                </label>
+                                                <label className="space-y-2">
+                                                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Skill Activated</span>
+                                                    <textarea
+                                                        value={workflow.skill}
+                                                        onChange={(event) => updateDirectorWorkflow(workflow.id, { skill: event.target.value })}
+                                                        rows={4}
+                                                        className="w-full resize-none rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-primary"
+                                                        placeholder="Character continuity, storyboard image generation, video reference workflow..."
+                                                    />
+                                                </label>
+                                                <label className="space-y-2">
+                                                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Apply Scope</span>
+                                                    <select
+                                                        value={workflow.appliesTo}
+                                                        onChange={(event) => updateDirectorWorkflow(workflow.id, { appliesTo: event.target.value === "episode" ? "episode" : "project_default" })}
+                                                        className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-primary"
+                                                    >
+                                                        <option value="project_default">Project default: applies to all episodes</option>
+                                                        <option value="episode">Episode override: selectable per episode</option>
+                                                    </select>
+                                                    <p className="text-xs leading-5 text-white/35">Studio settings can change the selected workflow any time. Project defaults carry to other episodes automatically.</p>
+                                                </label>
+                                                <label className="space-y-2 md:col-span-2">
+                                                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Workflow Instructions</span>
+                                                    <textarea
+                                                        value={workflow.instructions}
+                                                        onChange={(event) => updateDirectorWorkflow(workflow.id, { instructions: event.target.value })}
+                                                        rows={6}
+                                                        className="w-full resize-y rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm leading-6 text-white outline-none focus:border-primary"
+                                                        placeholder="Tell the AI Director how to use characters, storyboard shots, image generation, video generation, approvals, references, and continuity..."
+                                                    />
+                                                </label>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    {directorWorkflowsMessage && <p className="text-sm text-white/50">{directorWorkflowsMessage}</p>}
+
+                                    <button
+                                        onClick={handleSaveDirectorWorkflows}
+                                        disabled={isSavingDirectorWorkflows}
+                                        className="btn-primary flex items-center gap-2 px-6 py-3 disabled:opacity-60"
+                                    >
+                                        {isSavingDirectorWorkflows ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                        {isSavingDirectorWorkflows ? "Saving..." : "Save Workflow Instructions"}
                                     </button>
                                 </div>
                             </motion.div>

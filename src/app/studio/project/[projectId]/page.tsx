@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models";
 import { getModelLabel, imageGenerationModels, videoGenerationModels } from "@/lib/studio/generation-models";
+import { defaultDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows";
 import { calculateCreditCost, getUserCredits } from "@/lib/studio/credits";
 import { createClient } from "@/lib/supabase/client";
 
@@ -105,7 +106,20 @@ type Workspace = {
     summary: string;
     status: string;
   }[];
-  chatMessages: { id: string; role: string; content: string | null }[];
+  chatMessages: { id: string; role: string; content: string | null; media?: Array<Record<string, unknown>> | null; suggested_actions?: Array<Record<string, unknown>> | null }[];
+  activeSessionId?: string | null;
+  chatSessions: { id: string; title: string; model?: string | null; created_at: string; updated_at?: string | null }[];
+  actionProposals: {
+    id: string;
+    action_type: string;
+    title: string;
+    summary: string | null;
+    status: string;
+    estimated_credits: number;
+    payload: Record<string, unknown>;
+    created_at: string;
+  }[];
+  directorWorkflows?: DirectorWorkflowConfig[];
   features?: Record<string, boolean>;
   production?: {
     series: Array<Record<string, unknown>>;
@@ -138,6 +152,7 @@ const marketingTabs = [
 const blankScript = {
   title: "Untitled production",
   overview: "",
+  body: "",
   scenes: [] as {
     heading: string;
     timing: string;
@@ -190,12 +205,19 @@ export default function WorkspacePage({
   const [message, setMessage] = useState("");
   const [chatSending, setChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [proposalBusy, setProposalBusy] = useState<string | null>(null);
+  const [chatUploading, setChatUploading] = useState(false);
   const [directorModel, setDirectorModel] = useState<string>(defaultDirectorModelId);
   const [directorModels, setDirectorModels] = useState<DirectorModelConfig[]>(defaultDirectorModels.map((model) => ({ ...model })).filter((model) => model.status === "active"));
   const [voiceState, setVoiceState] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const chatFileInputRef = useRef<HTMLInputElement | null>(null);
   const voiceConnectionRef = useRef<RTCPeerConnection | null>(null);
   const voiceStreamRef = useRef<MediaStream | null>(null);
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [data?.chatMessages.length, chatSending, chatError, voiceState]);
   useEffect(() => () => {
     voiceConnectionRef.current?.close();
     voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -215,14 +237,17 @@ export default function WorkspacePage({
   }, []);
   const [assetType, setAssetType] = useState<Entity["type"] | null>(null);
   const [episodeId, setEpisodeId] = useState<string | null>(null);
+  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
   const [episodeMenu, setEpisodeMenu] = useState(false);
+  const [chatSessionMenu, setChatSessionMenu] = useState(false);
   const [showBasicSettings, setShowBasicSettings] = useState(false);
+  const openedInitialSettingsRef = useRef(false);
   const [projectMenu, setProjectMenu] = useState(false);
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
       const r = await fetch(
-        `/api/studio/projects/${projectId}${episodeId ? `?episodeId=${episodeId}` : ""}`,
+        `/api/studio/projects/${projectId}${episodeId || chatSessionId ? `?${new URLSearchParams({ ...(episodeId ? { episodeId } : {}), ...(chatSessionId ? { sessionId: chatSessionId } : {}) }).toString()}` : ""}`,
       );
       const json = await r.json();
       if (!r.ok) throw new Error(json.error);
@@ -235,7 +260,16 @@ export default function WorkspacePage({
   };
   useEffect(() => {
     load();
-  }, [projectId, episodeId]);
+  }, [projectId, episodeId, chatSessionId]);
+  useEffect(() => {
+    if (!data || openedInitialSettingsRef.current || typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("openSettings") !== "1") return;
+    openedInitialSettingsRef.current = true;
+    setShowBasicSettings(true);
+    url.searchParams.delete("openSettings");
+    window.history.replaceState(null, "", url.toString());
+  }, [data]);
   const save = async (body: unknown) => {
     const r = await fetch(`/api/studio/projects/${projectId}/workspace`, {
       method: "POST",
@@ -274,25 +308,96 @@ export default function WorkspacePage({
     setEpisodeId(created.id);
     setTab("script");
   };
+  const createChatSession = async () => {
+    const created = await save({ action: "createChatSession", episodeId: episode.id, model: directorModel, title: "New Chat" }) as { id: string };
+    setChatSessionMenu(false);
+    setChatSessionId(created.id);
+    await load(true);
+  };
   const sendChat = async (e: FormEvent) => {
     e.preventDefault();
     if (!message.trim() || chatSending) return;
+    const outgoing = message.trim();
     setChatSending(true);
     setChatError(null);
+    setData((current) => current ? {
+      ...current,
+      chatMessages: [
+        ...current.chatMessages,
+        { id: `local-user-${Date.now()}`, role: "user", content: outgoing },
+      ],
+    } : current);
     try {
       const response = await fetch(`/api/studio/projects/${projectId}/director/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ episodeId: episode.id, message: message.trim(), model: directorModel, idempotencyKey: crypto.randomUUID() }),
+        body: JSON.stringify({ episodeId: episode.id, sessionId: data.activeSessionId || chatSessionId || undefined, message: outgoing, model: directorModel, idempotencyKey: crypto.randomUUID() }),
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || "AI Director could not respond");
       setMessage("");
-      await load();
+      if (json.sessionId) setChatSessionId(json.sessionId);
+      setData((current) => current && json.assistantMessage ? {
+        ...current,
+        activeSessionId: json.sessionId || current.activeSessionId,
+        chatMessages: [
+          ...current.chatMessages,
+          json.assistantMessage,
+        ],
+      } : current);
+      await load(true);
     } catch (error) {
       setChatError(error instanceof Error ? error.message : "AI Director could not respond");
+      await load(true);
     } finally {
       setChatSending(false);
+    }
+  };
+  const uploadChatFiles = async (files: FileList | null) => {
+    const selected = Array.from(files || []);
+    if (!selected.length || chatUploading) return;
+    setChatUploading(true);
+    setChatError(null);
+    try {
+      for (const file of selected) {
+        const form = new FormData();
+        form.append("episodeId", episode.id);
+        if (data.activeSessionId) form.append("sessionId", data.activeSessionId);
+        form.append("file", file);
+        const response = await fetch(`/api/studio/projects/${projectId}/director/uploads`, { method: "POST", body: form });
+        const json = await response.json();
+        if (!response.ok) throw new Error(json.error || "Upload failed");
+        if (json.sessionId) setChatSessionId(json.sessionId);
+        setData((current) => current ? {
+          ...current,
+          activeSessionId: json.sessionId || current.activeSessionId,
+          chatMessages: [...current.chatMessages, json.message],
+        } : current);
+      }
+      await load(true);
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : "Upload failed");
+    } finally {
+      setChatUploading(false);
+      if (chatFileInputRef.current) chatFileInputRef.current.value = "";
+    }
+  };
+  const decideProposal = async (proposalId: string, decision: "approved" | "rejected") => {
+    setProposalBusy(proposalId);
+    setChatError(null);
+    try {
+      const response = await fetch(`/api/studio/projects/${projectId}/director/proposals/${proposalId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Could not update proposal");
+      await load(true);
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : "Could not update proposal");
+    } finally {
+      setProposalBusy(null);
     }
   };
   const stopVoice = () => {
@@ -609,10 +714,52 @@ export default function WorkspacePage({
         </section>
         <aside className="hidden w-[40%] min-w-[360px] max-w-[520px] flex-col bg-[#0d0d0d] xl:flex">
           <div className="border-b border-white/[0.06] px-4 py-3">
+            {chatSessionMenu && (
+              <div
+                className="fixed inset-0 z-40 bg-transparent"
+                onClick={() => setChatSessionMenu(false)}
+              />
+            )}
             <div className="flex items-center gap-2 text-[12px] text-zinc-400">
               <Bot className="h-4 w-4 text-[#b9f42e]" />
               <span className="font-bold text-zinc-200">AI Director</span>
-              <span className="ml-auto text-zinc-600">Plan, revise, and direct</span>
+              <div className="relative ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setChatSessionMenu((open) => !open)}
+                  className="flex max-w-[190px] items-center gap-2 rounded-lg border border-white/[0.08] bg-[#141414] px-2.5 py-1.5 text-[11px] font-semibold text-zinc-300 hover:border-[#b9f42e]/40"
+                >
+                  <span className="truncate">{data.chatSessions.find((session) => session.id === data.activeSessionId)?.title || "Current chat"}</span>
+                  <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                </button>
+                <button
+                  type="button"
+                  onClick={createChatSession}
+                  className="rounded-lg border border-white/[0.08] bg-[#141414] px-2.5 py-1.5 text-[11px] font-bold text-zinc-100 hover:border-[#b9f42e]/40 hover:text-[#b9f42e]"
+                >
+                  New Chat
+                </button>
+                {chatSessionMenu && (
+                  <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 overflow-hidden rounded-xl border border-white/10 bg-[#18191c] p-2 shadow-2xl">
+                    {data.chatSessions.length ? data.chatSessions.map((session) => (
+                      <button
+                        key={session.id}
+                        type="button"
+                        onClick={() => {
+                          setChatSessionId(session.id);
+                          setChatSessionMenu(false);
+                        }}
+                        className={`block w-full rounded-lg px-3 py-2 text-left text-[12px] ${session.id === data.activeSessionId ? "bg-[#b9f42e] text-black" : "text-zinc-300 hover:bg-white/10"}`}
+                      >
+                        <span className="block truncate font-bold">{session.title || "AI Director"}</span>
+                        <span className="mt-0.5 block truncate text-[10px] opacity-70">{session.model || "Studio chat"}</span>
+                      </button>
+                    )) : (
+                      <p className="p-3 text-[12px] text-zinc-500">No chats yet.</p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="mt-2 flex gap-1.5">
               <span className="rounded-full border border-white/[0.06] bg-[#141414] px-2 py-0.5 text-[10px] font-medium text-zinc-400">{data.project.default_style || "Cinematic"}</span>
@@ -632,10 +779,15 @@ export default function WorkspacePage({
                 className={`mt-3 max-w-[90%] rounded-xl p-3 text-[13px] ${item.role === "user" ? "ml-auto bg-[#b9f42e] text-black" : "bg-[#1a1a1a] text-zinc-200"}`}
               >
                 {item.content}
+                <ChatMedia media={item.media} />
+                <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} busyId={proposalBusy} onDecide={decideProposal} />
               </div>
             ))}
+            {chatSending && <ThinkingBubble />}
+            <PendingProposalCards proposals={data.actionProposals} busyId={proposalBusy} onDecide={decideProposal} />
             {chatError && <p role="alert" className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-[12px] text-red-200">{chatError}</p>}
             {voiceState !== "idle" && <p className={`mt-3 rounded-lg border p-2.5 text-[12px] ${voiceState === "connected" ? "border-[#b9f42e]/30 bg-[#b9f42e]/10 text-[#d9ff84]" : "border-white/[0.06] bg-white/[0.03] text-zinc-300"}`}>{voiceState === "connecting" ? "Connecting your AI Voice Director…" : voiceState === "connected" ? "AI Voice Director is listening. You can speak naturally." : voiceError}</p>}
+            <div ref={chatEndRef} />
           </div>
           <form
             onSubmit={sendChat}
@@ -644,12 +796,26 @@ export default function WorkspacePage({
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
               placeholder="Tell the director what to shoot..."
               className="h-20 w-full resize-none bg-transparent text-[14px] outline-none placeholder:text-zinc-600"
             />
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5">
-                <button type="button" className="rounded-md p-1 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300">
+                <input
+                  ref={chatFileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*,video/*,audio/*"
+                  onChange={(event) => uploadChatFiles(event.target.files)}
+                  className="hidden"
+                />
+                <button type="button" onClick={() => chatFileInputRef.current?.click()} disabled={chatUploading} className="rounded-md p-1 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300 disabled:opacity-50" aria-label="Upload image, video, or audio to AI Director chat">
                   <Plus className="h-3.5 w-3.5" />
                 </button>
                 <select
@@ -847,10 +1013,11 @@ function Canvas({
           >
             <p className="line-clamp-5 text-sm leading-6 text-zinc-400">
               {script.overview ||
+                script.body ||
                 "Write the story, visual direction, framing, timing, continuity notes and references."}
             </p>
             <div className="mt-4 flex gap-2 text-xs text-zinc-500">
-              <span>{script.scenes?.length || 0} scenes</span>
+              <span>{script.body ? "full script" : `${script.scenes?.length || 0} scenes`}</span>
               <span>•</span>
               <span>editable</span>
             </div>
@@ -968,13 +1135,6 @@ function Canvas({
             Drag to pan · Ctrl/⌘ + scroll to zoom
           </span>
         </div>
-        <div className="fixed bottom-5 right-5 z-10 h-28 w-44 rounded-xl border border-white/10 bg-[#151715]/95 p-3 shadow-xl">
-          <div className="h-full rounded border border-[#b9f42e]/45 bg-[radial-gradient(#343631_1px,transparent_1px)] [background-size:8px_8px]">
-            <div className="ml-4 mt-3 h-5 w-10 rounded bg-zinc-600/80" />
-            <div className="ml-14 mt-3 h-5 w-12 rounded bg-zinc-600/80" />
-            <div className="ml-20 mt-2 h-4 w-8 rounded bg-zinc-600/80" />
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -1031,17 +1191,9 @@ function Script({
     parseScript(episode.script_content),
   );
   const [saving, setSaving] = useState(false);
-  const updateScene = (
-    index: number,
-    field: keyof (typeof blankScript.scenes)[number],
-    value: string,
-  ) =>
-    setContent((current) => ({
-      ...current,
-      scenes: current.scenes.map((scene, i) =>
-        i === index ? { ...scene, [field]: value } : scene,
-      ),
-    }));
+  useEffect(() => {
+    setContent(parseScript(episode.script_content));
+  }, [episode.id, episode.script_content]);
   const submit = async () => {
     try {
       setSaving(true);
@@ -1080,93 +1232,19 @@ function Script({
           placeholder="Write a concise story synopsis, creative intent, main references, and continuity rules for the whole production."
           className="mt-7 min-h-36 w-full resize-y bg-transparent text-lg leading-8 text-zinc-300 outline-none placeholder:text-zinc-600"
         />
-        <div className="mt-7 border-t border-slate-700/70" />
-        <div className="mt-8 space-y-8">
-          {content.scenes.map((scene, index) => (
-            <section key={index}>
-              <div className="flex items-center justify-between gap-3">
-                <input
-                  value={scene.heading}
-                  onChange={(e) =>
-                    updateScene(index, "heading", e.target.value)
-                  }
-                  placeholder={`SCENE ${index + 1} — Title and timing`}
-                  className="w-full bg-transparent text-xl font-black uppercase text-white outline-none placeholder:text-zinc-600 sm:text-3xl"
-                />
-                <button
-                  onClick={() =>
-                    setContent((c) => ({
-                      ...c,
-                      scenes: c.scenes.filter((_, i) => i !== index),
-                    }))
-                  }
-                  className="text-xs text-zinc-500 hover:text-red-300"
-                >
-                  Remove
-                </button>
-              </div>
-              <div className="mt-5 rounded-xl bg-[#1d1f1e] p-5">
-                <label className="text-xs font-bold uppercase tracking-wide text-[#b9f42e]">
-                  Panel / shot breakdown
-                </label>
-                <textarea
-                  value={scene.direction}
-                  onChange={(e) =>
-                    updateScene(index, "direction", e.target.value)
-                  }
-                  placeholder="Describe the action, staging, subjects, visual direction, and the required shot sequence."
-                  className="mt-3 min-h-32 w-full resize-y bg-transparent text-base leading-7 text-zinc-200 outline-none placeholder:text-zinc-600"
-                />
-                <div className="mt-5 grid gap-4 border-t border-white/10 pt-4 md:grid-cols-2">
-                  <label className="text-xs font-bold uppercase tracking-wide text-zinc-500">
-                    Timing
-                    <input
-                      value={scene.timing}
-                      onChange={(e) =>
-                        updateScene(index, "timing", e.target.value)
-                      }
-                      placeholder="0–6 seconds"
-                      className="mt-2 w-full rounded-lg bg-black/20 p-3 text-sm font-normal normal-case tracking-normal text-zinc-200 outline-none"
-                    />
-                  </label>
-                  <label className="text-xs font-bold uppercase tracking-wide text-zinc-500">
-                    Framing and continuity
-                    <textarea
-                      value={`${scene.framing}${scene.continuity ? `\n${scene.continuity}` : ""}`}
-                      onChange={(e) => {
-                        const [framing, ...notes] = e.target.value.split("\n");
-                        updateScene(index, "framing", framing);
-                        updateScene(index, "continuity", notes.join("\n"));
-                      }}
-                      placeholder="Camera, framing, transition, reference, continuity notes"
-                      className="mt-2 h-20 w-full rounded-lg bg-black/20 p-3 text-sm font-normal normal-case tracking-normal text-zinc-200 outline-none"
-                    />
-                  </label>
-                </div>
-              </div>
-            </section>
-          ))}
+        <div className="mt-7 border-t border-slate-700/70 pt-7">
+          <label className="text-xs font-bold uppercase tracking-wide text-[#b9f42e]">
+            Full script
+          </label>
+          <textarea
+            value={content.body}
+            onChange={(e) =>
+              setContent((c) => ({ ...c, body: e.target.value }))
+            }
+            placeholder="Paste or write the complete script here with timestamps, action, dialogue, and cliffhanger ending."
+            className="mt-3 min-h-[520px] w-full resize-y rounded-xl bg-[#1d1f1e] p-5 font-mono text-sm leading-7 text-zinc-200 outline-none placeholder:text-zinc-600"
+          />
         </div>
-        <button
-          onClick={() =>
-            setContent((c) => ({
-              ...c,
-              scenes: [
-                ...c.scenes,
-                {
-                  heading: `SCENE ${c.scenes.length + 1} — Untitled`,
-                  timing: "",
-                  direction: "",
-                  framing: "",
-                  continuity: "",
-                },
-              ],
-            }))
-          }
-          className="mt-8 inline-flex items-center gap-2 rounded-xl border border-dashed border-[#b9f42e]/45 px-4 py-3 text-sm font-bold text-[#b9f42e]"
-        >
-          <Plus className="h-4 w-4" /> Add scene
-        </button>
       </section>
       {suggestions
         .filter((s) => s.status === "pending")
@@ -1229,13 +1307,9 @@ function Assets({
   openAdd: (t: Entity["type"]) => void;
 }) {
   const [selectedAsset, setSelectedAsset] = useState<Entity | null>(null);
-
-  useEffect(() => {
-    if (selectedAsset && entities) {
-      const updated = entities.find((e) => e.id === selectedAsset.id);
-      if (updated) setSelectedAsset(updated);
-    }
-  }, [entities]);
+  const activeAsset = selectedAsset
+    ? entities.find((entity) => entity.id === selectedAsset.id) || selectedAsset
+    : null;
   return (
     <div className="space-y-8">
       {(["character", "scene", "prop"] as const).map((type) => (
@@ -1285,9 +1359,9 @@ function Assets({
           </div>
         </section>
       ))}
-      {selectedAsset && (
+      {activeAsset && (
         <AssetWorkspace
-          asset={selectedAsset}
+          asset={activeAsset}
           entities={entities}
           projectId={projectId}
           close={() => setSelectedAsset(null)}
@@ -1537,13 +1611,18 @@ function BasicSettingsModal({
   reload: () => Promise<void>;
 }) {
   const metaSettings = (data.project.metadata as Record<string, unknown> | null)?.basic_settings as Record<string, unknown> | undefined;
+  const projectMeta = (data.project.metadata as Record<string, unknown> | null) || {};
+  const episodeWorkflowMap = (projectMeta.episode_workflows as Record<string, unknown> | undefined) || {};
+  const selectedEpisodeWorkflow = typeof episodeWorkflowMap[data.activeEpisode.id] === "string" ? episodeWorkflowMap[data.activeEpisode.id] as string : "";
 
+  const [projectName, setProjectName] = useState<string>(data.project.name || "Untitled production");
   const [canvasSpec, setCanvasSpec] = useState<string>((metaSettings?.canvasSpec as string) || `${data.project.default_aspect || "9:16"} · 2K · 720p`);
   const [storyboardImageModel, setStoryboardImageModel] = useState<string>((metaSettings?.storyboardImageModel as string) || imageGenerationModels[0].id);
   const [characterImageModel, setCharacterImageModel] = useState<string>((metaSettings?.characterImageModel as string) || imageGenerationModels[0].id);
   const [videoModel, setVideoModel] = useState<string>((metaSettings?.videoModel as string) || videoGenerationModels[0].id);
   const [generateAudio, setGenerateAudio] = useState<boolean>(metaSettings?.generateAudio !== false);
-  const [workflow, setWorkflow] = useState<string>((metaSettings?.workflow as string) || "keyframe_images_to_video");
+  const [workflow, setWorkflow] = useState<string>(selectedEpisodeWorkflow || (projectMeta.default_workflow_id as string) || (metaSettings?.workflow as string) || "keyframe_images_to_video");
+  const [workflowApplyMode, setWorkflowApplyMode] = useState<"project_default" | "episode">("project_default");
   const [visualStyle, setVisualStyle] = useState<string>((metaSettings?.visualStyle as string) || (data.project.default_style || "Realistic - 3D CG"));
   const [saving, setSaving] = useState(false);
 
@@ -1555,6 +1634,7 @@ function BasicSettingsModal({
       await save({
         action: "saveProjectSettings",
         settings: {
+          projectName: projectName.trim() || "Untitled production",
           canvasSpec,
           aspectRatio: selectedAspect,
           resolution: selectedResolution,
@@ -1563,6 +1643,8 @@ function BasicSettingsModal({
           videoModel,
           generateAudio,
           workflow,
+          workflowApplyMode,
+          episodeId: data.activeEpisode.id,
           visualStyle,
         },
       });
@@ -1585,6 +1667,8 @@ function BasicSettingsModal({
     { id: "Anime - Makoto Shinkai", label: "Anime - Makoto Shinkai", hot: false, img: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=400&q=80" },
     { id: "Anime - Ghibli", label: "Anime - Ghibli", hot: false, img: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=80" },
   ];
+  const activeWorkflows = (data.directorWorkflows?.length ? data.directorWorkflows : defaultDirectorWorkflows).filter((item) => item.status !== "paused");
+  const workflowIcons = [LayoutPanelTop, Share2, Film, Zap];
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4 backdrop-blur-md overflow-y-auto">
@@ -1600,6 +1684,17 @@ function BasicSettingsModal({
         </div>
 
         <div className="space-y-6">
+          <div>
+            <label className="block text-xs font-bold uppercase text-zinc-400 mb-2">Project Name</label>
+            <input
+              value={projectName}
+              onChange={(event) => setProjectName(event.target.value)}
+              maxLength={160}
+              className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-[#b9f42e]"
+              placeholder="Name this production"
+            />
+          </div>
+
           {/* Row 1: Canvas Spec, Storyboard Image Model, Character/Scene Image Model */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -1679,15 +1774,20 @@ function BasicSettingsModal({
 
           {/* Row 3: Generation Workflow */}
           <div>
-            <label className="block text-xs font-bold uppercase text-zinc-400 mb-2">Generation Workflow (AI Agent Pipeline)</label>
+            <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <label className="block text-xs font-bold uppercase text-zinc-400">Generation Workflow (AI Agent Pipeline)</label>
+              <select
+                value={workflowApplyMode}
+                onChange={(event) => setWorkflowApplyMode(event.target.value === "episode" ? "episode" : "project_default")}
+                className="rounded-lg border border-white/10 bg-[#0b0c0b] px-3 py-2 text-xs font-bold text-zinc-300 outline-none focus:border-[#b9f42e]"
+              >
+                <option value="project_default">Apply to this episode + future/default episodes</option>
+                <option value="episode">Apply only to this episode</option>
+              </select>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {[
-                { id: "keyframe_images_to_video", title: "Keyframes Images to Video", desc: "Generate multi grid keyframe images first, then use them as reference to create the video", icon: LayoutPanelTop },
-                { id: "elements_sequential", title: "Elements to Video Sequential", desc: "Generate video sequentially from character reference images to ensure continuity between clips, slower...", icon: Share2 },
-                { id: "video_reference", title: "Video Reference", desc: "Drive video generation with reference video style and motion rhythm", icon: Film },
-                { id: "elements_parallel", title: "Elements to Video Parallel", desc: "Generate video concurrently from character reference images — no keyframe images needed", icon: Zap },
-              ].map((item) => {
-                const Icon = item.icon;
+              {activeWorkflows.map((item, index) => {
+                const Icon = workflowIcons[index % workflowIcons.length];
                 const isSelected = workflow === item.id;
                 return (
                   <button
@@ -1701,7 +1801,8 @@ function BasicSettingsModal({
                     </div>
                     <div>
                       <h4 className={`text-sm font-bold ${isSelected ? "text-[#b9f42e]" : "text-white"}`}>{item.title}</h4>
-                      <p className="mt-1 text-xs leading-relaxed text-zinc-400">{item.desc}</p>
+                      <p className="mt-1 text-xs leading-relaxed text-zinc-400">{item.description}</p>
+                      {item.skill && <p className="mt-2 line-clamp-2 text-[11px] leading-5 text-zinc-500">{item.skill}</p>}
                     </div>
                   </button>
                 );
@@ -2514,13 +2615,9 @@ function Storyboard({
     shot: Shot;
     type: "image" | "video";
   } | null>(null);
-
-  useEffect(() => {
-    if (media && shots) {
-      const updated = shots.find((s) => s.id === media.shot.id);
-      if (updated) setMedia((prev) => (prev ? { ...prev, shot: updated } : null));
-    }
-  }, [shots]);
+  const activeMedia = media
+    ? { ...media, shot: shots.find((shot) => shot.id === media.shot.id) || media.shot }
+    : null;
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2690,9 +2787,9 @@ function Storyboard({
           )}
         </div>
       </div>
-      {media && (
+      {activeMedia && (
         <ShotMediaWorkspace
-          media={media}
+          media={activeMedia}
           entities={entities}
           shots={shots}
           projectId={projectId}
@@ -3530,6 +3627,129 @@ function GenerationPreviewError({ message }: { message: string }) {
   );
 }
 
+type ChatProposal = Workspace["actionProposals"][number];
+
+function ThinkingBubble() {
+  return (
+    <div className="mt-3 max-w-[90%] rounded-xl bg-[#1a1a1a] p-3 text-[13px] text-zinc-300">
+      <div className="flex items-center gap-2">
+        <span className="text-[12px] text-zinc-400">AI Director is thinking</span>
+        <span className="flex gap-1" aria-hidden="true">
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#b9f42e]" />
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#b9f42e] [animation-delay:120ms]" />
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#b9f42e] [animation-delay:240ms]" />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ChatMedia({ media }: { media?: Array<Record<string, unknown>> | null }) {
+  if (!media?.length) return null;
+  return (
+    <div className="mt-3 space-y-2">
+      {media.map((item, index) => {
+        const type = typeof item.type === "string" ? item.type : "media";
+        const url = typeof item.url === "string" ? item.url : "";
+        const prompt = typeof item.prompt === "string" ? item.prompt : "";
+        const name = typeof item.name === "string" ? item.name : "";
+        return (
+          <div key={`${type}-${index}`} className="overflow-hidden rounded-lg border border-white/[0.08] bg-black/30">
+            {type === "image" && url && <img src={url} alt={prompt || "Generated image"} className="aspect-video w-full object-cover" />}
+            {type === "video" && url && <video src={url} controls playsInline preload="metadata" className="aspect-video w-full bg-black object-contain" />}
+            {type === "audio" && url && <div className="p-3"><audio src={url} controls className="w-full" /></div>}
+            <div className="p-2 text-[11px] text-zinc-400">
+              <p className="font-medium text-zinc-300">{name || (type === "image" ? "Image" : type === "video" ? "Video" : type === "audio" ? "Audio" : "Media")}</p>
+              {prompt && <p className="mt-1 line-clamp-2">{prompt}</p>}
+              <p className="mt-1 text-zinc-500">Available to AI Director as a reference for assets, storyboard, and generation.</p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ChatSuggestedActions({
+  actions,
+  proposals,
+  busyId,
+  onDecide,
+}: {
+  actions?: Array<Record<string, unknown>> | null;
+  proposals: ChatProposal[];
+  busyId: string | null;
+  onDecide: (proposalId: string, decision: "approved" | "rejected") => void;
+}) {
+  const ids = (actions || [])
+    .map((action) => action.proposal)
+    .filter((proposal): proposal is { id: string } => Boolean(proposal && typeof proposal === "object" && "id" in proposal && typeof (proposal as { id?: unknown }).id === "string"))
+    .map((proposal) => proposal.id);
+  const matched = proposals.filter((proposal) => ids.includes(proposal.id));
+  if (!matched.length) return null;
+  return (
+    <div className="mt-3 space-y-2">
+      {matched.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} busy={busyId === proposal.id} onDecide={onDecide} />)}
+    </div>
+  );
+}
+
+function PendingProposalCards({
+  proposals,
+  busyId,
+  onDecide,
+}: {
+  proposals: ChatProposal[];
+  busyId: string | null;
+  onDecide: (proposalId: string, decision: "approved" | "rejected") => void;
+}) {
+  const pending = proposals.filter((proposal) => proposal.status === "pending").slice(0, 3);
+  if (!pending.length) return null;
+  return (
+    <div className="mt-4 space-y-2">
+      {pending.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} busy={busyId === proposal.id} onDecide={onDecide} />)}
+    </div>
+  );
+}
+
+function ProposalCard({
+  proposal,
+  busy,
+  onDecide,
+}: {
+  proposal: ChatProposal;
+  busy: boolean;
+  onDecide: (proposalId: string, decision: "approved" | "rejected") => void;
+}) {
+  const canDecide = proposal.status === "pending";
+  return (
+    <div className="rounded-lg border border-[#b9f42e]/20 bg-[#10140a] p-3 text-left">
+      <div className="flex items-start gap-2">
+        <WandSparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#b9f42e]" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[12px] font-semibold text-zinc-100">{proposal.title}</p>
+          {proposal.summary && <p className="mt-1 text-[11px] leading-5 text-zinc-400">{proposal.summary}</p>}
+          <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
+            <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-zinc-400">{proposal.action_type.replaceAll("_", " ")}</span>
+            <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-zinc-400">{proposal.status}</span>
+            {proposal.estimated_credits > 0 && <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-zinc-400">{proposal.estimated_credits} credits</span>}
+          </div>
+        </div>
+      </div>
+      {canDecide && (
+        <div className="mt-3 flex gap-2">
+          <button type="button" disabled={busy} onClick={() => onDecide(proposal.id, "approved")} className="rounded-md bg-[#b9f42e] px-3 py-1.5 text-[11px] font-semibold text-black disabled:opacity-50">
+            {busy ? "Working..." : "Approve"}
+          </button>
+          <button type="button" disabled={busy} onClick={() => onDecide(proposal.id, "rejected")} className="rounded-md border border-white/[0.08] px-3 py-1.5 text-[11px] font-semibold text-zinc-300 disabled:opacity-50">
+            Reject
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FrameSlot({ label, value, onAdd, onClear }: { label: string; value: string | null; onAdd: () => void; onClear: () => void }) {
   return (
     <div>
@@ -3981,24 +4201,22 @@ function Preview({
   );
 }
 function ResolvedMedia({ src, type, className }: { src: string; type: "image" | "video"; className?: string }) {
-  const [url, setUrl] = useState(src.startsWith("http") ? src : "");
+  const directUrl = src.startsWith("http") ? src : "";
+  const [signedUrl, setSignedUrl] = useState("");
   useEffect(() => {
     let active = true;
-    if (src.startsWith("http")) {
-      setUrl(src);
-      return;
-    }
-    setUrl("");
+    if (src.startsWith("http")) return;
     createClient()
       .storage.from("creator-studio-media")
       .createSignedUrl(src, 3600)
       .then(({ data }) => {
-        if (active) setUrl(data?.signedUrl || "");
+        if (active) setSignedUrl(data?.signedUrl || "");
       });
     return () => {
       active = false;
     };
   }, [src]);
+  const url = directUrl || signedUrl;
   if (!url) {
     return <div className={`grid place-items-center text-xs text-zinc-500 ${className || ""}`}>Loading media…</div>;
   }
@@ -4015,8 +4233,25 @@ function Pill({ children }: { children: React.ReactNode }) {
   );
 }
 function parseScript(value: unknown) {
-  if (value && typeof value === "object" && !Array.isArray(value))
-    return { ...blankScript, ...(value as typeof blankScript) };
-  if (typeof value === "string") return { ...blankScript, overview: value };
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const script = { ...blankScript, ...(value as typeof blankScript) };
+    if (!script.body && script.scenes.length) {
+      script.body = script.scenes
+        .map((scene) =>
+          [
+            scene.heading,
+            scene.timing,
+            scene.direction,
+            scene.framing,
+            scene.continuity,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        )
+        .join("\n\n");
+    }
+    return script;
+  }
+  if (typeof value === "string") return { ...blankScript, body: value };
   return blankScript;
 }

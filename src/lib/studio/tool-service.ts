@@ -4,7 +4,7 @@ import type { AuthenticatedProjectContext } from "./server-context"
 import { directorTools, type DirectorToolName } from "./tool-registry"
 
 export const toolRequestSchema = z.object({
-  tool: z.enum(["inspect_current_project", "update_creative_brief", "create_series", "write_series_bible", "create_production_entity", "record_continuity_fact", "inspect_continuity", "estimate_generation_cost", "submit_generation", "create_revision_request"]),
+  tool: z.enum(["inspect_current_project", "update_creative_brief", "create_series", "write_series_bible", "create_production_entity", "record_continuity_fact", "inspect_continuity", "estimate_generation_cost", "submit_generation", "update_script", "update_shot", "delete_shot", "update_asset", "attach_media_to_asset", "delete_asset", "attach_media_to_shot", "update_full_auto_mode", "create_revision_request"]),
   input: z.unknown(),
   idempotencyKey: z.string().trim().min(8).max(200),
   sessionId: z.string().uuid().optional(),
@@ -40,15 +40,17 @@ export async function requestDirectorTool(context: AuthenticatedProjectContext, 
   if (executionError) throw executionError
 
   if (tool.requiresApproval) {
+    const proposalCopy = describeProposal(tool.name, input)
     const { data: proposal, error } = await context.supabase.from("creator_action_proposals").insert({
       project_id: context.project.id,
       user_id: context.user.id,
       tool_execution_id: executionId,
       action_type: tool.name,
-      title: tool.name === "update_creative_brief" ? "Update the creative brief" : `Approve ${tool.name}`,
-      summary: "Review this proposed project change before it is applied.",
+      title: proposalCopy.title,
+      summary: proposalCopy.summary,
       payload: input,
-      estimated_credits: 0,
+      estimated_credits: proposalCopy.estimatedCredits,
+      affected_entities: proposalCopy.affectedEntities,
       expires_at: new Date(Date.now() + 86_400_000).toISOString(),
     }).select("*").single()
     if (error) throw error
@@ -66,6 +68,42 @@ export async function requestDirectorTool(context: AuthenticatedProjectContext, 
     const detail = { message: error instanceof Error ? error.message : "Tool failed" }
     await context.supabase.rpc("creator_finish_tool_execution", { p_execution_id: executionId, p_status: "failed", p_output: null, p_error: detail })
     throw error
+  }
+}
+
+function describeProposal(toolName: string, input: unknown) {
+  const payload = input && typeof input === "object" ? input as Record<string, unknown> : {}
+  if (toolName === "submit_generation") {
+    const request = payload.request && typeof payload.request === "object" ? payload.request as { type?: unknown; shotIds?: unknown } : {}
+    const shotIds = Array.isArray(request.shotIds) ? request.shotIds : []
+    return {
+      title: request.type === "video" ? "Generate storyboard video" : "Generate storyboard image",
+      summary: `Review ${shotIds.length || 1} ${request.type === "video" ? "video" : "image"} generation job${shotIds.length === 1 ? "" : "s"} before credits are reserved.`,
+      estimatedCredits: 0,
+      affectedEntities: shotIds.map((id) => ({ type: "shot", id })),
+    }
+  }
+  const titles: Record<string, string> = {
+    update_creative_brief: "Update the creative brief",
+    create_series: "Create series",
+    write_series_bible: "Write series bible",
+    create_production_entity: "Create asset",
+    record_continuity_fact: "Record continuity fact",
+    update_script: "Update saved script",
+    update_shot: "Update storyboard shot",
+    delete_shot: "Delete storyboard shot",
+    update_asset: "Update asset",
+    attach_media_to_asset: "Attach uploaded media to asset",
+    delete_asset: "Delete asset",
+    attach_media_to_shot: "Attach uploaded media to storyboard shot",
+    update_full_auto_mode: "Update full-auto mode",
+    create_revision_request: "Create revision request",
+  }
+  return {
+    title: titles[toolName] || `Approve ${toolName}`,
+    summary: toolName.includes("delete") ? "This will remove saved project content after approval." : "Review this proposed project change before it is applied.",
+    estimatedCredits: 0,
+    affectedEntities: [],
   }
 }
 

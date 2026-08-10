@@ -110,9 +110,8 @@ export default function StudioHome() {
       )
       .catch(() => setProductionModesEnabled(false));
   }, []);
-  const create = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!prompt.trim()) return;
+  const createProject = async (projectPrompt: string) => {
+    const cleanPrompt = projectPrompt.trim() || "Untitled production";
     setCreating(true);
     setError("");
     try {
@@ -128,14 +127,14 @@ export default function StudioHome() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: prompt.trim().slice(0, 65),
-          description: prompt.trim(),
+          name: cleanPrompt.slice(0, 65),
+          description: cleanPrompt,
           ...modeFields,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      window.location.href = `/studio/project/${data.project.id}`;
+      window.location.href = `/studio/project/${data.project.id}?openSettings=1`;
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -144,6 +143,11 @@ export default function StudioHome() {
       );
       setCreating(false);
     }
+  };
+  const create = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!prompt.trim()) return;
+    await createProject(prompt);
   };
   return (
     <main className="min-h-screen bg-[#070807] text-[#f5f2e5]">
@@ -227,13 +231,14 @@ export default function StudioHome() {
               <div id="projects" className="flex gap-4 overflow-x-auto pb-3">
                 <button
                   type="button"
-                  onClick={focusComposer}
-                  className="flex h-44 w-64 shrink-0 flex-col items-center justify-center rounded-xl border border-dashed border-[#b9f42e]/60 bg-[#202119] text-[#b9f42e] transition hover:bg-[#292b20]"
+                  onClick={() => createProject("Untitled production")}
+                  disabled={creating}
+                  className="flex h-44 w-64 shrink-0 flex-col items-center justify-center rounded-xl border border-dashed border-[#b9f42e]/60 bg-[#202119] text-[#b9f42e] transition hover:bg-[#292b20] disabled:cursor-wait disabled:opacity-60"
                 >
                   <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[#b9f42e]/15">
-                    <Plus />
+                    {creating ? <Loader2 className="animate-spin" /> : <Plus />}
                   </span>
-                  <span className="font-semibold">New project</span>
+                  <span className="font-semibold">{creating ? "Creating..." : "New project"}</span>
                 </button>
                 {projects.map((project) => (
                   <Link

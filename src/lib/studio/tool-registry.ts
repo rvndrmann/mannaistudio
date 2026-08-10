@@ -174,6 +174,213 @@ export const submitGenerationTool = defineDirectorTool({
   },
 })
 
+export const updateScriptTool = defineDirectorTool({
+  name: "update_script",
+  version: 1,
+  risk: "write",
+  requiresApproval: true,
+  input: z.object({
+    episodeId: z.string().uuid(),
+    content: z.unknown(),
+    summary: z.string().trim().min(1).max(500).default("Update script from AI Director chat"),
+  }).strict(),
+  async execute(context, input) {
+    const { data, error } = await context.supabase
+      .from("creator_episodes")
+      .update({ script_content: input.content, script_updated_at: new Date().toISOString() })
+      .eq("id", input.episodeId)
+      .eq("project_id", context.project.id)
+      .select("*")
+      .single()
+    if (error) throw error
+    return data
+  },
+})
+
+export const updateShotTool = defineDirectorTool({
+  name: "update_shot",
+  version: 1,
+  risk: "write",
+  requiresApproval: true,
+  input: z.object({
+    shotId: z.string().uuid(),
+    patch: z.object({
+      title: z.string().trim().min(1).max(200).optional(),
+      description: z.string().trim().max(5_000).nullable().optional(),
+      script_text: z.string().trim().max(10_000).nullable().optional(),
+      prompt: z.string().trim().max(20_000).nullable().optional(),
+      duration_seconds: z.number().positive().max(120).optional(),
+      aspect_ratio: z.string().trim().max(20).optional(),
+      resolution: z.string().trim().max(20).optional(),
+      style: z.string().trim().max(200).optional(),
+      keyframe_image: z.string().trim().max(2_000).nullable().optional(),
+      video_url: z.string().trim().max(2_000).nullable().optional(),
+    }).strict(),
+  }).strict(),
+  async execute(context, input) {
+    const { data: episodes, error: episodeError } = await context.supabase.from("creator_episodes").select("id").eq("project_id", context.project.id)
+    if (episodeError) throw episodeError
+    const episodeIds = (episodes ?? []).map((episode) => episode.id)
+    const { data, error } = await context.supabase
+      .from("creator_shots")
+      .update(input.patch)
+      .eq("id", input.shotId)
+      .in("episode_id", episodeIds.length ? episodeIds : ["00000000-0000-0000-0000-000000000000"])
+      .select("*")
+      .single()
+    if (error) throw error
+    return data
+  },
+})
+
+export const deleteShotTool = defineDirectorTool({
+  name: "delete_shot",
+  version: 1,
+  risk: "destructive",
+  requiresApproval: true,
+  input: z.object({ shotId: z.string().uuid() }).strict(),
+  async execute(context, input) {
+    const { data: episodes, error: episodeError } = await context.supabase.from("creator_episodes").select("id").eq("project_id", context.project.id)
+    if (episodeError) throw episodeError
+    const episodeIds = (episodes ?? []).map((episode) => episode.id)
+    const { data, error } = await context.supabase
+      .from("creator_shots")
+      .delete()
+      .eq("id", input.shotId)
+      .in("episode_id", episodeIds.length ? episodeIds : ["00000000-0000-0000-0000-000000000000"])
+      .select("id,title")
+      .single()
+    if (error) throw error
+    return data
+  },
+})
+
+export const updateAssetTool = defineDirectorTool({
+  name: "update_asset",
+  version: 1,
+  risk: "write",
+  requiresApproval: true,
+  input: z.object({
+    assetId: z.string().uuid(),
+    patch: z.object({
+      name: z.string().trim().min(1).max(200).optional(),
+      description: z.string().trim().max(10_000).nullable().optional(),
+      status: z.string().trim().max(80).optional(),
+      voice_id: z.string().trim().max(200).nullable().optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
+    }).strict(),
+  }).strict(),
+  async execute(context, input) {
+    const { data, error } = await context.supabase
+      .from("creator_entities")
+      .update(input.patch)
+      .eq("id", input.assetId)
+      .eq("project_id", context.project.id)
+      .select("*")
+      .single()
+    if (error) throw error
+    return data
+  },
+})
+
+export const attachMediaToAssetTool = defineDirectorTool({
+  name: "attach_media_to_asset",
+  version: 1,
+  risk: "write",
+  requiresApproval: true,
+  input: z.object({ assetId: z.string().uuid(), storagePath: z.string().trim().min(1).max(2_000) }).strict(),
+  async execute(context, input) {
+    const { data: asset, error: readError } = await context.supabase.from("creator_entities").select("reference_images,metadata").eq("id", input.assetId).eq("project_id", context.project.id).single()
+    if (readError) throw readError
+    const referenceImages = Array.from(new Set([...(asset.reference_images || []), input.storagePath]))
+    const { data, error } = await context.supabase.from("creator_entities").update({
+      reference_images: referenceImages,
+      metadata: { ...((asset.metadata as Record<string, unknown>) || {}), last_chat_reference: input.storagePath },
+    }).eq("id", input.assetId).eq("project_id", context.project.id).select("*").single()
+    if (error) throw error
+    return data
+  },
+})
+
+export const deleteAssetTool = defineDirectorTool({
+  name: "delete_asset",
+  version: 1,
+  risk: "destructive",
+  requiresApproval: true,
+  input: z.object({ assetId: z.string().uuid() }).strict(),
+  async execute(context, input) {
+    const { data, error } = await context.supabase
+      .from("creator_entities")
+      .delete()
+      .eq("id", input.assetId)
+      .eq("project_id", context.project.id)
+      .select("id,name,type")
+      .single()
+    if (error) throw error
+    return data
+  },
+})
+
+export const attachMediaToShotTool = defineDirectorTool({
+  name: "attach_media_to_shot",
+  version: 1,
+  risk: "write",
+  requiresApproval: true,
+  input: z.object({ shotId: z.string().uuid(), storagePath: z.string().trim().min(1).max(2_000), mediaType: z.enum(["image", "video", "audio"]).default("image") }).strict(),
+  async execute(context, input) {
+    const { data: episodes, error: episodeError } = await context.supabase.from("creator_episodes").select("id").eq("project_id", context.project.id)
+    if (episodeError) throw episodeError
+    const episodeIds = (episodes ?? []).map((episode) => episode.id)
+    const updates: Record<string, unknown> = input.mediaType === "video"
+      ? { video_url: input.storagePath, video_status: "completed" }
+      : input.mediaType === "image"
+        ? { keyframe_image: input.storagePath }
+        : { metadata: { audio_reference: input.storagePath } }
+    const { data, error } = await context.supabase.from("creator_shots")
+      .update(updates)
+      .eq("id", input.shotId)
+      .in("episode_id", episodeIds.length ? episodeIds : ["00000000-0000-0000-0000-000000000000"])
+      .select("*")
+      .single()
+    if (error) throw error
+    return data
+  },
+})
+
+export const updateFullAutoModeTool = defineDirectorTool({
+  name: "update_full_auto_mode",
+  version: 1,
+  risk: "write",
+  requiresApproval: true,
+  input: z.object({
+    enabled: z.boolean(),
+    creditCap: z.number().int().positive().max(100_000).default(500),
+    maxJobsPerRun: z.number().int().positive().max(100).default(10),
+    allowDestructiveActions: z.boolean().default(false),
+  }).strict(),
+  async execute(context, input) {
+    const metadata = {
+      ...((context.project.metadata as Record<string, unknown> | undefined) ?? {}),
+      ai_director_full_auto: {
+        enabled: input.enabled,
+        credit_cap: input.creditCap,
+        max_jobs_per_run: input.maxJobsPerRun,
+        allow_destructive_actions: input.allowDestructiveActions,
+        updated_at: new Date().toISOString(),
+      },
+    }
+    const { data, error } = await context.supabase
+      .from("creator_projects")
+      .update({ metadata })
+      .eq("id", context.project.id)
+      .eq("user_id", context.user.id)
+      .select("id,metadata")
+      .single()
+    if (error) throw error
+    return data
+  },
+})
+
 export const createRevisionRequestTool = defineDirectorTool({
   name: "create_revision_request",
   version: 1,
@@ -197,6 +404,14 @@ export const directorTools = {
   inspect_continuity: inspectContinuityTool,
   estimate_generation_cost: estimateGenerationCostTool,
   submit_generation: submitGenerationTool,
+  update_script: updateScriptTool,
+  update_shot: updateShotTool,
+  delete_shot: deleteShotTool,
+  update_asset: updateAssetTool,
+  attach_media_to_asset: attachMediaToAssetTool,
+  delete_asset: deleteAssetTool,
+  attach_media_to_shot: attachMediaToShotTool,
+  update_full_auto_mode: updateFullAutoModeTool,
   create_revision_request: createRevisionRequestTool,
 } as const
 

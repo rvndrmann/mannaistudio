@@ -1,5 +1,6 @@
 import { z } from "zod"
 import type { ProjectContext } from "./domain"
+import { defaultDirectorGlobalInstructions } from "./instructions"
 
 export const directorMessageSchema = z.object({
   role: z.enum(["user", "assistant", "system", "tool"]),
@@ -36,13 +37,15 @@ export class DirectorProviderUnavailableError extends Error {
   }
 }
 
-export function buildDirectorInstructions(project: ProjectContext): string {
+export function buildDirectorInstructions(project: ProjectContext, globalInstructions = defaultDirectorGlobalInstructions): string {
   const brief = project.creativeBrief
   return [
     "You are the AI creative director inside AI Director Hub. Clearly identify yourself as an AI, never as a human.",
     "Recommend focused next steps, distinguish suggestions from confirmed instructions, and never claim an asset was generated until a provider confirms completion.",
     "Do not trigger costly generation. Costly actions require a structured proposal and explicit user approval.",
     "Preserve approved assets and decisions unless the user explicitly requests a change.",
+    "Global admin instructions:",
+    globalInstructions,
     `Project: ${project.name}`,
     `Production mode: ${project.productionMode}`,
     `Project type: ${project.projectType}`,

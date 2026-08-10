@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { fetchStudioFeatureFlags } from "@/lib/studio/feature-flags"
+import { fetchDirectorWorkflows } from "@/lib/studio/workflows"
 
 async function ownedProject(projectId: string) {
   const supabase = await createClient(); const { data: { user } } = await supabase.auth.getUser(); if (!user) throw new Error("Unauthorized")
@@ -12,9 +13,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try { const { projectId } = await params; const { supabase, user, project } = await ownedProject(projectId)
     const { data: episodes } = await supabase.from("creator_episodes").select("*").eq("project_id", projectId).order("order_index")
     const requestedEpisodeId = request.nextUrl.searchParams.get("episodeId"); const activeEpisode = episodes?.find((episode) => episode.id === requestedEpisodeId) || episodes?.[0]; if (!activeEpisode) return NextResponse.json({ error: "Project has no episodes" }, { status: 400 })
-    const features = await fetchStudioFeatureFlags(supabase)
-    const [{ data: entities }, { data: shots }, { data: chatSessions }, { data: scriptSuggestions }] = await Promise.all([supabase.from("creator_entities").select("*").eq("project_id", projectId).order("created_at"), supabase.from("creator_shots").select("*").eq("episode_id", activeEpisode.id).order("order_index"), supabase.from("creator_chat_sessions").select("*").eq("episode_id", activeEpisode.id), supabase.from("creator_script_suggestions").select("*").eq("episode_id", activeEpisode.id).order("created_at", { ascending: false })])
-    const activeSessionId = chatSessions?.[0]?.id; const { data: chatMessages } = activeSessionId ? await supabase.from("creator_chat_messages").select("*").eq("session_id", activeSessionId).order("created_at") : { data: [] }
+    const [features, directorWorkflows] = await Promise.all([fetchStudioFeatureFlags(supabase), fetchDirectorWorkflows(supabase)])
+    const [{ data: entities }, { data: shots }, { data: chatSessions }, { data: scriptSuggestions }] = await Promise.all([supabase.from("creator_entities").select("*").eq("project_id", projectId).order("created_at"), supabase.from("creator_shots").select("*").eq("episode_id", activeEpisode.id).order("order_index"), supabase.from("creator_chat_sessions").select("*").eq("episode_id", activeEpisode.id).eq("user_id", user.id).order("updated_at", { ascending: false }), supabase.from("creator_script_suggestions").select("*").eq("episode_id", activeEpisode.id).order("created_at", { ascending: false })])
+    const requestedSessionId = request.nextUrl.searchParams.get("sessionId")
+    const activeSessionId = chatSessions?.find((session) => session.id === requestedSessionId)?.id || chatSessions?.[0]?.id; const [{ data: chatMessages }, { data: actionProposals }] = await Promise.all([
+      activeSessionId ? supabase.from("creator_chat_messages").select("*").eq("session_id", activeSessionId).order("created_at") : Promise.resolve({ data: [] }),
+      supabase.from("creator_action_proposals").select("*").eq("project_id", projectId).in("status", ["pending", "approved", "rejected", "executed", "failed"]).order("created_at", { ascending: false }).limit(25),
+    ])
     let production = { series: [], scenes: [], referenceAssets: [], continuityIssues: [], revisions: [], generationJobs: [], creditAccount: null } as Record<string, unknown>
     if (features.series_hierarchy_enabled || features.continuity_checks_enabled || features.generation_jobs_enabled) {
       const [{ data: series }, { data: scenes }, { data: referenceAssets }, { data: continuityIssues }, { data: revisions }, { data: generationJobs }, { data: creditAccount }] = await Promise.all([
@@ -28,7 +33,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ])
       production = { series: series || [], scenes: scenes || [], referenceAssets: referenceAssets || [], continuityIssues: continuityIssues || [], revisions: revisions || [], generationJobs: generationJobs || [], creditAccount: creditAccount || null }
     }
-    return NextResponse.json({ project, episodes, activeEpisode, entities: entities || [], shots: shots || [], scriptSuggestions: scriptSuggestions || [], chatSessions: chatSessions || [], activeSessionId, chatMessages: chatMessages || [], userId: user.id, features, production })
+    return NextResponse.json({ project, episodes, activeEpisode, entities: entities || [], shots: shots || [], scriptSuggestions: scriptSuggestions || [], chatSessions: chatSessions || [], activeSessionId, chatMessages: chatMessages || [], actionProposals: actionProposals || [], directorWorkflows, userId: user.id, features, production })
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Could not load project" }, { status: 404 }) }
 }
 

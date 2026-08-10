@@ -23,6 +23,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const { error: sessionError } = await supabase.from("creator_chat_sessions").insert({ episode_id: data.id, user_id: user.id, title: "New Chat" }); if (sessionError) throw sessionError
       return NextResponse.json(data)
     }
+    if (body.action === "createChatSession") {
+      const { data: episode } = await supabase.from("creator_episodes").select("id").eq("id", body.episodeId).eq("project_id", projectId).maybeSingle()
+      if (!episode) return NextResponse.json({ error: "Episode not found" }, { status: 404 })
+      const { data, error } = await supabase.from("creator_chat_sessions").insert({ episode_id: body.episodeId, user_id: user.id, title: body.title || "New Chat", model: body.model || null }).select().single()
+      if (error) throw error
+      return NextResponse.json(data)
+    }
     if (body.action === "createSuggestion") {
       const { data, error } = await supabase.from("creator_script_suggestions").insert({ episode_id: body.episodeId, content: body.content, summary: body.summary || "AI Director draft update" }).select().single(); if (error) throw error; return NextResponse.json(data)
     }
@@ -81,14 +88,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (body.action === "saveProjectSettings") {
       const selectedAspect = body.settings.aspectRatio || body.settings.canvasSpec?.split(" · ")[0] || "9:16"
       const selectedStyle = body.settings.visualStyle || "Realistic - 3D CG"
+      const projectName = typeof body.settings.projectName === "string" ? body.settings.projectName.trim().slice(0, 160) : ""
       const { data: projectRecord } = await supabase.from("creator_projects").select("metadata").eq("id", projectId).single()
       const currentMeta = (projectRecord?.metadata as Record<string, unknown>) || {}
+      const currentEpisodeWorkflows = (currentMeta.episode_workflows as Record<string, unknown> | undefined) || {}
+      const workflowId = typeof body.settings.workflow === "string" ? body.settings.workflow : currentMeta.default_workflow_id
+      const episodeId = typeof body.settings.episodeId === "string" ? body.settings.episodeId : null
+      const workflowApplyMode = body.settings.workflowApplyMode === "episode" ? "episode" : "project_default"
+      const nextEpisodeWorkflows = episodeId ? { ...currentEpisodeWorkflows, [episodeId]: workflowId } : currentEpisodeWorkflows
       const updates = {
+        ...(projectName ? { name: projectName } : {}),
         default_aspect: selectedAspect,
         default_style: selectedStyle,
         metadata: {
           ...currentMeta,
           basic_settings: body.settings,
+          default_workflow_id: workflowApplyMode === "project_default" ? workflowId : currentMeta.default_workflow_id || workflowId,
+          episode_workflows: nextEpisodeWorkflows,
         },
       }
       const { data, error } = await supabase.from("creator_projects").update(updates).eq("id", projectId).select().single()
