@@ -33,6 +33,7 @@ import { defaultSiteFeatures, fetchSiteFeatures, fetchStudioFeatureFlags, studio
 import { defaultDirectorWorkflows, fetchDirectorWorkflows, normalizeDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows"
 import { defaultDirectorGlobalInstructions, normalizeDirectorGlobalInstructions } from "@/lib/studio/instructions"
 import { defaultDirectorRuntimeSettings, fetchDirectorRuntimeSettings, normalizeDirectorRuntimeSettings, specialistInstructionKeys, type DirectorRuntimeSettings } from "@/lib/studio/director-runtime-settings"
+import { defaultDirectorTeam, directorAgentKeys, fetchDirectorTeam, normalizeDirectorTeam, type DirectorTeam } from "@/lib/studio/director-team"
 import BlogManager from "@/components/admin/BlogManager"
 
 type EnrolledStudent = {
@@ -197,6 +198,9 @@ function AdminDashboardContent() {
     const [isSavingDirectorGlobalInstructions, setIsSavingDirectorGlobalInstructions] = useState(false)
     const [directorGlobalInstructionsMessage, setDirectorGlobalInstructionsMessage] = useState("")
     const [directorRuntimeSettings, setDirectorRuntimeSettings] = useState<DirectorRuntimeSettings>(() => structuredClone(defaultDirectorRuntimeSettings))
+    const [directorTeam, setDirectorTeam] = useState<DirectorTeam>(() => structuredClone(defaultDirectorTeam))
+    const [isSavingDirectorTeam, setIsSavingDirectorTeam] = useState(false)
+    const [directorTeamMessage, setDirectorTeamMessage] = useState("")
     const [isSavingDirectorRuntimeSettings, setIsSavingDirectorRuntimeSettings] = useState(false)
     const [directorRuntimeSettingsMessage, setDirectorRuntimeSettingsMessage] = useState("")
     const [studioFeatureFlags, setStudioFeatureFlags] = useState<StudioFeatureFlags>({ ...studioFeatureFlagDefaults })
@@ -451,6 +455,25 @@ function AdminDashboardContent() {
         const supabase = await getServiceRequestClient()
         if (!supabase) return
         setDirectorRuntimeSettings(await fetchDirectorRuntimeSettings(supabase))
+        setDirectorTeam(await fetchDirectorTeam(supabase))
+    }
+
+    const handleSaveDirectorTeam = async () => {
+        setIsSavingDirectorTeam(true)
+        setDirectorTeamMessage("")
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) throw new Error("No Supabase client")
+            const payload = normalizeDirectorTeam(directorTeam)
+            const { data, error } = await supabase.rpc("admin_update_ai_director_team", { p_team: payload })
+            if (error) throw error
+            setDirectorTeam(normalizeDirectorTeam(data))
+            setDirectorTeamMessage("Agent team saved.")
+        } catch (err: any) {
+            setDirectorTeamMessage(`Could not save agent team: ${err.message || "Unknown error"}`)
+        } finally {
+            setIsSavingDirectorTeam(false)
+        }
     }
 
     const loadStudioFeatureFlags = async () => {
@@ -2577,6 +2600,58 @@ function AdminDashboardContent() {
                                         <button type="button" onClick={handleSaveDirectorRuntimeSettings} disabled={isSavingDirectorRuntimeSettings} className="btn-primary flex shrink-0 items-center gap-2 px-5 py-3 disabled:opacity-60">
                                             {isSavingDirectorRuntimeSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                                             {isSavingDirectorRuntimeSettings ? "Saving..." : "Save Orchestration Settings"}
+                                        </button>
+                                    </div>
+
+                                    <div className="border-t border-white/10 pt-6">
+                                        <h3 className="text-sm font-bold text-white">Agent Team</h3>
+                                        <p className="mt-1 text-xs leading-5 text-white/35">Named production agents the Director leads. The skills and instructions of each agent are sent to both the chat and voice Director on every run; workflow steps are attributed to the agent that owns the tool being used.</p>
+                                    </div>
+                                    <div className="space-y-4">
+                                        {directorAgentKeys.map((key) => (
+                                            <div key={key} className={`rounded-2xl border p-5 space-y-3 ${directorTeam[key].enabled ? "border-white/10 bg-black/20" : "border-white/5 bg-black/10 opacity-60"}`}>
+                                                <div className="flex flex-wrap items-center gap-3">
+                                                    <input
+                                                        value={directorTeam[key].name}
+                                                        onChange={(event) => setDirectorTeam((team) => ({ ...team, [key]: { ...team[key], name: event.target.value } }))}
+                                                        className="min-w-[220px] flex-1 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm font-bold text-white outline-none focus:border-primary"
+                                                    />
+                                                    <label className="flex items-center gap-2 text-xs text-white/50">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={directorTeam[key].enabled}
+                                                            onChange={(event) => setDirectorTeam((team) => ({ ...team, [key]: { ...team[key], enabled: event.target.checked } }))}
+                                                            className="h-4 w-4 accent-[#b9f42e]"
+                                                        />
+                                                        Enabled
+                                                    </label>
+                                                </div>
+                                                <label className="block space-y-1.5">
+                                                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Skills</span>
+                                                    <input
+                                                        value={directorTeam[key].skills}
+                                                        onChange={(event) => setDirectorTeam((team) => ({ ...team, [key]: { ...team[key], skills: event.target.value } }))}
+                                                        className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white outline-none focus:border-primary"
+                                                        placeholder="One line describing what this agent is for"
+                                                    />
+                                                </label>
+                                                <label className="block space-y-1.5">
+                                                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Instructions</span>
+                                                    <textarea
+                                                        value={directorTeam[key].instructions}
+                                                        onChange={(event) => setDirectorTeam((team) => ({ ...team, [key]: { ...team[key], instructions: event.target.value } }))}
+                                                        rows={4}
+                                                        className="w-full resize-y rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm leading-6 text-white outline-none focus:border-primary"
+                                                    />
+                                                </label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                        {directorTeamMessage ? <p className="text-sm text-white/50">{directorTeamMessage}</p> : <span />}
+                                        <button type="button" onClick={handleSaveDirectorTeam} disabled={isSavingDirectorTeam} className="btn-primary flex shrink-0 items-center gap-2 px-5 py-3 disabled:opacity-60">
+                                            {isSavingDirectorTeam ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                            {isSavingDirectorTeam ? "Saving..." : "Save Agent Team"}
                                         </button>
                                     </div>
                                 </div>

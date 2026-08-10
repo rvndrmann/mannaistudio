@@ -14,6 +14,7 @@ import { normalizeDirectorGlobalInstructions } from "@/lib/studio/instructions"
 import { runDirectorAgent } from "@/lib/studio/director-agent"
 import { fetchDirectorRuntimeSettings } from "@/lib/studio/director-runtime-settings"
 import { buildEntityMentionContext, type MentionableEntity } from "@/lib/studio/entity-mentions"
+import { collectDirectorVisionAttachments } from "@/lib/studio/director-vision"
 import { buildEntityReferenceImagePrompt, parseBulkEntityImageIntent, projectVisualStyle, visualStyleDirective, type BulkEntityImageIntent } from "@/lib/studio/entity-image-workflow"
 import { createBytePlusAsset } from "@/lib/studio/byteplus"
 import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
@@ -76,7 +77,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { data: instructionSettings } = await context.supabase.from("site_settings").select("value").eq("key", "ai_director_global_instructions").maybeSingle()
     const globalInstructions = normalizeDirectorGlobalInstructions(instructionSettings?.value)
     const runtimeSettings = await fetchDirectorRuntimeSettings(context.supabase)
-    const response = await runDirectorAgent({ context, model, instructions: await buildWorkflowInstructions(context, episode.id, sessionId, buildDirectorInstructions(project, globalInstructions)), messages: selectConversationWindow([...(history || []).filter((item) => item.content).map((item) => ({ role: item.role as "user" | "assistant", content: item.content as string })), { role: "user", content: modelMessage }]), sessionId, idempotencyKey: body.idempotencyKey, runtimeSettings, episodeId: episode.id, objective: modelMessage })
+    const visionAttachments = await collectDirectorVisionAttachments({
+      supabase: context.supabase,
+      projectId,
+      sessionId,
+      episodeId: episode.id,
+      mentionedEntities: (mentionedEntities || []) as MentionableEntity[],
+    })
+    const response = await runDirectorAgent({ context, model, instructions: await buildWorkflowInstructions(context, episode.id, sessionId, buildDirectorInstructions(project, globalInstructions)), messages: selectConversationWindow([...(history || []).filter((item) => item.content).map((item) => ({ role: item.role as "user" | "assistant", content: item.content as string })), { role: "user", content: modelMessage }]), sessionId, idempotencyKey: body.idempotencyKey, runtimeSettings, episodeId: episode.id, objective: modelMessage, visionAttachments })
     const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, role: "assistant", content: response.content, tool_calls: response.toolCalls, suggested_actions: response.suggestedActions, timeline_blocks: response.timeline, timeline_version: 1 }).select().single()
     if (assistantError) throw assistantError
     return NextResponse.json({ sessionId, userMessage, assistantMessage, provider: "openai", model, usage: response.usage })

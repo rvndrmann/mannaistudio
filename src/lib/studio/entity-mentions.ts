@@ -56,9 +56,19 @@ export function insertEntityMention(text: string, entity: MentionableEntity, act
 
 export function buildEntityMentionContext(entities: MentionableEntity[]) {
   if (!entities.length) return ""
+  const withoutArt = entities.filter((entity) => !(entity.reference_images || []).length)
   return [
     "Canonical production entities explicitly mentioned by the user:",
-    ...entities.map((entity) => `- @${entity.name} [${entity.type}] id=${entity.id}${entity.description?.trim() ? `: ${entity.description.trim()}` : ""}`),
+    // Reference-image state is included so the Director can tell finished assets
+    // from empty ones without spending a tool call to find out.
+    ...entities.map((entity) => {
+      const count = (entity.reference_images || []).length
+      const art = count ? `${count} reference image${count === 1 ? "" : "s"} available` : "NO reference image yet"
+      return `- @${entity.name} [${entity.type}] id=${entity.id} (${art})${entity.description?.trim() ? `: ${entity.description.trim()}` : ""}`
+    }),
     "Treat these IDs as authoritative even when similar names or aliases appear elsewhere.",
+    withoutArt.length
+      ? `${withoutArt.map((entity) => `@${entity.name}`).join(", ")} have no reference image, so nothing visual is locked in for them yet. Offer to generate one before using them in a shot.`
+      : "Every mentioned entity already has reference art. Reuse it for visual consistency instead of inventing a new look.",
   ].join("\n")
 }

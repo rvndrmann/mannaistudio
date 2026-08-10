@@ -5,6 +5,8 @@ import { requestDirectorTool } from "./tool-service"
 import type { AuthenticatedProjectContext } from "./server-context"
 import type { DirectorTimelineBlock } from "./timeline"
 import { defaultDirectorRuntimeSettings, runtimeInstructions, type DirectorRuntimeSettings, type SpecialistInstructionKey } from "./director-runtime-settings"
+import { buildVisionUserContent, type DirectorVisionAttachment } from "./director-vision"
+import { agentForTool, fetchDirectorTeam, teamInstructions, type DirectorTeam } from "./director-team"
 import { addWorkflowStep, createWorkflowRun, finishWorkflowRun } from "./workflow-runs"
 import { directorRecovery } from "./recovery"
 
@@ -55,11 +57,23 @@ export async function runDirectorAgent(input: {
   runtimeSettings?: DirectorRuntimeSettings
   episodeId?: string
   objective: string
+  visionAttachments?: DirectorVisionAttachment[]
+  team?: DirectorTeam
 }) {
   const runtimeSettings = input.runtimeSettings || defaultDirectorRuntimeSettings
   const items: Array<Record<string, unknown>> = input.messages
     .filter((message) => message.role === "user" || message.role === "assistant")
     .map((message) => ({ role: message.role, content: message.content }))
+  // Attach workspace images to the latest user turn so the Director looks at the
+  // references instead of reasoning from storage paths it cannot open.
+  const attachments = input.visionAttachments || []
+  if (attachments.length) {
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      if (items[index].role !== "user") continue
+      items[index] = { role: "user", content: buildVisionUserContent(String(items[index].content ?? ""), attachments) }
+      break
+    }
+  }
   const timeline: DirectorTimelineBlock[] = []
   const suggestedActions: Array<Record<string, unknown>> = []
   const toolCalls: Array<Record<string, unknown>> = []
@@ -72,6 +86,11 @@ export async function runDirectorAgent(input: {
   let stepSequence = 0
   let reachedStepLimit = false
   const activeSpecialists = selectSpecialists(input.objective)
+  // The agent team travels on every run. Regex specialist selection only decides
+  // which legacy specialist notes are appended; the team block is complete, so
+  // agent guidance no longer depends on which words the user happened to use.
+  const team = input.team || await fetchDirectorTeam(input.context.supabase)
+  const teamBlock = teamInstructions(team)
 
   for (let step = 0; step < runtimeSettings.maxToolSteps; step += 1) {
     let turn: Awaited<ReturnType<typeof createDirectorToolTurn>>
@@ -79,7 +98,7 @@ export async function runDirectorAgent(input: {
       turn = await createDirectorToolTurn({
         userId: input.context.user.id,
         model: input.model,
-        instructions: `${input.instructions}\nCurrent episode ID: ${input.episodeId || "No episode selected"}\nCurrent project ID: ${input.context.project.id}\nExecutable workspace proposals must be created by calling the appropriate tool; never represent an executable proposal only as assistant text. Tool calls that require approval create the UI approval card and do not apply the change until the user approves it.\n\n${runtimeInstructions(runtimeSettings, activeSpecialists)}`,
+        instructions: `${input.instructions}\nCurrent episode ID: ${input.episodeId || "No episode selected"}\nCurrent project ID: ${input.context.project.id}\nExecutable workspace proposals must be created by calling the appropriate tool; never represent an executable proposal only as assistant text. Tool calls that require approval create the UI approval card and do not apply the change until the user approves it.\n\n${teamBlock}\n\n${runtimeInstructions(runtimeSettings, activeSpecialists)}`,
         items,
         tools: directorFunctionDefinitions(),
       })
@@ -170,10 +189,7 @@ function buildNextActions(input: { finalStatus: string; toolCalls: Array<Record<
 }
 
 function specialistForTool(name: string) {
-  if (name.includes("script")) return "script"
-  if (name.includes("asset") || name.includes("entit")) return "entities"
-  if (name.includes("shot")) return "storyboard"
-  if (name.includes("generation") || name.includes("media")) return "visuals"
-  if (name.includes("continuity") || name.includes("revision")) return "continuity"
-  return "orchestrator"
+  // Workflow steps are attributed to the owning team agent, so the timeline
+  // shows which agent performed the work rather than a substring guess.
+  return agentForTool(name) ?? "orchestrator"
 }

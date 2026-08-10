@@ -29,7 +29,16 @@ describe("entity mentions", () => {
     })
   })
 
-  it("builds authoritative model context from selected entities", () => {
-    expect(buildEntityMentionContext([entities[0]])).toContain(`@Maya [character] id=${entities[0].id}: Lead detective`)
+  it("builds authoritative model context including reference art status", () => {
+    const context = buildEntityMentionContext([entities[0]])
+    expect(context).toContain(`@Maya [character] id=${entities[0].id} (NO reference image yet): Lead detective`)
+    expect(context).toContain("Offer to generate one before using them in a shot")
+  })
+
+  it("reports available art and directs the model to reuse it", () => {
+    const withArt = { ...entities[0], reference_images: ["a.png", "b.png"] }
+    const context = buildEntityMentionContext([withArt])
+    expect(context).toContain("(2 reference images available)")
+    expect(context).toContain("Reuse it for visual consistency")
   })
 })
