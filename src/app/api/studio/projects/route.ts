@@ -3,13 +3,21 @@ import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/service"
 import { createStudioProjectInputSchema, isMissingProductionModeSchema } from "@/lib/studio/domain"
 
-function getDbClient(fallback: any) {
+import { createClient as createSupabaseClient } from "@supabase/supabase-js"
+
+function getDbClient(fallback: any, accessToken?: string) {
   try {
     if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
       return createServiceClient()
     }
   } catch (e) {
     console.warn("Could not instantiate service client:", e)
+  }
+  if (accessToken && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${accessToken}` } },
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
   }
   return fallback
 }
@@ -18,8 +26,9 @@ async function currentUser() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error("Unauthorized")
+  const { data: { session } } = await supabase.auth.getSession()
+  const db = getDbClient(supabase, session?.access_token)
   try {
-    const db = getDbClient(supabase)
     await db.from("profiles").upsert(
       { id: user.id, full_name: user.user_metadata?.full_name || "Creator", avatar_url: user.user_metadata?.avatar_url || "", email: user.email || "" },
       { onConflict: "id" }
@@ -27,7 +36,7 @@ async function currentUser() {
   } catch (err) {
     console.warn("Could not upsert profile during project creation:", err)
   }
-  return { supabase, user }
+  return { supabase, user, db }
 }
 
 function extractErrorMessage(err: unknown): string {
@@ -98,7 +107,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { supabase, user } = await currentUser()
+    const { supabase, user, db } = await currentUser()
     const rawBody = await request.json().catch(() => ({}))
     const parsed = createStudioProjectInputSchema.safeParse(rawBody)
     if (!parsed.success) {
@@ -107,8 +116,6 @@ export async function POST(request: NextRequest) {
     const body = parsed.data
     const optionalMode = body.production_mode ? { production_mode: body.production_mode, project_type: body.project_type || "unspecified" } : {}
     const baseProject = { user_id: user.id, name: body.name, description: body.description || null, cover_image: body.cover_image || null }
-
-    const db = getDbClient(supabase)
 
     let { data: project, error } = await db.from("creator_projects").insert({ ...baseProject, ...optionalMode }).select().single()
     let compatibilityWarning: string | null = null

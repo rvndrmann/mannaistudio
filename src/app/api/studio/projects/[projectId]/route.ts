@@ -1,14 +1,36 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { createServiceClient } from "@/lib/supabase/service"
 import { fetchStudioFeatureFlags } from "@/lib/studio/feature-flags"
 import { fetchDirectorWorkflows } from "@/lib/studio/workflows"
 
+import { createClient as createSupabaseClient } from "@supabase/supabase-js"
+
+function getDbClient(fallback: any, accessToken?: string) {
+  try {
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return createServiceClient()
+    }
+  } catch (e) {
+    console.warn("Could not instantiate service client:", e)
+  }
+  if (accessToken && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${accessToken}` } },
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+  }
+  return fallback
+}
+
 async function ownedProject(projectId: string) {
   const supabase = await createClient(); const { data: { user } } = await supabase.auth.getUser(); if (!user) throw new Error("Unauthorized")
+  const { data: { session } } = await supabase.auth.getSession()
+  const db = getDbClient(supabase, session?.access_token)
   // RLS grants this row to the owner and to shared team members; an explicit
   // owner filter here would hide projects that were shared with the caller.
-  const { data: project, error } = await supabase.from("creator_projects").select("*").eq("id", projectId).single(); if (error || !project) throw new Error("Project not found")
-  return { supabase, user, project }
+  const { data: project, error } = await db.from("creator_projects").select("*").eq("id", projectId).single(); if (error || !project) throw new Error("Project not found")
+  return { supabase, user, project, db }
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
@@ -22,9 +44,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       activeSessionId ? supabase.from("creator_chat_messages").select("*").eq("session_id", activeSessionId).order("created_at") : Promise.resolve({ data: [] }),
       supabase.from("creator_action_proposals").select("*, creator_tool_executions(session_id)").eq("project_id", projectId).in("status", ["pending", "approved", "rejected", "executed", "failed"]).order("created_at", { ascending: false }).limit(25),
     ])
-    // Proposals are project-scoped rows, but they belong to the chat session that
-    // produced them. Surface that session so a new chat does not inherit pending
-    // approval cards from an earlier conversation.
     const scopedProposals = (actionProposals || []).map((proposal) => {
       const execution = proposal.creator_tool_executions as { session_id?: string | null } | null
       const { creator_tool_executions: _execution, ...rest } = proposal
@@ -49,12 +68,42 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
-  try { const { projectId } = await params; const { supabase, project } = await ownedProject(projectId); const body = await request.json(); const updates: Record<string, string | null> = {}; for (const key of ["name", "description", "cover_image"]) if (body[key] !== undefined) updates[key] = body[key]
-    const { data, error } = await supabase.from("creator_projects").update(updates).eq("id", project.id).select().single(); if (error) throw error; return NextResponse.json(data)
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Could not update base" }, { status: 400 }) }
+  try {
+    const { projectId } = await params;
+    const { supabase, project } = await ownedProject(projectId);
+    const body = await request.json();
+    const updates: Record<string, string | null> = {};
+    for (const key of ["name", "description", "cover_image"]) if (body[key] !== undefined) updates[key] = body[key];
+    const db = getDbClient(supabase);
+    const { data, error } = await db.from("creator_projects").update(updates).eq("id", project.id).select().single();
+    if (error) throw error;
+    return NextResponse.json(data);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not update project" }, { status: 400 });
+  }
 }
 
 export async function DELETE(_: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
-  try { const { projectId } = await params; const { supabase, project } = await ownedProject(projectId); const { error } = await supabase.from("creator_projects").delete().eq("id", project.id); if (error) throw error; return NextResponse.json({ success: true })
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Could not delete base" }, { status: 400 }) }
+  try {
+    const { projectId } = await params;
+    const { supabase, project } = await ownedProject(projectId);
+    const db = getDbClient(supabase);
+
+    // Delete associated child records before deleting the project
+    await Promise.allSettled([
+      db.from("creator_shots").delete().eq("project_id", projectId),
+      db.from("creator_entities").delete().eq("project_id", projectId),
+      db.from("creator_episodes").delete().eq("project_id", projectId),
+      db.from("creator_chat_sessions").delete().eq("project_id", projectId),
+      db.from("creator_action_proposals").delete().eq("project_id", projectId),
+      db.from("creator_workflow_runs").delete().eq("project_id", projectId),
+      db.from("creator_generation_jobs").delete().eq("project_id", projectId),
+    ]);
+
+    const { error } = await db.from("creator_projects").delete().eq("id", project.id);
+    if (error) throw error;
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not delete project" }, { status: 400 });
+  }
 }
