@@ -51,6 +51,54 @@ export const readEpisodeScriptTool = defineDirectorTool({
   },
 })
 
+/**
+ * The prompt sheet is written in one pass for the whole script and then read
+ * back by the agents that build art and shots, so the plan the user reviewed is
+ * the plan that gets generated.
+ */
+export const saveScriptPromptsTool = defineDirectorTool({
+  name: "save_script_prompts",
+  version: 1,
+  risk: "write",
+  requiresApproval: false,
+  input: z.object({
+    episodeId: z.string().uuid(),
+    prompts: z.array(z.object({
+      orderIndex: z.number().int().min(0).max(999).optional(),
+      title: z.string().trim().max(240).default(""),
+      prompt: z.string().trim().min(1).max(4_000),
+      entityNames: z.array(z.string().trim().min(1).max(160)).max(24).default([]),
+      notes: z.string().trim().max(2_000).default(""),
+    })).min(1).max(200),
+  }).strict(),
+  async execute(context, input) {
+    const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
+    if (!episode) throw new Error("Episode not found in this project")
+    const prompts = input.prompts.map((entry, index) => ({ ...entry, orderIndex: entry.orderIndex ?? index }))
+    const { data, error } = await context.supabase.rpc("save_script_prompt_sheet", { p_episode_id: input.episodeId, p_prompts: prompts })
+    if (error) throw error
+    return { saved: data ?? prompts.length, episodeId: input.episodeId }
+  },
+})
+
+export const readScriptPromptsTool = defineDirectorTool({
+  name: "read_script_prompts",
+  version: 1,
+  risk: "read",
+  requiresApproval: false,
+  input: z.object({ episodeId: z.string().uuid() }).strict(),
+  async execute(context, input) {
+    const { data, error } = await context.supabase
+      .from("creator_script_prompts")
+      .select("id,order_index,title,prompt,entity_names,notes,shot_id")
+      .eq("episode_id", input.episodeId)
+      .eq("project_id", context.project.id)
+      .order("order_index")
+    if (error) throw error
+    return { prompts: data || [], count: (data || []).length }
+  },
+})
+
 export const searchEpisodeScriptTool = defineDirectorTool({
   name: "search_episode_script",
   version: 1,
@@ -601,6 +649,8 @@ export const createRevisionRequestTool = defineDirectorTool({
 export const directorTools = {
   inspect_current_project: inspectCurrentProjectTool,
   read_episode_script: readEpisodeScriptTool,
+  save_script_prompts: saveScriptPromptsTool,
+  read_script_prompts: readScriptPromptsTool,
   search_episode_script: searchEpisodeScriptTool,
   list_production_entities: listProductionEntitiesTool,
   list_storyboard_shots: listStoryboardShotsTool,

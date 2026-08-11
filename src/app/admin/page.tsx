@@ -2609,19 +2609,23 @@ function AdminDashboardContent() {
                                         <p className="mt-1 text-xs leading-5 text-white/35">Named production agents the Director leads. The skills and instructions of each agent are sent to both the chat and voice Director on every run; workflow steps are attributed to the agent that owns the tool being used.</p>
                                     </div>
                                     <div className="space-y-4">
-                                        {directorAgentKeys.map((key) => (
-                                            <div key={key} className={`rounded-2xl border p-5 space-y-3 ${directorTeam[key].enabled ? "border-white/10 bg-black/20" : "border-white/5 bg-black/10 opacity-60"}`}>
+                                        {directorAgentKeys.map((key) => {
+                                            // A team saved before an agent existed has no entry for it; fall
+                                            // back to the default so a new agent cannot blank this screen.
+                                            const agent = directorTeam[key] ?? defaultDirectorTeam[key]
+                                            return (
+                                            <div key={key} className={`rounded-2xl border p-5 space-y-3 ${agent.enabled ? "border-white/10 bg-black/20" : "border-white/5 bg-black/10 opacity-60"}`}>
                                                 <div className="flex flex-wrap items-center gap-3">
                                                     <input
-                                                        value={directorTeam[key].name}
-                                                        onChange={(event) => setDirectorTeam((team) => ({ ...team, [key]: { ...team[key], name: event.target.value } }))}
+                                                        value={agent.name}
+                                                        onChange={(event) => setDirectorTeam((team) => ({ ...team, [key]: { ...(team[key] ?? defaultDirectorTeam[key]), name: event.target.value } }))}
                                                         className="min-w-[220px] flex-1 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm font-bold text-white outline-none focus:border-primary"
                                                     />
                                                     <label className="flex items-center gap-2 text-xs text-white/50">
                                                         <input
                                                             type="checkbox"
-                                                            checked={directorTeam[key].enabled}
-                                                            onChange={(event) => setDirectorTeam((team) => ({ ...team, [key]: { ...team[key], enabled: event.target.checked } }))}
+                                                            checked={agent.enabled}
+                                                            onChange={(event) => setDirectorTeam((team) => ({ ...team, [key]: { ...(team[key] ?? defaultDirectorTeam[key]), enabled: event.target.checked } }))}
                                                             className="h-4 w-4 accent-[#b9f42e]"
                                                         />
                                                         Enabled
@@ -2630,8 +2634,8 @@ function AdminDashboardContent() {
                                                 <label className="block space-y-1.5">
                                                     <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Skills</span>
                                                     <input
-                                                        value={directorTeam[key].skills}
-                                                        onChange={(event) => setDirectorTeam((team) => ({ ...team, [key]: { ...team[key], skills: event.target.value } }))}
+                                                        value={agent.skills}
+                                                        onChange={(event) => setDirectorTeam((team) => ({ ...team, [key]: { ...(team[key] ?? defaultDirectorTeam[key]), skills: event.target.value } }))}
                                                         className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white outline-none focus:border-primary"
                                                         placeholder="One line describing what this agent is for"
                                                     />
@@ -2639,14 +2643,15 @@ function AdminDashboardContent() {
                                                 <label className="block space-y-1.5">
                                                     <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Instructions</span>
                                                     <textarea
-                                                        value={directorTeam[key].instructions}
-                                                        onChange={(event) => setDirectorTeam((team) => ({ ...team, [key]: { ...team[key], instructions: event.target.value } }))}
+                                                        value={agent.instructions}
+                                                        onChange={(event) => setDirectorTeam((team) => ({ ...team, [key]: { ...(team[key] ?? defaultDirectorTeam[key]), instructions: event.target.value } }))}
                                                         rows={4}
                                                         className="w-full resize-y rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm leading-6 text-white outline-none focus:border-primary"
                                                     />
                                                 </label>
                                             </div>
-                                        ))}
+                                            )
+                                        })}
                                     </div>
                                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                         {directorTeamMessage ? <p className="text-sm text-white/50">{directorTeamMessage}</p> : <span />}

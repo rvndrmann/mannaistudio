@@ -9,8 +9,15 @@ import type { DirectorToolName } from "./tool-registry"
  * being called, not on keyword matching against the user's message.
  */
 
-export const directorAgentKeys = ["character_asset", "storyboard", "video_prompt", "script", "continuity"] as const
+export const directorAgentKeys = ["script", "prompt", "character_asset", "storyboard", "video_prompt", "continuity"] as const
 export type DirectorAgentKey = (typeof directorAgentKeys)[number]
+
+/**
+ * The production pipeline, in the order work is handed off. The orchestrator
+ * follows this chain so a request that arrives mid-pipeline still knows what
+ * must already exist upstream.
+ */
+export const directorPipeline: DirectorAgentKey[] = ["script", "prompt", "character_asset", "storyboard"]
 
 export const directorAgentSchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -22,27 +29,34 @@ export const directorAgentSchema = z.object({
 export type DirectorAgent = z.infer<typeof directorAgentSchema>
 
 export const directorTeamSchema = z.object({
+  script: directorAgentSchema,
+  prompt: directorAgentSchema,
   character_asset: directorAgentSchema,
   storyboard: directorAgentSchema,
   video_prompt: directorAgentSchema,
-  script: directorAgentSchema,
   continuity: directorAgentSchema,
 }).strict()
 
 export type DirectorTeam = z.infer<typeof directorTeamSchema>
 
 export const defaultDirectorTeam: DirectorTeam = {
+  prompt: {
+    name: "Prompt Agent",
+    enabled: true,
+    skills: "Turns the saved script into the project's prompt sheet: one saved, editable prompt per shot for the whole script.",
+    instructions: "You read the whole saved script and write the prompt sheet the rest of the team builds from, before any image or video is generated. Cover the entire script in one pass rather than a shot at a time, in story order. Each entry describes one continuous action and names the characters, locations, and props it needs by their canonical entity names, so downstream agents can resolve them to reference art. Save every prompt with save_script_prompts so it persists and stays editable; treat a saved prompt as the source of truth and revise it in place instead of inventing a new one at generation time. Keep every prompt inside the project's style and aspect ratio.",
+  },
   character_asset: {
     name: "Character & Asset Agent",
     enabled: true,
     skills: "Creates and maintains characters, locations, props, and their reference art.",
-    instructions: "You own the production entity library. Inspect existing entities before creating new ones and never create duplicates. Every character, location, and prop needs a canonical description strong enough to drive image generation. When an entity has no reference image, propose generating one before it is used in any shot. When reference art exists, treat it as the locked visual identity: reuse it, never contradict it.",
+    instructions: "You own the production entity library and build the art the rest of the pipeline references. Read the prompt sheet to learn which entities the script actually needs, then inspect existing entities before creating any so you never duplicate one. Every character, location, and prop needs a canonical description strong enough to drive image generation. Characters and props are rendered on a plain, uncluttered background so the subject reads as a clean reusable reference, never as a scene. Locations are rendered as an empty establishing plate of the place itself, without featuring any of the project's named characters. When an entity has no reference image, generate one before it is used in a shot. When reference art exists it is the locked visual identity: reuse it and never contradict it.",
   },
   storyboard: {
     name: "Storyboard Agent",
     enabled: true,
-    skills: "Builds and orders shots from the saved script, keeps entity references valid.",
-    instructions: "You own the storyboard. Build shots from the saved script in story order, one clear action per shot. Every shot prompt must name the entities that appear via their entity IDs and stay inside the project's aspect ratio and style. Validate entity references before proposing generation, and flag shots whose referenced entities are missing reference art.",
+    skills: "Builds shots from the prompt sheet and attaches only the reference art each shot actually needs.",
+    instructions: "You own the storyboard. Build shots from the saved prompt sheet in story order, one clear action per shot, and use the saved prompt for a shot rather than rewriting it. When generating a shot image, attach as references only the entities that actually appear in that shot: pulling in unrelated characters or props contaminates the frame. Every shot must stay inside the project's aspect ratio and style. Validate entity references before proposing generation and flag any shot whose entities still have no reference art, so the Character & Asset Agent can build it first. Shot video is generated from the prompt sheet entry for that shot, keyed to the approved keyframe so the motion starts from the frame the user already accepted.",
   },
   video_prompt: {
     name: "Video Prompt Agent",
@@ -99,6 +113,8 @@ export const toolAgentOwnership: Partial<Record<DirectorToolName, DirectorAgentK
   submit_generation: "video_prompt",
   estimate_generation_cost: "video_prompt",
   inspect_generation_jobs: "video_prompt",
+  save_script_prompts: "prompt",
+  read_script_prompts: "prompt",
   update_script: "script",
   read_episode_script: "script",
   search_episode_script: "script",
@@ -120,12 +136,20 @@ export function agentForTool(tool: string): DirectorAgentKey | null {
 export function teamInstructions(team: DirectorTeam): string {
   const active = directorAgentKeys.filter((key) => team[key].enabled)
   if (!active.length) return ""
+  const chain = directorPipeline.filter((key) => team[key].enabled).map((key) => team[key].name)
   return [
     "You lead a team of specialist production agents. When work belongs to an agent, act in that agent's role and follow its instructions exactly.",
+    chain.length > 1
+      ? [
+        `Production runs in this order: ${chain.join(" → ")}.`,
+        "Work arrives mid-pipeline all the time. Before acting, check what the stage before yours should already have produced, and if it is missing say so and offer to build it first rather than improvising a substitute.",
+        "When you move between agents, say which agent is taking over and why in one short sentence, using that agent's name.",
+      ].join(" ")
+      : "",
     ...active.map((key) => {
       const agent = team[key]
       return [`## ${agent.name}`, `Skills: ${agent.skills}`, agent.instructions].join("\n")
     }),
     "Disabled agents' duties fall back to you. Never present the team as separate people; they are roles you perform.",
-  ].join("\n\n")
+  ].filter(Boolean).join("\n\n")
 }

@@ -3884,8 +3884,11 @@ function ChatTimelineBlock({ block, onAction, disabled }: { block: DirectorTimel
       <details className={`rounded-lg border ${failed ? "border-red-500/30 bg-red-500/10" : waiting ? "border-amber-400/25 bg-amber-400/[0.07]" : "border-white/[0.08] bg-black/20"}`} open={failed}>
         <summary className="flex cursor-pointer list-none items-center gap-2 p-2.5 text-[12px] font-semibold">
           <span className={`grid h-5 w-5 place-items-center rounded-full text-[10px] ${failed ? "bg-red-500/20 text-red-300" : waiting ? "bg-amber-400/15 text-amber-200" : "bg-emerald-500/15 text-emerald-300"}`}>{failed ? "×" : waiting ? "…" : "✓"}</span>
-          <span>{block.label}</span>
-          <span className="ml-auto text-[9px] uppercase tracking-wider text-zinc-500">{block.status.replaceAll("_", " ")}</span>
+          <span className="min-w-0">
+            {block.agent && <span className="mr-1.5 rounded-full border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#b9f42e]">{block.agent}</span>}
+            {block.label}
+          </span>
+          <span className="ml-auto shrink-0 text-[9px] uppercase tracking-wider text-zinc-500">{block.status.replaceAll("_", " ")}</span>
         </summary>
         {(block.detail || block.error) && <p className={`border-t p-2.5 text-[11px] leading-5 ${failed ? "border-red-500/20 text-red-200" : "border-white/[0.06] text-zinc-400"}`}>{block.error || block.detail}</p>}
       </details>

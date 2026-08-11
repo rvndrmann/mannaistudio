@@ -13,6 +13,8 @@ import { directorRecovery } from "./recovery"
 const toolDescriptions: Record<DirectorToolName, string> = {
   inspect_current_project: "Read the current project settings and creative brief.",
   read_episode_script: "Read the complete saved script for one episode. Use this when the user refers to the script already added in the Studio.",
+  save_script_prompts: "Save the prompt sheet for the whole script: one prompt per shot, in order. Overwrites the episode's existing sheet",
+  read_script_prompts: "Read the saved prompt sheet for an episode before building shots or generating",
   search_episode_script: "Read a bounded script line range or search it by keyword, character, or scene label.",
   list_production_entities: "List existing production entities with pagination and optional type or name filters. Use before creating entities to avoid duplicates.",
   list_storyboard_shots: "List storyboard shots for an episode with pagination.",
@@ -121,7 +123,11 @@ export async function runDirectorAgent(input: {
         continue
       }
       const label = toolDescriptions[call.name as DirectorToolName].replace(/[.]$/, "")
-      const block: DirectorTimelineBlock = { type: "tool_execution", tool: call.name, label, status: "running" }
+      // Name the agent that owns this tool so a handoff is visible in chat under
+      // whatever the admin renamed that agent to.
+      const owningAgent = agentForTool(call.name)
+      const agentName = owningAgent && team[owningAgent].enabled ? team[owningAgent].name : undefined
+      const block: DirectorTimelineBlock = { type: "tool_execution", tool: call.name, label, status: "running", agent: agentName }
       timeline.push(block)
       items.push({ type: "function_call", call_id: call.callId, name: call.name, arguments: JSON.stringify(call.arguments) })
       try {

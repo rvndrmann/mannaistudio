@@ -22,7 +22,7 @@ const timelineMediaSchema = z.object({
 
 export const directorTimelineBlockSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("plan"), title: z.string().max(240), steps: z.array(z.object({ id: z.string().min(1), label: z.string().min(1).max(240), status: timelineStepStatusSchema, detail: z.string().max(2_000).optional() }).strict()).max(50) }).strict(),
-  z.object({ type: z.literal("tool_execution"), executionId: z.string().uuid().optional(), tool: z.string().min(1).max(160), label: z.string().min(1).max(240), status: timelineStepStatusSchema, detail: z.string().max(4_000).optional(), error: z.string().max(4_000).optional() }).strict(),
+  z.object({ type: z.literal("tool_execution"), executionId: z.string().uuid().optional(), tool: z.string().min(1).max(160), label: z.string().min(1).max(240), status: timelineStepStatusSchema, agent: z.string().min(1).max(120).optional(), detail: z.string().max(4_000).optional(), error: z.string().max(4_000).optional() }).strict(),
   z.object({ type: z.literal("proposal"), proposalId: z.string().uuid(), title: z.string().max(240).optional() }).strict(),
   z.object({ type: z.literal("media_result"), media: z.array(timelineMediaSchema).min(1).max(50) }).strict(),
   z.object({ type: z.literal("suggested_actions"), actions: z.array(timelineActionSchema).min(1).max(5) }).strict(),

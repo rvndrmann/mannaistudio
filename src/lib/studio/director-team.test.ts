@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { agentForTool, defaultDirectorTeam, directorAgentKeys, normalizeDirectorTeam, teamInstructions } from "./director-team"
+import { agentForTool, defaultDirectorTeam, directorAgentKeys, directorPipeline, normalizeDirectorTeam, teamInstructions } from "./director-team"
 
 describe("director agent team", () => {
   it("normalizes unknown values to the default team", () => {
@@ -31,5 +31,30 @@ describe("director agent team", () => {
     const partial = teamInstructions(withoutScript)
     expect(partial).not.toContain(defaultDirectorTeam.script.name)
     expect(partial).toContain(defaultDirectorTeam.storyboard.name)
+  })
+
+  it("states the handoff order using the admin's agent names", () => {
+    const team = structuredClone(defaultDirectorTeam)
+    team.prompt.name = "Nexus Prompt Writer"
+    const block = teamInstructions(team)
+    expect(block).toContain("Script Agent → Nexus Prompt Writer → Character & Asset Agent → Storyboard Agent")
+    expect(block).toContain("## Nexus Prompt Writer")
+  })
+
+  it("drops a disabled agent from the pipeline chain", () => {
+    const team = normalizeDirectorTeam({ ...defaultDirectorTeam, character_asset: { ...defaultDirectorTeam.character_asset, enabled: false } })
+    expect(teamInstructions(team)).toContain("Script Agent → Prompt Agent → Storyboard Agent")
+  })
+
+  it("routes prompt sheet tools to the prompt agent", () => {
+    expect(agentForTool("save_script_prompts")).toBe("prompt")
+    expect(agentForTool("read_script_prompts")).toBe("prompt")
+    expect(directorPipeline).toEqual(["script", "prompt", "character_asset", "storyboard"])
+  })
+
+  it("fills in an agent that a saved team predates", () => {
+    const team = normalizeDirectorTeam({ script: { name: "Writer", enabled: true, instructions: "x", skills: "y" } })
+    expect(team.script.name).toBe("Writer")
+    expect(team.prompt).toEqual(defaultDirectorTeam.prompt)
   })
 })
