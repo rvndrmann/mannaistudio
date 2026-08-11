@@ -105,10 +105,10 @@ export default function BillingPage() {
             Launch pricing
           </div>
           <h1 className="mt-8 max-w-5xl text-4xl font-black uppercase leading-tight tracking-tight md:text-6xl">
-            AI Director Hub plans for images, video, storyboard, and full workflow.
+            Hire your AI Director Employee for images, video, storyboard, and full workflow.
           </h1>
           <p className="mt-5 max-w-3xl text-lg font-medium text-white/55">
-            Start with chat. Generate images. Approve videos. Let the AI Director manage script, assets, storyboard, references, and production.
+            Add a dedicated AI Creative Employee to your studio. Let the AI Director manage script writing, asset continuity, storyboard creation, image generation, and video production.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link href="/studio" className="rounded-2xl bg-white px-7 py-4 font-black text-black transition hover:bg-white/90">

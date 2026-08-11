@@ -183,25 +183,24 @@ export default function LandingPage() {
                             <div>
                                 <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-bold uppercase tracking-[.18em] text-primary">
                                     <Sparkles className="h-4 w-4" />
-                                    Your AI creative employee
+                                    YOUR AI CREATIVE EMPLOYEE
                                 </div>
                                 <h1 className="mt-7 max-w-4xl text-5xl font-black leading-[.9] tracking-tight md:text-7xl lg:text-8xl">
-                                    Create AI videos and images with an AI Director.
+                                    Create AI videos and images with your AI Director Employee.
                                 </h1>
                                 <p className="mt-6 max-w-2xl text-lg leading-8 text-white/60">
-                                    Ask for a product ad, short film, reel, music visual, or episode. The Director writes, plans,
-                                    organizes assets, makes storyboards, generates images, and prepares video with approvals.
+                                    It feels like hiring a dedicated creative employee. Ask for a product ad, short film, reel, or episode — the Director writes, plans, organizes assets, makes storyboards, generates images, and prepares video with approvals.
                                 </p>
                             </div>
 
                             <div className="mt-10 grid gap-3 sm:grid-cols-2">
                                 {user ? (
                                     <Link href="/studio" className="btn-primary flex items-center justify-center gap-2 py-4 text-base">
-                                        Start Creating <ArrowRight className="h-5 w-5" />
+                                        Open Creator Studio <ArrowRight className="h-5 w-5" />
                                     </Link>
                                 ) : (
                                     <button onClick={signInWithGoogle} className="btn-primary flex items-center justify-center gap-2 py-4 text-base">
-                                        Start Creating Free <ArrowRight className="h-5 w-5" />
+                                        Get Your AI Employee <ArrowRight className="h-5 w-5" />
                                     </button>
                                 )}
                                 <Link href="/billing" className="flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[.05] px-6 py-4 font-bold text-white transition hover:border-primary/50 hover:text-primary">
