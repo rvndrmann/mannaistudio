@@ -137,6 +137,7 @@ type Workspace = {
     payload: Record<string, unknown>;
     created_at: string;
     session_id?: string | null;
+    tool_execution_id?: string | null;
   }[];
   directorWorkflows?: DirectorWorkflowConfig[];
   features?: Record<string, boolean>;
@@ -922,7 +923,7 @@ export default function WorkspacePage({
                 className={`mt-3 max-w-[90%] rounded-xl p-3 text-[13px] ${item.role === "user" ? "ml-auto bg-[#b9f42e] text-black" : "bg-[#1a1a1a] text-zinc-200"}`}
               >
                 {item.content}
-                <ChatTimeline blocks={item.timeline_blocks} onAction={sendDirectorMessage} disabled={chatSending} />
+                <ChatTimeline blocks={item.timeline_blocks} proposals={data.actionProposals} onAction={sendDirectorMessage} disabled={chatSending} />
                 <ChatMedia media={item.media} />
                 <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} busyId={proposalBusy} onDecide={decideProposal} />
               </div>
@@ -3933,20 +3934,29 @@ function ChatMedia({ media }: { media?: Array<Record<string, unknown>> | null })
   );
 }
 
-function ChatTimeline({ blocks, onAction, disabled }: { blocks: unknown; onAction: (intent: string) => void; disabled: boolean }) {
+function ChatTimeline({ blocks, proposals, onAction, disabled }: { blocks: unknown; proposals: ChatProposal[]; onAction: (intent: string) => void; disabled: boolean }) {
   const timeline = parseDirectorTimeline(blocks);
   if (!timeline.length) return null;
   return (
     <div className="mt-3 space-y-2">
-      {timeline.map((block, index) => <ChatTimelineBlock key={`${block.type}-${index}`} block={block} onAction={onAction} disabled={disabled} />)}
+      {timeline.map((block, index) => <ChatTimelineBlock key={`${block.type}-${index}`} block={block} proposals={proposals} onAction={onAction} disabled={disabled} />)}
     </div>
   );
 }
 
-function ChatTimelineBlock({ block, onAction, disabled }: { block: DirectorTimelineBlock; onAction: (intent: string) => void; disabled: boolean }) {
+function ChatTimelineBlock({ block, proposals, onAction, disabled }: { block: DirectorTimelineBlock; proposals: ChatProposal[]; onAction: (intent: string) => void; disabled: boolean }) {
   if (block.type === "tool_execution") {
-    const failed = block.status === "failed";
-    const waiting = block.status === "awaiting_approval";
+    let failed = block.status === "failed";
+    let waiting = block.status === "awaiting_approval";
+    
+    if (block.executionId) {
+      const proposal = proposals.find((p) => p.tool_execution_id === block.executionId);
+      if (proposal && (proposal.status === "executed" || proposal.status === "rejected")) {
+        waiting = false;
+        failed = proposal.status === "rejected";
+      }
+    }
+
     // Only render tool executions if they failed or require approval, keeping routine read calls hidden.
     if (!failed && !waiting) return null;
     return (
@@ -3964,7 +3974,7 @@ function ChatTimelineBlock({ block, onAction, disabled }: { block: DirectorTimel
     );
   }
   if (block.type === "plan") return <div className="rounded-lg border border-white/[0.08] bg-black/20 p-2.5"><p className="text-[12px] font-semibold">{block.title}</p><div className="mt-2 space-y-1.5">{block.steps.map((step) => <div key={step.id} className="flex gap-2 text-[11px] text-zinc-400"><span>{step.status === "completed" ? "✓" : step.status === "failed" ? "×" : "○"}</span><span>{step.label}</span></div>)}</div></div>;
-  if (block.type === "suggested_actions") return <div className="space-y-1.5">{block.actions.map((action) => <button key={action.id} type="button" disabled={disabled} onClick={() => onAction(action.intent)} className={`w-full rounded-lg border px-3 py-2.5 text-left text-[12px] font-semibold transition disabled:opacity-50 ${action.recommended ? "border-[#b9f42e]/35 bg-[#b9f42e]/10 text-[#dfff8c] hover:bg-[#b9f42e]/15" : "border-white/[0.08] bg-white/[0.03] text-zinc-300 hover:bg-white/[0.06]"}`}>{action.label}</button>)}</div>;
+  if (block.type === "suggested_actions") return null;
   if (block.type === "warning") return <div className="rounded-lg border border-amber-400/25 bg-amber-400/[0.07] p-2.5 text-[11px] leading-5 text-amber-100"><strong>{block.code}</strong><p>{block.message}</p>{block.actions.map((action) => <button key={action.id} type="button" disabled={disabled} onClick={() => onAction(action.intent)} className="mt-2 mr-2 rounded-md border border-amber-300/25 px-2 py-1 font-semibold">{action.label}</button>)}</div>;
   if (block.type === "workflow_summary") {
     if (block.summary === "Workflow completed.") return null;
