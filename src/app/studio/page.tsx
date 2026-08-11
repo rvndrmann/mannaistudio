@@ -14,6 +14,7 @@ import {
   Loader2,
   Plus,
   Sparkles,
+  Trash2,
   Users,
 } from "lucide-react";
 import CreditBadge from "@/components/CreditBadge";
@@ -118,6 +119,20 @@ export default function StudioHome() {
     }
   };
 
+  const handleDeleteProject = async (projectId: string) => {
+    if (!confirm("Are you sure you want to delete this project?")) return;
+    try {
+      const res = await fetch(`/api/studio/projects/${projectId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to delete project");
+      }
+      setProjects((prev) => prev.filter((p) => p.id !== projectId));
+    } catch (cause) {
+      alert(cause instanceof Error ? cause.message : "Could not delete project");
+    }
+  };
+
   const scrollProjects = (direction: "left" | "right") => {
     projectsScrollerRef.current?.scrollBy({
       left: direction === "right" ? 440 : -440,
@@ -211,7 +226,7 @@ export default function StudioHome() {
                   </span>
                 </button>
                 {projects.map((project) => (
-                  <ProjectGalleryCard key={project.id} project={project} />
+                  <ProjectGalleryCard key={project.id} project={project} onDelete={handleDeleteProject} />
                 ))}
               </div>
             )}
@@ -261,7 +276,7 @@ export default function StudioHome() {
   );
 }
 
-function ProjectGalleryCard({ project }: { project: Project }) {
+function ProjectGalleryCard({ project, onDelete }: { project: Project; onDelete?: (id: string) => void }) {
   const images = project.gallery_images || [];
   return (
     <Link
@@ -293,10 +308,23 @@ function ProjectGalleryCard({ project }: { project: Project }) {
         </div>
       )}
       {project.shared && (
-        <span className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full border border-[#b9f42e]/35 bg-black/70 px-2.5 py-1 text-[10px] font-bold text-[#b9f42e] backdrop-blur">
+        <span className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-full border border-[#b9f42e]/35 bg-black/70 px-2.5 py-1 text-[10px] font-bold text-[#b9f42e] backdrop-blur">
           <Users className="h-3 w-3" />
           {project.enterprise_status ? "Client work" : "Shared with you"}
         </span>
+      )}
+      {onDelete && (
+        <button
+          title="Delete Project"
+          className="absolute right-3 top-3 z-20 grid h-8 w-8 place-items-center rounded-full bg-black/60 text-zinc-400 opacity-0 backdrop-blur transition group-hover:opacity-100 hover:!bg-red-500/90 hover:!text-white"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDelete(project.id);
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
       )}
       <div className="absolute inset-x-0 bottom-0 min-h-24 bg-gradient-to-t from-black via-black/80 to-transparent p-4 pt-10">
         <p className="text-xs font-semibold text-[#d9ff84]">
