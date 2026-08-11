@@ -14,7 +14,6 @@ import {
   Plus,
   Sparkles,
   Users,
-  X,
 } from "lucide-react";
 import CreditBadge from "@/components/CreditBadge";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -50,11 +49,6 @@ export default function StudioHome() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // New Project modal state
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newProjectName, setNewProjectName] = useState("");
-  const [newProjectDesc, setNewProjectDesc] = useState("");
-
   const projectsScrollerRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
@@ -75,7 +69,7 @@ export default function StudioHome() {
           ? err.message
           : "Could not load projects. Please sign in again.",
       );
-    } fontally: {
+    } finally {
       setLoading(false);
     }
   };
@@ -88,13 +82,13 @@ export default function StudioHome() {
     }
   }, [user]);
 
-  const handleCreateProject = async (name: string, description?: string) => {
+  const handleCreateProject = async (name: string = "Untitled production") => {
     if (!user) {
       signInWithGoogle();
       return;
     }
 
-    const cleanName = name.trim() || "My AI Production";
+    const cleanName = name.trim() || "Untitled production";
     setCreating(true);
     setError("");
 
@@ -104,7 +98,7 @@ export default function StudioHome() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: cleanName.slice(0, 65),
-          description: (description || cleanName).trim() || null,
+          description: cleanName,
         }),
       });
 
@@ -131,7 +125,7 @@ export default function StudioHome() {
 
   return (
     <main className="min-h-screen bg-[#070807] text-[#f5f2e5]">
-      <TopBar onOpenCreate={() => setShowCreateModal(true)} />
+      <TopBar onOpenCreate={() => handleCreateProject("Untitled production")} creating={creating} />
       <StudioRail />
       <section className="min-h-screen pl-[84px] pt-[84px] lg:pl-[156px]">
         <div className="mx-auto max-w-[1500px] px-5 pb-16 lg:px-10">
@@ -181,10 +175,11 @@ export default function StudioHome() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(true)}
-                  className="ml-2 flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-3.5 py-1.5 text-xs font-black text-black hover:bg-[#a6de25] transition"
+                  disabled={creating}
+                  onClick={() => handleCreateProject("Untitled production")}
+                  className="ml-2 flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-3.5 py-1.5 text-xs font-black text-black hover:bg-[#a6de25] transition disabled:opacity-50"
                 >
-                  <Plus className="h-3.5 w-3.5" />
+                  {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                   New Project
                 </button>
               </div>
@@ -202,7 +197,7 @@ export default function StudioHome() {
               >
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(true)}
+                  onClick={() => handleCreateProject("Untitled production")}
                   disabled={creating}
                   className="flex h-56 w-[360px] shrink-0 snap-start flex-col items-center justify-center rounded-2xl border border-dashed border-[#b9f42e]/60 bg-[#202119] text-[#b9f42e] transition hover:bg-[#292b20] disabled:cursor-wait disabled:opacity-60"
                 >
@@ -260,83 +255,6 @@ export default function StudioHome() {
           </section>
         </div>
       </section>
-
-      {/* CREATE NEW PROJECT MODAL DIALOG */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-white/15 bg-[#141615] p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
-              <div className="flex items-center gap-2 font-bold text-white">
-                <Sparkles className="h-5 w-5 text-[#b9f42e]" />
-                <span>Create New Production</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(false)}
-                className="rounded-lg p-1 text-zinc-400 hover:bg-white/10 hover:text-white"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleCreateProject(newProjectName, newProjectDesc);
-              }}
-              className="mt-5 space-y-4"
-            >
-              <div>
-                <label htmlFor="proj-name" className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
-                  Project Title
-                </label>
-                <input
-                  id="proj-name"
-                  type="text"
-                  required
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  placeholder="e.g. Cyberpunk Short Film, UGC Ad"
-                  className="w-full rounded-xl border border-white/15 bg-black/50 px-4 py-3 text-sm text-white outline-none focus:border-[#b9f42e]"
-                  autoFocus
-                />
-              </div>
-
-              <div>
-                <label htmlFor="proj-desc" className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
-                  Creative Brief / Description (Optional)
-                </label>
-                <textarea
-                  id="proj-desc"
-                  rows={3}
-                  value={newProjectDesc}
-                  onChange={(e) => setNewProjectDesc(e.target.value)}
-                  placeholder="Briefly describe what you want the AI Director to produce..."
-                  className="w-full resize-none rounded-xl border border-white/15 bg-black/50 px-4 py-3 text-sm text-white outline-none focus:border-[#b9f42e]"
-                />
-              </div>
-
-              <div className="mt-6 flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="rounded-xl border border-white/15 px-4 py-2.5 text-xs font-bold text-zinc-300 hover:bg-white/10"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={creating}
-                  className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-6 py-2.5 text-xs font-black text-black hover:bg-[#a6de25] transition disabled:opacity-50"
-                >
-                  {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                  Create Project
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </main>
   );
 }
@@ -399,7 +317,7 @@ function ProjectGalleryCard({ project }: { project: Project }) {
   );
 }
 
-function TopBar({ onOpenCreate }: { onOpenCreate: () => void }) {
+function TopBar({ onOpenCreate, creating }: { onOpenCreate: () => void; creating: boolean }) {
   return (
     <>
       <header className="fixed inset-x-0 top-0 z-30 flex h-20 items-center justify-between border-b border-white/10 bg-[#090a09]/95 px-5 backdrop-blur">
@@ -423,10 +341,11 @@ function TopBar({ onOpenCreate }: { onOpenCreate: () => void }) {
         <div className="flex items-center gap-3">
           <button
             type="button"
+            disabled={creating}
             onClick={onOpenCreate}
-            className="flex items-center gap-1.5 rounded-xl bg-[#b9f42e] px-4 py-2 text-xs font-black text-black hover:bg-[#a6de25] transition"
+            className="flex items-center gap-1.5 rounded-xl bg-[#b9f42e] px-4 py-2 text-xs font-black text-black hover:bg-[#a6de25] transition disabled:opacity-50"
           >
-            <Plus className="h-4 w-4" />
+            {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             <span>New Production</span>
           </button>
           <CreditBadge />

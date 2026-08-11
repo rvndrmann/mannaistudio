@@ -1,13 +1,26 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { createServiceClient } from "@/lib/supabase/service"
 import { createStudioProjectInputSchema, isMissingProductionModeSchema } from "@/lib/studio/domain"
+
+function getDbClient(fallback: any) {
+  try {
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return createServiceClient()
+    }
+  } catch (e) {
+    console.warn("Could not instantiate service client:", e)
+  }
+  return fallback
+}
 
 async function currentUser() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error("Unauthorized")
   try {
-    await supabase.from("profiles").upsert(
+    const db = getDbClient(supabase)
+    await db.from("profiles").upsert(
       { id: user.id, full_name: user.user_metadata?.full_name || "Creator", avatar_url: user.user_metadata?.avatar_url || "", email: user.email || "" },
       { onConflict: "id" }
     )
@@ -94,19 +107,25 @@ export async function POST(request: NextRequest) {
     const body = parsed.data
     const optionalMode = body.production_mode ? { production_mode: body.production_mode, project_type: body.project_type || "unspecified" } : {}
     const baseProject = { user_id: user.id, name: body.name, description: body.description || null, cover_image: body.cover_image || null }
-    let { data: project, error } = await supabase.from("creator_projects").insert({ ...baseProject, ...optionalMode }).select().single()
+
+    const db = getDbClient(supabase)
+
+    let { data: project, error } = await db.from("creator_projects").insert({ ...baseProject, ...optionalMode }).select().single()
     let compatibilityWarning: string | null = null
     if (error && body.production_mode && isMissingProductionModeSchema(error)) {
-      const fallback = await supabase.from("creator_projects").insert(baseProject).select().single()
+      const fallback = await db.from("creator_projects").insert(baseProject).select().single()
       project = fallback.data
       error = fallback.error
       compatibilityWarning = "Project created with the legacy schema. Apply the additive AI Director migrations to persist its production mode."
     }
     if (error || !project) throw error || new Error("Project was not created")
-    const { data: episode, error: episodeError } = await supabase.from("creator_episodes").insert({ project_id: project.id, name: "Episode 1", description: `First episode of ${project.name}`, status: "in_progress" }).select().single()
+
+    const { data: episode, error: episodeError } = await db.from("creator_episodes").insert({ project_id: project.id, name: "Episode 1", description: `First episode of ${project.name}`, status: "in_progress" }).select().single()
     if (episodeError) throw episodeError
-    const { data: session, error: sessionError } = await supabase.from("creator_chat_sessions").insert({ episode_id: episode.id, user_id: user.id, title: "New Chat" }).select().single()
+
+    const { data: session, error: sessionError } = await db.from("creator_chat_sessions").insert({ episode_id: episode.id, user_id: user.id, title: "New Chat" }).select().single()
     if (sessionError) throw sessionError
+
     return NextResponse.json({ project, episodeId: episode.id, sessionId: session.id, compatibilityWarning })
   } catch (error) {
     const message = extractErrorMessage(error)
