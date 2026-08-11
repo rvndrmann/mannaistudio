@@ -12,6 +12,9 @@ import {
   History,
   FileText,
   Film,
+  ArrowUp,
+  Brain,
+  Monitor,
   Image as ImageIcon,
   LayoutPanelTop,
   Loader2,
@@ -1671,11 +1674,13 @@ function ModelMenu({
   value,
   onChange,
   options,
+  inline,
 }: {
   type: "image" | "video";
   value: string;
   onChange: (value: string) => void;
   options?: { quality?: "Low" | "Medium" | "High" | "Ultra"; aspectRatio?: string; resolution?: string; durationSeconds?: number };
+  inline?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const models = type === "image" ? imageGenerationModels : videoGenerationModels;
@@ -1696,26 +1701,40 @@ function ModelMenu({
       { label: "Hunyuan & Luma Series", icon: WandSparkles, models: videoGenerationModels.filter((m) => m.id.includes("hunyuan") || m.id.includes("luma")) },
     ];
   return (
-    <div className="relative mt-5">
-      <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{type === "image" ? "Image model" : "Video model"}</p>
+    <div className={`relative ${inline ? "" : "mt-5"}`}>
+      {!inline && <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{type === "image" ? "Image model" : "Video model"}</p>}
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="mt-2 flex w-full items-center justify-between rounded-xl border border-white/10 bg-[#0b0c0b] px-3 py-3 text-left text-sm font-bold text-white outline-none hover:border-[#b9f42e]/50"
+        className={
+          inline
+            ? "flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-white transition outline-none"
+            : "mt-2 flex w-full items-center justify-between rounded-xl border border-white/10 bg-[#0b0c0b] px-3 py-3 text-left text-sm font-bold text-white outline-none hover:border-[#b9f42e]/50"
+        }
       >
-        <span className="flex min-w-0 items-center gap-2">
-          <WandSparkles className="h-4 w-4 shrink-0 text-[#fff878]" />
-          <span className="truncate">{selected.label}</span>
-        </span>
-        <div className="flex items-center gap-2">
-          <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-xs font-bold text-[#b9f42e]">
-            ⚡ {calculateCreditCost(selected.id, type, options?.durationSeconds || 5, options)} Credits
-          </span>
-          <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition ${open ? "rotate-180" : ""}`} />
-        </div>
+        {inline ? (
+          <>
+            <Brain className="h-3.5 w-3.5" />
+            <span>{selected.label}</span>
+            <ChevronDown className="h-3 w-3 opacity-50" />
+          </>
+        ) : (
+          <>
+            <span className="flex min-w-0 items-center gap-2">
+              <WandSparkles className="h-4 w-4 shrink-0 text-[#fff878]" />
+              <span className="truncate">{selected.label}</span>
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-xs font-bold text-[#b9f42e]">
+                ⚡ {calculateCreditCost(selected.id, type, options?.durationSeconds || 5, options)} Credits
+              </span>
+              <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition ${open ? "rotate-180" : ""}`} />
+            </div>
+          </>
+        )}
       </button>
       {open && (
-        <div className="absolute bottom-[calc(100%+8px)] left-0 z-[80] w-full min-w-[280px] overflow-hidden rounded-xl border border-white/10 bg-[#18191c] p-2 shadow-2xl">
+        <div className={`absolute z-[80] overflow-hidden rounded-xl border border-white/10 bg-[#18191c] p-2 shadow-2xl ${inline ? "bottom-full left-0 mb-2 w-max min-w-[240px]" : "bottom-[calc(100%+8px)] left-0 w-full min-w-[280px]"}`}>
           {families.map((family) => {
             const Icon = family.icon;
             return (
@@ -2394,109 +2413,120 @@ function AssetWorkspace({
             </button>
           </div>
 
-          <div className="flex-1 overflow-auto p-6 space-y-6">
-            {/* Reference Images Container */}
-            <div className="rounded-xl border border-white/10 bg-[#0b0c0b] p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">Reference images</p>
-                <button type="button" onClick={() => setPicker(true)} className="text-xs font-semibold text-[#b9f42e]">Select assets</button>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" aria-label="Add reference image" onClick={() => setReferenceSourcePicker(true)} className="grid h-14 w-14 place-items-center rounded-lg border border-dashed border-white/25 text-lg text-zinc-400 hover:border-[#b9f42e] transition">+</button>
+          <div className="flex-1 overflow-auto p-4 sm:p-6">
+            <div className="flex flex-col rounded-[24px] bg-[#1c1c1c] p-4 shadow-xl">
+              {/* Reference Images Row */}
+              <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
+                <button
+                  type="button"
+                  aria-label="Add reference image"
+                  onClick={() => setReferenceSourcePicker(true)}
+                  className="grid h-[72px] w-[72px] shrink-0 place-items-center rounded-2xl bg-white/[0.05] text-xl font-light text-white/50 transition hover:bg-white/[0.08]"
+                >
+                  +
+                </button>
                 {references.map((image, index) => (
-                  <div key={`${image}-${index}`} className="relative h-14 w-14 overflow-hidden rounded-lg border border-white/10">
-                    <AssetImage src={image} />
-                    <button type="button" aria-label={`Remove reference image ${index + 1}`} onClick={() => void saveReferences(references.filter((_, itemIndex) => itemIndex !== index))} className="absolute right-1 top-1 rounded bg-black/80 px-1 text-[10px] font-bold text-white hover:bg-red-500 transition">×</button>
+                  <div key={`${image}-${index}`} className="group relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-2xl bg-black">
+                    <AssetImage src={image} className="h-full w-full object-cover opacity-90 transition group-hover:opacity-100" />
+                    <button
+                      type="button"
+                      aria-label={`Remove reference image ${index + 1}`}
+                      onClick={() => void saveReferences(references.filter((_, i) => i !== index))}
+                      className="absolute inset-0 grid place-items-center bg-black/60 opacity-0 transition group-hover:opacity-100"
+                    >
+                      <Trash2 className="h-4 w-4 text-white" />
+                    </button>
                   </div>
                 ))}
               </div>
-            </div>
 
-            {/* Generation Settings: Aspect Ratio & Quality */}
-            <div className="rounded-xl border border-white/10 bg-[#0b0c0b] p-4 space-y-4">
-              <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Generation Settings</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold uppercase text-zinc-500 mb-1">Aspect Ratio</label>
-                  <select
-                    value={aspectRatio}
-                    onChange={(e) => setAspectRatio(e.target.value)}
-                    className="w-full rounded-lg border border-white/10 bg-[#141517] p-2.5 text-xs font-bold text-white outline-none focus:border-[#b9f42e]"
-                  >
-                    <option value="9:16">9:16 (Portrait)</option>
-                    <option value="16:9">16:9 (Landscape)</option>
-                    <option value="1:1">1:1 (Square)</option>
-                    <option value="2:3">2:3 (Photo)</option>
-                    <option value="3:2">3:2 (Classic)</option>
-                    <option value="21:9">21:9 (Cinematic)</option>
-                  </select>
+              {/* Textarea */}
+              <div className="relative mb-4">
+                <EntityMentionInput
+                  value={prompt}
+                  onChange={setPrompt}
+                  entities={entities}
+                  className="min-h-[140px] w-full resize-none bg-transparent text-[13px] leading-relaxed text-zinc-200 outline-none placeholder:text-zinc-600"
+                  placeholder="Describe the image. Type @ to mention a character, scene, or asset…"
+                  ariaLabel="Asset image prompt"
+                  menuPlacement="top"
+                />
+              </div>
+
+              {/* Inline Toolbar */}
+              <div className="flex items-center justify-between border-t border-white/10 pt-3">
+                <div className="flex flex-wrap items-center gap-4">
+                  <ModelMenu type="image" value={model} onChange={setModel} options={{ quality, aspectRatio }} inline />
+                  
+                  <div className="relative flex items-center gap-1.5 text-xs font-semibold text-zinc-400 transition hover:text-white group">
+                    <Monitor className="h-3.5 w-3.5" />
+                    <select
+                      value={aspectRatio}
+                      onChange={(e) => setAspectRatio(e.target.value)}
+                      className="appearance-none bg-transparent outline-none cursor-pointer pr-4"
+                    >
+                      <option className="bg-[#1c1c1c]" value="9:16">9:16</option>
+                      <option className="bg-[#1c1c1c]" value="16:9">16:9</option>
+                      <option className="bg-[#1c1c1c]" value="1:1">1:1</option>
+                      <option className="bg-[#1c1c1c]" value="2:3">2:3</option>
+                      <option className="bg-[#1c1c1c]" value="3:2">3:2</option>
+                      <option className="bg-[#1c1c1c]" value="21:9">21:9</option>
+                    </select>
+                    <ChevronDown className="absolute right-0 h-3 w-3 opacity-50 pointer-events-none" />
+                  </div>
+
+                  <div className="relative flex items-center gap-1.5 text-xs font-semibold text-zinc-400 transition hover:text-white group">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <select
+                      value={quality}
+                      onChange={(e) => setQuality(e.target.value as any)}
+                      className="appearance-none bg-transparent outline-none cursor-pointer pr-4"
+                    >
+                      <option className="bg-[#1c1c1c]" value="Low">Low</option>
+                      <option className="bg-[#1c1c1c]" value="Medium">Medium</option>
+                      <option className="bg-[#1c1c1c]" value="High">High</option>
+                      <option className="bg-[#1c1c1c]" value="Ultra">Ultra</option>
+                    </select>
+                    <ChevronDown className="absolute right-0 h-3 w-3 opacity-50 pointer-events-none" />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[11px] font-bold uppercase text-zinc-500 mb-1">Quality Level</label>
-                  <select
-                    value={quality}
-                    onChange={(e) => setQuality(e.target.value as "Low" | "Medium" | "High" | "Ultra")}
-                    className="w-full rounded-lg border border-white/10 bg-[#141517] p-2.5 text-xs font-bold text-white outline-none focus:border-[#b9f42e]"
-                  >
-                    <option value="Low">⚡ Low (Fast)</option>
-                    <option value="Medium">✨ Medium (Balanced)</option>
-                    <option value="High">🌟 High (Detailed)</option>
-                    <option value="Ultra">💎 Ultra (Max)</option>
-                  </select>
+
+                <div className="flex items-center gap-3 pl-2">
+                  <span className="text-xs font-semibold text-zinc-400">
+                    <Sparkles className="mb-0.5 inline h-3 w-3" /> {currentCreditCost}
+                  </span>
+                  {creditBalance !== null && creditBalance < currentCreditCost ? (
+                    <button
+                      disabled
+                      className="grid h-8 w-8 place-items-center rounded-full bg-zinc-700 text-zinc-400 opacity-50"
+                      title="Insufficient credits"
+                    >
+                      <Zap className="h-4 w-4" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={requestGeneration}
+                      disabled={working}
+                      className="grid h-8 w-8 place-items-center rounded-full bg-[#dfff8c] text-black shadow-lg transition hover:bg-[#c9f658] disabled:opacity-50"
+                      title="Generate image"
+                    >
+                      {working ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4 stroke-[3]" />}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Image Prompt */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wide text-zinc-500 mb-2">
-                Visual Prompt
-              </label>
-              <EntityMentionInput
-                value={prompt}
-                onChange={setPrompt}
-                entities={entities}
-                className="h-44 w-full resize-none rounded-xl border border-white/10 bg-[#0b0c0b] p-4 text-sm leading-relaxed text-zinc-200 outline-none focus:border-[#b9f42e]/60"
-                placeholder="Describe the image. Type @ to mention a character, scene, or asset…"
-                ariaLabel="Asset image prompt"
-              />
-            </div>
-
-            {/* Model Selection Menu */}
-            <ModelMenu type="image" value={model} onChange={setModel} options={{ quality, aspectRatio }} />
-
             {generationError && (
-              <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
+              <p role="alert" className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
                 {generationError}
               </p>
             )}
-          </div>
-
-          {/* Submit Button with Dynamic Credit Display */}
-          <div className="border-t border-white/10 p-6 bg-[#0b0c0b]">
-            {creditBalance !== null && creditBalance < currentCreditCost ? (
-              <div className="space-y-2">
-                <button
-                  disabled
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-700 px-4 py-3.5 font-black text-zinc-400 cursor-not-allowed shadow-xl"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  Insufficient Credits (⚡ {currentCreditCost} needed)
-                </button>
-                <p className="flex items-center justify-center gap-1.5 text-xs text-amber-300">
-                  <Zap className="h-3.5 w-3.5" />
-                  You have {creditBalance} credits. <a href="/studio/credits" className="underline font-bold hover:text-[#b9f42e]">Buy more credits</a>
-                </p>
-              </div>
-            ) : (
-              <button
-                onClick={requestGeneration}
-                disabled={working}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-3.5 font-black text-black hover:bg-[#a6de25] transition disabled:opacity-50 shadow-xl"
-              >
-                <Sparkles className="h-4 w-4 fill-black" />
-                {working ? "Generating…" : `Generate image (⚡ ${currentCreditCost} Credits)`}
-              </button>
+            
+            {creditBalance !== null && creditBalance < currentCreditCost && (
+              <p className="mt-4 text-center text-xs text-amber-300">
+                Insufficient credits (⚡ {currentCreditCost} needed). <a href="/studio/credits" className="font-bold underline hover:text-[#b9f42e]">Buy more</a>
+              </p>
             )}
           </div>
         </aside>
