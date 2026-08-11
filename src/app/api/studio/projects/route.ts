@@ -6,19 +6,35 @@ async function currentUser() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error("Unauthorized")
-  await supabase.from("profiles").upsert({ id: user.id, full_name: user.user_metadata?.full_name || "Creator", avatar_url: user.user_metadata?.avatar_url || "", email: user.email || "" }, { onConflict: "id" })
+  try {
+    await supabase.from("profiles").upsert(
+      { id: user.id, full_name: user.user_metadata?.full_name || "Creator", avatar_url: user.user_metadata?.avatar_url || "", email: user.email || "" },
+      { onConflict: "id" }
+    )
+  } catch (err) {
+    console.warn("Could not upsert profile during project creation:", err)
+  }
   return { supabase, user }
+}
+
+function extractErrorMessage(err: unknown): string {
+  if (!err) return "Unknown error"
+  if (err instanceof Error) return err.message
+  if (typeof err === "object" && err !== null) {
+    const obj = err as Record<string, unknown>
+    if (typeof obj.message === "string" && obj.message) return obj.message
+    if (typeof obj.details === "string" && obj.details) return obj.details
+    if (typeof obj.error === "string" && obj.error) return obj.error
+  }
+  return String(err)
 }
 
 export async function GET() {
   try {
     const { supabase, user } = await currentUser()
-    // RLS returns owned projects plus any shared with this account, so the list
-    // is not filtered by owner. Each row is tagged so the UI can mark shared work.
     const { data, error } = await supabase.from("creator_projects").select("*").order("created_at", { ascending: false })
     if (error) throw error
-    // Shared rows carry who they belong to, so a client engagement reads as one
-    // rather than appearing as an unexplained extra project.
+
     const { data: owners } = await supabase.rpc("accessible_project_owners")
     const ownerById = new Map<string, { owner_name: string | null; owner_email: string | null }>(
       (owners || []).map((row: { project_id: string; owner_name: string | null; owner_email: string | null }) => [row.project_id, row]),
@@ -44,7 +60,6 @@ export async function GET() {
 
     const projectsWithGallery = await Promise.all(projects.map(async (project) => {
       const projectEntities = (entities || []).filter((entity) => entity.project_id === project.id)
-      // Lead with characters, then use locations/props to fill a project visual strip.
       const orderedEntities = [
         ...projectEntities.filter((entity) => entity.type === "character"),
         ...projectEntities.filter((entity) => entity.type !== "character"),
@@ -61,14 +76,21 @@ export async function GET() {
       return { ...project, gallery_images }
     }))
     return NextResponse.json(projectsWithGallery)
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Could not load bases" }, { status: 401 }) }
+  } catch (error) {
+    const message = extractErrorMessage(error)
+    const status = message === "Unauthorized" ? 401 : 400
+    return NextResponse.json({ error: message }, { status })
+  }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const { supabase, user } = await currentUser()
-    const parsed = createStudioProjectInputSchema.safeParse(await request.json())
-    if (!parsed.success) return NextResponse.json({ error: "Invalid project details", issues: parsed.error.flatten().fieldErrors }, { status: 400 })
+    const rawBody = await request.json().catch(() => ({}))
+    const parsed = createStudioProjectInputSchema.safeParse(rawBody)
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid project details", issues: parsed.error.flatten().fieldErrors }, { status: 400 })
+    }
     const body = parsed.data
     const optionalMode = body.production_mode ? { production_mode: body.production_mode, project_type: body.project_type || "unspecified" } : {}
     const baseProject = { user_id: user.id, name: body.name, description: body.description || null, cover_image: body.cover_image || null }
@@ -86,5 +108,9 @@ export async function POST(request: NextRequest) {
     const { data: session, error: sessionError } = await supabase.from("creator_chat_sessions").insert({ episode_id: episode.id, user_id: user.id, title: "New Chat" }).select().single()
     if (sessionError) throw sessionError
     return NextResponse.json({ project, episodeId: episode.id, sessionId: session.id, compatibilityWarning })
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Could not create base" }, { status: 400 }) }
+  } catch (error) {
+    const message = extractErrorMessage(error)
+    const status = message === "Unauthorized" ? 401 : 400
+    return NextResponse.json({ error: message }, { status })
+  }
 }

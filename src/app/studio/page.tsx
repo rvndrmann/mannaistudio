@@ -12,9 +12,12 @@ import {
   LayoutGrid,
   Loader2,
   Plus,
+  Sparkles,
   Users,
+  X,
 } from "lucide-react";
 import CreditBadge from "@/components/CreditBadge";
+import { useAuth } from "@/components/auth/auth-provider";
 
 type Project = {
   id: string;
@@ -41,44 +44,73 @@ const categories = [
 ];
 
 export default function StudioHome() {
+  const { user, signInWithGoogle } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // New Project modal state
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectDesc, setNewProjectDesc] = useState("");
+
   const projectsScrollerRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
     try {
       const res = await fetch("/api/studio/projects");
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setProjects(data);
-    } catch {
-      setError("Could not load projects. Please sign in again.");
-    } finally {
+      if (!res.ok) {
+        if (res.status === 401) {
+          setError("Please sign in to view your studio projects.");
+          return;
+        }
+        throw new Error(data.error || "Could not load projects.");
+      }
+      setProjects(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not load projects. Please sign in again.",
+      );
+    } fontally: {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    load();
-  }, []);
+    if (user) {
+      load();
+    } else {
+      setLoading(false);
+    }
+  }, [user]);
 
-  const createProject = async (projectPrompt: string) => {
-    const cleanPrompt = projectPrompt.trim() || "Untitled production";
+  const handleCreateProject = async (name: string, description?: string) => {
+    if (!user) {
+      signInWithGoogle();
+      return;
+    }
+
+    const cleanName = name.trim() || "My AI Production";
     setCreating(true);
     setError("");
+
     try {
       const res = await fetch("/api/studio/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: cleanPrompt.slice(0, 65),
-          description: cleanPrompt,
+          name: cleanName.slice(0, 65),
+          description: (description || cleanName).trim() || null,
         }),
       });
+
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(data.error || "Failed to create project");
+
       window.location.href = `/studio/project/${data.project.id}?openSettings=1`;
     } catch (cause) {
       setError(
@@ -99,12 +131,28 @@ export default function StudioHome() {
 
   return (
     <main className="min-h-screen bg-[#070807] text-[#f5f2e5]">
-      <TopBar />
+      <TopBar onOpenCreate={() => setShowCreateModal(true)} />
       <StudioRail />
       <section className="min-h-screen pl-[84px] pt-[84px] lg:pl-[156px]">
         <div className="mx-auto max-w-[1500px] px-5 pb-16 lg:px-10">
+          {!user && (
+            <div className="mx-auto my-8 max-w-2xl rounded-2xl border border-[#b9f42e]/30 bg-[#b9f42e]/[0.05] p-8 text-center">
+              <Sparkles className="mx-auto h-10 w-10 text-[#b9f42e] mb-3" />
+              <h2 className="text-2xl font-black text-white">Sign In to Access Studio</h2>
+              <p className="mt-2 text-sm text-zinc-400">
+                Sign in with Google to create AI projects, generate videos, and chat with your AI Director Employee.
+              </p>
+              <button
+                onClick={signInWithGoogle}
+                className="mt-6 rounded-xl bg-[#b9f42e] px-8 py-3.5 text-sm font-black text-black hover:bg-[#a5de25] transition"
+              >
+                Sign In with Google
+              </button>
+            </div>
+          )}
+
           {error && (
-            <p className="mx-auto mt-6 max-w-5xl rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">
+            <p className="mx-auto mt-6 max-w-5xl rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-200">
               {error}
             </p>
           )}
@@ -131,12 +179,14 @@ export default function StudioHome() {
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>
-                <Link
-                  href="#projects"
-                  className="ml-2 text-sm font-semibold tracking-[.18em] text-[#b9f42e]"
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(true)}
+                  className="ml-2 flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-3.5 py-1.5 text-xs font-black text-black hover:bg-[#a6de25] transition"
                 >
-                  VIEW ALL →
-                </Link>
+                  <Plus className="h-3.5 w-3.5" />
+                  New Project
+                </button>
               </div>
             </div>
 
@@ -152,7 +202,7 @@ export default function StudioHome() {
               >
                 <button
                   type="button"
-                  onClick={() => createProject("Untitled production")}
+                  onClick={() => setShowCreateModal(true)}
                   disabled={creating}
                   className="flex h-56 w-[360px] shrink-0 snap-start flex-col items-center justify-center rounded-2xl border border-dashed border-[#b9f42e]/60 bg-[#202119] text-[#b9f42e] transition hover:bg-[#292b20] disabled:cursor-wait disabled:opacity-60"
                 >
@@ -210,6 +260,83 @@ export default function StudioHome() {
           </section>
         </div>
       </section>
+
+      {/* CREATE NEW PROJECT MODAL DIALOG */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-white/15 bg-[#141615] p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div className="flex items-center gap-2 font-bold text-white">
+                <Sparkles className="h-5 w-5 text-[#b9f42e]" />
+                <span>Create New Production</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                className="rounded-lg p-1 text-zinc-400 hover:bg-white/10 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleCreateProject(newProjectName, newProjectDesc);
+              }}
+              className="mt-5 space-y-4"
+            >
+              <div>
+                <label htmlFor="proj-name" className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
+                  Project Title
+                </label>
+                <input
+                  id="proj-name"
+                  type="text"
+                  required
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  placeholder="e.g. Cyberpunk Short Film, UGC Ad"
+                  className="w-full rounded-xl border border-white/15 bg-black/50 px-4 py-3 text-sm text-white outline-none focus:border-[#b9f42e]"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label htmlFor="proj-desc" className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
+                  Creative Brief / Description (Optional)
+                </label>
+                <textarea
+                  id="proj-desc"
+                  rows={3}
+                  value={newProjectDesc}
+                  onChange={(e) => setNewProjectDesc(e.target.value)}
+                  placeholder="Briefly describe what you want the AI Director to produce..."
+                  className="w-full resize-none rounded-xl border border-white/15 bg-black/50 px-4 py-3 text-sm text-white outline-none focus:border-[#b9f42e]"
+                />
+              </div>
+
+              <div className="mt-6 flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="rounded-xl border border-white/15 px-4 py-2.5 text-xs font-bold text-zinc-300 hover:bg-white/10"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creating}
+                  className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-6 py-2.5 text-xs font-black text-black hover:bg-[#a6de25] transition disabled:opacity-50"
+                >
+                  {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  Create Project
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -272,7 +399,7 @@ function ProjectGalleryCard({ project }: { project: Project }) {
   );
 }
 
-function TopBar() {
+function TopBar({ onOpenCreate }: { onOpenCreate: () => void }) {
   return (
     <>
       <header className="fixed inset-x-0 top-0 z-30 flex h-20 items-center justify-between border-b border-white/10 bg-[#090a09]/95 px-5 backdrop-blur">
@@ -294,6 +421,14 @@ function TopBar() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onOpenCreate}
+            className="flex items-center gap-1.5 rounded-xl bg-[#b9f42e] px-4 py-2 text-xs font-black text-black hover:bg-[#a6de25] transition"
+          >
+            <Plus className="h-4 w-4" />
+            <span>New Production</span>
+          </button>
           <CreditBadge />
           <Link
             href="/studio/team"
