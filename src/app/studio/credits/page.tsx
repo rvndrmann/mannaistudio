@@ -177,10 +177,10 @@ export default function CreditsPage() {
         {/* Credit Packages Grid */}
         <div className="grid gap-4 sm:grid-cols-2">
           {[
-            { id: "1000", credits: 1000, price: "₹800 INR", popular: false, desc: "~100 Videos or ~330 Images" },
-            { id: "2500", credits: 2500, price: "₹2,000 INR", popular: true, desc: "~250 Videos or ~830 Images" },
-            { id: "5000", credits: 5000, price: "₹4,000 INR", popular: false, desc: "~500 Videos or ~1,660 Images" },
-            { id: "10000", credits: 10000, price: "₹8,000 INR", popular: false, desc: "~1,000 Videos or ~3,330 Images" },
+            { id: "1000", credits: 1000, price: "₹800 INR", popular: false },
+            { id: "2500", credits: 2500, price: "₹2,000 INR", popular: true },
+            { id: "5000", credits: 5000, price: "₹4,000 INR", popular: false },
+            { id: "10000", credits: 10000, price: "₹8,000 INR", popular: false },
           ].map((pkg) => (
             <div
               key={pkg.id}
@@ -198,7 +198,6 @@ export default function CreditsPage() {
                   <Sparkles className="h-4 w-4 text-[#b9f42e]" />
                   <span className="text-xl font-bold text-white">{pkg.credits.toLocaleString()} Credits</span>
                 </div>
-                <p className="mt-2 text-xs text-zinc-400">{pkg.desc}</p>
               </div>
 
               <div className="mt-6 flex items-center justify-between border-t border-white/[0.06] pt-4">

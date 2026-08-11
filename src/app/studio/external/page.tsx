@@ -1,7 +1,9 @@
 "use client"
 
 import Navbar from "@/components/Navbar"
-import { Bot, Code2, Copy, ExternalLink, KeyRound, MessageCircle, Plug, PlugZap, Sparkles, Terminal, Trash2 } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
+import { fetchSiteFeatures } from "@/lib/studio/feature-flags"
+import { AlertCircle, Bot, Code2, Copy, ExternalLink, KeyRound, MessageCircle, Pause, Plug, PlugZap, Sparkles, Terminal, Trash2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
 type TokenRecord = {
@@ -30,6 +32,7 @@ export default function StudioExternalAccessPage() {
   const [copied, setCopied] = useState("")
   const [client, setClient] = useState("claude")
   const [mode, setMode] = useState<"mcp" | "cli">("mcp")
+  const [isPaused, setIsPaused] = useState(false)
 
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"
   const mcpServerPath = "/Users/apple/Downloads/mannaistudio/scripts/ai-director-mcp-server.mjs"
@@ -73,6 +76,10 @@ ${mcpConfig}
 
   useEffect(() => {
     loadTokens()
+    const supabase = createClient()
+    fetchSiteFeatures(supabase).then((feats) => {
+      if (feats.mcp === false) setIsPaused(true)
+    })
   }, [])
 
   async function createToken() {
@@ -106,6 +113,17 @@ ${mcpConfig}
   return (
     <main className="min-h-screen bg-[#0b0d0c] text-white">
       <Navbar />
+
+      {isPaused && (
+        <div className="mx-auto max-w-[1400px] px-4 pt-24 md:px-6">
+          <div className="flex items-center gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5 text-sm font-bold text-amber-300">
+            <Pause className="h-5 w-5 shrink-0 fill-current" />
+            <span>
+              MCP & CLI Access is currently paused by the administrator. Existing integration tokens and connections are temporarily disabled.
+            </span>
+          </div>
+        </div>
+      )}
 
       <section className="mx-auto max-w-[1400px] px-4 pb-10 pt-28 md:px-6">
         <div className="flex flex-col items-center text-center">

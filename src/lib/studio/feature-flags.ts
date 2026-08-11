@@ -92,6 +92,7 @@ export type SiteFeatures = {
   social: boolean
   courses: boolean
   blog: boolean
+  mcp: boolean
 }
 
 export const defaultSiteFeatures: SiteFeatures = {
@@ -102,6 +103,7 @@ export const defaultSiteFeatures: SiteFeatures = {
   social: true,
   courses: true,
   blog: true,
+  mcp: true,
 }
 
 export async function fetchSiteFeatures(supabase: SupabaseClient): Promise<SiteFeatures> {
@@ -116,6 +118,7 @@ export async function fetchSiteFeatures(supabase: SupabaseClient): Promise<SiteF
       social: data.value.social !== false,
       courses: data.value.courses !== false,
       blog: data.value.blog !== false,
+      mcp: data.value.mcp !== false,
     }
   } catch {
     return defaultSiteFeatures

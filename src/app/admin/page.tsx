@@ -2889,6 +2889,7 @@ function AdminDashboardContent() {
 
                                 <div className="glass-card p-6 rounded-2xl border-white/10 space-y-4 max-w-4xl">
                                     {[
+                                        { key: "mcp" as const, label: "MCP & CLI", path: "/studio/external", desc: "External AI Client Integration Setup" },
                                         { key: "calendar" as const, label: "Calendar", path: "/calendar", desc: "Content Calendar & Post Scheduler" },
                                         { key: "analytics" as const, label: "Analytics", path: "/analytics", desc: "Social Media & Video Analytics Dashboard" },
                                         { key: "ads" as const, label: "Ads Manager", path: "/ads", desc: "Meta & LinkedIn Ad Campaign Manager" },

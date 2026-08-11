@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createClient } from '@/lib/supabase/server'
+import { billingTiers, isBillingTierId, tierForPlanId, type BillingTierId } from '@/lib/billing-plans'
 
 // Razorpay subscription webhook.
-// Configure this URL in the Razorpay Dashboard (Settings -> Webhooks) and
-// subscribe to: subscription.charged, subscription.activated,
-// subscription.cancelled, subscription.halted.
+// Configure https://www.aidirectorhub.com/api/razorpay/webhook in the Razorpay
+// Dashboard (Settings -> Webhooks) and subscribe to: subscription.charged,
+// subscription.activated, subscription.cancelled, subscription.halted.
 export async function POST(req: Request) {
     try {
         const secret = process.env.RAZORPAY_WEBHOOK_SECRET
@@ -82,12 +83,18 @@ export async function POST(req: Request) {
                 const paymentId = paymentEntity?.id || subscriptionId
                 const amount = paymentEntity?.amount ? String(paymentEntity.amount / 100) : ''
 
+                // Which tier was bought decides the credits. Prefer the plan ID on
+                // the subscription itself over the note, since the plan is what
+                // Razorpay actually charged against.
+                const chargedTier = tierForPlanId(subscription?.plan_id)
+                    ?? (isBillingTierId(subscription?.notes?.tier) ? billingTiers[subscription.notes.tier as BillingTierId] : null)
+
                 await supabase.rpc('record_payment', {
                     p_email: email,
                     p_txnid: paymentId,
                     p_payment_id: paymentId,
                     p_amount: amount,
-                    p_product_info: 'Membership: AI Director Hub Pro',
+                    p_product_info: `Membership: AI Director Hub ${chargedTier?.name || 'Pro'}`,
                     p_status: 'success',
                     p_profile_id: profileId,
                 })
@@ -100,6 +107,19 @@ export async function POST(req: Request) {
                 })
                 // One-time 100-bid bonus for paid members (no-op if already granted).
                 await supabase.rpc('grant_member_bids', { p_profile_id: profileId })
+
+                // Credits are granted per charge, so a renewal tops the member up
+                // again. The RPC is keyed on the payment ID because Razorpay retries
+                // webhooks, and a duplicate delivery must not grant a second month.
+                if (chargedTier?.credits) {
+                    await supabase.rpc('grant_subscription_credits', {
+                        p_profile_id: profileId,
+                        p_amount: chargedTier.credits,
+                        p_payment_id: paymentId,
+                        p_tier: chargedTier.id,
+                        p_description: `${chargedTier.name} membership — monthly credits`,
+                    })
+                }
                 break
             }
 
