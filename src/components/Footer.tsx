@@ -25,9 +25,6 @@ export default function Footer() {
                         <img src="/logo.png" alt="AI Director Hub" className="w-9 h-9 rounded-full" />
                         <span>AI Director <span className="text-primary">Hub</span></span>
                     </Link>
-                    <p className="text-sm text-white/40 leading-relaxed">
-                        Learn AI video creation step by step — from scriptwriting to publishing. Master AI tools and build your creator portfolio.
-                    </p>
                 </div>
 
                 <div>
