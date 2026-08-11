@@ -41,7 +41,7 @@ export function parseVoiceToolCall(payload: unknown): VoiceToolCall | null {
   if (!source) return null
 
   const callId = typeof source.call_id === "string" ? source.call_id : ""
-  const name = typeof source.name === "string" ? source.name : ""
+  const name = typeof source.name === "string" ? source.name.trim().replaceAll(" ", "_") : ""
   if (!callId || !name) return null
 
   let args: unknown = {}

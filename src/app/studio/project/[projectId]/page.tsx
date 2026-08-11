@@ -499,9 +499,9 @@ export default function WorkspacePage({
           status = "failed";
           summary = `Voice Director could not run “${call.name.replaceAll("_", " ")}”: ${message}`;
         }
-        // Mirror the spoken action into the chat timeline so approvals and audit
-        // history do not depend on the user remembering what they said.
-        if (chatSession) {
+        // Only mirror voice activity into the chat timeline if an action proposal was created or failed,
+        // preventing read-only background queries from polluting the chat thread.
+        if (chatSession && (proposalId || status === "failed" || status === "awaiting_approval")) {
           try {
             await fetch(`/api/studio/projects/${projectId}/director/voice-activity`, {
               method: "POST",
@@ -3896,10 +3896,12 @@ function ChatTimelineBlock({ block, onAction, disabled }: { block: DirectorTimel
   if (block.type === "tool_execution") {
     const failed = block.status === "failed";
     const waiting = block.status === "awaiting_approval";
+    // Only render tool executions if they failed or require approval, keeping routine read calls hidden.
+    if (!failed && !waiting) return null;
     return (
-      <details className={`rounded-lg border ${failed ? "border-red-500/30 bg-red-500/10" : waiting ? "border-amber-400/25 bg-amber-400/[0.07]" : "border-white/[0.08] bg-black/20"}`} open={failed}>
+      <details className={`rounded-lg border ${failed ? "border-red-500/30 bg-red-500/10" : "border-amber-400/25 bg-amber-400/[0.07]"}`} open={failed}>
         <summary className="flex cursor-pointer list-none items-center gap-2 p-2.5 text-[12px] font-semibold">
-          <span className={`grid h-5 w-5 place-items-center rounded-full text-[10px] ${failed ? "bg-red-500/20 text-red-300" : waiting ? "bg-amber-400/15 text-amber-200" : "bg-emerald-500/15 text-emerald-300"}`}>{failed ? "×" : waiting ? "…" : "✓"}</span>
+          <span className={`grid h-5 w-5 place-items-center rounded-full text-[10px] ${failed ? "bg-red-500/20 text-red-300" : "bg-amber-400/15 text-amber-200"}`}>{failed ? "×" : "…"}</span>
           <span className="min-w-0">
             {block.agent && <span className="mr-1.5 rounded-full border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#b9f42e]">{block.agent}</span>}
             {block.label}
@@ -3913,7 +3915,10 @@ function ChatTimelineBlock({ block, onAction, disabled }: { block: DirectorTimel
   if (block.type === "plan") return <div className="rounded-lg border border-white/[0.08] bg-black/20 p-2.5"><p className="text-[12px] font-semibold">{block.title}</p><div className="mt-2 space-y-1.5">{block.steps.map((step) => <div key={step.id} className="flex gap-2 text-[11px] text-zinc-400"><span>{step.status === "completed" ? "✓" : step.status === "failed" ? "×" : "○"}</span><span>{step.label}</span></div>)}</div></div>;
   if (block.type === "suggested_actions") return <div className="space-y-1.5">{block.actions.map((action) => <button key={action.id} type="button" disabled={disabled} onClick={() => onAction(action.intent)} className={`w-full rounded-lg border px-3 py-2.5 text-left text-[12px] font-semibold transition disabled:opacity-50 ${action.recommended ? "border-[#b9f42e]/35 bg-[#b9f42e]/10 text-[#dfff8c] hover:bg-[#b9f42e]/15" : "border-white/[0.08] bg-white/[0.03] text-zinc-300 hover:bg-white/[0.06]"}`}>{action.label}</button>)}</div>;
   if (block.type === "warning") return <div className="rounded-lg border border-amber-400/25 bg-amber-400/[0.07] p-2.5 text-[11px] leading-5 text-amber-100"><strong>{block.code}</strong><p>{block.message}</p>{block.actions.map((action) => <button key={action.id} type="button" disabled={disabled} onClick={() => onAction(action.intent)} className="mt-2 mr-2 rounded-md border border-amber-300/25 px-2 py-1 font-semibold">{action.label}</button>)}</div>;
-  if (block.type === "workflow_summary") return <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] p-2.5 text-[11px] text-emerald-100"><strong>{block.title}</strong><p className="mt-1 text-emerald-100/75">{block.summary}</p></div>;
+  if (block.type === "workflow_summary") {
+    if (block.summary === "Workflow completed.") return null;
+    return <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] p-2.5 text-[11px] text-emerald-100"><strong>{block.title}</strong><p className="mt-1 text-emerald-100/75">{block.summary}</p></div>;
+  }
   if (block.type === "media_result") return <ChatMedia media={block.media} />;
   return null;
 }

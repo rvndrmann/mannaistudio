@@ -5,7 +5,10 @@ import { directorTools, type DirectorToolName } from "./tool-registry"
 import { getUserCredits } from "./credits"
 
 export const toolRequestSchema = z.object({
-  tool: z.enum(["inspect_current_project", "read_episode_script", "save_script_prompts", "read_script_prompts", "search_episode_script", "list_production_entities", "list_storyboard_shots", "update_creative_brief", "create_series", "write_series_bible", "create_production_entity", "create_production_entities_batch", "create_storyboard_batch", "validate_production", "record_continuity_fact", "inspect_continuity", "estimate_generation_cost", "inspect_generation_jobs", "submit_generation", "update_script", "update_shot", "delete_shot", "update_asset", "attach_media_to_asset", "delete_asset", "attach_media_to_shot", "update_full_auto_mode", "create_revision_request"]),
+  tool: z.preprocess(
+    (val) => (typeof val === "string" ? val.trim().replaceAll(" ", "_") : val),
+    z.enum(["inspect_current_project", "read_episode_script", "save_script_prompts", "read_script_prompts", "search_episode_script", "list_production_entities", "list_storyboard_shots", "update_creative_brief", "create_series", "write_series_bible", "create_production_entity", "create_production_entities_batch", "create_storyboard_batch", "validate_production", "record_continuity_fact", "inspect_continuity", "estimate_generation_cost", "inspect_generation_jobs", "submit_generation", "update_script", "update_shot", "delete_shot", "update_asset", "attach_media_to_asset", "delete_asset", "attach_media_to_shot", "update_full_auto_mode", "create_revision_request"])
+  ),
   input: z.unknown(),
   idempotencyKey: z.string().trim().min(8).max(200),
   sessionId: z.string().uuid().optional(),
