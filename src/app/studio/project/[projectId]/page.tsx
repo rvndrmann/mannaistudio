@@ -2816,6 +2816,7 @@ function Storyboard({
     shot: Shot;
     type: "image" | "video";
   } | null>(null);
+  const [expandedShots, setExpandedShots] = useState<Set<string>>(new Set());
   const activeMedia = media
     ? { ...media, shot: shots.find((shot) => shot.id === media.shot.id) || media.shot }
     : null;
@@ -2860,6 +2861,15 @@ function Storyboard({
               const linked = entities.filter((e) =>
                 shot.referenced_entities?.includes(e.id),
               );
+              const isExpanded = expandedShots.has(shot.id);
+              const toggleExpanded = () => {
+                setExpandedShots((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(shot.id)) next.delete(shot.id);
+                  else next.add(shot.id);
+                  return next;
+                });
+              };
               return (
                 <article
                   key={shot.id}
@@ -2878,10 +2888,20 @@ function Storyboard({
                       </span>
                       <p className="font-bold">{shot.title}</p>
                     </div>
-                    <p className="mt-3 line-clamp-7 text-sm leading-6 text-zinc-300">
-                      {shot.prompt ||
-                        "Add a detailed prompt with the visual direction, camera framing, movement and continuity for this shot."}
-                    </p>
+                    <div className="mt-3 text-sm leading-6 text-zinc-300">
+                      <p className={isExpanded ? "" : "line-clamp-3"}>
+                        {shot.prompt ||
+                          "Add a detailed prompt with the visual direction, camera framing, movement and continuity for this shot."}
+                      </p>
+                      {shot.prompt && shot.prompt.length > 130 && (
+                        <button
+                          onClick={toggleExpanded}
+                          className="mt-1 text-[11px] font-bold text-[#b9f42e] hover:underline"
+                        >
+                          {isExpanded ? "Show less" : "Read more"}
+                        </button>
+                      )}
+                    </div>
                     <div className="mt-3 flex gap-2">
                       <button className="text-xs font-semibold text-zinc-300">
                         ✎ Edit
