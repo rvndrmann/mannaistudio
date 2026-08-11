@@ -1782,7 +1782,8 @@ function BasicSettingsModal({
   const selectedEpisodeWorkflow = typeof episodeWorkflowMap[data.activeEpisode.id] === "string" ? episodeWorkflowMap[data.activeEpisode.id] as string : "";
 
   const [projectName, setProjectName] = useState<string>(data.project.name || "Untitled production");
-  const [canvasSpec, setCanvasSpec] = useState<string>((metaSettings?.canvasSpec as string) || `${data.project.default_aspect || "9:16"} · 2K · 720p`);
+  const [aspectRatio, setAspectRatio] = useState<string>((metaSettings?.aspectRatio as string) || data.project.default_aspect || "9:16");
+  const [resolution, setResolution] = useState<string>((metaSettings?.resolution as string) || "720p");
   const [storyboardImageModel, setStoryboardImageModel] = useState<string>((metaSettings?.storyboardImageModel as string) || imageGenerationModels[0].id);
   const [characterImageModel, setCharacterImageModel] = useState<string>((metaSettings?.characterImageModel as string) || imageGenerationModels[0].id);
   const [videoModel, setVideoModel] = useState<string>((metaSettings?.videoModel as string) || videoGenerationModels[0].id);
@@ -1795,15 +1796,12 @@ function BasicSettingsModal({
   const confirmSettings = async () => {
     setSaving(true);
     try {
-      const selectedAspect = canvasSpec.split(" · ")[0] || "9:16";
-      const selectedResolution = canvasSpec.split(" · ")[2] || "720p";
       await save({
         action: "saveProjectSettings",
         settings: {
           projectName: projectName.trim() || "Untitled production",
-          canvasSpec,
-          aspectRatio: selectedAspect,
-          resolution: selectedResolution,
+          aspectRatio,
+          resolution,
           storyboardImageModel,
           characterImageModel,
           videoModel,
@@ -1861,21 +1859,36 @@ function BasicSettingsModal({
             />
           </div>
 
-          {/* Row 1: Canvas Spec, Storyboard Image Model, Character/Scene Image Model */}
+          {/* Row 1: Aspect Ratio, Resolution, Storyboard Image Model */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Canvas Spec</label>
-              <p className="text-[11px] text-zinc-500 mb-2">Ratio / Size / Resolution</p>
+              <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Aspect Ratio</label>
+              <p className="text-[11px] text-zinc-500 mb-2">Video framing</p>
               <select
-                value={canvasSpec}
-                onChange={(e) => setCanvasSpec(e.target.value)}
+                value={aspectRatio}
+                onChange={(e) => setAspectRatio(e.target.value)}
                 className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-[#b9f42e]"
               >
-                <option value="9:16 · 2K · 720p">9:16 · 2K · 720p</option>
-                <option value="16:9 · 4K · 1080p">16:9 · 4K · 1080p</option>
-                <option value="1:1 · 2K · 720p">1:1 · 2K · 720p</option>
-                <option value="2:3 · 2K · 720p">2:3 · 2K · 720p</option>
-                <option value="21:9 · 4K · 1080p">21:9 · 4K · 1080p</option>
+                <option value="9:16">9:16 (Vertical)</option>
+                <option value="16:9">16:9 (Horizontal)</option>
+                <option value="1:1">1:1 (Square)</option>
+                <option value="2:3">2:3 (Portrait)</option>
+                <option value="21:9">21:9 (Cinematic)</option>
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Resolution</label>
+              <p className="text-[11px] text-zinc-500 mb-2">Output video quality</p>
+              <select
+                value={resolution}
+                onChange={(e) => setResolution(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-[#b9f42e]"
+              >
+                <option value="720p">720p (HD)</option>
+                <option value="1080p">1080p (FHD)</option>
+                <option value="2K">2K (QHD)</option>
+                <option value="4K">4K (UHD)</option>
               </select>
             </div>
 
@@ -1892,7 +1905,10 @@ function BasicSettingsModal({
                 ))}
               </select>
             </div>
+          </div>
 
+          {/* Row 2: Character/Scene Image Model, Video Generation Model */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Character/Scene Image Model</label>
               <p className="text-[11px] text-zinc-500 mb-2">Used for character & scene concepts</p>
