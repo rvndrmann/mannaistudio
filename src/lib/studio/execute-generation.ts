@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { generateOpenAIImage, type OpenAIImageModel } from "./openai"
-import { submitBytePlusVideo } from "./byteplus"
-import type { VideoGenerationModelId } from "./generation-models"
+import { submitBytePlusVideo, generateBytePlusImage, createBytePlusAsset } from "./byteplus"
+import type { VideoGenerationModelId, ImageGenerationModelId } from "./generation-models"
 import { buildEntityMentionContext, type MentionableEntity } from "./entity-mentions"
 import { projectVisualStyle, visualStyleDirective } from "./entity-image-workflow"
 import type { AuthenticatedProjectContext } from "./server-context"
@@ -80,6 +80,43 @@ export async function executeGenerationJobsInBackground(
 
             await context.supabase.from("creator_shots").update({
               keyframe_image: path,
+            }).eq("id", job.shot_id)
+
+          } else if (job.type === "image" && job.provider === "byteplus") {
+            const resolvedPrompt = [job.prompt, `Required composition: ${effectiveAspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
+            const generated = await generateBytePlusImage({
+              model: job.model as ImageGenerationModelId,
+              prompt: resolvedPrompt,
+              referenceUrls,
+            })
+            
+            let byteplusAssetId: string | null = null
+            let byteplusAssetUri: string | null = null
+            try {
+              const assetRes = await createBytePlusAsset({ imageUrl: generated.url, name: job.prompt.slice(0, 50) })
+              byteplusAssetId = assetRes.assetId
+              byteplusAssetUri = `asset://${assetRes.assetId}`
+            } catch (assetErr) {
+              console.warn("Could not auto-register Seedream output as BytePlus asset:", assetErr)
+            }
+            
+            const download = await fetch(generated.url)
+            if (!download.ok) throw new Error(`Could not download Seedream output (${download.status}).`)
+            const imageBuffer = Buffer.from(await download.arrayBuffer())
+            
+            const path = `${context.user.id}/${context.project.id}/shots/${job.shot_id}/${job.model}-${randomUUID()}.png`
+            await context.supabase.storage.from("creator-studio-media").upload(path, imageBuffer, { contentType: generated.contentType })
+            
+            await context.supabase.from("creator_generation_jobs").update({
+              status: "completed",
+              result_url: path,
+              completed_at: new Date().toISOString(),
+            }).eq("id", job.id)
+
+            await context.supabase.from("creator_shots").update({
+              keyframe_image: path,
+              is_trusted_provider_asset: Boolean(byteplusAssetUri),
+              provider_asset_uri: byteplusAssetUri || null,
             }).eq("id", job.shot_id)
 
           } else if (job.type === "video" && job.provider === "byteplus") {
