@@ -98,7 +98,24 @@ export async function resolveBytePlusReferenceUrl(rawUrl: string): Promise<strin
   return formatted
 }
 
-export async function submitBytePlusVideo(input: { model: VideoGenerationModelId; prompt: string; duration: number; resolution: string; ratio: string; referenceUrls?: string[]; generationMode?: "keyframe" | "multi_image"; audioEnabled?: boolean }) {
+/**
+ * Seedance accepts video references alongside images in the same content array,
+ * which is how a shot inherits motion and look from the shot before it.
+ * Seedance 2.0 takes up to 3 videos totalling 15 seconds; 2.5 takes 10 totalling
+ * 30. Videos must be URLs — unlike images, they cannot be sent inline.
+ */
+export const bytePlusVideoReferenceLimits = {
+  "dreamina-seedance-2-5-260628": { maxVideos: 10, maxTotalSeconds: 30 },
+  default: { maxVideos: 3, maxTotalSeconds: 15 },
+} as const
+
+export function bytePlusVideoReferenceLimit(model: string) {
+  return model === "dreamina-seedance-2-5-260628"
+    ? bytePlusVideoReferenceLimits["dreamina-seedance-2-5-260628"]
+    : bytePlusVideoReferenceLimits.default
+}
+
+export async function submitBytePlusVideo(input: { model: VideoGenerationModelId; prompt: string; duration: number; resolution: string; ratio: string; referenceUrls?: string[]; videoReferenceUrls?: string[]; generationMode?: "keyframe" | "multi_image"; audioEnabled?: boolean }) {
   const content: Array<Record<string, unknown>> = [{ type: "text", text: input.prompt }]
   const resolvedUrls = await Promise.all((input.referenceUrls || []).map(resolveBytePlusReferenceUrl))
 
@@ -106,6 +123,11 @@ export async function submitBytePlusVideo(input: { model: VideoGenerationModelId
     resolvedUrls.forEach((url, index) => content.push({ type: "image_url", image_url: { url }, role: index === 0 ? "first_frame" : index === 1 ? "last_frame" : "reference_image" }))
   } else {
     for (const url of resolvedUrls) content.push({ type: "image_url", image_url: { url }, role: "reference_image" })
+  }
+
+  const videoLimit = bytePlusVideoReferenceLimit(input.model)
+  for (const url of (input.videoReferenceUrls || []).filter((value) => typeof value === "string" && value.trim()).slice(0, videoLimit.maxVideos)) {
+    content.push({ type: "video_url", video_url: { url } })
   }
   const maxDuration = input.model === "dreamina-seedance-2-5-260628" ? 30 : 15
   const data = await request("/contents/generations/tasks", {

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { BytePlusProviderError, createBytePlusAsset, getBytePlusAsset, getBytePlusVideoTask, submitBytePlusVideo } from "@/lib/studio/byteplus"
+import { BytePlusProviderError, bytePlusVideoReferenceLimit, createBytePlusAsset, getBytePlusAsset, getBytePlusVideoTask, submitBytePlusVideo } from "@/lib/studio/byteplus"
 import { FalProviderError, getFalVideoTask, submitFalVideo } from "@/lib/studio/fal"
 import { getGoogleVideoTask, GoogleProviderError, submitGoogleVideo } from "@/lib/studio/google"
 import { generationProvider, isVideoGenerationModel } from "@/lib/studio/generation-models"
@@ -25,10 +25,15 @@ const submitSchema = z.object({
   quality: z.enum(["Low", "Medium", "High", "Ultra"]).default("Medium"),
   audioEnabled: z.boolean().default(true),
   durationSeconds: z.number().int().min(4).max(30).default(4),
+  // Storage paths or URLs of clips the shot should inherit motion and look from.
+  referenceVideos: z.array(z.string().max(2_000)).max(10).default([]),
+  // Chains this shot to the one before it by passing that shot's finished video
+  // as a reference, which is how continuity carries across a sequence.
+  continueFromPreviousShot: z.boolean().default(false),
 }).strict()
 
 async function verifyShot(context: Awaited<ReturnType<typeof requireAuthenticatedProject>>, projectId: string, shotId: string) {
-  const { data: shot } = await context.supabase.from("creator_shots").select("id, episode_id, duration_seconds, aspect_ratio, resolution, keyframe_image, metadata, referenced_entities").eq("id", shotId).maybeSingle()
+  const { data: shot } = await context.supabase.from("creator_shots").select("id, episode_id, order_index, duration_seconds, aspect_ratio, resolution, keyframe_image, metadata, referenced_entities").eq("id", shotId).maybeSingle()
   if (!shot) return null
   const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", shot.episode_id).eq("project_id", projectId).maybeSingle()
   return episode ? shot : null
@@ -126,6 +131,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     combinedReferencePaths = Array.from(new Set(combinedReferencePaths))
 
     const references = await signedReferenceUrls(context, combinedReferencePaths)
+
+    // Seedance accepts finished clips as references, so a shot can inherit the
+    // motion and look of the one before it instead of restarting cold.
+    const videoReferencePaths = [...input.referenceVideos]
+    if (input.continueFromPreviousShot) {
+      const { data: previousShot } = await context.supabase
+        .from("creator_shots")
+        .select("video_url,order_index")
+        .eq("episode_id", shot.episode_id)
+        .lt("order_index", shot.order_index)
+        .not("video_url", "is", null)
+        .order("order_index", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (previousShot?.video_url) videoReferencePaths.unshift(previousShot.video_url)
+    }
+    const videoLimit = bytePlusVideoReferenceLimit(input.model)
+    const videoReferences = await signedReferenceUrls(
+      context,
+      Array.from(new Set(videoReferencePaths)).slice(0, videoLimit.maxVideos),
+    )
     const mentionContext = buildEntityMentionContext((resolvedEntities || []) as MentionableEntity[])
     const style = projectVisualStyle(context.project)
     const resolvedPrompt = [input.prompt, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
@@ -160,7 +186,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const gRes = await submitGoogleVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 4), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references })
         task = { id: gRes.id, response: gRes.response }
       } else {
-        const bpRes = await submitBytePlusVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references, generationMode: input.generationMode, audioEnabled: input.audioEnabled })
+        const bpRes = await submitBytePlusVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references, videoReferenceUrls: videoReferences, generationMode: input.generationMode, audioEnabled: input.audioEnabled })
         task = { id: bpRes.id, response: bpRes.response }
       }
       await Promise.all([

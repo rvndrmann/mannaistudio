@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { formatBytePlusError, formatBytePlusMediaUrl } from "./byteplus"
+import { formatBytePlusError, formatBytePlusMediaUrl, bytePlusVideoReferenceLimit } from "./byteplus"
 
 describe("formatBytePlusError", () => {
   it("uses nested BytePlus error messages and redacts provider identifiers", () => {
@@ -26,3 +26,16 @@ describe("formatBytePlusMediaUrl", () => {
   })
 })
 
+describe("seedance video references", () => {
+  it("allows 3 videos totalling 15 seconds on Seedance 2.0", () => {
+    const limit = bytePlusVideoReferenceLimit("dreamina-seedance-2-0-250428")
+    expect(limit.maxVideos).toBe(3)
+    expect(limit.maxTotalSeconds).toBe(15)
+  })
+
+  it("raises the allowance on Seedance 2.5", () => {
+    const limit = bytePlusVideoReferenceLimit("dreamina-seedance-2-5-260628")
+    expect(limit.maxVideos).toBe(10)
+    expect(limit.maxTotalSeconds).toBe(30)
+  })
+})
