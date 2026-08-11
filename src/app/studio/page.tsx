@@ -165,7 +165,7 @@ export default function StudioHome() {
     <main className="min-h-screen bg-[#070807] text-[#f5f2e5]">
       <TopBar />
       <StudioRail />
-      <section className="min-h-screen pl-[84px] pt-[132px] lg:pl-[156px]">
+      <section className="min-h-screen pl-[84px] pt-[84px] lg:pl-[156px]">
         <div className="mx-auto max-w-[1500px] px-5 pb-16 lg:px-10">
           <div className="mx-auto max-w-5xl">
             {productionModesEnabled && (
@@ -366,14 +366,7 @@ function ProductionModePicker({
 function TopBar() {
   return (
     <>
-      <div className="fixed inset-x-0 top-0 z-30 flex h-12 items-center justify-center border-b border-[#b9f42e]/20 bg-[#1b1c14] px-4 text-sm font-semibold">
-        ✨ Top up & subscribe to get{" "}
-        <span className="ml-1 text-[#b9f42e]">bonus points</span>
-        <button className="ml-4 rounded-full bg-gradient-to-r from-orange-400 to-violet-600 px-4 py-1.5 text-white">
-          Upgrade
-        </button>
-      </div>
-      <header className="fixed inset-x-0 top-12 z-30 flex h-20 items-center justify-between border-b border-white/10 bg-[#090a09]/95 px-5 backdrop-blur">
+      <header className="fixed inset-x-0 top-0 z-30 flex h-20 items-center justify-between border-b border-white/10 bg-[#090a09]/95 px-5 backdrop-blur">
         <div className="flex items-center gap-3">
           <Link
             href="/"
@@ -415,7 +408,7 @@ function StudioRail() {
     [FolderKanban, "Projects"],
   ] as const;
   return (
-    <aside className="fixed bottom-0 left-0 top-[132px] z-20 hidden w-[156px] border-r border-white/10 bg-[#0b0c0b] py-7 lg:block">
+    <aside className="fixed bottom-0 left-0 top-[84px] z-20 hidden w-[156px] border-r border-white/10 bg-[#0b0c0b] py-7 lg:block">
       <nav className="space-y-2 px-3">
         {items.map(([Icon, label], index) => (
           <button
