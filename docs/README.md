@@ -8,6 +8,7 @@ Welcome to the documentation directory for **AI Director Hub** & **AI Social Med
 | :--- | :--- |
 | [`SESSION_HANDOFF_2026-08-10.md`](SESSION_HANDOFF_2026-08-10.md) | Unified credit deductions, Voice Director tool calling, Director vision, teams and enterprise, and the open items left behind. |
 | [`TEAMS_SHARING_AND_ENTERPRISE.md`](TEAMS_SHARING_AND_ENTERPRISE.md) | Teams and roles, the two-stage team credit model, per-project sharing and how row level security enforces it, enterprise engagements, and change attribution. |
+| [`VIDEO_TAIL_REFERENCE.md`](VIDEO_TAIL_REFERENCE.md) | **On hold.** Seedance video references and why trimming a reference clip to its closing seconds needs infrastructure Netlify cannot host, with the options and what to test first. |
 | [`SESSION_HANDOFF_2026-08-09.md`](SESSION_HANDOFF_2026-08-09.md) | Summary of AI Credit System, Razorpay credit top-ups, combined transaction history (paid/cancelled/failed), course pause feature, and site feature pause controls. |
 | [`SESSION_HANDOFF_2026-08-08.md`](SESSION_HANDOFF_2026-08-08.md) | Summary of AI Social Media + Advertising Agent, BytePlus Seedream/Seedance 2.5, character asset pipeline, and dark minimal UI redesign. |
 | [`AI_DIRECTOR_MCP_AND_CLI.md`](AI_DIRECTOR_MCP_AND_CLI.md) | External access tokens, CLI, and MCP server setup so ChatGPT/Claude-style clients can talk to the AI Director agent. |
