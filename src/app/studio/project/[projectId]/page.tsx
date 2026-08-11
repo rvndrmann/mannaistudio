@@ -2863,7 +2863,7 @@ function Storyboard({
               return (
                 <article
                   key={shot.id}
-                  className="grid grid-cols-[42px_minmax(210px,1.6fr)_150px_170px_170px] gap-3 rounded-xl border border-white/10 bg-[#1a1c1b] p-3"
+                  className="grid grid-cols-[42px_minmax(210px,1.6fr)_150px_170px_170px] items-start gap-3 rounded-xl border border-white/10 bg-[#1a1c1b] p-3"
                 >
                   <div className="flex flex-col items-center gap-3">
                     <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#b9f42e]/12 font-bold text-[#b9f42e]">
