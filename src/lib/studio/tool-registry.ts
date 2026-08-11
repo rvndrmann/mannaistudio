@@ -7,6 +7,7 @@ import { entityHandle, entityKindSchema, legacyEntityType, seriesBibleSchema } f
 import { generationRequestSchema, routeGeneration } from "./model-routing"
 import { revisionRequestSchema } from "./revisions"
 import { deductUserCredits } from "./credits"
+import { executeGenerationJobsInBackground } from "./execute-generation"
 
 export type ToolRisk = "read" | "write" | "costly" | "destructive"
 
@@ -417,6 +418,9 @@ export const submitGenerationTool = defineDirectorTool({
       await context.supabase.rpc("creator_cancel_unreserved_jobs", { p_job_ids: jobIds })
       throw new Error(deduction.errorMessage || "Insufficient credits")
     }
+    // Trigger background generation for the approved jobs
+    executeGenerationJobsInBackground(context, jobIds)
+
     return {
       jobs: data,
       estimatedCredits: routing.estimatedCredits,
