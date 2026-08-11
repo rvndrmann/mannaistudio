@@ -49,14 +49,25 @@ export async function executeGenerationJobsInBackground(
           const combinedReferencePaths = Array.from(new Set([...mentionReferencePaths, ...referencePaths])).slice(0, 8)
           const mentionContext = buildEntityMentionContext((mentionedEntities || []) as MentionableEntity[])
 
+          const signReference = async (ref: string) => {
+            if (/^https?:\/\//i.test(ref) || /^asset:\/\//i.test(ref) || /^asset-[a-z0-9-]+$/i.test(ref)) return ref
+            const { data } = await context.supabase.storage.from("creator-studio-media").createSignedUrl(ref, 60 * 60)
+            return data?.signedUrl || null
+          }
+
           const referenceUrls: string[] = []
           for (const ref of combinedReferencePaths) {
-            if (/^https?:\/\//i.test(ref) || /^asset:\/\//i.test(ref) || /^asset-[a-z0-9-]+$/i.test(ref)) {
-              referenceUrls.push(ref)
-            } else {
-              const { data } = await context.supabase.storage.from("creator-studio-media").createSignedUrl(ref, 60 * 60)
-              if (data?.signedUrl) referenceUrls.push(data.signedUrl)
-            }
+            const signed = await signReference(ref)
+            if (signed) referenceUrls.push(signed)
+          }
+
+          // Seedance takes clips alongside images so a shot can inherit motion
+          // and look from an earlier shot's video. These travel separately
+          // because the provider requires URLs for video, not inline data.
+          const videoReferenceUrls: string[] = []
+          for (const ref of (Array.isArray(settings.videoReferencePaths) ? settings.videoReferencePaths as string[] : []).slice(0, 10)) {
+            const signed = await signReference(ref)
+            if (signed) videoReferenceUrls.push(signed)
           }
 
           if (job.type === "image" && job.provider === "openai") {
@@ -127,6 +138,9 @@ export async function executeGenerationJobsInBackground(
               resolution: typeof settings.resolution === "string" ? settings.resolution : "720p",
               ratio: effectiveAspectRatio,
               referenceUrls,
+              videoReferenceUrls,
+              generationMode: settings.generationMode === "multi_image" ? "multi_image" : "keyframe",
+              audioEnabled: typeof settings.audioEnabled === "boolean" ? settings.audioEnabled : true,
             })
             
             await context.supabase.from("creator_generation_jobs").update({

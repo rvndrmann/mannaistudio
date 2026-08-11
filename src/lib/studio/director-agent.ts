@@ -1,7 +1,6 @@
 import { z } from "zod"
 import { createDirectorToolTurn, type OpenAIDirectorFunction } from "./openai"
 import { createGoogleDirectorToolTurn } from "./google"
-import { createBytePlusDirectorToolTurn } from "./byteplus"
 import { directorTools, type DirectorToolName } from "./tool-registry"
 import { requestDirectorTool } from "./tool-service"
 import type { AuthenticatedProjectContext } from "./server-context"
@@ -19,7 +18,7 @@ const toolDescriptions: Record<DirectorToolName, string> = {
   read_script_prompts: "Read the saved prompt sheet for an episode before building shots or generating",
   search_episode_script: "Read a bounded script line range or search it by keyword, character, or scene label.",
   list_production_entities: "List existing production entities with pagination and optional type or name filters. Use before creating entities to avoid duplicates.",
-  list_storyboard_shots: "List storyboard shots for an episode with pagination.",
+  list_storyboard_shots: "List storyboard shots for an episode with pagination. Each row carries `number`, the 1-based shot number shown in the storyboard. When the user names a shot or scene by number, match it against `number`, never against the 0-based `order_index`.",
   update_creative_brief: "Propose an update to the saved project creative brief.",
   create_series: "Propose creation of a series in the current project.",
   write_series_bible: "Propose an update to a saved series bible.",
@@ -31,7 +30,7 @@ const toolDescriptions: Record<DirectorToolName, string> = {
   inspect_continuity: "Read approved continuity facts and conflicts.",
   estimate_generation_cost: "Estimate image or video generation credits and routing.",
   inspect_generation_jobs: "Read recent generation job states, results, and failures for this project or episode.",
-  submit_generation: "Propose image or video generation jobs. This always requires user approval.",
+  submit_generation: "Propose image or video generation jobs. This always requires user approval. Include only the shots the user actually asked for: when they name specific shots or scenes, resolve each one through `list_storyboard_shots` on its 1-based `number` and submit exactly those shot IDs. Never widen the request to neighbouring shots or to every shot missing media.",
   update_script: "Propose replacing the saved episode script content.",
   update_shot: "Propose edits to one storyboard shot.",
   delete_shot: "Propose deletion of one storyboard shot.",
@@ -102,18 +101,8 @@ export async function runDirectorAgent(input: {
       const fullInstructions = `${input.instructions}\nCurrent episode ID: ${input.episodeId || "No episode selected"}\nCurrent project ID: ${input.context.project.id}\nExecutable workspace proposals must be created by calling the appropriate tool; never represent an executable proposal only as assistant text. Tool calls that require approval create the UI approval card and do not apply the change until the user approves it.\n\n${teamBlock}\n\n${runtimeInstructions(runtimeSettings, activeSpecialists)}`
       const toolDefs = directorFunctionDefinitions()
 
-      const isBytePlus = input.model === "kimi-2.5" || input.model === "deepseek-v4" || input.model === "glm-5.2" || input.model === "dola-seed-2-1-turbo" || input.model === "dola-seed-2-0"
-
       turn = input.model.startsWith("gemini")
         ? await createGoogleDirectorToolTurn({
-            userId: input.context.user.id,
-            model: input.model,
-            instructions: fullInstructions,
-            items,
-            tools: toolDefs,
-          })
-        : isBytePlus
-        ? await createBytePlusDirectorToolTurn({
             userId: input.context.user.id,
             model: input.model,
             instructions: fullInstructions,
@@ -137,11 +126,18 @@ export async function runDirectorAgent(input: {
     if (!turn.calls.length) break
     if (step === runtimeSettings.maxToolSteps - 1) reachedStepLimit = true
 
+    // Record every call of this batch before any output. Gemini requires a
+    // parallel batch to be replayed as one model turn, and keeping calls and
+    // outputs unmixed is what lets the replay tell a parallel batch apart from
+    // the next sequential step.
+    for (const call of turn.calls) {
+      items.push({ type: "function_call", call_id: call.callId, name: call.name, arguments: JSON.stringify(call.arguments), thoughtSignature: call.thoughtSignature })
+    }
+
     for (const call of turn.calls) {
       stepSequence += 1
       const tool = directorTools[call.name as DirectorToolName]
       if (!tool) {
-        items.push({ type: "function_call", call_id: call.callId, name: call.name, arguments: JSON.stringify(call.arguments), thoughtSignature: call.thoughtSignature })
         items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify({ error: "Unknown Director tool" }), thoughtSignature: call.thoughtSignature })
         continue
       }
@@ -152,7 +148,6 @@ export async function runDirectorAgent(input: {
       const agentName = owningAgent && team[owningAgent].enabled ? team[owningAgent].name : undefined
       const block: DirectorTimelineBlock = { type: "tool_execution", tool: call.name, label, status: "running", agent: agentName }
       timeline.push(block)
-      items.push({ type: "function_call", call_id: call.callId, name: call.name, arguments: JSON.stringify(call.arguments), thoughtSignature: call.thoughtSignature })
       try {
         const result = await requestDirectorTool(input.context, {
           tool: call.name,

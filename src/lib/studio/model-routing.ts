@@ -13,6 +13,15 @@ export const generationRequestSchema = z.object({
   aspectRatio: z.string().max(20).default("9:16"),
   resolution: z.string().max(20).default("720p"),
   preference: z.enum(["quality", "balanced", "speed", "cost"]).default("balanced"),
+  // Set when the user picks a model in the chat generation block instead of
+  // leaving the choice to preference-based routing.
+  model: z.string().trim().max(100).optional(),
+  audioEnabled: z.boolean().default(true),
+  generationMode: z.enum(["keyframe", "multi_image"]).default("keyframe"),
+  referencePaths: z.array(z.string().trim().min(1).max(2_000)).max(8).default([]),
+  // Clips referenced for motion and look continuity, kept apart from image
+  // references because the provider treats the two differently.
+  videoReferencePaths: z.array(z.string().trim().min(1).max(2_000)).max(10).default([]),
 }).strict()
 
 export type GenerationRequest = z.infer<typeof generationRequestSchema>
@@ -45,7 +54,12 @@ export function routeGeneration(raw: unknown, models: GenerationModel[] = genera
   const candidates = models.filter((model) => model.types.includes(request.type) && model.sources.includes(request.source) && (!request.referenceImageRequired || model.referenceImages) && (!request.dialogueRequired || model.dialogue))
   if (!candidates.length) throw new Error("No configured model supports this shot request")
   const score = (model: GenerationModel) => request.preference === "quality" ? model.quality * 3 - model.costPerSecond : request.preference === "speed" ? model.speed * 3 - model.costPerSecond : request.preference === "cost" ? -(model.baseCredits + model.costPerSecond * request.durationSeconds) : model.quality + model.speed - model.costPerSecond
-  const selected = [...candidates].sort((a, b) => score(b) - score(a))[0]
+  // An explicit choice wins over preference scoring, but only among the models
+  // that actually support the request, so the picker cannot route a shot to a
+  // model that cannot produce it.
+  const chosen = request.model ? candidates.find((model) => model.model === request.model) : undefined
+  if (request.model && !chosen) throw new Error(`Model ${request.model} does not support this ${request.type} request`)
+  const selected = chosen ?? [...candidates].sort((a, b) => score(b) - score(a))[0]
   const creditsPerShot = Math.ceil(selected.baseCredits + selected.costPerSecond * request.durationSeconds)
-  return { request, selected, creditsPerShot, estimatedCredits: creditsPerShot * request.shotIds.length, reason: `Selected for ${request.preference} preference and requested capabilities` }
+  return { request, selected, creditsPerShot, estimatedCredits: creditsPerShot * request.shotIds.length, reason: chosen ? "Selected explicitly in the generation block" : `Selected for ${request.preference} preference and requested capabilities` }
 }

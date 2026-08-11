@@ -150,7 +150,11 @@ export const listStoryboardShotsTool = defineDirectorTool({
     if (!episode) throw new Error("Episode does not belong to this project")
     const { data, error, count } = await context.supabase.from("creator_shots").select("id,order_index,title,description,script_text,prompt,keyframe_image,video_url,video_status,duration_seconds,aspect_ratio,referenced_entities,metadata", { count: "exact" }).eq("episode_id", input.episodeId).order("order_index").range(input.offset, input.offset + input.limit - 1)
     if (error) throw error
-    return { items: data || [], total: count || 0, offset: input.offset, limit: input.limit, hasMore: input.offset + input.limit < (count || 0) }
+    // order_index is 0-based but the storyboard labels shots from 1. Without an
+    // explicit number the Director maps "shot 2" onto order_index 2 and acts on
+    // the wrong shot, so the user-visible number travels with every row.
+    const items = (data || []).map((shot) => ({ ...shot, number: shot.order_index + 1 }))
+    return { items, total: count || 0, offset: input.offset, limit: input.limit, hasMore: input.offset + input.limit < (count || 0) }
   },
 })
 
@@ -398,7 +402,11 @@ export const submitGenerationTool = defineDirectorTool({
       const updateError = updates.find((result) => result.error)?.error
       if (updateError) throw updateError
     }
-    const jobs = input.request.shotIds.map((shotId, index) => ({ user_id: context.user.id, project_id: context.project.id, shot_id: shotId, type: input.request.type, status: "approved", model: routing.selected.model, provider: routing.selected.provider, prompt: input.prompts[shotId], settings: input.request, estimated_credits: routing.creditsPerShot, requires_approval: true, approved_at: new Date().toISOString(), operation: input.request.type === "video" ? "submit_video_generation" : "submit_image_generation", idempotency_key: `${input.idempotencyKey}:${index}`, routing_decision: routing, cost_estimate: { credits: routing.creditsPerShot } }))
+    // References chosen in the generation block replace the ones captured when
+    // the proposal was created, so an edited proposal generates from what the
+    // user can actually see on the card.
+    const inputImages = input.request.referencePaths.length ? input.request.referencePaths : undefined
+    const jobs = input.request.shotIds.map((shotId, index) => ({ user_id: context.user.id, project_id: context.project.id, shot_id: shotId, type: input.request.type, status: "approved", model: routing.selected.model, provider: routing.selected.provider, prompt: input.prompts[shotId], settings: input.request, ...(inputImages ? { input_images: inputImages } : {}), estimated_credits: routing.creditsPerShot, requires_approval: true, approved_at: new Date().toISOString(), operation: input.request.type === "video" ? "submit_video_generation" : "submit_image_generation", idempotency_key: `${input.idempotencyKey}:${index}`, routing_decision: routing, cost_estimate: { credits: routing.creditsPerShot } }))
     if (jobs.some((job) => !job.prompt)) throw new Error("Every shot requires a validated prompt")
     const { data, error } = await context.supabase.from("creator_generation_jobs").insert(jobs).select("*")
     if (error) throw error

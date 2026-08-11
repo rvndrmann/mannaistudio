@@ -12,6 +12,7 @@ import {
   Gem,
   History,
   FileText,
+  AlertTriangle,
   Film,
   ArrowUp,
   Brain,
@@ -186,6 +187,10 @@ const blankScript = {
   }[],
 };
 
+// The Director model is a per-user preference rather than project data, so it
+// is stored once instead of per project.
+const directorModelStorageKey = "studio_director_model";
+
 export default function WorkspacePage({
   params,
 }: {
@@ -248,6 +253,18 @@ export default function WorkspacePage({
     voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
   }, []);
   useEffect(() => {
+    // The chat model is a user preference, so a reload keeps the last choice
+    // instead of snapping back to the catalog default.
+    const stored = localStorage.getItem(directorModelStorageKey);
+    const applyPreference = (models: DirectorModelConfig[]) => {
+      if (!models.length) return;
+      setDirectorModel((current) => {
+        if (stored && models.some((model) => model.id === stored)) return stored;
+        if (models.some((model) => model.id === current)) return current;
+        return models[0].id;
+      });
+    };
+    applyPreference(defaultDirectorModels.filter((model) => model.status === "active"));
     createClient()
       .from("site_settings")
       .select("value")
@@ -257,7 +274,7 @@ export default function WorkspacePage({
         const nextModels = activeDirectorModels(settings?.value);
         if (!nextModels.length) return;
         setDirectorModels(nextModels);
-        setDirectorModel((current) => nextModels.some((model) => model.id === current) ? current : nextModels[0].id);
+        applyPreference(nextModels);
       });
   }, []);
   const [assetType, setAssetType] = useState<Entity["type"] | null>(null);
@@ -431,14 +448,14 @@ export default function WorkspacePage({
       if (chatFileInputRef.current) chatFileInputRef.current.value = "";
     }
   };
-  const decideProposal = async (proposalId: string, decision: "approved" | "rejected") => {
+  const decideProposal = async (proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) => {
     setProposalBusy(proposalId);
     setChatError(null);
     try {
       const response = await fetch(`/api/studio/projects/${projectId}/director/proposals/${proposalId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision }),
+        body: JSON.stringify(overrides ? { decision, overrides } : { decision }),
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || "Could not update proposal");
@@ -929,7 +946,7 @@ export default function WorkspacePage({
                 {item.content}
                 <ChatTimeline blocks={item.timeline_blocks} proposals={data.actionProposals} onAction={sendDirectorMessage} disabled={chatSending} />
                 <ChatMedia media={item.media} />
-                <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} busyId={proposalBusy} onDecide={decideProposal} />
+                <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} entities={data.entities} shots={data.shots} projectId={projectId} busyId={proposalBusy} onDecide={decideProposal} />
               </div>
             ))}
             {chatSending && <ThinkingBubble />}
@@ -937,6 +954,9 @@ export default function WorkspacePage({
               proposals={data.actionProposals}
               excludeIds={data.chatMessages.flatMap((item) => proposalIdsFromActions(item.suggested_actions))}
               sessionId={data.activeSessionId}
+              entities={data.entities}
+              shots={data.shots}
+              projectId={projectId}
               busyId={proposalBusy}
               onDecide={decideProposal}
             />
@@ -979,7 +999,10 @@ export default function WorkspacePage({
                 </button>
                 <select
                   value={directorModel}
-                  onChange={(event) => setDirectorModel(event.target.value)}
+                  onChange={(event) => {
+                    setDirectorModel(event.target.value);
+                    localStorage.setItem(directorModelStorageKey, event.target.value);
+                  }}
                   className="rounded-full border border-white/[0.06] bg-[#141414] px-2.5 py-1 text-[11px] font-medium text-zinc-300 outline-none hover:border-[#b9f42e]/40"
                 >
                   {directorModels.map((modelOption) => (
@@ -4118,20 +4141,26 @@ function ChatTimelineBlock({ block, proposals, onAction, disabled }: { block: Di
 function ChatSuggestedActions({
   actions,
   proposals,
+  entities,
+  shots,
+  projectId,
   busyId,
   onDecide,
 }: {
   actions?: Array<Record<string, unknown>> | null;
   proposals: ChatProposal[];
+  entities: Entity[];
+  shots: Shot[];
+  projectId: string;
   busyId: string | null;
-  onDecide: (proposalId: string, decision: "approved" | "rejected") => void;
+  onDecide: (proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) => void;
 }) {
   const ids = proposalIdsFromActions(actions);
   const matched = proposals.filter((proposal) => ids.includes(proposal.id));
   if (!matched.length) return null;
   return (
     <div className="mt-3 space-y-2">
-      {matched.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} busy={busyId === proposal.id} onDecide={onDecide} />)}
+      {matched.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} entities={entities} shots={shots} projectId={projectId} busy={busyId === proposal.id} onDecide={onDecide} />)}
     </div>
   );
 }
@@ -4140,14 +4169,20 @@ function PendingProposalCards({
   proposals,
   excludeIds,
   sessionId,
+  entities,
+  shots,
+  projectId,
   busyId,
   onDecide,
 }: {
   proposals: ChatProposal[];
   excludeIds: string[];
   sessionId?: string | null;
+  entities: Entity[];
+  shots: Shot[];
+  projectId: string;
   busyId: string | null;
-  onDecide: (proposalId: string, decision: "approved" | "rejected") => void;
+  onDecide: (proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) => void;
 }) {
   const excluded = new Set(excludeIds);
   // Only the current conversation's approvals belong in this timeline. Without
@@ -4158,7 +4193,7 @@ function PendingProposalCards({
   return (
     <div className="mt-4 flex flex-col">
       <div className="space-y-2 mb-2">
-        {pending.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} busy={busyId === proposal.id} onDecide={onDecide} />)}
+        {pending.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} entities={entities} shots={shots} projectId={projectId} busy={busyId === proposal.id} onDecide={onDecide} />)}
       </div>
       <div className="border-l-2 border-y border-[#fff878]/50 border-r-0 py-2.5 pl-3 mt-2 mb-1 rounded-l-md bg-gradient-to-r from-[#fff878]/10 to-transparent">
         <p className="text-[11px] font-medium text-zinc-300">Please handle the pending confirmations above before sending a new message</p>
@@ -4174,19 +4209,371 @@ function proposalIdsFromActions(actions?: Array<Record<string, unknown>> | null)
     .map((proposal) => proposal.id);
 }
 
-function ProposalCard({
+type GenerationProposalRequest = {
+  type?: string;
+  shotIds?: string[];
+  mentionedEntityIds?: string[];
+  durationSeconds?: number;
+  aspectRatio?: string;
+  resolution?: string;
+  model?: string;
+  audioEnabled?: boolean;
+  generationMode?: "keyframe" | "multi_image";
+  referencePaths?: string[];
+  videoReferencePaths?: string[];
+};
+
+function generationProposalRequest(proposal: ChatProposal): GenerationProposalRequest | null {
+  if (proposal.action_type !== "submit_generation") return null;
+  const payload = proposal.payload as { request?: GenerationProposalRequest } | null;
+  const request = payload?.request;
+  return request && typeof request === "object" ? request : null;
+}
+
+function generationProposalPrompt(proposal: ChatProposal) {
+  const payload = proposal.payload as { prompts?: Record<string, string> } | null;
+  const prompts = payload?.prompts;
+  if (!prompts || typeof prompts !== "object") return "";
+  return Object.values(prompts)[0] || "";
+}
+
+// The prompt carries @mentions as [@Name]. Any that no longer match a project
+// entity is ignored by the provider, so the card warns before credits are spent
+// rather than after the shot comes back without the character.
+function unresolvedMentions(prompt: string, entities: Entity[]) {
+  const names = new Set(entities.map((entity) => entity.name.toLowerCase().replace(/\s+/g, "-")));
+  const found = prompt.match(/\[@([^\]]+)\]|@([A-Za-z0-9_-]{2,})/g) || [];
+  return Array.from(new Set(
+    found
+      .map((token) => token.replace(/^\[?@/, "").replace(/\]$/, "").trim())
+      .filter((name) => name && !names.has(name.toLowerCase().replace(/\s+/g, "-"))),
+  )).slice(0, 6);
+}
+
+function VideoGenerationProposalBlock({
   proposal,
+  request,
+  entities,
+  shots,
+  projectId,
   busy,
   onDecide,
 }: {
   proposal: ChatProposal;
+  request: GenerationProposalRequest;
+  entities: Entity[];
+  shots: Shot[];
+  projectId: string;
   busy: boolean;
-  onDecide: (proposalId: string, decision: "approved" | "rejected") => void;
+  onDecide: (proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) => void;
+}) {
+  const isVideo = request.type !== "image";
+  const [prompt, setPrompt] = useState(() => generationProposalPrompt(proposal));
+  const [promptExpanded, setPromptExpanded] = useState(false);
+  const [model, setModel] = useState(request.model || (isVideo ? videoGenerationModels[0].id : imageGenerationModels[0].id));
+  const [mode, setMode] = useState<"keyframe" | "multi_image">(request.generationMode === "multi_image" ? "multi_image" : "keyframe");
+  const [aspectRatio, setAspectRatio] = useState(request.aspectRatio || "16:9");
+  const [resolution, setResolution] = useState(request.resolution || "720p");
+  const [durationSeconds, setDurationSeconds] = useState(Number(request.durationSeconds || 5));
+  const [audioEnabled, setAudioEnabled] = useState(request.audioEnabled !== false);
+  const [references, setReferences] = useState<string[]>(request.referencePaths || []);
+  const [videoReferences, setVideoReferences] = useState<string[]>(request.videoReferencePaths || []);
+  const [addMenu, setAddMenu] = useState(false);
+  const [assetPicker, setAssetPicker] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const canDecide = proposal.status === "pending";
+  const shotCount = request.shotIds?.length || 1;
+  const credits = calculateCreditCost(model, isVideo ? "video" : "image", durationSeconds, { aspectRatio, resolution }) * shotCount;
+  const missing = useMemo(() => unresolvedMentions(prompt, entities), [prompt, entities]);
+
+  const uploadReference = async (file?: File) => {
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const userId = (await createClient().auth.getUser()).data.user?.id;
+      if (!userId) throw new Error("Please sign in before uploading a reference.");
+      const path = `${userId}/${projectId}/shot-reference-${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+      const { error } = await createClient().storage.from("creator-studio-media").upload(path, file);
+      if (error) throw error;
+      setReferences((current) => Array.from(new Set([...current, path])).slice(0, 8));
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Reference upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const confirm = () => {
+    const shotIds = request.shotIds || [];
+    onDecide(proposal.id, "approved", {
+      request: {
+        ...request,
+        model,
+        aspectRatio,
+        resolution,
+        durationSeconds,
+        audioEnabled,
+        generationMode: mode,
+        referencePaths: references,
+        videoReferencePaths: videoReferences,
+      },
+      // Every shot in the batch takes the edited prompt, matching what the card
+      // shows the user before they confirm.
+      ...(prompt.trim() && shotIds.length ? { prompts: Object.fromEntries(shotIds.map((id) => [id, prompt.trim()])) } : {}),
+    });
+  };
+
+  return (
+    <div className="flex flex-col overflow-hidden rounded-xl border border-white/10 bg-[#161616] text-left">
+      <div className="flex items-center justify-between border-b border-white/5 bg-black/20 p-3">
+        <div className="flex items-center gap-2">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[#c084fc]/20 bg-[#c084fc]/10">
+            {isVideo ? <Film className="h-3.5 w-3.5 text-[#c084fc]" /> : <ImageIcon className="h-3.5 w-3.5 text-[#c084fc]" />}
+          </div>
+          <p className="truncate text-[13px] font-bold text-zinc-100">{isVideo ? "Video Production" : "Image Production"}</p>
+          <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-zinc-400">
+            {shotCount === 1 ? "Shot 1" : `${shotCount} shots`}
+          </span>
+        </div>
+        <span className="shrink-0 rounded-full border border-[#fff878]/30 px-2 py-0.5 text-[10px] font-bold text-[#fff878]">
+          {proposal.status === "pending" ? "Pending confirmation" : proposal.status}
+        </span>
+      </div>
+
+      {missing.length > 0 && (
+        <div className="flex items-start gap-2 border-b border-white/5 bg-red-500/10 p-3">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-300" />
+          <p className="text-[11px] leading-relaxed text-red-200">
+            References not found and will be ignored: {missing.map((name) => `[@${name}]`).join(", ")} — add reference images manually or adjust the prompt
+          </p>
+        </div>
+      )}
+
+      <div className="space-y-3 p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {videoReferences.map((path) => (
+            <div key={path} className="group relative h-14 w-14 overflow-hidden rounded-lg border border-[#c084fc]/50">
+              <AssetVideo src={path} />
+              <span className="absolute bottom-0 inset-x-0 bg-black/75 text-center text-[9px] font-bold text-[#c084fc]">VIDEO</span>
+              {canDecide && (
+                <button
+                  type="button"
+                  onClick={() => setVideoReferences((current) => current.filter((item) => item !== path))}
+                  className="absolute right-0.5 top-0.5 hidden rounded bg-black/70 px-1 text-[10px] text-white group-hover:block"
+                  aria-label="Remove video reference"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+          {references.map((path) => (
+            <div key={path} className="group relative h-14 w-14 overflow-hidden rounded-lg border border-white/10">
+              <AssetImage src={path} />
+              {canDecide && (
+                <button
+                  type="button"
+                  onClick={() => setReferences((current) => current.filter((item) => item !== path))}
+                  className="absolute right-0.5 top-0.5 hidden rounded bg-black/70 px-1 text-[10px] text-white group-hover:block"
+                  aria-label="Remove reference"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+          {canDecide && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setAddMenu((open) => !open)}
+                disabled={uploading || references.length >= 8}
+                className="grid h-14 w-14 place-items-center rounded-lg border border-dashed border-white/20 text-zinc-400 hover:border-[#b9f42e] hover:text-[#b9f42e] disabled:opacity-40"
+                aria-label="Add reference image"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+              {addMenu && (
+                <div className="absolute left-0 top-16 z-20 w-48 rounded-lg border border-white/10 bg-[#1c1c1c] p-1 shadow-xl">
+                  <button
+                    type="button"
+                    onClick={() => { setAddMenu(false); fileInputRef.current?.click(); }}
+                    className="block w-full rounded px-2 py-1.5 text-left text-[11px] text-zinc-300 hover:bg-white/5"
+                  >
+                    Upload from device
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAddMenu(false); setAssetPicker(true); }}
+                    className="block w-full rounded px-2 py-1.5 text-left text-[11px] text-zinc-300 hover:bg-white/5"
+                  >
+                    Choose existing asset
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,video/*"
+            className="hidden"
+            onChange={(event) => { uploadReference(event.target.files?.[0]); event.target.value = ""; }}
+          />
+          {isVideo && canDecide && (
+            <div className="ml-auto flex rounded-full border border-white/10 p-0.5">
+              {(["keyframe", "multi_image"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setMode(option)}
+                  className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${mode === option ? "bg-[#fff878] text-black" : "text-zinc-400 hover:text-zinc-200"}`}
+                >
+                  {option === "keyframe" ? "Key Frame" : "Multi Image"}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {assetPicker && (
+          <ReferencePicker
+            entities={entities}
+            shots={shots}
+            selected={[...references, ...videoReferences]}
+            close={() => setAssetPicker(false)}
+            confirm={(items) => {
+              // A picked scene video is a motion reference, not an image one,
+              // so the two are routed to different provider inputs.
+              const videoPaths = new Set(shots.map((shot) => shot.video_url).filter(Boolean) as string[]);
+              setReferences(items.filter((item) => !videoPaths.has(item)).slice(0, 8));
+              setVideoReferences(items.filter((item) => videoPaths.has(item)).slice(0, 10));
+              setAssetPicker(false);
+            }}
+          />
+        )}
+
+        {uploadError && <p className="text-[11px] text-red-300">{uploadError}</p>}
+
+        {canDecide ? (
+          <textarea
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            rows={promptExpanded ? 12 : 5}
+            className="w-full resize-none rounded-lg border border-white/10 bg-black/30 p-2.5 text-[12px] leading-relaxed text-zinc-200 outline-none focus:border-[#b9f42e]/40"
+          />
+        ) : (
+          <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-zinc-300">{prompt}</p>
+        )}
+        {canDecide && prompt.length > 320 && (
+          <button type="button" onClick={() => setPromptExpanded((open) => !open)} className="text-[11px] text-zinc-500 hover:text-zinc-300">
+            {promptExpanded ? "Show less" : "Show more"}
+          </button>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2 border-t border-white/5 pt-3 text-[11px]">
+          <select
+            value={model}
+            onChange={(event) => setModel(event.target.value)}
+            disabled={!canDecide}
+            className="rounded-md border border-white/10 bg-[#141414] px-2 py-1 text-zinc-300 outline-none disabled:opacity-60"
+          >
+            {(isVideo ? videoGenerationModels : imageGenerationModels).map((option) => (
+              <option key={option.id} value={option.id}>{option.label}</option>
+            ))}
+          </select>
+          <select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value)} disabled={!canDecide} className="rounded-md border border-white/10 bg-[#141414] px-2 py-1 text-zinc-300 outline-none disabled:opacity-60">
+            {["16:9", "9:16", "1:1", "4:3", "21:9"].map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+          <select value={resolution} onChange={(event) => setResolution(event.target.value)} disabled={!canDecide} className="rounded-md border border-white/10 bg-[#141414] px-2 py-1 text-zinc-300 outline-none disabled:opacity-60">
+            {["480p", "720p", "1080p"].map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+          {isVideo && (
+            <>
+              <select value={durationSeconds} onChange={(event) => setDurationSeconds(Number(event.target.value))} disabled={!canDecide} className="rounded-md border border-white/10 bg-[#141414] px-2 py-1 text-zinc-300 outline-none disabled:opacity-60">
+                {[3, 4, 5, 6, 8, 10, 12].map((option) => <option key={option} value={option}>{option}s</option>)}
+              </select>
+              <button
+                type="button"
+                onClick={() => canDecide && setAudioEnabled((value) => !value)}
+                className="flex items-center gap-1.5 text-zinc-400"
+              >
+                Audio
+                <span className={`h-4 w-7 rounded-full p-0.5 transition ${audioEnabled ? "bg-[#b9f42e]" : "bg-white/15"}`}>
+                  <span className={`block h-3 w-3 rounded-full bg-black transition ${audioEnabled ? "translate-x-3" : ""}`} />
+                </span>
+              </button>
+            </>
+          )}
+          <span className="ml-auto flex items-center gap-1 font-semibold text-[#fff878]">
+            <Sparkles className="h-3 w-3" /> {credits}
+          </span>
+        </div>
+
+        {canDecide && (
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onDecide(proposal.id, "rejected")}
+              className="rounded border border-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-400 transition hover:bg-white/5 hover:text-white disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={busy || uploading}
+              onClick={confirm}
+              className="flex items-center gap-1.5 rounded bg-[#fff878] px-3 py-1.5 text-[11px] font-bold text-black transition hover:bg-[#fff878]/90 disabled:opacity-50"
+            >
+              <ArrowRight className="h-3.5 w-3.5" />
+              {busy ? "Working..." : `Generate (${credits})`}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProposalCard({
+  proposal,
+  entities,
+  shots,
+  projectId,
+  busy,
+  onDecide,
+}: {
+  proposal: ChatProposal;
+  entities: Entity[];
+  shots: Shot[];
+  projectId: string;
+  busy: boolean;
+  onDecide: (proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) => void;
 }) {
   const canDecide = proposal.status === "pending";
   const isVideo = proposal.action_type.includes("video");
   const isImage = proposal.action_type.includes("image");
-  
+  const generationRequest = generationProposalRequest(proposal);
+
+  if (generationRequest) {
+    return (
+      <VideoGenerationProposalBlock
+        proposal={proposal}
+        request={generationRequest}
+        entities={entities}
+        shots={shots}
+        projectId={projectId}
+        busy={busy}
+        onDecide={onDecide}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col rounded-xl border border-white/10 bg-[#161616] text-left overflow-hidden">
       <div className="flex items-center justify-between border-b border-white/5 bg-black/20 p-3">
@@ -4320,17 +4707,29 @@ function ReferencePicker({
       name: entity.name,
       type: entity.type,
       image: img,
+      kind: "image" as const,
+      number: null as number | null,
     }))
   );
 
+  // Scene tiles are numbered by storyboard position so they can be matched to
+  // the shot list at a glance, and each scene contributes its keyframe and its
+  // generated video as separate pickable references.
   const shotItems = (shots || [])
-    .filter((s) => s.keyframe_image)
-    .map((s) => ({
-      id: `shot-${s.id}`,
-      name: s.title ? `Shot: ${s.title}` : "Storyboard Shot",
-      type: "storyboard" as const,
-      image: s.keyframe_image!,
-    }));
+    .slice()
+    .sort((a, b) => a.order_index - b.order_index)
+    .flatMap((shot, index) => {
+      const number = index + 1;
+      const suffix = shot.title ? ` — ${shot.title}` : "";
+      const items: Array<{ id: string; name: string; type: "storyboard"; image: string; kind: "image" | "video"; number: number }> = [];
+      if (shot.keyframe_image) {
+        items.push({ id: `shot-${shot.id}`, name: `Scene ${number}${suffix}`, type: "storyboard", image: shot.keyframe_image, kind: "image", number });
+      }
+      if (shot.video_url) {
+        items.push({ id: `shot-video-${shot.id}`, name: `Scene ${number} video${suffix}`, type: "storyboard", image: shot.video_url, kind: "video", number });
+      }
+      return items;
+    });
 
   const allItems = [...entityItems, ...shotItems];
   const visible = filter === "all" ? allItems : allItems.filter((item) => item.type === filter);
@@ -4371,7 +4770,17 @@ function ReferencePicker({
                   active ? "border-[#b9f42e]" : "border-transparent hover:border-white/20"
                 }`}
               >
-                <AssetImage src={image} />
+                {item.kind === "video" ? <div className="aspect-[4/3]"><AssetVideo src={image} /></div> : <AssetImage src={image} />}
+                {item.number !== null && (
+                  <span className="absolute left-2 top-2 grid h-5 min-w-5 place-items-center rounded-full bg-black/80 px-1.5 text-[11px] font-black text-[#b9f42e]">
+                    {item.number}
+                  </span>
+                )}
+                {item.kind === "video" && (
+                  <span className="absolute left-2 bottom-8 rounded bg-black/80 px-1.5 py-0.5 text-[10px] font-bold text-zinc-200">
+                    VIDEO
+                  </span>
+                )}
                 <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-2 text-xs font-bold truncate">
                   {item.name}
                 </span>
@@ -4657,6 +5066,22 @@ function AssetImage({ src, className }: { src?: string; className?: string }) {
       {displayUrl && <img src={displayUrl} alt="" className={`h-full w-full ${className ? className : "object-cover"}`} />}
     </div>
   );
+}
+function AssetVideo({ src }: { src?: string }) {
+  const [url, setUrl] = useState<string>();
+  useEffect(() => {
+    if (!src || src.startsWith("http")) return;
+    createClient()
+      .storage.from("creator-studio-media")
+      .createSignedUrl(src, 3600)
+      .then(({ data }) => setUrl(data?.signedUrl));
+  }, [src]);
+  const displayUrl = src?.startsWith("http") ? src : url;
+  // Metadata-only preload with a first-frame fragment keeps the grid light
+  // while still showing what the clip actually looks like.
+  return displayUrl
+    ? <video src={`${displayUrl}#t=0.1`} preload="metadata" muted playsInline className="h-full w-full object-cover" />
+    : <div className="h-full w-full bg-gradient-to-br from-[#4d5044] to-[#161716]" />;
 }
 function Preview({
   src,

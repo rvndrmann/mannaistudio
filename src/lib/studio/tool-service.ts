@@ -113,7 +113,26 @@ function describeProposal(toolName: string, input: unknown) {
   }
 }
 
-export async function decideDirectorProposal(context: AuthenticatedProjectContext, proposalId: string, decision: "approved" | "rejected") {
+// Edits made in the chat generation block are merged one level deep so a card
+// can send only the keys it changed (for example request.model) without having
+// to restate the whole payload. The tool's own schema still validates the
+// result, so an override can never widen what the tool accepts.
+function mergeProposalPayload(payload: unknown, overrides: Record<string, unknown> | undefined) {
+  if (!overrides || !payload || typeof payload !== "object" || Array.isArray(payload)) return payload
+  const base = payload as Record<string, unknown>
+  const merged: Record<string, unknown> = { ...base }
+  for (const [key, value] of Object.entries(overrides)) {
+    const current = base[key]
+    const bothPlainObjects = value && typeof value === "object" && !Array.isArray(value)
+      && current && typeof current === "object" && !Array.isArray(current)
+    merged[key] = bothPlainObjects
+      ? { ...(current as Record<string, unknown>), ...(value as Record<string, unknown>) }
+      : value
+  }
+  return merged
+}
+
+export async function decideDirectorProposal(context: AuthenticatedProjectContext, proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) {
   const { data: proposal, error } = await context.supabase.rpc("creator_decide_action_proposal", { p_proposal_id: proposalId, p_decision: decision })
   if (error || !proposal) throw error ?? new Error("Proposal unavailable")
   if (proposal.project_id !== context.project.id || proposal.user_id !== context.user.id) throw new Error("Proposal does not belong to this project")
@@ -124,7 +143,12 @@ export async function decideDirectorProposal(context: AuthenticatedProjectContex
   const tool = directorTools[proposal.action_type as DirectorToolName]
   if (!tool) throw new Error("Unknown proposal action")
   try {
-    const input = tool.input.parse(proposal.payload)
+    const payload = mergeProposalPayload(proposal.payload, overrides)
+    const input = tool.input.parse(payload)
+    if (overrides && Object.keys(overrides).length) {
+      await context.supabase.from("creator_action_proposals").update({ payload }).eq("id", proposalId)
+      await audit(context, "tool.proposal_edited", "creator_action_proposals", proposalId, { tool: proposal.action_type, overrides })
+    }
     const data = await tool.execute(context, input as never)
     await context.supabase.rpc("creator_finish_action_proposal", { p_proposal_id: proposalId, p_status: "executed" })
     if (proposal.tool_execution_id) await context.supabase.rpc("creator_finish_tool_execution", { p_execution_id: proposal.tool_execution_id, p_status: "completed", p_output: data, p_error: null })

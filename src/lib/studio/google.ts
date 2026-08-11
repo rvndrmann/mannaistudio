@@ -129,6 +129,30 @@ export async function getGoogleVideoTask(taskId: string) {
 
 import type { OpenAIDirectorFunction, OpenAIDirectorToolCall } from "@/lib/studio/openai"
 
+function readThoughtSignature(item: Record<string, unknown>): string | undefined {
+  const value = (item as { thoughtSignature?: unknown; thought_signature?: unknown }).thoughtSignature
+    ?? (item as { thought_signature?: unknown }).thought_signature
+  return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
+// functionCall.args and functionResponse.response must both be JSON objects.
+// Tool payloads arrive as JSON strings and can decode to arrays or primitives,
+// so anything that is not a plain object is wrapped instead of sent as-is.
+function asJsonObject(value: unknown): Record<string, unknown> {
+  const unwrap = (candidate: unknown): Record<string, unknown> =>
+    candidate && typeof candidate === "object" && !Array.isArray(candidate)
+      ? (candidate as Record<string, unknown>)
+      : candidate === undefined || candidate === null
+      ? {}
+      : { result: candidate }
+  if (typeof value !== "string") return unwrap(value)
+  try {
+    return unwrap(JSON.parse(value))
+  } catch {
+    return { result: value }
+  }
+}
+
 export async function createGoogleDirectorToolTurn(input: {
   userId: string
   model: string
@@ -150,52 +174,98 @@ export async function createGoogleDirectorToolTurn(input: {
     parameters: tool.parameters,
   }))
 
-  const contents = input.items.map((item) => {
-    if (item.role === "user") {
-      return { role: "user", parts: [{ text: String(item.content || "") }] }
-    }
-    if (item.role === "assistant") {
-      const parts: Array<Record<string, unknown>> = []
-      if (item.content) parts.push({ text: String(item.content) })
-      return { role: "model", parts: parts.length ? parts : [{ text: "..." }] }
-    }
-    if (item.type === "function_call") {
-      const ts = (item as any).thoughtSignature || (item as any).thought_signature
-      const requireSignature = input.model.includes("gemini-3") || input.model.includes("gemini-2") || input.model.includes("gemini-exp")
-      if (!ts && requireSignature) {
-        return { role: "model", parts: [{ text: `[Action Taken]: Called function ${item.name} with arguments ${typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments)}` }] }
-      }
-      return {
-        role: "model",
-        parts: [{
-          functionCall: {
-            name: String(item.name),
-            args: (typeof item.arguments === "string" ? JSON.parse(item.arguments) : (item.arguments || {})) as Record<string, unknown>,
-            ...(ts ? { thoughtSignature: ts, thought_signature: ts } : {})
-          } as any,
-        }],
-      }
-    }
-    if (item.type === "function_call_output") {
-      const ts = (item as any).thoughtSignature || (item as any).thought_signature
-      const requireSignature = input.model.includes("gemini-3") || input.model.includes("gemini-2") || input.model.includes("gemini-exp")
-      if (!ts && requireSignature) {
-        return { role: "user", parts: [{ text: `[Action Result]: Function ${item.name} returned ${typeof item.output === "string" ? item.output : JSON.stringify(item.output)}` }] }
-      }
-      return {
-        role: "user",
-        parts: [{
-          functionResponse: {
-            name: String(item.name || "function"),
-            response: (typeof item.output === "string" ? JSON.parse(item.output) : (item.output || {})) as Record<string, unknown>,
-          },
-        }],
-      }
-    }
-    return { role: "user", parts: [{ text: String(item.content || "") }] }
-  })
+  // Gemini 2.x never emits thought signatures; only the 3.x reasoning models
+  // require the replayed signature and reject a turn that omits it.
+  const requireSignature = input.model.includes("gemini-3") || input.model.includes("gemini-exp")
+  const contents: Array<{ role: string; parts: Array<Record<string, unknown>> }> = []
 
-  const mergedContents: Array<{ role: string; parts: any[] }> = []
+  for (let index = 0; index < input.items.length; index += 1) {
+    const item = input.items[index]
+
+    if (item.type === "function_call" || item.type === "function_call_output") {
+      // Gemini expects every parallel call of one model turn in a single model
+      // content followed by all of their responses in one user content. The
+      // Director emits one batch as calls-then-outputs, so a call that follows
+      // an output starts the next sequential step and closes this batch.
+      const calls: Array<Record<string, unknown>> = []
+      const outputs: Array<Record<string, unknown>> = []
+      let end = index
+      while (end < input.items.length) {
+        const entry = input.items[end]
+        if (entry.type === "function_call") {
+          if (outputs.length) break
+          calls.push(entry)
+        } else if (entry.type === "function_call_output") {
+          outputs.push(entry)
+        } else {
+          break
+        }
+        end += 1
+      }
+      index = end - 1
+      // Outputs carry only call_id, so the declared tool name is recovered from
+      // the call it answers — functionResponse.name must match a declaration.
+      const nameByCallId = new Map(calls.map((entry) => [String(entry.call_id), String(entry.name)]))
+      const nameForOutput = (entry: Record<string, unknown>) =>
+        nameByCallId.get(String(entry.call_id)) || String(entry.name || "function")
+
+      // Gemini attaches the signature to the first call of a parallel batch, so
+      // an unsigned first call means the batch cannot be replayed as tool calls
+      // at all. Degrade the whole group to text rather than send it unsigned.
+      const signed = calls.length > 0 && Boolean(readThoughtSignature(calls[0]))
+      if (requireSignature && !signed) {
+        if (calls.length) {
+          contents.push({
+            role: "model",
+            parts: calls.map((entry) => ({
+              text: `[Action Taken]: Called function ${String(entry.name)} with arguments ${JSON.stringify(asJsonObject(entry.arguments))}`,
+            })),
+          })
+        }
+        if (outputs.length) {
+          contents.push({
+            role: "user",
+            parts: outputs.map((entry) => ({
+              text: `[Action Result]: Function ${nameForOutput(entry)} returned ${JSON.stringify(asJsonObject(entry.output))}`,
+            })),
+          })
+        }
+        continue
+      }
+
+      if (calls.length) {
+        contents.push({
+          role: "model",
+          parts: calls.map((entry) => {
+            const signature = readThoughtSignature(entry)
+            // thoughtSignature is a Part field, not a FunctionCall field.
+            // Nesting it inside functionCall makes the API report it missing.
+            return {
+              functionCall: { name: String(entry.name), args: asJsonObject(entry.arguments) },
+              ...(signature ? { thoughtSignature: signature } : {}),
+            }
+          }),
+        })
+      }
+      if (outputs.length) {
+        contents.push({
+          role: "user",
+          parts: outputs.map((entry) => ({
+            functionResponse: { name: nameForOutput(entry), response: asJsonObject(entry.output) },
+          })),
+        })
+      }
+      continue
+    }
+
+    if (item.role === "assistant") {
+      contents.push({ role: "model", parts: item.content ? [{ text: String(item.content) }] : [{ text: "..." }] })
+      continue
+    }
+    contents.push({ role: "user", parts: [{ text: String(item.content || "") }] })
+  }
+
+  const mergedContents: Array<{ role: string; parts: Array<Record<string, unknown>> }> = []
   for (const content of contents) {
     if (mergedContents.length > 0 && mergedContents[mergedContents.length - 1].role === content.role) {
       mergedContents[mergedContents.length - 1].parts.push(...content.parts)
@@ -231,7 +301,10 @@ export async function createGoogleDirectorToolTurn(input: {
           callId: `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           name: part.functionCall.name,
           arguments: part.functionCall.args || {},
-          thoughtSignature: (part.functionCall as any).thoughtSignature || (part.functionCall as any).thought_signature || (part as any).thoughtSignature || (part as any).thought_signature,
+          // The signature lives on the Part; the functionCall fallback only
+          // covers older response shapes.
+          thoughtSignature: readThoughtSignature(part as Record<string, unknown>)
+            || readThoughtSignature(part.functionCall as Record<string, unknown>),
         })
       }
     }
