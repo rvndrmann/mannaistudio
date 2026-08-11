@@ -19,6 +19,7 @@ import { collectDirectorVisionAttachments } from "@/lib/studio/director-vision"
 import { buildEntityReferenceImagePrompt, parseBulkEntityImageIntent, projectVisualStyle, visualStyleDirective, type BulkEntityImageIntent } from "@/lib/studio/entity-image-workflow"
 import { createBytePlusAsset } from "@/lib/studio/byteplus"
 import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
+import { buildProjectStateSummary } from "@/lib/studio/project-state-summary"
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   try {
@@ -108,6 +109,7 @@ async function buildWorkflowInstructions(context: Awaited<ReturnType<typeof requ
         : ""
   const workflow = workflows.find((item) => item.id === selectedId && item.status === "active")
   const uploadContext = await recentUploadContext(context, sessionId)
+  const projectState = await buildProjectStateSummary(context.supabase, context.project.id, episodeId)
   const workflowLines = workflow ? [
     "Selected AI Director workflow:",
     `Workflow: ${workflow.title} (${workflow.id})`,
@@ -116,9 +118,10 @@ async function buildWorkflowInstructions(context: Awaited<ReturnType<typeof requ
   ] : []
   return [
     baseInstructions,
+    projectState,
     ...workflowLines,
     ...uploadContext,
-  ].join("\n")
+  ].join("\n\n")
 }
 
 async function recentUploadContext(context: Awaited<ReturnType<typeof requireAuthenticatedProject>>, sessionId: string) {

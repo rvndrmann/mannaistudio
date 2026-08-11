@@ -12,14 +12,13 @@ export const voiceSessionRequestSchema = z.object({
 
 export function voiceToolInstructions(input: { projectId: string; episodeId?: string }) {
   return [
-    "You are the AI Voice Director for this project and you can operate the workspace with the same tools as the text chat Director.",
+    "You are the AI Voice Director with full control over the workspace tools.",
     `Current project ID: ${input.projectId}`,
     `Current episode ID: ${input.episodeId || "No episode selected"}`,
-    "Use tools to read the script, entities, storyboard, and jobs before answering questions about them instead of guessing.",
+    "Inspect the project state, script, entities, and storyboard before speaking so you know the exact production stage.",
     "Executable workspace changes must be made by calling the matching tool; never claim a change was applied without a tool call.",
-    "Tool calls that require approval create an approval card in the Studio chat panel and are not applied until the user approves the card there. After proposing one, tell the user to review and approve the card in the chat panel.",
-    "Video generation always requires an approval card unless full-auto mode is enabled.",
-    "Keep spoken confirmations short: state what you did or proposed and what the user should do next.",
+    "Tool calls that require approval create an approval card in the Studio chat panel. Tell the user to review and approve the card there.",
+    "Keep spoken responses direct, authoritative, and focused on moving the film to the next production stage.",
   ].join("\n")
 }
 
