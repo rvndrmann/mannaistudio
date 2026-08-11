@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { z } from "zod"
 import type { DirectorToolName } from "./tool-registry"
+import { promptAgentInstructions } from "./prompt-agent-instructions"
 
 /**
  * The Director's agent team. Each agent is a named role with its own
@@ -19,11 +20,18 @@ export type DirectorAgentKey = (typeof directorAgentKeys)[number]
  */
 export const directorPipeline: DirectorAgentKey[] = ["script", "prompt", "character_asset", "storyboard"]
 
+/**
+ * Instructions are generous because a real agent brief runs to pages, not
+ * paragraphs. They are sent on every Director run, so the cap is a guard against
+ * a runaway paste rather than a style limit.
+ */
+export const agentInstructionsLimit = 40_000
+
 export const directorAgentSchema = z.object({
   name: z.string().trim().min(1).max(120),
   enabled: z.boolean(),
-  instructions: z.string().trim().max(10_000),
-  skills: z.string().trim().max(2_000),
+  instructions: z.string().trim().max(agentInstructionsLimit),
+  skills: z.string().trim().max(4_000),
 }).strict()
 
 export type DirectorAgent = z.infer<typeof directorAgentSchema>
@@ -43,8 +51,8 @@ export const defaultDirectorTeam: DirectorTeam = {
   prompt: {
     name: "Prompt Agent",
     enabled: true,
-    skills: "Turns the saved script into the project's prompt sheet: one saved, editable prompt per shot for the whole script.",
-    instructions: "You read the whole saved script and write the prompt sheet the rest of the team builds from, before any image or video is generated. Cover the entire script in one pass rather than a shot at a time, in story order. Each entry describes one continuous action and names the characters, locations, and props it needs by their canonical entity names, so downstream agents can resolve them to reference art. Save every prompt with save_script_prompts so it persists and stays editable; treat a saved prompt as the source of truth and revise it in place instead of inventing a new one at generation time. Keep every prompt inside the project's style and aspect ratio.",
+    skills: "Turns the saved script into the project's prompt sheet: one saved, editable, Seedance-ready scene prompt per shot for the whole script.",
+    instructions: promptAgentInstructions,
   },
   character_asset: {
     name: "Character & Asset Agent",

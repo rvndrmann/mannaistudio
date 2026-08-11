@@ -35,6 +35,7 @@ import { defaultDirectorGlobalInstructions, normalizeDirectorGlobalInstructions 
 import { defaultDirectorRuntimeSettings, fetchDirectorRuntimeSettings, normalizeDirectorRuntimeSettings, specialistInstructionKeys, type DirectorRuntimeSettings } from "@/lib/studio/director-runtime-settings"
 import { defaultDirectorTeam, directorAgentKeys, fetchDirectorTeam, normalizeDirectorTeam, type DirectorTeam } from "@/lib/studio/director-team"
 import AdminEnterpriseOrders from "@/components/enterprise/AdminEnterpriseOrders"
+import { defaultVoiceInstructions, fetchVoiceInstructions } from "@/lib/studio/voice-instructions"
 import BlogManager from "@/components/admin/BlogManager"
 
 type EnrolledStudent = {
@@ -149,7 +150,23 @@ export default function AdminDashboard() {
 }
 
 function AdminDashboardContent() {
-    const [activeTab, setActiveTab] = useState("overview")
+    // The open tab lives in the URL so a reload, a bookmark, or a shared link
+    // returns to the same screen instead of dropping back to the dashboard.
+    const [voiceInstructions, setVoiceInstructions] = useState(defaultVoiceInstructions)
+    const [isSavingVoiceInstructions, setIsSavingVoiceInstructions] = useState(false)
+    const [voiceInstructionsMessage, setVoiceInstructionsMessage] = useState("")
+    const [activeTab, setActiveTabState] = useState(() => {
+        if (typeof window === "undefined") return "overview"
+        return new URLSearchParams(window.location.search).get("tab") || "overview"
+    })
+    const setActiveTab = (tab: string) => {
+        setActiveTabState(tab)
+        if (typeof window === "undefined") return
+        const url = new URL(window.location.href)
+        if (tab === "overview") url.searchParams.delete("tab")
+        else url.searchParams.set("tab", tab)
+        window.history.replaceState(null, "", url)
+    }
     const [isChartReady, setIsChartReady] = useState(false)
     const [mockCourses, setMockCourses] = useState<Course[]>(courses)
     const [mockShowcase, setMockShowcase] = useState<ShowcaseItem[]>([])
@@ -445,6 +462,29 @@ function AdminDashboardContent() {
         setDirectorWorkflows(await fetchDirectorWorkflows(supabase))
     }
 
+    const loadVoiceInstructions = async () => {
+        const supabase = await getServiceRequestClient()
+        if (!supabase) return
+        setVoiceInstructions(await fetchVoiceInstructions(supabase))
+    }
+
+    const handleSaveVoiceInstructions = async () => {
+        setIsSavingVoiceInstructions(true)
+        setVoiceInstructionsMessage("")
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) throw new Error("No Supabase client")
+            const payload = { instructions: voiceInstructions.trim() || defaultVoiceInstructions }
+            const { error } = await supabase.from("site_settings").upsert({ key: "ai_director_voice_instructions", value: payload }, { onConflict: "key" })
+            if (error) throw error
+            setVoiceInstructionsMessage("Voice Director instructions saved.")
+        } catch (err: any) {
+            setVoiceInstructionsMessage(`Could not save voice instructions: ${err.message || "Unknown error"}`)
+        } finally {
+            setIsSavingVoiceInstructions(false)
+        }
+    }
+
     const loadDirectorGlobalInstructions = async () => {
         const supabase = await getServiceRequestClient()
         if (!supabase) return
@@ -471,7 +511,26 @@ function AdminDashboardContent() {
             setDirectorTeam(normalizeDirectorTeam(data))
             setDirectorTeamMessage("Agent team saved.")
         } catch (err: any) {
-            setDirectorTeamMessage(`Could not save agent team: ${err.message || "Unknown error"}`)
+            // Zod reports validation as a JSON dump, which is unreadable in a
+            // toast. Name the agent and field that actually needs attention.
+            let parsed: any = null
+            if (typeof err?.message === "string" && err.message.trim().startsWith("[")) {
+                try { parsed = JSON.parse(err.message) } catch { parsed = null }
+            }
+            const issues = err?.issues || parsed
+            if (Array.isArray(issues) && issues.length) {
+                const detail = issues.map((issue: any) => {
+                    const agentKey = issue?.path?.[0] as keyof typeof defaultDirectorTeam | undefined
+                    const field = issue?.path?.[1]
+                    const label = agentKey ? (directorTeam[agentKey]?.name || defaultDirectorTeam[agentKey]?.name || String(agentKey)) : "The agent team"
+                    if (issue?.code === "too_big") return `${label}: ${field === "instructions" ? "instructions are" : `${field} is`} too long (limit ${issue.maximum.toLocaleString()} characters).`
+                    if (issue?.code === "too_small") return `${label}: ${field} cannot be empty.`
+                    return `${label}: ${field} is invalid.`
+                }).join(" ")
+                setDirectorTeamMessage(`Could not save agent team. ${detail}`)
+            } else {
+                setDirectorTeamMessage(`Could not save agent team: ${err.message || "Unknown error"}`)
+            }
         } finally {
             setIsSavingDirectorTeam(false)
         }
@@ -1157,6 +1216,7 @@ function AdminDashboardContent() {
         loadDirectorModels()
         loadDirectorWorkflows()
         loadDirectorGlobalInstructions()
+        loadVoiceInstructions()
         loadDirectorRuntimeSettings()
         loadStudioFeatureFlags()
         loadSiteFeatures()
@@ -2658,6 +2718,29 @@ function AdminDashboardContent() {
                                         <button type="button" onClick={handleSaveDirectorTeam} disabled={isSavingDirectorTeam} className="btn-primary flex shrink-0 items-center gap-2 px-5 py-3 disabled:opacity-60">
                                             {isSavingDirectorTeam ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                                             {isSavingDirectorTeam ? "Saving..." : "Save Agent Team"}
+                                        </button>
+                                    </div>
+
+                                    <div className="border-t border-white/10 pt-6">
+                                        <h3 className="text-sm font-bold text-white">Voice Director Instructions</h3>
+                                        <p className="mt-1 text-xs leading-5 text-white/35">Extra instructions sent only to the spoken Director. It already receives the global instructions, the agent team, and the runtime controls above; this covers what is different about speaking — reply length, confirming what was heard, and never reading out IDs. The voice session also receives the last 12 messages of the open chat, so it can continue that conversation.</p>
+                                    </div>
+                                    <textarea
+                                        value={voiceInstructions}
+                                        onChange={(event) => setVoiceInstructions(event.target.value)}
+                                        rows={8}
+                                        className="w-full resize-y rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm leading-6 text-white outline-none focus:border-primary"
+                                    />
+                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                        <div className="flex items-center gap-3">
+                                            {voiceInstructionsMessage ? <p className="text-sm text-white/50">{voiceInstructionsMessage}</p> : <span />}
+                                            <button type="button" onClick={() => setVoiceInstructions(defaultVoiceInstructions)} className="rounded-xl border border-white/10 px-4 py-2 text-xs font-semibold text-white/60 hover:bg-white/5">
+                                                Restore Default
+                                            </button>
+                                        </div>
+                                        <button type="button" onClick={handleSaveVoiceInstructions} disabled={isSavingVoiceInstructions} className="btn-primary flex shrink-0 items-center gap-2 px-5 py-3 disabled:opacity-60">
+                                            {isSavingVoiceInstructions ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                            {isSavingVoiceInstructions ? "Saving..." : "Save Voice Instructions"}
                                         </button>
                                     </div>
 

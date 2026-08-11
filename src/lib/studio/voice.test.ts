@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import { defaultVoiceInstructions, normalizeVoiceInstructions, voiceHistoryInstructions } from "./voice-instructions"
 import { parseVoiceToolCall, voiceSessionRequestSchema, voiceToolInstructions, type VoiceAgentEvent } from "./voice"
 
 describe("voice preparation", () => {
@@ -62,5 +63,34 @@ describe("voice preparation", () => {
       { type: "error", code: "connection_lost", message: "Reconnect", recoverable: true },
     ]
     expect(events.map((event) => event.type)).toEqual(["user_transcript", "interruption", "usage", "error"])
+  })
+})
+
+describe("voice session context", () => {
+  it("passes recent chat as shared context, oldest first", () => {
+    const block = voiceHistoryInstructions([
+      { role: "user", content: "Make the car black" },
+      { role: "assistant", content: "Updated Maya's Car to black." },
+    ])
+    expect(block).toContain("User: Make the car black")
+    expect(block).toContain("Director: Updated Maya's Car to black.")
+    expect(block.indexOf("Make the car black")).toBeLessThan(block.indexOf("Updated Maya"))
+    expect(block).toContain("do not ask the user to repeat")
+  })
+
+  it("keeps only the most recent messages and drops empty ones", () => {
+    const many = Array.from({ length: 20 }, (_, index) => ({ role: "user", content: `message ${index}` }))
+    const block = voiceHistoryInstructions([...many, { role: "user", content: "   " }], 5)
+    expect(block).toContain("message 19")
+    expect(block).not.toContain("message 14")
+  })
+
+  it("adds nothing when there is no conversation yet", () => {
+    expect(voiceHistoryInstructions([])).toBe("")
+  })
+
+  it("falls back to the default voice instructions", () => {
+    expect(normalizeVoiceInstructions(null)).toBe(defaultVoiceInstructions)
+    expect(normalizeVoiceInstructions({ instructions: "Speak briefly." })).toBe("Speak briefly.")
   })
 })
