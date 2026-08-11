@@ -1,11 +1,5 @@
--- The change-attribution trigger referenced new.script_content in a condition
--- guarded by tg_table_name. PL/pgSQL compiles the whole expression, so the field
--- was resolved even when the trigger fired for creator_shots or
--- creator_entities, where it does not exist. That raised inside the trigger and
--- aborted the statement, so every shot and asset write failed.
---
--- The script comparison now happens inside the creator_episodes branch, where
--- the column is guaranteed to exist.
+-- Fix audit trigger for creator_episodes: creator_episodes table has column 'name', not 'title'.
+-- Referencing new.title/old.title caused Postgres runtime error: record "new" has no field "title".
 
 create or replace function public.creator_log_project_change()
 returns trigger language plpgsql security definer set search_path = public as $$
@@ -45,8 +39,7 @@ begin
       target_id := old.id;
       label := coalesce(nullif(old.name, ''), 'episode');
     else
-      -- Script edits are the interesting episode change; ignore unrelated churn
-      -- so the log stays readable.
+      -- Script edits are the interesting episode change; ignore unrelated churn so the log stays readable.
       if tg_op = 'UPDATE' and new.script_content is not distinct from old.script_content then
         return new;
       end if;
