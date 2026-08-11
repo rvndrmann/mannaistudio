@@ -160,17 +160,28 @@ export async function createGoogleDirectorToolTurn(input: {
       return { role: "model", parts: parts.length ? parts : [{ text: "..." }] }
     }
     if (item.type === "function_call") {
+      const ts = (item as any).thoughtSignature || (item as any).thought_signature
+      const requireSignature = input.model.includes("gemini-3") || input.model.includes("gemini-2") || input.model.includes("gemini-exp")
+      if (!ts && requireSignature) {
+        return { role: "model", parts: [{ text: `[Action Taken]: Called function ${item.name} with arguments ${typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments)}` }] }
+      }
       return {
         role: "model",
         parts: [{
           functionCall: {
             name: String(item.name),
             args: (typeof item.arguments === "string" ? JSON.parse(item.arguments) : (item.arguments || {})) as Record<string, unknown>,
-          },
+            ...(ts ? { thoughtSignature: ts, thought_signature: ts } : {})
+          } as any,
         }],
       }
     }
     if (item.type === "function_call_output") {
+      const ts = (item as any).thoughtSignature || (item as any).thought_signature
+      const requireSignature = input.model.includes("gemini-3") || input.model.includes("gemini-2") || input.model.includes("gemini-exp")
+      if (!ts && requireSignature) {
+        return { role: "user", parts: [{ text: `[Action Result]: Function ${item.name} returned ${typeof item.output === "string" ? item.output : JSON.stringify(item.output)}` }] }
+      }
       return {
         role: "user",
         parts: [{
@@ -184,12 +195,21 @@ export async function createGoogleDirectorToolTurn(input: {
     return { role: "user", parts: [{ text: String(item.content || "") }] }
   })
 
-  const modelId = input.model.startsWith("gemini") ? input.model : "gemini-2.5-flash"
+  const mergedContents: Array<{ role: string; parts: any[] }> = []
+  for (const content of contents) {
+    if (mergedContents.length > 0 && mergedContents[mergedContents.length - 1].role === content.role) {
+      mergedContents[mergedContents.length - 1].parts.push(...content.parts)
+    } else {
+      mergedContents.push(content)
+    }
+  }
+
+  const modelId = input.model.startsWith("gemini") ? input.model : "gemini-3.6-flash"
 
   try {
     const response = await ai.models.generateContent({
       model: modelId,
-      contents: contents as any,
+      contents: mergedContents as any,
       config: {
         systemInstruction: input.instructions,
         tools: functionDeclarations.length ? [{ functionDeclarations: functionDeclarations as any }] : undefined,
@@ -211,6 +231,7 @@ export async function createGoogleDirectorToolTurn(input: {
           callId: `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           name: part.functionCall.name,
           arguments: part.functionCall.args || {},
+          thoughtSignature: (part.functionCall as any).thoughtSignature || (part.functionCall as any).thought_signature || (part as any).thoughtSignature || (part as any).thought_signature,
         })
       }
     }

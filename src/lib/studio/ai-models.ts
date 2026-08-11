@@ -5,9 +5,14 @@ export const defaultDirectorModels = [
   { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", status: "active" },
   { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", status: "active" },
   { id: "gpt-5.5", label: "GPT-5.5", status: "active" },
-  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", status: "active" },
-  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", status: "active" },
+  { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash", status: "active" },
+  { id: "gemini-3.6-pro", label: "Gemini 3.6 Pro", status: "active" },
   { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash", status: "active" },
+  { id: "kimi-2.5", label: "Kimi 2.5", status: "active" },
+  { id: "deepseek-v4", label: "DeepSeek V4", status: "active" },
+  { id: "glm-5.2", label: "GLM 5.2", status: "active" },
+  { id: "dola-seed-2-1-turbo", label: "Dola Seed 2.1 Turbo", status: "active" },
+  { id: "dola-seed-2-0", label: "Dola Seed 2.0", status: "active" },
 ] as const
 
 export type DirectorModelStatus = "active" | "paused"

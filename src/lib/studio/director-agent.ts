@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { createDirectorToolTurn, type OpenAIDirectorFunction } from "./openai"
 import { createGoogleDirectorToolTurn } from "./google"
+import { createBytePlusDirectorToolTurn } from "./byteplus"
 import { directorTools, type DirectorToolName } from "./tool-registry"
 import { requestDirectorTool } from "./tool-service"
 import type { AuthenticatedProjectContext } from "./server-context"
@@ -101,8 +102,18 @@ export async function runDirectorAgent(input: {
       const fullInstructions = `${input.instructions}\nCurrent episode ID: ${input.episodeId || "No episode selected"}\nCurrent project ID: ${input.context.project.id}\nExecutable workspace proposals must be created by calling the appropriate tool; never represent an executable proposal only as assistant text. Tool calls that require approval create the UI approval card and do not apply the change until the user approves it.\n\n${teamBlock}\n\n${runtimeInstructions(runtimeSettings, activeSpecialists)}`
       const toolDefs = directorFunctionDefinitions()
 
+      const isBytePlus = input.model === "kimi-2.5" || input.model === "deepseek-v4" || input.model === "glm-5.2" || input.model === "dola-seed-2-1-turbo" || input.model === "dola-seed-2-0"
+
       turn = input.model.startsWith("gemini")
         ? await createGoogleDirectorToolTurn({
+            userId: input.context.user.id,
+            model: input.model,
+            instructions: fullInstructions,
+            items,
+            tools: toolDefs,
+          })
+        : isBytePlus
+        ? await createBytePlusDirectorToolTurn({
             userId: input.context.user.id,
             model: input.model,
             instructions: fullInstructions,
@@ -130,8 +141,8 @@ export async function runDirectorAgent(input: {
       stepSequence += 1
       const tool = directorTools[call.name as DirectorToolName]
       if (!tool) {
-        items.push({ type: "function_call", call_id: call.callId, name: call.name, arguments: JSON.stringify(call.arguments) })
-        items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify({ error: "Unknown Director tool" }) })
+        items.push({ type: "function_call", call_id: call.callId, name: call.name, arguments: JSON.stringify(call.arguments), thoughtSignature: call.thoughtSignature })
+        items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify({ error: "Unknown Director tool" }), thoughtSignature: call.thoughtSignature })
         continue
       }
       const label = toolDescriptions[call.name as DirectorToolName].replace(/[.]$/, "")
@@ -141,7 +152,7 @@ export async function runDirectorAgent(input: {
       const agentName = owningAgent && team[owningAgent].enabled ? team[owningAgent].name : undefined
       const block: DirectorTimelineBlock = { type: "tool_execution", tool: call.name, label, status: "running", agent: agentName }
       timeline.push(block)
-      items.push({ type: "function_call", call_id: call.callId, name: call.name, arguments: JSON.stringify(call.arguments) })
+      items.push({ type: "function_call", call_id: call.callId, name: call.name, arguments: JSON.stringify(call.arguments), thoughtSignature: call.thoughtSignature })
       try {
         const result = await requestDirectorTool(input.context, {
           tool: call.name,
@@ -159,7 +170,7 @@ export async function runDirectorAgent(input: {
         await addWorkflowStep(input.context, { runId: workflowRun.id, sequence: stepSequence, specialist: specialistForTool(call.name), label, status: block.status, toolExecutionId: block.executionId, toolInput: call.arguments, output: result })
         if (block.status === "completed") completedSteps += 1
         if (block.status === "awaiting_approval") awaitingApproval += 1
-        items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify(result) })
+        items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify(result), thoughtSignature: call.thoughtSignature })
       } catch (error) {
         const recovery = directorRecovery(error)
         const message = recovery.message
@@ -167,7 +178,7 @@ export async function runDirectorAgent(input: {
         block.error = message
         failedSteps += 1
         await addWorkflowStep(input.context, { runId: workflowRun.id, sequence: stepSequence, specialist: specialistForTool(call.name), label, status: "failed", toolInput: call.arguments, error: { message } })
-        items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify({ error: message }) })
+        items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify({ error: message }), thoughtSignature: call.thoughtSignature })
         timeline.push({ type: "warning", code: recovery.code, message: recovery.message, recoverable: recovery.recoverable, actions: recovery.suggestedIntent && recovery.suggestedLabel ? [{ id: `recover-${stepSequence}`, label: recovery.suggestedLabel, intent: recovery.suggestedIntent, payload: {}, risk: "read", recommended: true }] : [] })
       }
     }

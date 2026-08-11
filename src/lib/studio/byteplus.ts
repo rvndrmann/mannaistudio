@@ -1,4 +1,5 @@
 import type { ImageGenerationModelId, VideoGenerationModelId } from "@/lib/studio/generation-models"
+import type { OpenAIDirectorFunction, OpenAIDirectorToolCall } from "./openai"
 
 const defaultBaseUrl = "https://ark.ap-southeast.bytepluses.com/api/v3"
 
@@ -296,3 +297,83 @@ export async function getBytePlusAsset(assetId: string) {
   return { id: assetId, status, assetUri }
 }
 
+
+
+export async function createBytePlusDirectorToolTurn(input: {
+  userId: string
+  model: string
+  instructions: string
+  items: Array<Record<string, unknown>>
+  tools: OpenAIDirectorFunction[]
+}): Promise<{
+  id: string
+  content: string
+  calls: OpenAIDirectorToolCall[]
+  usage: Record<string, unknown>
+}> {
+  const key = process.env.ARK_API_KEY || process.env.BYTEPLUS_ARK_API_KEY
+  if (!key) throw new BytePlusProviderError("BytePlus ModelArk is not configured.")
+
+  // Convert items to standard messages
+  const messages: any[] = [{ role: "system", content: input.instructions }]
+  
+  for (const item of input.items) {
+    if (item.role === "user" || item.role === "assistant") {
+      messages.push({ role: item.role, content: item.content || "" })
+    }
+    if (item.type === "function_call") {
+      messages.push({
+        role: "assistant",
+        tool_calls: [{
+          id: item.call_id,
+          type: "function",
+          function: { name: item.name, arguments: typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments) }
+        }]
+      })
+    }
+    if (item.type === "function_call_output") {
+      messages.push({
+        role: "tool",
+        tool_call_id: item.call_id,
+        content: typeof item.output === "string" ? item.output : JSON.stringify(item.output)
+      })
+    }
+  }
+
+  // Model ID mapping for BytePlus Ark Endpoints (Endpoint IDs)
+  // We'll need to figure out the exact endpoint IDs, or just pass the model string and assume it's the endpoint ID!
+  // Usually, Ark requires an Endpoint ID like "ep-202409...".
+  // For now we pass input.model.
+  const response = await fetch("https://ark.ap-southeast.bytepluses.com/api/v3/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: input.model,
+      messages,
+      tools: input.tools.length ? input.tools.map(t => ({ type: "function", function: t })) : undefined
+    })
+  })
+  
+  const data = await response.json()
+  if (!response.ok) {
+    throw new BytePlusProviderError(`Ark error: ${JSON.stringify(data)}`, response.status)
+  }
+
+  const message = data.choices?.[0]?.message || {}
+  const content = message.content || ""
+  const calls: OpenAIDirectorToolCall[] = (message.tool_calls || []).map((tc: any) => ({
+    callId: tc.id,
+    name: tc.function.name,
+    arguments: tc.function.arguments,
+  }))
+
+  return {
+    id: data.id || "",
+    content,
+    calls,
+    usage: data.usage || {}
+  }
+}

@@ -89,8 +89,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const response = await runDirectorAgent({ context, model, instructions: await buildWorkflowInstructions(context, episode.id, sessionId, buildDirectorInstructions(project, globalInstructions)), messages: selectConversationWindow([...(history || []).filter((item) => item.content).map((item) => ({ role: item.role as "user" | "assistant", content: item.content as string })), { role: "user", content: modelMessage }]), sessionId, idempotencyKey: body.idempotencyKey, runtimeSettings, episodeId: episode.id, objective: modelMessage, visionAttachments })
     const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, role: "assistant", content: response.content, tool_calls: response.toolCalls, suggested_actions: response.suggestedActions, timeline_blocks: response.timeline, timeline_version: 1 }).select().single()
     if (assistantError) throw assistantError
-    return NextResponse.json({ sessionId, userMessage, assistantMessage, provider: model.startsWith("gemini") ? "google" : "openai", model, usage: response.usage })
+    const isBytePlus = model === "kimi-2.5" || model === "deepseek-v4" || model === "glm-5.2" || model === "dola-seed-2-1-turbo" || model === "dola-seed-2-0"
+    return NextResponse.json({ sessionId, userMessage, assistantMessage, provider: model.startsWith("gemini") ? "google" : isBytePlus ? "byteplus" : "openai", model, usage: response.usage })
   } catch (error) {
+    console.error("DIRECTOR CHAT ERROR:", error)
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid chat request", issues: error.flatten() }, { status: 400 })
     return NextResponse.json({ error: error instanceof Error ? error.message : "AI Director chat failed" }, { status: (error instanceof OpenAIProviderError || error instanceof GoogleProviderError) ? error.status : studioErrorStatus(error) })
   }

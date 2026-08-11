@@ -71,7 +71,7 @@ export type OpenAIDirectorFunction = {
   parameters: Record<string, unknown>
 }
 
-export type OpenAIDirectorToolCall = { callId: string; name: string; arguments: unknown }
+export type OpenAIDirectorToolCall = { callId: string; name: string; arguments: unknown; thoughtSignature?: string }
 
 export async function createDirectorToolTurn(input: {
   userId: string

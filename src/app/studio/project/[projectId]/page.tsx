@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, use, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  ArrowRight,
   BadgeCheck,
   Bot,
   ChevronDown,
@@ -3115,7 +3116,15 @@ function ShotMediaWorkspace({
   const [picker, setPicker] = useState(false);
   const [referenceSourcePicker, setReferenceSourcePicker] = useState(false);
   const [referenceTarget, setReferenceTarget] = useState<"references" | "start" | "end">("references");
-  const [references, setReferences] = useState<string[]>([]);
+  const [references, setReferences] = useState<string[]>(() => {
+    if (media.shot.referenced_entities && media.shot.referenced_entities.length > 0) {
+      return entities
+        .filter((e) => media.shot.referenced_entities!.includes(e.id))
+        .flatMap((e) => Array.isArray(e.reference_images) ? e.reference_images : [])
+        .filter((url): url is string => typeof url === "string");
+    }
+    return [];
+  });
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>(media.shot.referenced_entities || []);
   const videoReferenceImages = videoInputMode === "keyframe" ? [startFrame, endFrame].filter((item): item is string => Boolean(item)) : references;
   const selectedCharacterEntities = entities.filter((e) => e.type === "character" && selectedCharacterIds.includes(e.id));
@@ -3761,158 +3770,222 @@ function ShotMediaWorkspace({
               </p>
             </div>
           </div>
-          <div className="flex-1 overflow-auto px-6">
-            {isImage ? (
-              <div className="mb-5 rounded-xl border border-white/10 bg-[#0b0c0b] p-4">
-                <div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wide text-zinc-500">Reference images</p><button type="button" onClick={() => { setReferenceTarget("references"); setPicker(true); }} className="text-sm font-semibold text-[#b9f42e]">Select assets</button></div>
-                <div className="mt-3 flex flex-wrap gap-2"><button type="button" aria-label="Add reference image" onClick={() => openReferenceSource("references")} className="grid h-16 w-16 place-items-center rounded-lg border border-dashed border-white/25 text-xl text-zinc-400 hover:border-[#b9f42e]">+</button>{references.map((reference, index) => <div key={`${reference}-${index}`} className="relative h-16 w-16 overflow-hidden rounded-lg"><AssetImage src={reference} /><button type="button" aria-label={`Remove reference image ${index + 1}`} onClick={() => setReferences(items => items.filter((_, itemIndex) => itemIndex !== index))} className="absolute right-1 top-1 rounded bg-black/70 px-1 text-xs">×</button></div>)}</div>
-                <p className="mt-3 text-xs leading-5 text-zinc-500">{references.length ? `${references.length} reference image${references.length === 1 ? "" : "s"} will be sent with this prompt.` : "Add a reference image to guide this generation."}</p>
-              </div>
-            ) : (
-              <div className="mb-5 rounded-2xl border border-white/10 bg-[#0b0c0b] p-4">
-                <div className="inline-flex rounded-full bg-black/60 p-1">
-                  <button type="button" onClick={() => setVideoInputMode("keyframe")} className={`rounded-full px-4 py-2 text-sm font-bold ${videoInputMode === "keyframe" ? "bg-[#fff878] text-black" : "text-zinc-400"}`}>Key Frame</button>
-                  <button type="button" onClick={() => setVideoInputMode("multi_image")} className={`rounded-full px-4 py-2 text-sm font-bold ${videoInputMode === "multi_image" ? "bg-[#fff878] text-black" : "text-zinc-400"}`}>Multi Image</button>
-                </div>
-                {videoInputMode === "keyframe" ? (
-                  <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                    <FrameSlot label="Start frame" value={startFrame} onAdd={() => openReferenceSource("start")} onClear={() => setStartFrame(null)} />
-                    <span className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/5 text-zinc-400">↔</span>
-                    <FrameSlot label="Last frame" value={endFrame} onAdd={() => openReferenceSource("end")} onClear={() => setEndFrame(null)} />
-                  </div>
-                ) : (
-                  <div className="mt-4">
-                    <div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wide text-zinc-500">Multi image references</p><button type="button" onClick={() => { setReferenceTarget("references"); setPicker(true); }} className="text-sm font-semibold text-[#b9f42e]">Select assets</button></div>
-                    <div className="mt-3 flex flex-wrap gap-2"><button type="button" aria-label="Add reference image" onClick={() => openReferenceSource("references")} className="grid h-16 w-16 place-items-center rounded-lg border border-dashed border-white/25 text-xl text-zinc-400 hover:border-[#b9f42e]">+</button>{references.map((reference, index) => <div key={`${reference}-${index}`} className="relative h-16 w-16 overflow-hidden rounded-lg"><AssetImage src={reference} /><button type="button" aria-label={`Remove reference image ${index + 1}`} onClick={() => setReferences(items => items.filter((_, itemIndex) => itemIndex !== index))} className="absolute right-1 top-1 rounded bg-black/70 px-1 text-xs">×</button></div>)}</div>
-                  </div>
-                )}
-                <p className="mt-3 text-xs leading-5 text-zinc-500">
-                  {totalReferencesCount
-                    ? `${totalReferencesCount} total reference inputs will be sent (${videoReferenceImages.length} direct + ${selectedCharacterImagesCount} from character).`
-                    : "Add a start frame or multi-image references to guide this video."}
-                </p>
-              </div>
-            )}
-            {!isImage && entities.some((e) => e.type === "character") && (
-              <div className="mb-5 rounded-2xl border border-white/10 bg-[#0b0c0b] p-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">Project Characters (Real Faces)</p>
-                <p className="mt-1 text-xs text-zinc-400">Select characters to automatically send their saved real-face photo references to BytePlus.</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {entities.filter((e) => e.type === "character").map((character) => {
-                    const isSelected = selectedCharacterIds.includes(character.id);
-                    return (
+          <div className="flex-1 overflow-auto p-4 sm:p-6">
+            <div className="flex flex-col rounded-[24px] bg-[#1c1c1c] p-4 shadow-xl">
+              {/* Image/Video Reference Input */}
+              {isImage ? (
+                <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
+                  <button
+                    type="button"
+                    aria-label="Add reference image"
+                    onClick={() => {
+                      setReferenceTarget("references");
+                      setReferenceSourcePicker(true);
+                    }}
+                    className="grid h-[72px] w-[72px] shrink-0 place-items-center rounded-2xl bg-white/[0.05] text-xl font-light text-white/50 transition hover:bg-white/[0.08]"
+                  >
+                    +
+                  </button>
+                  {references.map((image, index) => (
+                    <div key={`${image}-${index}`} className="group relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-2xl bg-black">
+                      <AssetImage src={image} className="h-full w-full object-cover opacity-90 transition group-hover:opacity-100" />
                       <button
-                        key={character.id}
                         type="button"
-                        onClick={() => toggleCharacterSelection(character.id)}
-                        className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-                          isSelected
-                            ? "border-[#b9f42e] bg-[#b9f42e]/15 text-[#d9ff84]"
-                            : "border-white/10 bg-white/5 text-zinc-300 hover:border-white/30"
-                        }`}
+                        aria-label={`Remove reference image ${index + 1}`}
+                        onClick={() => setReferences(references.filter((_, i) => i !== index))}
+                        className="absolute inset-0 grid place-items-center bg-black/60 opacity-0 transition group-hover:opacity-100"
                       >
-                        <span className="h-2 w-2 rounded-full bg-[#b9f42e]" />
-                        <span>{character.name}</span>
-                        {isSelected && <span className="font-bold">✓</span>}
+                        <Trash2 className="h-4 w-4 text-white" />
                       </button>
-                    );
-                  })}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mb-4 flex flex-col gap-4 border-b border-white/5 pb-4">
+                  <div className="inline-flex self-start rounded-full bg-black/40 p-1">
+                    <button type="button" onClick={() => setVideoInputMode("keyframe")} className={`rounded-full px-4 py-2 text-xs font-bold transition-colors ${videoInputMode === "keyframe" ? "bg-[#b9f42e] text-black" : "text-zinc-400 hover:text-white"}`}>Key Frame</button>
+                    <button type="button" onClick={() => setVideoInputMode("multi_image")} className={`rounded-full px-4 py-2 text-xs font-bold transition-colors ${videoInputMode === "multi_image" ? "bg-[#b9f42e] text-black" : "text-zinc-400 hover:text-white"}`}>Multi Image</button>
+                  </div>
+                  {videoInputMode === "keyframe" ? (
+                    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                      <FrameSlot label="Start frame" value={startFrame} onAdd={() => openReferenceSource("start")} onClear={() => setStartFrame(null)} />
+                      <span className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/5 text-zinc-400">↔</span>
+                      <FrameSlot label="Last frame" value={endFrame} onAdd={() => openReferenceSource("end")} onClear={() => setEndFrame(null)} />
+                    </div>
+                  ) : (
+                    <div className="flex gap-2 overflow-x-auto pb-2">
+                      <button
+                        type="button"
+                        aria-label="Add reference image"
+                        onClick={() => {
+                          setReferenceTarget("references");
+                          openReferenceSource("references");
+                        }}
+                        className="grid h-[72px] w-[72px] shrink-0 place-items-center rounded-2xl bg-white/[0.05] text-xl font-light text-white/50 transition hover:bg-white/[0.08]"
+                      >
+                        +
+                      </button>
+                      {references.map((image, index) => (
+                        <div key={`${image}-${index}`} className="group relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-2xl bg-black">
+                          <AssetImage src={image} className="h-full w-full object-cover opacity-90 transition group-hover:opacity-100" />
+                          <button
+                            type="button"
+                            aria-label={`Remove reference image ${index + 1}`}
+                            onClick={() => setReferences(items => items.filter((_, i) => i !== index))}
+                            className="absolute inset-0 grid place-items-center bg-black/60 opacity-0 transition group-hover:opacity-100"
+                          >
+                            <Trash2 className="h-4 w-4 text-white" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {entities.some((e) => e.type === "character") && (
+                    <div className="mt-2 rounded-2xl bg-white/[0.02] p-3 border border-white/5">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">Project Characters</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {entities.filter((e) => e.type === "character").map((character) => {
+                          const isSelected = selectedCharacterIds.includes(character.id);
+                          return (
+                            <button
+                              key={character.id}
+                              type="button"
+                              onClick={() => toggleCharacterSelection(character.id)}
+                              className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-semibold transition ${
+                                isSelected
+                                  ? "border-[#b9f42e]/50 bg-[#b9f42e]/10 text-[#d9ff84]"
+                                  : "border-white/5 bg-black/20 text-zinc-400 hover:border-white/20"
+                              }`}
+                            >
+                              <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? "bg-[#b9f42e]" : "bg-white/20"}`} />
+                              <span>{character.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Textarea */}
+              <div className="relative mb-4">
+                <EntityMentionInput
+                  value={prompt}
+                  onChange={setPrompt}
+                  entities={entities}
+                  className="min-h-[140px] w-full resize-none bg-transparent text-[13px] leading-relaxed text-zinc-200 outline-none placeholder:text-zinc-600"
+                  placeholder={isImage ? "Describe the image. Type @ to mention a character, scene, or asset…" : "Describe motion and timing. Type @ to mention a character, scene, or asset…"}
+                  ariaLabel={isImage ? "Shot image prompt" : "Shot video prompt"}
+                  menuPlacement="top"
+                />
+              </div>
+
+              {/* Inline Toolbar */}
+              <div className="flex flex-col gap-3 border-t border-white/10 pt-3">
+                <div className="flex flex-wrap items-center gap-4">
+                  <ModelMenu type={isImage ? "image" : "video"} value={model} onChange={setModel} options={{ quality, aspectRatio, resolution, durationSeconds }} inline />
+                  
+                  <div className="relative flex items-center gap-1.5 text-xs font-semibold text-zinc-400 transition hover:text-white group">
+                    <Monitor className="h-3.5 w-3.5" />
+                    <select
+                      value={aspectRatio}
+                      onChange={(e) => setAspectRatio(e.target.value)}
+                      className="appearance-none bg-transparent outline-none cursor-pointer pr-4"
+                    >
+                      <option className="bg-[#1c1c1c]" value="9:16">9:16</option>
+                      <option className="bg-[#1c1c1c]" value="16:9">16:9</option>
+                      <option className="bg-[#1c1c1c]" value="1:1">1:1</option>
+                      <option className="bg-[#1c1c1c]" value="2:3">2:3</option>
+                      <option className="bg-[#1c1c1c]" value="3:2">3:2</option>
+                      <option className="bg-[#1c1c1c]" value="21:9">21:9</option>
+                    </select>
+                    <ChevronDown className="absolute right-0 h-3 w-3 opacity-50 pointer-events-none" />
+                  </div>
+
+                  <div className="relative flex items-center gap-1.5 text-xs font-semibold text-zinc-400 transition hover:text-white group">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <select
+                      value={quality}
+                      onChange={(e) => setQuality(e.target.value as any)}
+                      className="appearance-none bg-transparent outline-none cursor-pointer pr-4"
+                    >
+                      <option className="bg-[#1c1c1c]" value="Low">Low</option>
+                      <option className="bg-[#1c1c1c]" value="Medium">Medium</option>
+                      <option className="bg-[#1c1c1c]" value="High">High</option>
+                      <option className="bg-[#1c1c1c]" value="Ultra">Ultra</option>
+                    </select>
+                    <ChevronDown className="absolute right-0 h-3 w-3 opacity-50 pointer-events-none" />
+                  </div>
+                  
+                  {!isImage && (
+                    <>
+                      <div className="relative flex items-center gap-1.5 text-xs font-semibold text-zinc-400 transition hover:text-white group">
+                        <span className="font-mono text-[10px]">HD</span>
+                        <select value={resolution} onChange={(e) => setResolution(e.target.value)} className="appearance-none bg-transparent outline-none cursor-pointer pr-4">
+                          <option className="bg-[#1c1c1c]" value="480p">480p</option>
+                          <option className="bg-[#1c1c1c]" value="720p">720p</option>
+                          <option className="bg-[#1c1c1c]" value="1080p">1080p</option>
+                          <option className="bg-[#1c1c1c]" value="4K">4K</option>
+                        </select>
+                        <ChevronDown className="absolute right-0 h-3 w-3 opacity-50 pointer-events-none" />
+                      </div>
+                      <div className="relative flex items-center gap-1.5 text-xs font-semibold text-zinc-400 transition hover:text-white group">
+                        <span className="font-mono text-[10px]">⏱</span>
+                        <select value={`${durationSeconds}s`} onChange={(e) => setDurationSeconds(Number(e.target.value.replace(/s$/, "")))} className="appearance-none bg-transparent outline-none cursor-pointer pr-4">
+                          <option className="bg-[#1c1c1c]" value="4s">4s</option>
+                          <option className="bg-[#1c1c1c]" value="6s">6s</option>
+                          <option className="bg-[#1c1c1c]" value="8s">8s</option>
+                          <option className="bg-[#1c1c1c]" value="10s">10s</option>
+                          <option className="bg-[#1c1c1c]" value="15s">15s</option>
+                          <option className="bg-[#1c1c1c]" value="20s">20s</option>
+                          <option className="bg-[#1c1c1c]" value="30s">30s</option>
+                        </select>
+                        <ChevronDown className="absolute right-0 h-3 w-3 opacity-50 pointer-events-none" />
+                      </div>
+                      <button type="button" onClick={() => setAudioEnabled((current) => !current)} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-bold transition-colors ${audioEnabled ? "bg-[#b9f42e]/20 text-[#b9f42e]" : "bg-white/5 text-zinc-500 hover:text-zinc-300"}`}>
+                        <span className={`grid h-3 w-5 rounded-full p-0.5 ${audioEnabled ? "bg-[#b9f42e]" : "bg-zinc-600"}`}>
+                          <span className={`h-2 w-2 rounded-full bg-black transition-transform ${audioEnabled ? "translate-x-2" : "translate-x-0"}`} />
+                        </span>
+                        {audioEnabled ? "Audio On" : "Audio Off"}
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between border-t border-white/5 pt-3">
+                  <span className="text-xs font-semibold text-zinc-400">
+                    <Sparkles className="mb-0.5 inline h-3 w-3" /> {currentCreditCost}
+                  </span>
+                  {creditBalance !== null && creditBalance < currentCreditCost ? (
+                    <button
+                      disabled
+                      className="grid h-8 w-8 place-items-center rounded-full bg-zinc-700 text-zinc-400 opacity-50"
+                      title="Insufficient credits"
+                    >
+                      <Zap className="h-4 w-4" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={generate}
+                      disabled={busy}
+                      title={busy ? "Generating..." : `Generate (${currentCreditCost} credits)`}
+                      className={`group relative grid h-8 w-8 place-items-center rounded-full transition-all ${
+                        busy
+                          ? "bg-zinc-700 text-zinc-400"
+                          : "bg-[#b9f42e] text-black hover:scale-105 hover:bg-[#a6de25] hover:shadow-[0_0_15px_rgba(185,244,46,0.4)]"
+                      }`}
+                    >
+                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4 text-black" />}
+                    </button>
+                  )}
                 </div>
               </div>
-            )}
-            <div className="mb-5 rounded-2xl border border-white/10 bg-[#0b0c0b] p-4">
-              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-zinc-500">Generation Settings</p>
-              <div className="grid grid-cols-2 gap-3">
-                <ModelChip
-                  label="Aspect ratio"
-                  value={aspectRatio}
-                  choices={["1:1", "2:3", "3:2", "9:16", "16:9", "21:9"]}
-                  onChange={setAspectRatio}
-                />
-                <ModelChip
-                  label="Quality Level"
-                  value={`✨ ${quality}`}
-                  choices={["Low", "Medium", "High", "Ultra"]}
-                  onChange={(val) => setQuality(val.replace(/^✨\s*/, "") as "Low" | "Medium" | "High" | "Ultra")}
-                />
-                {!isImage && (
-                  <ModelChip
-                    label="Resolution"
-                    value={resolution}
-                    choices={["480p", "720p", "1080p", "4K"]}
-                    onChange={setResolution}
-                  />
-                )}
-                {!isImage && (
-                  <ModelChip
-                    label="Duration"
-                    value={`${durationSeconds}s`}
-                    choices={["4s", "6s", "8s", "10s", "15s", "20s", "30s"]}
-                    onChange={(next) => setDurationSeconds(Number(next.replace(/s$/, "")))}
-                  />
-                )}
-                {!isImage && (
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
-                    <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">Audio</p>
-                    <button type="button" onClick={() => setAudioEnabled((current) => !current)} className={`mt-2 inline-flex items-center gap-3 rounded-full px-3 py-2 text-sm font-bold ${audioEnabled ? "bg-[#fff878] text-black" : "bg-white/10 text-zinc-300"}`}>
-                      <span className={`grid h-6 w-10 rounded-full p-1 ${audioEnabled ? "bg-black/20" : "bg-black/40"}`}>
-                        <span className={`h-4 w-4 rounded-full bg-black transition ${audioEnabled ? "translate-x-4" : "translate-x-0"}`} />
-                      </span>
-                      {audioEnabled ? "On" : "Off"}
-                    </button>
-                  </div>
-                )}
-              </div>
             </div>
-            <div className="block text-xs font-bold uppercase tracking-wide text-zinc-500">
-              {isImage ? "Image prompt" : "Video motion prompt"}
-              <EntityMentionInput
-                value={prompt}
-                onChange={setPrompt}
-                entities={entities}
-                className="mt-2 h-52 w-full resize-none rounded-xl border border-white/10 bg-[#0b0c0b] p-4 text-base leading-7 text-zinc-200 outline-none focus:border-[#b9f42e]/60"
-                placeholder={
-                  isImage
-                    ? "Describe composition and lighting. Type @ to bind project characters and assets…"
-                    : "Describe motion and timing. Type @ to bind project characters and assets…"
-                }
-                ariaLabel={isImage ? "Shot image prompt" : "Shot video prompt"}
-              />
-            </div>
-            <ModelMenu type={isImage ? "image" : "video"} value={model} onChange={setModel} options={{ quality, aspectRatio, resolution, durationSeconds }} />
-            <p className="mt-4 rounded-xl border border-[#b9f42e]/20 bg-[#b9f42e]/5 p-3 text-sm text-zinc-300">
-              {isImage ? "Image requests are processed securely on the server." : "Video requests run asynchronously on secure generation servers."}
-            </p>
-            {generationStatus && <p role="status" className="mt-3 rounded-xl border border-sky-500/30 bg-sky-500/10 p-3 text-sm text-sky-100">{generationStatus}</p>}
-            {generationError && <p role="alert" className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{generationError}</p>}
-          </div>
-          <div className="border-t border-white/10 p-6">
-            {creditBalance !== null && creditBalance < currentCreditCost ? (
-              <div className="space-y-2">
-                <button
-                  disabled
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-700 px-4 py-3.5 font-bold text-zinc-400 cursor-not-allowed"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  Insufficient Credits (⚡ {currentCreditCost} needed)
-                </button>
-                <p className="flex items-center justify-center gap-1.5 text-xs text-amber-300">
-                  <Zap className="h-3.5 w-3.5" />
-                  You have {creditBalance} credits. <a href="/studio/credits" className="underline font-bold hover:text-[#b9f42e]">Buy more credits</a>
-                </p>
-              </div>
-            ) : (
-              <button
-                onClick={generate}
-                disabled={busy}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-3.5 font-bold text-black hover:bg-[#a6de25] transition disabled:opacity-50"
-              >
-                <Sparkles className="h-4 w-4 fill-black" />
-                {busy
-                  ? isImage ? "Generating image…" : "Generating video…"
-                  : `Generate ${isImage ? "image" : "video"} (⚡ ${currentCreditCost} Credits)`}
-              </button>
-            )}
+
+            {generationStatus && <p role="status" className="mt-4 rounded-[16px] border border-sky-500/30 bg-sky-500/10 p-4 text-sm text-sky-100">{generationStatus}</p>}
+            {generationError && <p role="alert" className="mt-4 rounded-[16px] border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{generationError}</p>}
           </div>
         </aside>
       </div>
@@ -4083,8 +4156,13 @@ function PendingProposalCards({
   const pending = proposals.filter((proposal) => proposal.status === "pending" && !excluded.has(proposal.id) && proposal.session_id === sessionId).slice(0, 3);
   if (!pending.length) return null;
   return (
-    <div className="mt-4 space-y-2">
-      {pending.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} busy={busyId === proposal.id} onDecide={onDecide} />)}
+    <div className="mt-4 flex flex-col">
+      <div className="space-y-2 mb-2">
+        {pending.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} busy={busyId === proposal.id} onDecide={onDecide} />)}
+      </div>
+      <div className="border-l-2 border-y border-[#fff878]/50 border-r-0 py-2.5 pl-3 mt-2 mb-1 rounded-l-md bg-gradient-to-r from-[#fff878]/10 to-transparent">
+        <p className="text-[11px] font-medium text-zinc-300">Please handle the pending confirmations above before sending a new message</p>
+      </div>
     </div>
   );
 }
@@ -4106,30 +4184,61 @@ function ProposalCard({
   onDecide: (proposalId: string, decision: "approved" | "rejected") => void;
 }) {
   const canDecide = proposal.status === "pending";
+  const isVideo = proposal.action_type.includes("video");
+  const isImage = proposal.action_type.includes("image");
+  
   return (
-    <div className="rounded-lg border border-[#b9f42e]/20 bg-[#10140a] p-3 text-left">
-      <div className="flex items-start gap-2">
-        <WandSparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#b9f42e]" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[12px] font-semibold text-zinc-100">{proposal.title}</p>
-          {proposal.summary && <p className="mt-1 text-[11px] leading-5 text-zinc-400">{proposal.summary}</p>}
-          <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
-            <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-zinc-400">{proposal.action_type.replaceAll("_", " ")}</span>
-            <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-zinc-400">{proposal.status}</span>
-            {proposal.estimated_credits > 0 && <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-zinc-400">{proposal.estimated_credits} credits</span>}
+    <div className="flex flex-col rounded-xl border border-white/10 bg-[#161616] text-left overflow-hidden">
+      <div className="flex items-center justify-between border-b border-white/5 bg-black/20 p-3">
+        <div className="flex items-center gap-2">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#c084fc]/10 border border-[#c084fc]/20">
+            {isVideo ? (
+              <Film className="h-3.5 w-3.5 text-[#c084fc]" />
+            ) : isImage ? (
+              <ImageIcon className="h-3.5 w-3.5 text-[#c084fc]" />
+            ) : (
+              <WandSparkles className="h-3.5 w-3.5 text-[#c084fc]" />
+            )}
           </div>
+          <p className="truncate text-[13px] font-bold text-zinc-100">
+            {proposal.title || proposal.action_type.replaceAll("_", " ")}
+          </p>
+          <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-zinc-400 capitalize">
+            {proposal.action_type.split("_").pop()}
+          </span>
         </div>
+        <span className="shrink-0 rounded-full border border-[#fff878]/30 px-2 py-0.5 text-[10px] font-bold text-[#fff878]">
+          {proposal.status === "pending" ? "Pending confirmation" : proposal.status}
+        </span>
       </div>
-      {canDecide && (
-        <div className="mt-3 flex gap-2">
-          <button type="button" disabled={busy} onClick={() => onDecide(proposal.id, "approved")} className="rounded-md bg-[#b9f42e] px-3 py-1.5 text-[11px] font-semibold text-black disabled:opacity-50">
-            {busy ? "Working..." : "Approve"}
-          </button>
-          <button type="button" disabled={busy} onClick={() => onDecide(proposal.id, "rejected")} className="rounded-md border border-white/[0.08] px-3 py-1.5 text-[11px] font-semibold text-zinc-300 disabled:opacity-50">
-            Reject
-          </button>
-        </div>
-      )}
+      
+      <div className="p-3">
+        <p className="text-[12px] font-semibold text-[#fff878]">
+          {proposal.summary || `1 ${proposal.action_type.replaceAll("_", " ")} task is pending confirmation`}
+        </p>
+        
+        {canDecide && (
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onDecide(proposal.id, "rejected")}
+              className="rounded border border-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-400 transition hover:bg-white/5 hover:text-white disabled:opacity-50"
+            >
+              Reject
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onDecide(proposal.id, "approved")}
+              className="flex items-center gap-1.5 rounded border border-white/20 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-white/10 disabled:opacity-50"
+            >
+              <ArrowRight className="h-3.5 w-3.5" /> 
+              {busy ? "Working..." : "View item"} 
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
