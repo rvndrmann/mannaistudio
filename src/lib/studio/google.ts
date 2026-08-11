@@ -126,3 +126,109 @@ export async function getGoogleVideoTask(taskId: string) {
     throw new GoogleProviderError(msg)
   }
 }
+
+import type { OpenAIDirectorFunction, OpenAIDirectorToolCall } from "@/lib/studio/openai"
+
+export async function createGoogleDirectorToolTurn(input: {
+  userId: string
+  model: string
+  instructions: string
+  items: Array<Record<string, unknown>>
+  tools: OpenAIDirectorFunction[]
+}): Promise<{
+  id: string
+  content: string
+  calls: OpenAIDirectorToolCall[]
+  usage: Record<string, unknown>
+}> {
+  const apiKey = getGoogleApiKey()
+  const ai = new GoogleGenAI({ apiKey })
+
+  const functionDeclarations = input.tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters,
+  }))
+
+  const contents = input.items.map((item) => {
+    if (item.role === "user") {
+      return { role: "user", parts: [{ text: String(item.content || "") }] }
+    }
+    if (item.role === "assistant") {
+      const parts: Array<Record<string, unknown>> = []
+      if (item.content) parts.push({ text: String(item.content) })
+      return { role: "model", parts: parts.length ? parts : [{ text: "..." }] }
+    }
+    if (item.type === "function_call") {
+      return {
+        role: "model",
+        parts: [{
+          functionCall: {
+            name: String(item.name),
+            args: (typeof item.arguments === "string" ? JSON.parse(item.arguments) : (item.arguments || {})) as Record<string, unknown>,
+          },
+        }],
+      }
+    }
+    if (item.type === "function_call_output") {
+      return {
+        role: "user",
+        parts: [{
+          functionResponse: {
+            name: String(item.name || "function"),
+            response: (typeof item.output === "string" ? JSON.parse(item.output) : (item.output || {})) as Record<string, unknown>,
+          },
+        }],
+      }
+    }
+    return { role: "user", parts: [{ text: String(item.content || "") }] }
+  })
+
+  const modelId = input.model.startsWith("gemini") ? input.model : "gemini-2.5-flash"
+
+  try {
+    const response = await ai.models.generateContent({
+      model: modelId,
+      contents: contents as any,
+      config: {
+        systemInstruction: input.instructions,
+        tools: functionDeclarations.length ? [{ functionDeclarations: functionDeclarations as any }] : undefined,
+      },
+    })
+
+    const candidate = response.candidates?.[0]
+    const parts = candidate?.content?.parts || []
+
+    let content = ""
+    const calls: OpenAIDirectorToolCall[] = []
+
+    for (const part of parts) {
+      if (part.text) {
+        content += (content ? "\n" : "") + part.text
+      }
+      if (part.functionCall?.name) {
+        calls.push({
+          callId: `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          name: part.functionCall.name,
+          arguments: part.functionCall.args || {},
+        })
+      }
+    }
+
+    const usage = {
+      input_tokens: response.usageMetadata?.promptTokenCount || 0,
+      output_tokens: response.usageMetadata?.candidatesTokenCount || 0,
+      total_tokens: response.usageMetadata?.totalTokenCount || 0,
+    }
+
+    return {
+      id: `resp_google_${Date.now()}`,
+      content: content.trim(),
+      calls,
+      usage,
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Google LLM chat failed"
+    throw new GoogleProviderError(`Google Gemini request failed: ${msg}`)
+  }
+}

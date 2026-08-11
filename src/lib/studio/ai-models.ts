@@ -5,6 +5,9 @@ export const defaultDirectorModels = [
   { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", status: "active" },
   { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", status: "active" },
   { id: "gpt-5.5", label: "GPT-5.5", status: "active" },
+  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", status: "active" },
+  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", status: "active" },
+  { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash", status: "active" },
 ] as const
 
 export type DirectorModelStatus = "active" | "paused"

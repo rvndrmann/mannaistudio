@@ -4,6 +4,7 @@ import { buildDirectorInstructions, selectConversationWindow } from "@/lib/studi
 import { activeDirectorModels } from "@/lib/studio/ai-models"
 import { directorChatInputSchema } from "@/lib/studio/domain"
 import { defaultOpenAIDirectorModel, OpenAIProviderError } from "@/lib/studio/openai"
+import { GoogleProviderError } from "@/lib/studio/google"
 import { generateOpenAIImage } from "@/lib/studio/openai"
 import { buildProjectContext } from "@/lib/studio/project-context"
 import { requireAuthenticatedProject, studioErrorStatus } from "@/lib/studio/server-context"
@@ -87,10 +88,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const response = await runDirectorAgent({ context, model, instructions: await buildWorkflowInstructions(context, episode.id, sessionId, buildDirectorInstructions(project, globalInstructions)), messages: selectConversationWindow([...(history || []).filter((item) => item.content).map((item) => ({ role: item.role as "user" | "assistant", content: item.content as string })), { role: "user", content: modelMessage }]), sessionId, idempotencyKey: body.idempotencyKey, runtimeSettings, episodeId: episode.id, objective: modelMessage, visionAttachments })
     const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, role: "assistant", content: response.content, tool_calls: response.toolCalls, suggested_actions: response.suggestedActions, timeline_blocks: response.timeline, timeline_version: 1 }).select().single()
     if (assistantError) throw assistantError
-    return NextResponse.json({ sessionId, userMessage, assistantMessage, provider: "openai", model, usage: response.usage })
+    return NextResponse.json({ sessionId, userMessage, assistantMessage, provider: model.startsWith("gemini") ? "google" : "openai", model, usage: response.usage })
   } catch (error) {
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid chat request", issues: error.flatten() }, { status: 400 })
-    return NextResponse.json({ error: error instanceof Error ? error.message : "AI Director chat failed" }, { status: error instanceof OpenAIProviderError ? error.status : studioErrorStatus(error) })
+    return NextResponse.json({ error: error instanceof Error ? error.message : "AI Director chat failed" }, { status: (error instanceof OpenAIProviderError || error instanceof GoogleProviderError) ? error.status : studioErrorStatus(error) })
   }
 }
 

@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { createDirectorToolTurn, type OpenAIDirectorFunction } from "./openai"
+import { createGoogleDirectorToolTurn } from "./google"
 import { directorTools, type DirectorToolName } from "./tool-registry"
 import { requestDirectorTool } from "./tool-service"
 import type { AuthenticatedProjectContext } from "./server-context"
@@ -97,13 +98,24 @@ export async function runDirectorAgent(input: {
   for (let step = 0; step < runtimeSettings.maxToolSteps; step += 1) {
     let turn: Awaited<ReturnType<typeof createDirectorToolTurn>>
     try {
-      turn = await createDirectorToolTurn({
-        userId: input.context.user.id,
-        model: input.model,
-        instructions: `${input.instructions}\nCurrent episode ID: ${input.episodeId || "No episode selected"}\nCurrent project ID: ${input.context.project.id}\nExecutable workspace proposals must be created by calling the appropriate tool; never represent an executable proposal only as assistant text. Tool calls that require approval create the UI approval card and do not apply the change until the user approves it.\n\n${teamBlock}\n\n${runtimeInstructions(runtimeSettings, activeSpecialists)}`,
-        items,
-        tools: directorFunctionDefinitions(),
-      })
+      const fullInstructions = `${input.instructions}\nCurrent episode ID: ${input.episodeId || "No episode selected"}\nCurrent project ID: ${input.context.project.id}\nExecutable workspace proposals must be created by calling the appropriate tool; never represent an executable proposal only as assistant text. Tool calls that require approval create the UI approval card and do not apply the change until the user approves it.\n\n${teamBlock}\n\n${runtimeInstructions(runtimeSettings, activeSpecialists)}`
+      const toolDefs = directorFunctionDefinitions()
+
+      turn = input.model.startsWith("gemini")
+        ? await createGoogleDirectorToolTurn({
+            userId: input.context.user.id,
+            model: input.model,
+            instructions: fullInstructions,
+            items,
+            tools: toolDefs,
+          })
+        : await createDirectorToolTurn({
+            userId: input.context.user.id,
+            model: input.model,
+            instructions: fullInstructions,
+            items,
+            tools: toolDefs,
+          })
     } catch (error) {
       const recovery = directorRecovery(error)
       await finishWorkflowRun(input.context, workflowRun.id, "failed", { completedSteps, failedSteps: failedSteps + 1, awaitingApproval, toolCalls: toolCalls.length }, { code: recovery.code, message: recovery.message })
