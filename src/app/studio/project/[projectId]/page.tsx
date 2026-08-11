@@ -3040,6 +3040,7 @@ function ShotMediaWorkspace({
   reload: (silent?: boolean) => Promise<void>;
 }) {
   const [prompt, setPrompt] = useState(media.shot.prompt || "");
+  const [promptExpanded, setPromptExpanded] = useState(false);
   const [model, setModel] = useState<string>(
     media.type === "image" ? imageGenerationModels[0].id : videoGenerationModels[0].id,
   );
@@ -3109,6 +3110,11 @@ function ShotMediaWorkspace({
   });
   const [activeGenId, setActiveGenId] = useState<string | null>(source ? "original" : null);
   const activeGen = genHistory.find((g) => g.id === activeGenId) || null;
+
+  // Reset expanded state when changing active generation
+  useEffect(() => {
+    setPromptExpanded(false);
+  }, [activeGenId]);
 
   // Poll in-progress job until finished or failed
   const pollJobStatus = async (jobId: string) => {
@@ -3640,7 +3646,19 @@ function ShotMediaWorkspace({
                       </span>
                     )}
                   </div>
-                  <p className="mt-1.5 text-sm leading-relaxed text-zinc-200">{activeGen.prompt || "—"}</p>
+                  <div className="mt-1.5 text-sm leading-relaxed text-zinc-200">
+                    <p className={promptExpanded ? "" : "line-clamp-3"}>
+                      {activeGen.prompt || "—"}
+                    </p>
+                    {activeGen.prompt && activeGen.prompt.length > 130 && (
+                      <button
+                        onClick={() => setPromptExpanded(!promptExpanded)}
+                        className="mt-1 text-[11px] font-bold text-[#b9f42e] hover:underline"
+                      >
+                        {promptExpanded ? "Show less" : "Read more"}
+                      </button>
+                    )}
+                  </div>
                   {activeGen.referenceImages && activeGen.referenceImages.length > 0 && (
                     <>
                       <p className="mt-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Reference images</p>
