@@ -3084,6 +3084,7 @@ function ShotMediaWorkspace({
   // --- Generation History ---
   type GenEntry = {
     id: string;
+    type: string;
     status: "generating" | "completed" | "failed";
     prompt: string;
     model: string;
@@ -3091,12 +3092,14 @@ function ShotMediaWorkspace({
     videoUrl: string | null;
     error: string | null;
     createdAt: number;
+    completedAt: string | null;
   };
   const [genHistory, setGenHistory] = useState<GenEntry[]>(() => {
     const initial: GenEntry[] = [];
     if (source) {
       initial.push({
         id: "original",
+        type: media.type,
         status: "completed",
         prompt: media.shot.prompt || "",
         model: media.type === "image" ? imageGenerationModels[0].id : videoGenerationModels[0].id,
@@ -3104,6 +3107,7 @@ function ShotMediaWorkspace({
         videoUrl: source,
         error: null,
         createdAt: Date.now() - 1,
+        completedAt: null,
       });
     }
     return initial;
@@ -3153,24 +3157,28 @@ function ShotMediaWorkspace({
           .from("creator_generation_jobs")
           .select("*")
           .eq("shot_id", media.shot.id)
+          .eq("type", media.type)
           .order("created_at", { ascending: false });
 
         if (!active || !dbJobs) return;
 
-        const entries: GenEntry[] = dbJobs.map((j) => ({
-          id: j.id,
-          status: j.status === "completed" ? "completed" : j.status === "failed" || j.status === "cancelled" ? "failed" : "generating",
-          prompt: j.prompt || "",
-          model: j.model || "",
-          referenceImages: Array.isArray(j.input_images) ? j.input_images : [],
-          videoUrl: j.result_url || null,
-          error: j.error || null,
-          createdAt: new Date(j.created_at).getTime(),
+        const entries: GenEntry[] = dbJobs.map((job) => ({
+          id: job.id,
+          type: job.type,
+          status: (job.status === "completed" ? "completed" : job.status === "failed" || job.status === "cancelled" ? "failed" : "generating") as "generating" | "completed" | "failed",
+          prompt: job.prompt || "",
+          model: job.model || "",
+          referenceImages: Array.isArray(job.input_images) ? (job.input_images as string[]) : [],
+          videoUrl: job.result_url || null,
+          error: job.error || null,
+          createdAt: new Date(job.created_at).getTime(),
+          completedAt: job.completed_at || null,
         }));
 
         if (source && !entries.some((e) => e.videoUrl === source)) {
           entries.push({
             id: "original",
+            type: media.type,
             status: "completed",
             prompt: media.shot.prompt || "",
             model: media.type === "image" ? imageGenerationModels[0].id : videoGenerationModels[0].id,
@@ -3178,6 +3186,7 @@ function ShotMediaWorkspace({
             videoUrl: source,
             error: null,
             createdAt: 0,
+            completedAt: null,
           });
         }
 
@@ -3190,7 +3199,9 @@ function ShotMediaWorkspace({
         // Resume polling for any in-progress job
         const pendingJobs = entries.filter((e) => e.status === "generating");
         for (const pJob of pendingJobs) {
-          pollJobStatus(pJob.id);
+          if (pJob.type === "video") {
+            pollJobStatus(pJob.id);
+          }
         }
       } catch (err) {
         console.warn("Could not load shot generation history:", err);
@@ -3261,6 +3272,7 @@ function ShotMediaWorkspace({
     const genId = `gen-${Date.now()}`;
     const newEntry: GenEntry = {
       id: genId,
+      type: media.type,
       status: "generating",
       prompt,
       model,
@@ -3268,6 +3280,7 @@ function ShotMediaWorkspace({
       videoUrl: null,
       error: null,
       createdAt: Date.now(),
+      completedAt: null,
     };
     setGenHistory((prev) => [newEntry, ...prev]);
     setActiveGenId(genId);
