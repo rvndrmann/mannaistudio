@@ -5,15 +5,35 @@ import EnterpriseOrderForm from "@/components/enterprise/EnterpriseOrderForm"
 import Navbar from "@/components/Navbar"
 import { useAuth } from "@/components/auth/auth-provider"
 import { orderedBillingTiers, type BillingTierId } from "@/lib/billing-plans"
-import { AlertCircle, BadgeCheck, Bot, Check, ChevronDown, Clapperboard, Image as ImageIcon, Layers3, Loader2, Lock, Sparkles, Video, Wand2, Zap } from "lucide-react"
+import {
+  AlertCircle,
+  BadgeCheck,
+  Bot,
+  Calendar,
+  Check,
+  ChevronDown,
+  Clapperboard,
+  CreditCard,
+  History,
+  Image as ImageIcon,
+  Layers3,
+  Loader2,
+  Lock,
+  Receipt,
+  Sparkles,
+  Video,
+  Wand2,
+  XCircle,
+  Zap,
+} from "lucide-react"
 import Link from "next/link"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 const faqs = [
   ["How do credits work?", "Credits are used when generating AI images and videos. Planning, script writing, workflow instructions, and chat guidance are included in your plan."],
   ["How do Razorpay subscriptions work?", "When you subscribe, Razorpay securely establishes a monthly recurring payment mandate. Your plan automatically renews each month, granting fresh credits to your account upon every successful charge."],
-  ["Can I generate images without approval?", "Yes. Image generation can run directly when the user asks for it. Video generation remains approval-first unless full-auto mode is enabled."],
-  ["Do these plans include MCP and CLI?", "Plus and Studio include MCP & CLI access so users can talk to the AI Director from Claude, ChatGPT-style clients, or terminal."],
+  ["Can I cancel my subscription anytime?", "Yes. You can cancel your subscription anytime directly from your billing dashboard. Your membership access and remaining credits stay active until the end of your current billing period."],
+  ["Can I buy extra credits anytime?", "Yes. You can purchase additional credits starting from ₹1,000 (1,000 credits at ₹1 per credit) up to any custom amount whenever your production needs grow."],
 ]
 
 const billingHighlights = [
@@ -27,13 +47,61 @@ const billingHighlights = [
   { icon: BadgeCheck, label: "MCP & CLI" },
 ]
 
+type TransactionRecord = {
+  id: string
+  txnid: string
+  paymentId: string
+  amount: string
+  productInfo: string
+  status: string
+  createdAt: string
+}
+
+type UserSubscriptionInfo = {
+  active: boolean
+  status: string
+  subscriptionId: string | null
+  createdAt: string | null
+  nextBillingDate: string | null
+}
+
 export default function BillingPage() {
   const { user, signInWithGoogle } = useAuth()
-  const [annual, setAnnual] = useState(false)
   const [openFaq, setOpenFaq] = useState(0)
   const [loadingTier, setLoadingTier] = useState<string | null>(null)
   const [subSuccess, setSubSuccess] = useState<string | null>(null)
   const [subError, setSubError] = useState<string | null>(null)
+
+  // Custom Credit Top-Up state
+  const [customCreditAmount, setCustomCreditAmount] = useState<number>(1000)
+  const [topUpLoading, setTopUpLoading] = useState(false)
+
+  // Subscription & Transaction history state
+  const [subscription, setSubscription] = useState<UserSubscriptionInfo | null>(null)
+  const [cancelLoading, setCancelLoading] = useState(false)
+  const [transactions, setTransactions] = useState<TransactionRecord[]>([])
+  const [txLoading, setTxLoading] = useState(false)
+
+  const loadBillingData = async () => {
+    if (!user) return
+    setTxLoading(true)
+    try {
+      const res = await fetch("/api/billing/transactions", { cache: "no-store" })
+      if (res.ok) {
+        const json = await res.json()
+        setTransactions(json.transactions || [])
+        setSubscription(json.subscription || null)
+      }
+    } catch (err) {
+      console.warn("Failed to load billing details:", err)
+    } finally {
+      setTxLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadBillingData()
+  }, [user])
 
   const loadRazorpayScript = () =>
     new Promise<boolean>((resolve) => {
@@ -81,6 +149,7 @@ export default function BillingPage() {
         handler: (response: { razorpay_payment_id?: string; razorpay_subscription_id?: string; razorpay_signature?: string }) => {
           setSubSuccess(`Subscribed to ${data.planName} tier! Reference: ${response.razorpay_payment_id || response.razorpay_subscription_id}`)
           setLoadingTier(null)
+          loadBillingData()
         },
         modal: {
           ondismiss: () => setLoadingTier(null),
@@ -91,6 +160,103 @@ export default function BillingPage() {
     } catch (err) {
       setSubError(err instanceof Error ? err.message : "Subscription checkout failed.")
       setLoadingTier(null)
+    }
+  }
+
+  const handleCancelSubscription = async () => {
+    if (!user || !subscription?.subscriptionId) return
+    if (!confirm("Are you sure you want to cancel your monthly subscription? Your access will remain active until the end of your current billing cycle.")) {
+      return
+    }
+
+    setCancelLoading(true)
+    setSubSuccess(null)
+    setSubError(null)
+
+    try {
+      const res = await fetch("/api/razorpay/subscription/cancel", {
+        method: "POST",
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to cancel subscription.")
+
+      setSubSuccess("Subscription cancelled successfully. You will maintain access until your current billing period ends.")
+      loadBillingData()
+    } catch (err) {
+      setSubError(err instanceof Error ? err.message : "Subscription cancellation failed.")
+    } finally {
+      setCancelLoading(false)
+    }
+  }
+
+  const handleBuyCustomCredits = async (amountInr: number) => {
+    if (!user) {
+      signInWithGoogle()
+      return
+    }
+
+    if (amountInr < 1000) {
+      setSubError("Minimum purchase is ₹1,000 (1,000 credits).")
+      return
+    }
+
+    setTopUpLoading(true)
+    setSubSuccess(null)
+    setSubError(null)
+
+    try {
+      const scriptLoaded = await loadRazorpayScript()
+      if (!scriptLoaded) throw new Error("Failed to load Razorpay payment gateway script.")
+
+      const res = await fetch("/api/credits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amountInr }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to create credit order")
+
+      const rzp = new (window as any).Razorpay({
+        key: data.keyId,
+        order_id: data.orderId,
+        amount: data.amount,
+        currency: "INR",
+        name: "AI Director Hub",
+        description: `${data.credits.toLocaleString()} Generation Credits (₹${data.priceInr.toLocaleString()})`,
+        prefill: { email: data.email, name: data.name },
+        theme: { color: "#b9f42e" },
+        handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+          try {
+            const verifyRes = await fetch("/api/credits/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                amountInr,
+              }),
+            })
+            const verifyData = await verifyRes.json()
+            if (!verifyRes.ok) throw new Error(verifyData.error || "Payment verification failed")
+            setSubSuccess(`Payment successful! Added ${amountInr.toLocaleString()} credits to your account.`)
+            loadBillingData()
+          } catch (vErr) {
+            setSubError(vErr instanceof Error ? vErr.message : "Payment verification failed")
+          } finally {
+            setTopUpLoading(false)
+          }
+        },
+        modal: {
+          ondismiss: () => setTopUpLoading(false),
+        },
+      })
+      rzp.open()
+    } catch (err) {
+      setSubError(err instanceof Error ? err.message : "Credit purchase failed.")
+      setTopUpLoading(false)
     }
   }
 
@@ -118,26 +284,73 @@ export default function BillingPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-[1200px] px-4 py-20 md:px-6">
-        <div className="mb-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+      {/* ACTIVE SUBSCRIPTION DETAILS & CANCEL SUBSCRIPTION CARD */}
+      {user && subscription && subscription.active && (
+        <section className="mx-auto max-w-[1200px] px-4 pt-12 md:px-6">
+          <div className="rounded-[28px] border border-primary/40 bg-[linear-gradient(135deg,#132213,#0b0d0c_70%)] p-6 md:p-8">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-primary px-3 py-1 text-xs font-black uppercase text-black">
+                    Active Subscription
+                  </span>
+                  <span className="text-xs font-mono text-white/50">
+                    ID: {subscription.subscriptionId || "Active Plan"}
+                  </span>
+                </div>
+
+                <h2 className="mt-4 text-2xl font-black md:text-3xl">Your Monthly AI Director Membership</h2>
+
+                <div className="mt-4 flex flex-wrap gap-6 text-xs font-bold text-white/70">
+                  {subscription.createdAt && (
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-primary" />
+                      <span>Started: {new Date(subscription.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" })}</span>
+                    </div>
+                  )}
+                  {subscription.nextBillingDate && (
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-primary" />
+                      <span>Next Billing Date: {new Date(subscription.nextBillingDate).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" })}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {subscription.subscriptionId && (
+                <div>
+                  <button
+                    disabled={cancelLoading}
+                    onClick={handleCancelSubscription}
+                    className="flex items-center gap-2 rounded-2xl border border-red-500/40 bg-red-500/10 px-6 py-3.5 text-xs font-black text-red-300 transition hover:bg-red-500/20 disabled:opacity-50"
+                  >
+                    {cancelLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-red-300" />
+                    ) : (
+                      <>
+                        <XCircle className="h-4 w-4" />
+                        Cancel Subscription
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* MONTHLY SUBSCRIPTION PLANS */}
+      <section className="mx-auto max-w-[1200px] px-4 py-16 md:px-6">
+        <div className="mb-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 className="text-4xl font-black tracking-tight md:text-6xl">Upgrade your plan</h2>
             <p className="mt-3 text-white/45">Choose the monthly plan that matches your AI production volume.</p>
           </div>
           <div className="flex items-center gap-3">
-            <button className="rounded-2xl border border-white/10 bg-white/[.05] px-5 py-3 text-sm font-bold text-white/70">
-              INR Pricing <span className="ml-2 rounded bg-primary px-2 py-0.5 text-xs text-black">RAZORPAY</span>
-            </button>
-            <button
-              onClick={() => setAnnual((value) => !value)}
-              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[.05] px-5 py-3 text-sm font-bold"
-            >
-              Monthly
-              <span className={`relative h-6 w-11 rounded-full transition ${annual ? "bg-primary" : "bg-white/15"}`}>
-                <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${annual ? "left-6" : "left-1"}`} />
-              </span>
-              Annual
-            </button>
+            <span className="rounded-2xl border border-white/10 bg-white/[.05] px-5 py-3 text-sm font-bold text-white/70">
+              INR Monthly Pricing <span className="ml-2 rounded bg-primary px-2 py-0.5 text-xs text-black">RAZORPAY</span>
+            </span>
           </div>
         </div>
 
@@ -204,7 +417,6 @@ export default function BillingPage() {
                 <div className="mt-7">
                   <span className="text-5xl font-black">₹{tier.priceInr.toLocaleString()}</span>
                   <span className="ml-2 text-white/45">/ month</span>
-                  {annual && <p className="mt-2 text-sm font-bold text-primary">Annual billing selected</p>}
                 </div>
 
                 <button
@@ -218,7 +430,7 @@ export default function BillingPage() {
                     `Subscribe to ${tier.name}`
                   )}
                 </button>
-                <p className="mt-3 text-center text-xs text-white/35">🔒 Secure payment via Razorpay Subscriptions</p>
+                <p className="mt-3 text-center text-xs text-white/35">🔒 Secure monthly payment via Razorpay Subscriptions</p>
 
                 <div className="mt-6 rounded-3xl border border-white/10 bg-black/20 p-5">
                   <div className="mb-4 flex items-center gap-2 text-sm font-black uppercase">
@@ -238,12 +450,167 @@ export default function BillingPage() {
             )
           })}
         </div>
-
-        <p className="mx-auto mt-8 max-w-4xl text-center text-sm leading-6 text-white/35">
-          Prices are shown in INR (₹). Subscription mandates automatically process recurring payments at each billing cycle through Razorpay.
-        </p>
       </section>
 
+      {/* BUY EXTRA CREDITS TOP-UP SECTION (₹1 PER CREDIT, MIN ₹1,000) */}
+      <section className="mx-auto max-w-[1200px] px-4 py-10 md:px-6">
+        <div className="overflow-hidden rounded-[28px] border border-primary/30 bg-[radial-gradient(circle_at_20%_20%,rgba(185,254,46,0.12),transparent_40%),linear-gradient(135deg,#121a14,#0c0e0d)] p-6 md:p-10">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3.5 py-1.5 text-xs font-black uppercase tracking-wider text-primary">
+                <Zap className="h-4 w-4 fill-primary" />
+                Pay-As-You-Go Credits
+              </span>
+              <h2 className="mt-4 text-3xl font-black tracking-tight md:text-5xl">
+                Buy Extra Generation Credits
+              </h2>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-white/60">
+                Need more credits? Buy top-up credits anytime at <strong className="text-primary font-bold">₹1 per credit</strong>.
+                Minimum purchase is ₹1,000 (1,000 credits) — add as much as you need.
+              </p>
+            </div>
+
+            {/* Quick Preset Buttons */}
+            <div className="flex flex-wrap gap-2.5">
+              {[1000, 2500, 5000, 10000].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setCustomCreditAmount(preset)}
+                  className={`rounded-2xl border px-4 py-2.5 text-xs font-bold transition ${
+                    customCreditAmount === preset
+                      ? "border-primary bg-primary text-black"
+                      : "border-white/10 bg-white/[.04] text-white hover:border-white/20"
+                  }`}
+                >
+                  ₹{preset.toLocaleString()} ({preset.toLocaleString()} Cr)
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-8 grid gap-4 rounded-2xl border border-white/10 bg-black/40 p-6 md:grid-cols-[1fr_auto]">
+            <div className="flex flex-col gap-2">
+              <label htmlFor="custom-credits" className="text-xs font-bold uppercase tracking-wider text-white/70">
+                Enter Amount (INR) — 1 Credit = ₹1 (Min ₹1,000)
+              </label>
+              <div className="relative flex items-center">
+                <span className="absolute left-4 text-lg font-black text-primary">₹</span>
+                <input
+                  id="custom-credits"
+                  type="number"
+                  min={1000}
+                  step={100}
+                  value={customCreditAmount}
+                  onChange={(e) => setCustomCreditAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-full rounded-xl border border-white/15 bg-white/[.06] py-3.5 pl-9 pr-4 text-xl font-black text-white outline-none focus:border-primary"
+                  placeholder="1000"
+                />
+              </div>
+              <span className="text-xs text-white/45">
+                Calculated Credits: <strong className="text-primary font-bold">{customCreditAmount.toLocaleString()} Credits</strong>
+              </span>
+            </div>
+
+            <div className="flex items-end">
+              <button
+                disabled={topUpLoading || customCreditAmount < 1000}
+                onClick={() => handleBuyCustomCredits(customCreditAmount)}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-8 py-4 text-base font-black text-black transition hover:bg-primary/90 disabled:opacity-40 md:w-auto"
+              >
+                {topUpLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <>
+                    <CreditCard className="h-5 w-5" />
+                    Buy {customCreditAmount.toLocaleString()} Credits (₹{customCreditAmount.toLocaleString()})
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* USER TRANSACTION HISTORY SECTION */}
+      {user && (
+        <section className="mx-auto max-w-[1200px] px-4 py-10 md:px-6">
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-primary font-bold text-xs uppercase tracking-wider">
+                <History className="h-4 w-4" />
+                Billing History
+              </div>
+              <h2 className="mt-1 text-3xl font-black tracking-tight md:text-4xl">Transaction History</h2>
+            </div>
+            {txLoading && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
+          </div>
+
+          <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[#101211]">
+            {transactions.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b border-white/10 bg-white/[.02] text-xs font-black uppercase text-white/40">
+                    <tr>
+                      <th className="p-4">Date</th>
+                      <th className="p-4">Transaction / Item</th>
+                      <th className="p-4">Reference ID</th>
+                      <th className="p-4 text-right">Amount / Credits</th>
+                      <th className="p-4 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {transactions.map((tx) => {
+                      const st = (tx.status || "").toLowerCase()
+                      const isCancelled = st.includes("cancel")
+                      const isFailed = st.includes("fail")
+                      const isSuccess = st.includes("success") || st.includes("paid")
+
+                      const badgeStyle = isCancelled
+                        ? "bg-amber-400/15 border-amber-400/30 text-amber-400"
+                        : isFailed
+                          ? "bg-red-400/15 border-red-400/30 text-red-400"
+                          : isSuccess
+                            ? "bg-emerald-400/15 border-emerald-400/30 text-emerald-400"
+                            : "bg-white/10 border-white/20 text-white/70"
+
+                      return (
+                        <tr key={tx.id} className="transition hover:bg-white/[.02]">
+                          <td className="p-4 text-xs font-bold text-white/60">
+                            {tx.createdAt ? new Date(tx.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+                          </td>
+                          <td className="p-4 font-bold text-white">
+                            {tx.productInfo}
+                          </td>
+                          <td className="p-4 font-mono text-xs text-white/40">
+                            {tx.paymentId || tx.txnid || "—"}
+                          </td>
+                          <td className="p-4 text-right font-black text-primary">
+                            {tx.amount}
+                          </td>
+                          <td className="p-4 text-center">
+                            <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase ${badgeStyle}`}>
+                              {tx.status}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center p-12 text-center text-white/40">
+                <Receipt className="h-10 w-10 text-white/20 mb-3" />
+                <p className="font-bold text-sm">No transaction records found yet.</p>
+                <p className="mt-1 text-xs text-white/30">Your subscription payments, credit top-ups, and cancellations will appear here.</p>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ENTERPRISE FORM */}
       <section id="enterprise" className="mx-auto max-w-[1200px] px-4 py-10 md:px-6">
         <div className="grid gap-8 rounded-[28px] border border-primary/25 bg-[linear-gradient(160deg,rgba(185,255,24,.10),#101211_60%)] p-6 md:grid-cols-[1fr_1.1fr] md:p-10">
           <div>
@@ -269,6 +636,7 @@ export default function BillingPage() {
         </div>
       </section>
 
+      {/* FEATURE COMPARISON */}
       <section className="mx-auto max-w-[1200px] px-4 py-10 md:px-6">
         <h2 className="text-4xl font-black tracking-tight md:text-5xl">Compare features</h2>
         <p className="mt-3 text-white/45">See which plan suits your AI video and image workflow.</p>
@@ -312,6 +680,7 @@ export default function BillingPage() {
         </div>
       </section>
 
+      {/* FAQS */}
       <section className="mx-auto max-w-4xl px-4 py-20 md:px-6">
         <h2 className="text-center text-4xl font-black tracking-tight md:text-5xl">Frequently Asked Questions</h2>
         <div className="mt-10 space-y-3">

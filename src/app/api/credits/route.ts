@@ -7,8 +7,11 @@ import { isAdminUser, isMembershipActive } from "@/lib/membership"
 import { CREDIT_PACKAGES } from "@/lib/credits-packages"
 
 const topUpSchema = z.object({
-  packageId: z.enum(["1000", "2500", "5000", "10000"]),
-}).strict()
+  packageId: z.string().optional(),
+  amountInr: z.number().optional(),
+}).refine((data) => (data.amountInr && data.amountInr >= 1000) || (data.packageId && CREDIT_PACKAGES[data.packageId]), {
+  message: "Minimum purchase is ₹1,000 (1,000 credits).",
+})
 
 export async function GET() {
   try {
@@ -42,10 +45,19 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const input = topUpSchema.parse(body)
 
-    const selectedPkg = CREDIT_PACKAGES[input.packageId]
-    if (!selectedPkg) return NextResponse.json({ error: "Invalid credit package" }, { status: 400 })
+    let priceInr = 1000
+    let credits = 1000
+    let packageId = input.packageId || "custom"
 
-    const amountInPaise = selectedPkg.priceInr * 100
+    if (input.amountInr && input.amountInr >= 1000) {
+      priceInr = Math.floor(input.amountInr)
+      credits = priceInr
+    } else if (input.packageId && CREDIT_PACKAGES[input.packageId]) {
+      priceInr = CREDIT_PACKAGES[input.packageId].priceInr
+      credits = CREDIT_PACKAGES[input.packageId].credits
+    }
+
+    const amountInPaise = priceInr * 100
     const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret })
 
     const order = await razorpay.orders.create({
@@ -55,8 +67,8 @@ export async function POST(request: NextRequest) {
       notes: {
         type: "credits",
         profile_id: user.id,
-        credits: String(selectedPkg.credits),
-        packageId: input.packageId,
+        credits: String(credits),
+        packageId,
         email: user.email || "",
       },
     })
@@ -64,13 +76,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       orderId: order.id,
       amount: amountInPaise,
+      priceInr,
       keyId,
-      credits: selectedPkg.credits,
+      credits,
       email: user.email || "",
       name: user.user_metadata?.full_name || "Creator",
     })
   } catch (err) {
-    if (err instanceof ZodError) return NextResponse.json({ error: "Invalid request payload" }, { status: 400 })
+    if (err instanceof ZodError) return NextResponse.json({ error: "Minimum purchase is ₹1,000 (1,000 credits)." }, { status: 400 })
     return NextResponse.json({ error: err instanceof Error ? err.message : "Order creation failed" }, { status: 500 })
   }
 }
