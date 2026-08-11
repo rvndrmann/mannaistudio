@@ -128,8 +128,7 @@ Pacing rules:
 
 - 5–8s runtime: 3–4 beats, 1.5–2.5s each
 - 8–12s runtime: 5–6 beats, 1.5–2.5s each
-- 12–16s runtime: 7–9 beats, 1.5–2s each
-- 16–20s runtime: 9–12 beats, 1.5–2s each
+- 12–14s runtime: 7–9 beats, 1.5–2s each
 
 Beat rhythm (default arc):
 
@@ -141,7 +140,7 @@ Beat rhythm (default arc):
 6. **IMPACT / CLIMAX** — Maximum visual intensity
 7. **RESOLUTION** — Aftermath, hero frame, final wide
 
-Not every scene needs all seven. Adjust based on runtime and genre. Short scenes (5–8s) might use 3–4 beats. Extended sequences (16–20s) use the full arc.
+Not every scene needs all seven. Adjust based on runtime and genre. Short scenes (5–8s) might use 3–4 beats. Extended sequences (12–14s) use the full arc.
 
 What makes a strong beat vs. a weak beat:
 
@@ -276,7 +275,7 @@ Rules:
 - Character Lock blocks are **copy-pasted verbatim** across scenes to maintain identity
 - Label scenes sequentially: SCENE 1 of 3, SCENE 2 of 3, etc.
 - Note continuity bridges between scenes: "Scene 2 picks up from Scene 1 final frame — @hero standing in destroyed intersection"
-- Maximum recommended runtime per scene prompt: **15–20 seconds**
+- Maximum recommended runtime per scene prompt: **strictly under 15 seconds (e.g. 5–14 seconds)**
 
 ## 7 — DIALOGUE & AUDIO HANDLING
 
