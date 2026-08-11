@@ -114,9 +114,6 @@ export default function BillingPage() {
             <Link href="/studio" className="rounded-2xl bg-white px-7 py-4 font-black text-black transition hover:bg-white/90">
               Open Studio
             </Link>
-            <Link href="/studio/external" className="rounded-2xl border border-white/15 bg-white/10 px-7 py-4 font-black text-white transition hover:border-primary hover:text-primary">
-              MCP & CLI Access
-            </Link>
           </div>
         </div>
       </section>
