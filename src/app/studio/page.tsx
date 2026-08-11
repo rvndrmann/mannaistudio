@@ -394,9 +394,6 @@ function TopBar() {
             <Users className="h-4 w-4" />
             Team
           </Link>
-          <button className="rounded-xl bg-gradient-to-r from-orange-400 to-violet-600 px-4 py-2 text-sm font-semibold">
-            Upgrade
-          </button>
         </div>
       </header>
     </>
