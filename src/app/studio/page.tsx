@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -43,6 +44,7 @@ const categories = [
 ];
 
 export default function StudioHome() {
+  const router = useRouter();
   const { user, signInWithGoogle } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [creating, setCreating] = useState(false);
@@ -105,7 +107,7 @@ export default function StudioHome() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to create project");
 
-      window.location.href = `/studio/project/${data.project.id}?openSettings=1`;
+      router.push(`/studio/project/${data.project.id}?openSettings=1`);
     } catch (cause) {
       setError(
         cause instanceof Error
