@@ -51,7 +51,11 @@ ARK_API_KEY=
 BYTEPLUS_ARK_BASE_URL=https://ark.ap-southeast.bytepluses.com/api/v3
 ```
 
-The Studio chat selector reads active models from `site_settings.ai_director_models`. Defaults are `gpt-5.6`, `gpt-5.6-luna`, `gpt-5.6-terra`, and `gpt-5.5`. `OPENAI_DIRECTOR_MODEL` sets the preferred server fallback when no model is supplied by the browser. Admins can pause or rerun models in the Admin AI Models panel; paused models are hidden from the Studio selector and rejected by the server route.
+The Studio chat selector reads active models from `site_settings.ai_director_models`. Defaults are `gpt-5.6`, `gpt-5.6-luna`, `gpt-5.6-terra`, `gpt-5.5`, `gemini-3.6-flash`, `gemini-3.6-pro`, `gemini-2.0-flash`, `kimi-2.5`, `deepseek-v4`, `glm-5.2`, `dola-seed-2-1-turbo`, and `dola-seed-2-0`. `OPENAI_DIRECTOR_MODEL` sets the preferred server fallback when no model is supplied by the browser. 
+
+The AI Director natively supports **BytePlus Ark** for chat completion models (Kimi, DeepSeek, GLM, Dola Seed) utilizing the `BYTEPLUS_ARK_BASE_URL` and `ARK_API_KEY`, routing these requests to the OpenAI-compatible BytePlus `/chat/completions` API instead of OpenAI.
+
+Admins can pause or rerun models in the Admin AI Models panel; paused models are hidden from the Studio selector and rejected by the server route.
 
 Never prefix the permanent OpenAI key with `NEXT_PUBLIC_`. A voice provider must exchange it for a short-lived session credential on the server. The browser may receive only that ephemeral credential.
 
