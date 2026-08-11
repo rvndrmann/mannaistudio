@@ -2332,6 +2332,20 @@ function AssetWorkspace({
               </button>
             )}
 
+            {activeImage && (
+              <a
+                href={activeImage}
+                download
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/5"
+                title="Download asset image"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download
+              </a>
+            )}
+
             <button
               type="button"
               onClick={addActiveAsReference}
@@ -3070,6 +3084,9 @@ function ShotMediaWorkspace({
   save: (b: unknown) => Promise<void>;
   reload: (silent?: boolean) => Promise<void>;
 }) {
+  const shotIndex = (shots || []).findIndex((s) => s.id === media.shot.id);
+  const shotNumber = shotIndex >= 0 ? shotIndex + 1 : 1;
+
   const [prompt, setPrompt] = useState(media.shot.prompt || "");
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [model, setModel] = useState<string>(
@@ -3629,6 +3646,20 @@ function ShotMediaWorkspace({
               </button>
             )}
 
+            {previewSource && (
+              <a
+                href={previewSource}
+                download
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/5"
+                title={`Download ${isImage ? "image" : "video"}`}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download
+              </a>
+            )}
+
             <button onClick={addCurrentSourceAsReference} disabled={!previewSource} className="rounded-lg px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40">
               Use as reference
             </button>
@@ -3723,10 +3754,7 @@ function ShotMediaWorkspace({
         <aside className="flex w-[430px] shrink-0 flex-col border-l border-white/10 bg-[#151715]">
           <div className="flex items-start justify-between p-6">
             <div>
-              <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">
-                SHOT {isImage ? "IMAGE" : "VIDEO"}
-              </p>
-              <h2 className="mt-2 text-3xl font-black">{media.shot.title}</h2>
+              <h2 className="text-3xl font-black text-white">Scene {shotNumber}</h2>
               <p className="mt-2 text-sm text-zinc-400">
                 {media.shot.duration_seconds}s ·{" "}
                 {isImage ? "9:16 image" : "9:16 video"}
@@ -4381,10 +4409,10 @@ function Timeline({
         <div className="grid min-h-[calc(100vh-250px)] grid-cols-[minmax(190px,28%)_1fr] border-b border-white/10">
           <aside className="border-r border-white/10 p-5">
             <div className="rounded-xl bg-[#1d1f1e] p-4 font-bold">
-              Shot {selected + 1}
+              Scene {selected + 1}
             </div>
             <p className="mt-6 text-xs font-bold uppercase tracking-wide text-zinc-500">
-              Shot description
+              Scene description
             </p>
             <p className="mt-3 text-sm leading-6 text-zinc-300">
               {shot.prompt ||
@@ -4417,7 +4445,7 @@ function Timeline({
                 <ResolvedMedia src={shot.keyframe_image} type="image" className="h-full w-full object-cover" />
               ) : (
                 <div className="grid h-full place-items-center bg-[radial-gradient(circle_at_50%_30%,#315b70,transparent_40%),linear-gradient(#0a1820,#223d46)] text-center text-sm text-zinc-400">
-                  Shot preview
+                  Scene preview
                   <br />
                   will appear here
                 </div>
