@@ -164,7 +164,7 @@ async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<t
     })
     return proposalMessage(input.sessionId, "I prepared a full-auto mode proposal with credit and job guardrails. Approve it here before I can run the workflow automatically.", result)
   }
-  const bulkEntityImageIntent = !forbidsAllMediaGeneration && !forbidsImageGeneration ? parseBulkEntityImageIntent(input.message) : null
+  const bulkEntityImageIntent = !forbidsAllMediaGeneration && !forbidsImageGeneration ? parseBulkEntityImageIntent(input.message, input.mentionedEntities) : null
   if (bulkEntityImageIntent) return generateBulkEntityReferenceImages(input, bulkEntityImageIntent)
   if (!forbidsAllMediaGeneration && !forbidsVideoGeneration && /\b(video|animate|motion)\b/.test(normalized) && /\b(generate|create|make|render|produce)\b/.test(normalized)) {
     const { data: shots, error } = await input.context.supabase.from("creator_shots").select("id,prompt,title").eq("episode_id", input.episodeId).order("order_index").limit(6)
@@ -281,7 +281,10 @@ async function generateBulkEntityReferenceImages(
     .order("created_at")
   if (error) throw error
 
-  const requested = (entities || []).filter((entity) => intent.regenerate || !Array.isArray(entity.reference_images) || entity.reference_images.length === 0)
+  let requested = (entities || []).filter((entity) => intent.regenerate || !Array.isArray(entity.reference_images) || entity.reference_images.length === 0)
+  if (intent.entityIds && intent.entityIds.length > 0) {
+    requested = (entities || []).filter((entity) => intent.entityIds?.includes(entity.id))
+  }
   if (!requested.length) {
     const label = intent.types.length === 1 && intent.types[0] === "character" ? "characters" : "characters and assets"
     return textMessage(input.sessionId, `All matching ${label} already have reference images. Say “regenerate all” if you want to replace or refresh them.`)

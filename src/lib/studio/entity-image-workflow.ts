@@ -2,30 +2,40 @@ import type { MentionableEntity } from "./entity-mentions"
 
 export type BulkEntityImageIntent = {
   types: Array<"character" | "scene" | "prop">
+  entityIds?: string[]
   regenerate: boolean
 }
 
-export function parseBulkEntityImageIntent(message: string): BulkEntityImageIntent | null {
+export function parseBulkEntityImageIntent(
+  message: string,
+  mentionedEntities?: Array<{ id: string; name: string; type: "character" | "scene" | "prop" }>
+): BulkEntityImageIntent | null {
   const normalized = message.toLowerCase()
-  const wantsGeneration = /\b(generate|create|make|draw|render)\b/.test(normalized)
-  const mentionsImages = /\b(images?|portraits?|references?|visuals?)\b/.test(normalized)
-  const mentionsEntities = /\b(characters?|assets?|props?|locations?|scenes?)\b/.test(normalized)
-  // "pending"/"draft"/"empty" describe entities that still have no reference
-  // image, which is the same set "missing" selects. Singular nouns are accepted
-  // because users write "scene and prop images" as often as "scenes and props".
-  const requestsMultiple = /\b(all|every|each|remaining|missing|pending|draft|empty|outstanding)\b/.test(normalized)
-    || /\b(?:characters?|assets?|props?|locations?|scenes?)\s+(?:and\s+\w+\s+)?(?:reference\s+)?images?\b/.test(normalized)
-  if (!wantsGeneration || !mentionsImages || !mentionsEntities || !requestsMultiple) return null
+  const wantsGeneration = /\b(generate|create|make|draw|render|turnaround)\b/.test(normalized)
+  const mentionsImages = /\b(images?|portraits?|references?|visuals?|turnarounds?|look)\b/.test(normalized) || Boolean(mentionedEntities && mentionedEntities.length > 0)
+  const mentionsEntities = /\b(characters?|assets?|props?|locations?|scenes?|ghost|monster|entity|entities)\b/.test(normalized) || Boolean(mentionedEntities && mentionedEntities.length > 0)
+  
+  if (!wantsGeneration || !mentionsEntities) return null
 
   const types = new Set<"character" | "scene" | "prop">()
+  if (mentionedEntities && mentionedEntities.length > 0) {
+    for (const e of mentionedEntities) types.add(e.type)
+  }
+
   if (/\bcharacters?\b/.test(normalized)) types.add("character")
   if (/\b(?:assets?|props?)\b/.test(normalized)) types.add("prop")
   if (/\b(?:assets?|locations?|scenes?)\b/.test(normalized)) types.add("scene")
-  if (!types.size) return null
+
+  if (!types.size) {
+    types.add("character")
+    types.add("scene")
+    types.add("prop")
+  }
 
   return {
     types: Array.from(types),
-    regenerate: /\b(regenerate|redo|replace|refresh|recreate)\b/.test(normalized),
+    entityIds: mentionedEntities && mentionedEntities.length > 0 ? mentionedEntities.map((e) => e.id) : undefined,
+    regenerate: /\b(regenerate|redo|replace|refresh|recreate)\b/.test(normalized) || Boolean(mentionedEntities && mentionedEntities.length > 0),
   }
 }
 
