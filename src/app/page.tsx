@@ -176,7 +176,7 @@ export default function LandingPage() {
                             </div>
 
                             <h1 className="mt-8 text-5xl font-black leading-[.92] tracking-tight md:text-7xl lg:text-8xl">
-                                Turn text into <span className="text-primary">stunning videos</span> in minutes.
+                                AI Creative <span className="text-primary">Employee</span>
                             </h1>
 
                             <p className="mt-6 max-w-2xl text-lg font-medium leading-8 text-white/60 md:text-xl">
