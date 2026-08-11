@@ -378,26 +378,47 @@ export const submitGenerationTool = defineDirectorTool({
   requiresApproval: true,
   input: z.object({ request: generationRequestSchema, prompts: z.record(z.string(), z.string().trim().min(1).max(20_000)), idempotencyKey: z.string().min(8).max(200) }).strict(),
   async execute(context, input) {
-    const routing = routeGeneration(input.request)
+    // Storyboard numbers are resolved here, against the episode, so a model
+    // that only knows "shot 2" cannot target the wrong shot. order_index is
+    // 0-based, matching the number list_storyboard_shots reports.
+    let request = input.request
+    let promptsByNumber = new Map<number, string>()
+    if (request.shotNumbers.length) {
+      const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", request.episodeId!).eq("project_id", context.project.id).maybeSingle()
+      if (!episode) throw new Error("Episode does not belong to this project")
+      const { data: numbered, error: numberedError } = await context.supabase.from("creator_shots").select("id,order_index").eq("episode_id", episode.id).order("order_index")
+      if (numberedError) throw numberedError
+      const byNumber = new Map((numbered || []).map((shot) => [shot.order_index + 1, shot.id]))
+      const resolved: string[] = []
+      for (const number of request.shotNumbers) {
+        const shotId = byNumber.get(number)
+        if (!shotId) throw new Error(`Shot ${number} does not exist in this episode. It has ${(numbered || []).length} shots.`)
+        resolved.push(shotId)
+        promptsByNumber.set(number, shotId)
+      }
+      request = { ...request, shotIds: Array.from(new Set([...request.shotIds, ...resolved])) }
+    }
+
+    const routing = routeGeneration(request)
     if (routing.selected.provider === "unconfigured") throw new Error("No generation provider is configured for this model")
     const { data: episodes, error: episodeError } = await context.supabase.from("creator_episodes").select("id").eq("project_id", context.project.id)
     if (episodeError) throw episodeError
     const episodeIds = (episodes ?? []).map((episode) => episode.id)
-    const { data: shots, error: shotError } = episodeIds.length ? await context.supabase.from("creator_shots").select("id").in("episode_id", episodeIds).in("id", input.request.shotIds) : { data: [], error: null }
+    const { data: shots, error: shotError } = episodeIds.length ? await context.supabase.from("creator_shots").select("id").in("episode_id", episodeIds).in("id", request.shotIds) : { data: [], error: null }
     if (shotError) throw shotError
-    if ((shots ?? []).length !== input.request.shotIds.length) throw new Error("One or more shots do not belong to this project")
-    const { data: generationShots, error: validationError } = await context.supabase.from("creator_shots").select("id,prompt,referenced_entities").in("id", input.request.shotIds)
+    if ((shots ?? []).length !== request.shotIds.length) throw new Error("One or more shots do not belong to this project")
+    const { data: generationShots, error: validationError } = await context.supabase.from("creator_shots").select("id,prompt,referenced_entities").in("id", request.shotIds)
     if (validationError) throw validationError
-    const referencedIds = Array.from(new Set([...(generationShots || []).flatMap((shot) => shot.referenced_entities || []), ...input.request.mentionedEntityIds]))
+    const referencedIds = Array.from(new Set([...(generationShots || []).flatMap((shot) => shot.referenced_entities || []), ...request.mentionedEntityIds]))
     if (referencedIds.length) {
       const { data: references, error: referenceError } = await context.supabase.from("creator_entities").select("id").eq("project_id", context.project.id).in("id", referencedIds)
       if (referenceError) throw referenceError
       if ((references || []).length !== referencedIds.length) throw new Error("Generation blocked: one or more shot entity references are stale")
     }
-    if (input.request.mentionedEntityIds.length) {
+    if (request.mentionedEntityIds.length) {
       const updates = await Promise.all((generationShots || []).map((shot) => context.supabase
         .from("creator_shots")
-        .update({ referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...input.request.mentionedEntityIds])) })
+        .update({ referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...request.mentionedEntityIds])) })
         .eq("id", shot.id)))
       const updateError = updates.find((result) => result.error)?.error
       if (updateError) throw updateError
@@ -405,8 +426,16 @@ export const submitGenerationTool = defineDirectorTool({
     // References chosen in the generation block replace the ones captured when
     // the proposal was created, so an edited proposal generates from what the
     // user can actually see on the card.
-    const inputImages = input.request.referencePaths.length ? input.request.referencePaths : undefined
-    const jobs = input.request.shotIds.map((shotId, index) => ({ user_id: context.user.id, project_id: context.project.id, shot_id: shotId, type: input.request.type, status: "approved", model: routing.selected.model, provider: routing.selected.provider, prompt: input.prompts[shotId], settings: input.request, ...(inputImages ? { input_images: inputImages } : {}), estimated_credits: routing.creditsPerShot, requires_approval: true, approved_at: new Date().toISOString(), operation: input.request.type === "video" ? "submit_video_generation" : "submit_image_generation", idempotency_key: `${input.idempotencyKey}:${index}`, routing_decision: routing, cost_estimate: { credits: routing.creditsPerShot } }))
+    const inputImages = request.referencePaths.length ? request.referencePaths : undefined
+    // A model that addressed shots by number keys its prompts the same way.
+    const promptFor = (shotId: string) => {
+      if (input.prompts[shotId]) return input.prompts[shotId]
+      for (const [number, id] of Array.from(promptsByNumber.entries())) {
+        if (id === shotId && input.prompts[String(number)]) return input.prompts[String(number)]
+      }
+      return undefined
+    }
+    const jobs = request.shotIds.map((shotId, index) => ({ user_id: context.user.id, project_id: context.project.id, shot_id: shotId, type: request.type, status: "approved", model: routing.selected.model, provider: routing.selected.provider, prompt: input.prompts[shotId], settings: input.request, ...(inputImages ? { input_images: inputImages } : {}), estimated_credits: routing.creditsPerShot, requires_approval: true, approved_at: new Date().toISOString(), operation: request.type === "video" ? "submit_video_generation" : "submit_image_generation", idempotency_key: `${input.idempotencyKey}:${index}`, routing_decision: routing, cost_estimate: { credits: routing.creditsPerShot } }))
     if (jobs.some((job) => !job.prompt)) throw new Error("Every shot requires a validated prompt")
     const { data, error } = await context.supabase.from("creator_generation_jobs").insert(jobs).select("*")
     if (error) throw error
@@ -419,7 +448,7 @@ export const submitGenerationTool = defineDirectorTool({
       context.user.id,
       routing.estimatedCredits,
       routing.selected.model,
-      `AI Director approved ${input.request.type} generation (${input.request.shotIds.length} shot${input.request.shotIds.length === 1 ? "" : "s"})`,
+      `AI Director approved ${request.type} generation (${request.shotIds.length} shot${request.shotIds.length === 1 ? "" : "s"})`,
       context.supabase,
     )
     if (!deduction.success) {

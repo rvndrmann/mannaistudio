@@ -30,7 +30,7 @@ const toolDescriptions: Record<DirectorToolName, string> = {
   inspect_continuity: "Read approved continuity facts and conflicts.",
   estimate_generation_cost: "Estimate image or video generation credits and routing.",
   inspect_generation_jobs: "Read recent generation job states, results, and failures for this project or episode.",
-  submit_generation: "Propose image or video generation jobs. This always requires user approval. Include only the shots the user actually asked for: when they name specific shots or scenes, resolve each one through `list_storyboard_shots` on its 1-based `number` and submit exactly those shot IDs. Never widen the request to neighbouring shots or to every shot missing media.",
+  submit_generation: "Propose image or video generation jobs. This always requires user approval. When the user names shots or scenes by number, pass those numbers as `request.shotNumbers` with `request.episodeId` and key `prompts` by the same numbers; the server resolves them to the correct shots. Use `request.shotIds` only for ids you read from a tool result. Include only the shots the user actually asked for, and never widen the request to neighbouring shots or to every shot missing media.",
   update_script: "Propose replacing the saved episode script content.",
   update_shot: "Propose edits to one storyboard shot.",
   delete_shot: "Propose deletion of one storyboard shot.",

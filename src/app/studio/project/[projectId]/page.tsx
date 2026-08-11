@@ -946,7 +946,7 @@ export default function WorkspacePage({
                 {item.content}
                 <ChatTimeline blocks={item.timeline_blocks} proposals={data.actionProposals} onAction={sendDirectorMessage} disabled={chatSending} />
                 <ChatMedia media={item.media} />
-                <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} entities={data.entities} shots={data.shots} projectId={projectId} busyId={proposalBusy} onDecide={decideProposal} />
+                <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} entities={data.entities} shots={data.shots} projectId={projectId} busyId={proposalBusy} onDecide={decideProposal} onAction={sendDirectorMessage} />
               </div>
             ))}
             {chatSending && <ThinkingBubble />}
@@ -959,6 +959,7 @@ export default function WorkspacePage({
               projectId={projectId}
               busyId={proposalBusy}
               onDecide={decideProposal}
+              onAction={sendDirectorMessage}
             />
             {chatError && <p role="alert" className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-[12px] text-red-200">{chatError}</p>}
             {voiceState !== "idle" && <p className={`mt-3 rounded-lg border p-2.5 text-[12px] ${voiceState === "connected" ? "border-[#b9f42e]/30 bg-[#b9f42e]/10 text-[#d9ff84]" : "border-white/[0.06] bg-white/[0.03] text-zinc-300"}`}>{voiceState === "connecting" ? "Connecting your AI Voice Director…" : voiceState === "connected" ? "AI Voice Director is listening. You can speak naturally." : voiceError}</p>}
@@ -4146,6 +4147,7 @@ function ChatSuggestedActions({
   projectId,
   busyId,
   onDecide,
+  onAction,
 }: {
   actions?: Array<Record<string, unknown>> | null;
   proposals: ChatProposal[];
@@ -4154,13 +4156,14 @@ function ChatSuggestedActions({
   projectId: string;
   busyId: string | null;
   onDecide: (proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) => void;
+  onAction: (intent: string) => void;
 }) {
   const ids = proposalIdsFromActions(actions);
   const matched = proposals.filter((proposal) => ids.includes(proposal.id));
   if (!matched.length) return null;
   return (
     <div className="mt-3 space-y-2">
-      {matched.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} entities={entities} shots={shots} projectId={projectId} busy={busyId === proposal.id} onDecide={onDecide} />)}
+      {matched.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} entities={entities} shots={shots} projectId={projectId} busy={busyId === proposal.id} onDecide={onDecide} onAction={onAction} />)}
     </div>
   );
 }
@@ -4174,6 +4177,7 @@ function PendingProposalCards({
   projectId,
   busyId,
   onDecide,
+  onAction,
 }: {
   proposals: ChatProposal[];
   excludeIds: string[];
@@ -4183,6 +4187,7 @@ function PendingProposalCards({
   projectId: string;
   busyId: string | null;
   onDecide: (proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) => void;
+  onAction: (intent: string) => void;
 }) {
   const excluded = new Set(excludeIds);
   // Only the current conversation's approvals belong in this timeline. Without
@@ -4193,7 +4198,7 @@ function PendingProposalCards({
   return (
     <div className="mt-4 flex flex-col">
       <div className="space-y-2 mb-2">
-        {pending.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} entities={entities} shots={shots} projectId={projectId} busy={busyId === proposal.id} onDecide={onDecide} />)}
+        {pending.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} entities={entities} shots={shots} projectId={projectId} busy={busyId === proposal.id} onDecide={onDecide} onAction={onAction} />)}
       </div>
       <div className="border-l-2 border-y border-[#fff878]/50 border-r-0 py-2.5 pl-3 mt-2 mb-1 rounded-l-md bg-gradient-to-r from-[#fff878]/10 to-transparent">
         <p className="text-[11px] font-medium text-zinc-300">Please handle the pending confirmations above before sending a new message</p>
@@ -4212,6 +4217,7 @@ function proposalIdsFromActions(actions?: Array<Record<string, unknown>> | null)
 type GenerationProposalRequest = {
   type?: string;
   shotIds?: string[];
+  shotNumbers?: number[];
   mentionedEntityIds?: string[];
   durationSeconds?: number;
   aspectRatio?: string;
@@ -4258,6 +4264,7 @@ function VideoGenerationProposalBlock({
   projectId,
   busy,
   onDecide,
+  onAction,
 }: {
   proposal: ChatProposal;
   request: GenerationProposalRequest;
@@ -4266,6 +4273,7 @@ function VideoGenerationProposalBlock({
   projectId: string;
   busy: boolean;
   onDecide: (proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) => void;
+  onAction: (intent: string) => void;
 }) {
   const isVideo = request.type !== "image";
   const [prompt, setPrompt] = useState(() => generationProposalPrompt(proposal));
@@ -4284,8 +4292,15 @@ function VideoGenerationProposalBlock({
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const canDecide = proposal.status === "pending";
-  const shotCount = request.shotIds?.length || 1;
+  // A rejected proposal is not re-approvable, so "modify and regenerate"
+  // reopens the controls locally and asks the Director for a fresh proposal
+  // carrying the adjusted settings.
+  const [reopened, setReopened] = useState(false);
+  const wasCancelled = proposal.status === "rejected" && !reopened;
+  const canDecide = proposal.status === "pending" || reopened;
+  const shotNumbers = request.shotNumbers?.length ? request.shotNumbers : null;
+  const shotLabel = shotNumbers ? `shot ${shotNumbers.join(", ")}` : "this shot";
+  const shotCount = request.shotIds?.length || request.shotNumbers?.length || 1;
   const credits = calculateCreditCost(model, isVideo ? "video" : "image", durationSeconds, { aspectRatio, resolution }) * shotCount;
   const missing = useMemo(() => unresolvedMentions(prompt, entities), [prompt, entities]);
 
@@ -4308,6 +4323,11 @@ function VideoGenerationProposalBlock({
   };
 
   const confirm = () => {
+    if (reopened) {
+      onAction(`Regenerate ${shotLabel} ${isVideo ? "video" : "image"} with these settings: model ${model}, aspect ratio ${aspectRatio}, resolution ${resolution}${isVideo ? `, duration ${durationSeconds}s, audio ${audioEnabled ? "on" : "off"}, ${mode === "multi_image" ? "multi image" : "key frame"} mode` : ""}. Use this exact prompt:\n\n${prompt.trim()}`);
+      setReopened(false);
+      return;
+    }
     const shotIds = request.shotIds || [];
     onDecide(proposal.id, "approved", {
       request: {
@@ -4339,12 +4359,12 @@ function VideoGenerationProposalBlock({
             {shotCount === 1 ? "Shot 1" : `${shotCount} shots`}
           </span>
         </div>
-        <span className="shrink-0 rounded-full border border-[#fff878]/30 px-2 py-0.5 text-[10px] font-bold text-[#fff878]">
-          {proposal.status === "pending" ? "Pending confirmation" : proposal.status}
+        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold capitalize ${proposal.status === "rejected" ? "border-white/15 text-zinc-400" : "border-[#fff878]/30 text-[#fff878]"}`}>
+          {proposal.status === "pending" ? "Pending confirmation" : proposal.status === "rejected" ? "Cancelled" : proposal.status}
         </span>
       </div>
 
-      {missing.length > 0 && (
+      {missing.length > 0 && canDecide && (
         <div className="flex items-start gap-2 border-b border-white/5 bg-red-500/10 p-3">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-300" />
           <p className="text-[11px] leading-relaxed text-red-200">
@@ -4519,7 +4539,7 @@ function VideoGenerationProposalBlock({
             <button
               type="button"
               disabled={busy}
-              onClick={() => onDecide(proposal.id, "rejected")}
+              onClick={() => (reopened ? setReopened(false) : onDecide(proposal.id, "rejected"))}
               className="rounded border border-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-400 transition hover:bg-white/5 hover:text-white disabled:opacity-50"
             >
               Cancel
@@ -4531,8 +4551,40 @@ function VideoGenerationProposalBlock({
               className="flex items-center gap-1.5 rounded bg-[#fff878] px-3 py-1.5 text-[11px] font-bold text-black transition hover:bg-[#fff878]/90 disabled:opacity-50"
             >
               <ArrowRight className="h-3.5 w-3.5" />
-              {busy ? "Working..." : `Generate (${credits})`}
+              {busy ? "Working..." : reopened ? "Send new request" : `Generate (${credits})`}
             </button>
+          </div>
+        )}
+
+        {wasCancelled && (
+          <div className="space-y-2 border-t border-white/5 pt-3">
+            <p className="text-[12px] text-zinc-300">
+              {shotNumbers ? `Shot ${shotNumbers.join(", ")}` : "This"} {isVideo ? "video" : "image"} generation was cancelled. What would you like to do next?
+            </p>
+            <button
+              type="button"
+              onClick={() => setReopened(true)}
+              className="w-full rounded-lg border border-[#fff878]/40 bg-[#fff878]/10 px-3 py-2.5 text-[12px] font-bold text-[#fff878] transition hover:bg-[#fff878]/15"
+            >
+              Modify parameters and regenerate
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onAction(`Skip ${shotLabel} and continue with the rest of the production.`)}
+              className="w-full rounded-lg border border-white/10 px-3 py-2.5 text-[12px] font-medium text-zinc-300 transition hover:bg-white/5 disabled:opacity-50"
+            >
+              Skip this shot
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onAction("Stop generating. Do not submit any further generation jobs until I ask.")}
+              className="w-full rounded-lg border border-white/10 px-3 py-2.5 text-[12px] font-medium text-zinc-300 transition hover:bg-white/5 disabled:opacity-50"
+            >
+              Stop generating
+            </button>
+            <p className="pt-1 text-[11px] text-zinc-500">Not satisfied? Just type your thoughts in the input box below</p>
           </div>
         )}
       </div>
@@ -4547,6 +4599,7 @@ function ProposalCard({
   projectId,
   busy,
   onDecide,
+  onAction,
 }: {
   proposal: ChatProposal;
   entities: Entity[];
@@ -4554,6 +4607,7 @@ function ProposalCard({
   projectId: string;
   busy: boolean;
   onDecide: (proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) => void;
+  onAction: (intent: string) => void;
 }) {
   const canDecide = proposal.status === "pending";
   const isVideo = proposal.action_type.includes("video");
@@ -4570,6 +4624,7 @@ function ProposalCard({
         projectId={projectId}
         busy={busy}
         onDecide={onDecide}
+        onAction={onAction}
       />
     );
   }
@@ -4718,8 +4773,10 @@ function ReferencePicker({
   const shotItems = (shots || [])
     .slice()
     .sort((a, b) => a.order_index - b.order_index)
-    .flatMap((shot, index) => {
-      const number = index + 1;
+    .flatMap((shot) => {
+      // Same rule the Director and submit_generation use, so a number shown
+      // here always means the same shot everywhere.
+      const number = shot.order_index + 1;
       const suffix = shot.title ? ` — ${shot.title}` : "";
       const items: Array<{ id: string; name: string; type: "storyboard"; image: string; kind: "image" | "video"; number: number }> = [];
       if (shot.keyframe_image) {

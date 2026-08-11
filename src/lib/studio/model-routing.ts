@@ -2,7 +2,12 @@ import { z } from "zod"
 
 export const generationRequestSchema = z.object({
   type: z.enum(["image", "video"]),
-  shotIds: z.array(z.string().uuid()).min(1).max(100),
+  // Shots may be named by their storyboard number instead of their id. The
+  // number is the reliable form for a model to produce, so the tool resolves
+  // it against the episode rather than trusting the model to know the uuid.
+  shotIds: z.array(z.string().uuid()).max(100).default([]),
+  shotNumbers: z.array(z.number().int().positive().max(10_000)).max(100).default([]),
+  episodeId: z.string().uuid().optional(),
   mentionedEntityIds: z.array(z.string().uuid()).max(20).default([]),
   source: z.enum(["text", "image"]).default("text"),
   referenceImageRequired: z.boolean().default(false),
@@ -22,7 +27,19 @@ export const generationRequestSchema = z.object({
   // Clips referenced for motion and look continuity, kept apart from image
   // references because the provider treats the two differently.
   videoReferencePaths: z.array(z.string().trim().min(1).max(2_000)).max(10).default([]),
-}).strict()
+}).strict().refine(
+  (request) => request.shotIds.length > 0 || request.shotNumbers.length > 0,
+  { message: "Provide shotIds or shotNumbers", path: ["shotIds"] },
+).refine(
+  (request) => request.shotNumbers.length === 0 || Boolean(request.episodeId),
+  { message: "episodeId is required when shots are named by number", path: ["episodeId"] },
+)
+
+// Shot count before resolution: numbers stand in for ids until the tool looks
+// them up, and estimates must still be correct at that point.
+export function generationShotCount(request: { shotIds: string[]; shotNumbers: number[] }) {
+  return request.shotIds.length || request.shotNumbers.length
+}
 
 export type GenerationRequest = z.infer<typeof generationRequestSchema>
 
@@ -61,5 +78,5 @@ export function routeGeneration(raw: unknown, models: GenerationModel[] = genera
   if (request.model && !chosen) throw new Error(`Model ${request.model} does not support this ${request.type} request`)
   const selected = chosen ?? [...candidates].sort((a, b) => score(b) - score(a))[0]
   const creditsPerShot = Math.ceil(selected.baseCredits + selected.costPerSecond * request.durationSeconds)
-  return { request, selected, creditsPerShot, estimatedCredits: creditsPerShot * request.shotIds.length, reason: chosen ? "Selected explicitly in the generation block" : `Selected for ${request.preference} preference and requested capabilities` }
+  return { request, selected, creditsPerShot, estimatedCredits: creditsPerShot * generationShotCount(request), reason: chosen ? "Selected explicitly in the generation block" : `Selected for ${request.preference} preference and requested capabilities` }
 }
