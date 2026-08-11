@@ -178,7 +178,9 @@ async function openAIImageEditForm(model: OpenAIImageModel, prompt: string, refe
   form.append("size", size)
   form.append("quality", "medium")
   form.append("output_format", "png")
-  form.append("input_fidelity", "high")
+  if (model === "gpt-image-1.5") {
+    form.append("input_fidelity", "high")
+  }
   for (let index = 0; index < referenceUrls.length; index += 1) {
     const url = referenceUrls[index]
     const response = await fetch(url)
