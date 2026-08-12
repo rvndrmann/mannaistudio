@@ -50,7 +50,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return { ...rest, session_id: execution?.session_id ?? null }
     })
     const { data: workflowRuns } = await supabase.from("creator_workflow_runs").select("*").eq("project_id", projectId).order("started_at", { ascending: false }).limit(25)
-    let production = { series: [], scenes: [], referenceAssets: [], continuityIssues: [], revisions: [], generationJobs: [], creditAccount: null, workflowRuns: workflowRuns || [] } as Record<string, unknown>
+    // Generation jobs drive the storyboard's live refresh, so they travel on
+    // every response rather than only when the production panels are enabled.
+    const { data: baseGenerationJobs } = await supabase.from("creator_generation_jobs").select("id,shot_id,type,status,model,provider,result_url,error,created_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(50)
+    let production = { series: [], scenes: [], referenceAssets: [], continuityIssues: [], revisions: [], generationJobs: baseGenerationJobs || [], creditAccount: null, workflowRuns: workflowRuns || [] } as Record<string, unknown>
     if (features.series_hierarchy_enabled || features.continuity_checks_enabled || features.generation_jobs_enabled) {
       const [{ data: series }, { data: scenes }, { data: referenceAssets }, { data: continuityIssues }, { data: revisions }, { data: generationJobs }, { data: creditAccount }] = await Promise.all([
         supabase.from("creator_series").select("*").eq("project_id", projectId).order("created_at"),

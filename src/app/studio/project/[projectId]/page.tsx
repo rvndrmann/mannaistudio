@@ -152,7 +152,7 @@ type Workspace = {
     referenceAssets: Array<Record<string, unknown>>;
     continuityIssues: Array<Record<string, unknown>>;
     revisions: Array<Record<string, unknown>>;
-    generationJobs: Array<Record<string, unknown>>;
+    generationJobs: Array<{ id: string; shot_id?: string | null; type?: string; status: string; result_url?: string | null; error?: string | null }>;
     creditAccount: { balance: number; reserved: number } | null;
     workflowRuns?: Array<{ id: string; session_id?: string | null; status: string; completed_at?: string | null; started_at?: string | null; objective?: string | null }>;
   };
@@ -291,6 +291,39 @@ export default function WorkspacePage({
   const [shareOpen, setShareOpen] = useState(false);
   const [enterpriseOpen, setEnterpriseOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
+  // Generation runs on the server after approval and writes its result onto the
+  // shot, so the storyboard only looks empty because nothing refetched. Poll
+  // while any job is still in flight, and nudge video jobs through their
+  // provider status check, which is what actually completes them.
+  const jobsInFlight = useMemo(
+    () => (data?.production?.generationJobs || []).filter((job) => !["completed", "failed", "cancelled"].includes(job.status)),
+    [data?.production?.generationJobs],
+  );
+
+  const pendingShotJobs = useMemo(() => {
+    const image = new Set<string>();
+    const video = new Set<string>();
+    for (const job of jobsInFlight) {
+      if (!job.shot_id) continue;
+      (job.type === "video" ? video : image).add(job.shot_id);
+    }
+    return { image, video };
+  }, [jobsInFlight]);
+
+  useEffect(() => {
+    if (!jobsInFlight.length) return;
+    let cancelled = false;
+    const tick = async () => {
+      await Promise.all(jobsInFlight
+        .filter((job) => job.type === "video")
+        .map((job) => fetch(`/api/studio/projects/${projectId}/videos?jobId=${encodeURIComponent(job.id)}`, { cache: "no-store" }).catch(() => null)));
+      if (!cancelled) await load(true);
+    };
+    const timer = setInterval(() => { void tick(); }, 5000);
+    return () => { cancelled = true; clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobsInFlight.map((job) => job.id).join(","), projectId]);
+
   // A Director run is server-side work tracked in creator_workflow_runs, so it
   // outlives the page that started it. After a reload the browser has no
   // stream to read, but the run is still going and will persist its reply — so
@@ -928,6 +961,7 @@ export default function WorkspacePage({
                 projectId={projectId}
                 save={save}
                 reload={load}
+                pendingJobs={pendingShotJobs}
               />
             )}
             {tab === "timeline" && (
@@ -2950,6 +2984,7 @@ function Storyboard({
   projectId,
   save,
   reload,
+  pendingJobs,
 }: {
   shots: Shot[];
   entities: Entity[];
@@ -2957,6 +2992,9 @@ function Storyboard({
   projectId: string;
   save: (b: unknown) => Promise<void>;
   reload: () => Promise<void>;
+  // Shots with generation still running, so a cell can say so instead of
+  // showing the same empty placeholder it shows when nothing was ever asked for.
+  pendingJobs?: { image: Set<string>; video: Set<string> };
 }) {
   const [adding, setAdding] = useState(false);
   const [media, setMedia] = useState<{
@@ -3080,7 +3118,7 @@ function Storyboard({
                     >
                       <Preview
                         src={shot.keyframe_image}
-                        label="Reference image"
+                        label={pendingJobs?.image.has(shot.id) ? "Generating image…" : "Reference image"}
                         aspectRatio={shot.aspect_ratio || "9:16"}
                       />
                       <div className="flex flex-col gap-1 border-t border-white/10 px-2 py-2 text-xs text-zinc-400">
@@ -3137,9 +3175,11 @@ function Storyboard({
                     onClick={() => setMedia({ shot, type: "video" })}
                     className="overflow-hidden rounded-lg bg-[#292b2a] text-left transition hover:ring-2 hover:ring-[#b9f42e]"
                   >
-                    <Preview src={shot.video_url} label="Generated video" type="video" aspectRatio={shot.aspect_ratio || "9:16"} />
+                    <Preview src={shot.video_url} label={pendingJobs?.video.has(shot.id) ? "Generating video…" : "Generated video"} type="video" aspectRatio={shot.aspect_ratio || "9:16"} />
                     <div className="border-t border-white/10 px-2 py-2 text-xs text-zinc-400">
-                      {shot.video_status === "completed"
+                      {pendingJobs?.video.has(shot.id)
+                        ? "Generating…"
+                        : shot.video_status === "completed"
                         ? "Video ready"
                         : "Awaiting output"}
                     </div>
