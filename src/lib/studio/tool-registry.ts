@@ -267,7 +267,16 @@ export const createStoryboardBatchTool = defineDirectorTool({
     }
     const { count } = await context.supabase.from("creator_shots").select("id", { count: "exact", head: true }).eq("episode_id", input.episodeId)
     const offset = input.replaceExisting ? 0 : count || 0
-    const rows = input.shots.map((shot, index) => ({ episode_id: input.episodeId, order_index: offset + index, title: shot.title, description: shot.description || null, script_text: shot.scriptText || null, prompt: shot.prompt, duration_seconds: shot.durationSeconds, aspect_ratio: shot.aspectRatio, referenced_entities: shot.referencedEntityIds }))
+    // A shot's cast is what its own prompt names. Models routinely pass the
+    // project's whole entity list on every shot, which then reaches generation
+    // as references and puts unrelated characters and props in the frame.
+    const { data: batchEntityRows } = await context.supabase.from("creator_entities").select("id,name,type").eq("project_id", context.project.id)
+    const batchEntities = (batchEntityRows || []) as MentionableEntity[]
+    const rows = input.shots.map((shot, index) => {
+      const named = findMentionedEntityIds(`${shot.prompt}\n${shot.description}\n${shot.scriptText}`, batchEntities)
+      const scoped = named.length ? shot.referencedEntityIds.filter((id) => named.includes(id)) : shot.referencedEntityIds
+      return { episode_id: input.episodeId, order_index: offset + index, title: shot.title, description: shot.description || null, script_text: shot.scriptText || null, prompt: shot.prompt, duration_seconds: shot.durationSeconds, aspect_ratio: shot.aspectRatio, referenced_entities: Array.from(new Set([...scoped, ...named])) }
+    })
     const { data, error } = await context.supabase.from("creator_shots").insert(rows).select("*")
     if (error) throw error
     return { created: data || [], replacedExisting: input.replaceExisting }

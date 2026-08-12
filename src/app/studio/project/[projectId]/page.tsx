@@ -3132,9 +3132,14 @@ function Storyboard({
           </div>
           <div className="space-y-3">
             {shots.map((shot, index) => {
-              const linked = entities.filter((e) =>
-                shot.referenced_entities?.includes(e.id),
-              );
+              // Shown from the shot's own prompt, the same rule generation
+              // follows, so the list matches what will actually be referenced.
+              // Shots stored before that rule existed carry the whole project
+              // in referenced_entities, and are corrected here on read.
+              const namedIds = findMentionedEntityIds(shot.prompt || "", entities);
+              const linked = namedIds.length
+                ? namedIds.map((id) => entities.find((entity) => entity.id === id)).filter((entity): entity is Entity => Boolean(entity))
+                : entities.filter((e) => shot.referenced_entities?.includes(e.id));
               const isExpanded = expandedShots.has(shot.id);
               const toggleExpanded = () => {
                 setExpandedShots((prev) => {
