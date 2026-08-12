@@ -4367,9 +4367,50 @@ function VideoGenerationProposalBlock({
       {missing.length > 0 && canDecide && (
         <div className="flex items-start gap-2 border-b border-white/5 bg-red-500/10 p-3">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-300" />
-          <p className="text-[11px] leading-relaxed text-red-200">
-            References not found and will be ignored: {missing.map((name) => `[@${name}]`).join(", ")} — add reference images manually or adjust the prompt
-          </p>
+          <div className="min-w-0 flex-1 space-y-2">
+            <p className="text-[11px] leading-relaxed text-red-200">
+              References not found and will be ignored: {missing.map((name) => `[@${name}]`).join(", ")} — create them, add reference images manually, or adjust the prompt
+            </p>
+            {/* A missing reference is usually a real asset the production still
+                needs, so the fix is offered here instead of leaving the user to
+                describe it again in chat. */}
+            <div className="flex flex-wrap gap-1.5">
+              {missing.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onAction(
+                    `Create the missing production asset "${name}" for this project, then generate its reference image so it can be used as a visual reference.`
+                    + (entities.length ? ` Match the established look of the existing assets (${entities.slice(0, 6).map((entity) => `@${entity.name}`).join(", ")}) and use them as visual reference where relevant.` : "")
+                    + ` Afterwards, re-propose the ${isVideo ? "video" : "image"} generation for ${shotLabel} with @${name} attached.`,
+                  )}
+                  className="rounded-full border border-red-300/40 bg-red-500/15 px-2.5 py-1 text-[11px] font-semibold text-red-100 transition hover:bg-red-500/25 disabled:opacity-50"
+                >
+                  + Create @{name}
+                </button>
+              ))}
+              {missing.length > 1 && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onAction(
+                    `Create all of these missing production assets: ${missing.map((name) => `"${name}"`).join(", ")}. Generate one reference image per asset, matching the established look of the existing assets, then re-propose the ${isVideo ? "video" : "image"} generation for ${shotLabel} with them attached.`,
+                  )}
+                  className="rounded-full border border-red-300/40 px-2.5 py-1 text-[11px] font-semibold text-red-100 transition hover:bg-red-500/20 disabled:opacity-50"
+                >
+                  Create all
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setAssetPicker(true)}
+                className="rounded-full border border-white/20 px-2.5 py-1 text-[11px] font-semibold text-zinc-300 transition hover:bg-white/5"
+              >
+                Use an existing asset instead
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

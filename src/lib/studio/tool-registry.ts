@@ -427,16 +427,22 @@ export const submitGenerationTool = defineDirectorTool({
     // the proposal was created, so an edited proposal generates from what the
     // user can actually see on the card.
     const inputImages = request.referencePaths.length ? request.referencePaths : undefined
-    // A model that addressed shots by number keys its prompts the same way.
+    // A model that addressed shots by number keys its prompts the same way, and
+    // a shot that already carries a saved storyboard prompt does not need the
+    // model to restate it — refusing to generate in that case only blocks work
+    // the user can see is ready.
+    const savedPrompts = new Map((generationShots || []).map((shot) => [shot.id, (shot.prompt || "").trim()]))
     const promptFor = (shotId: string) => {
-      if (input.prompts[shotId]) return input.prompts[shotId]
+      if (input.prompts[shotId]?.trim()) return input.prompts[shotId].trim()
       for (const [number, id] of Array.from(promptsByNumber.entries())) {
-        if (id === shotId && input.prompts[String(number)]) return input.prompts[String(number)]
+        const byNumber = input.prompts[String(number)]
+        if (id === shotId && byNumber?.trim()) return byNumber.trim()
       }
-      return undefined
+      return savedPrompts.get(shotId) || ""
     }
-    const jobs = request.shotIds.map((shotId, index) => ({ user_id: context.user.id, project_id: context.project.id, shot_id: shotId, type: request.type, status: "approved", model: routing.selected.model, provider: routing.selected.provider, prompt: input.prompts[shotId], settings: input.request, ...(inputImages ? { input_images: inputImages } : {}), estimated_credits: routing.creditsPerShot, requires_approval: true, approved_at: new Date().toISOString(), operation: request.type === "video" ? "submit_video_generation" : "submit_image_generation", idempotency_key: `${input.idempotencyKey}:${index}`, routing_decision: routing, cost_estimate: { credits: routing.creditsPerShot } }))
-    if (jobs.some((job) => !job.prompt)) throw new Error("Every shot requires a validated prompt")
+    const jobs = request.shotIds.map((shotId, index) => ({ user_id: context.user.id, project_id: context.project.id, shot_id: shotId, type: request.type, status: "approved", model: routing.selected.model, provider: routing.selected.provider, prompt: promptFor(shotId), settings: request, ...(inputImages ? { input_images: inputImages } : {}), estimated_credits: routing.creditsPerShot, requires_approval: true, approved_at: new Date().toISOString(), operation: request.type === "video" ? "submit_video_generation" : "submit_image_generation", idempotency_key: `${input.idempotencyKey}:${index}`, routing_decision: routing, cost_estimate: { credits: routing.creditsPerShot } }))
+    const unprompted = jobs.filter((job) => !job.prompt).map((job) => job.shot_id)
+    if (unprompted.length) throw new Error(`No prompt available for ${unprompted.length} shot(s). Add a prompt to the storyboard shot, or pass one in prompts.`)
     const { data, error } = await context.supabase.from("creator_generation_jobs").insert(jobs).select("*")
     if (error) throw error
     const jobIds = (data ?? []).map((job) => job.id)
