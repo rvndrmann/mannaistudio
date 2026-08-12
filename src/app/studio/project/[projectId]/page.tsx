@@ -4696,7 +4696,9 @@ function VideoGenerationProposalBlock({
         durationSeconds,
         audioEnabled,
         generationMode: mode,
-        referencePaths: references,
+        // Entity images are resolved from the prompt server-side, so sending
+        // them again here would spend two reference slots on one subject.
+        referencePaths: references.filter((path) => !entityReferences.some((item) => item.image === path)),
         videoReferencePaths: videoReferences,
       },
       // Every shot in the batch takes the edited prompt, matching what the card
@@ -4798,7 +4800,10 @@ function VideoGenerationProposalBlock({
               )}
             </div>
           ))}
-          {references.map((path) => (
+          {/* An entity image the Director also listed explicitly is already
+              shown above as an entity reference; showing it twice makes the
+              card look like it will send the same picture twice. */}
+          {references.filter((path) => !entityReferences.some((item) => item.image === path)).map((path) => (
             <div key={path} className="group relative h-14 w-14 overflow-hidden rounded-lg border border-white/10">
               <AssetImage src={path} />
               {canDecide && (
