@@ -238,6 +238,10 @@ export default function WorkspacePage({
   const [chatSending, setChatSending] = useState(false);
   const [streamingReply, setStreamingReply] = useState<{ content: string; status: string | null } | null>(null);
   const [resumedRun, setResumedRun] = useState(false);
+  // Shots whose generation was just approved. The jobs exist server-side before
+  // the next workspace load returns them, and the storyboard should say so the
+  // moment the button is pressed rather than after a round trip.
+  const [justSubmitted, setJustSubmitted] = useState<{ image: string[]; video: string[] }>({ image: [], video: [] });
   const [chatError, setChatError] = useState<string | null>(null);
   const [proposalBusy, setProposalBusy] = useState<string | null>(null);
   const [chatUploading, setChatUploading] = useState(false);
@@ -303,14 +307,28 @@ export default function WorkspacePage({
   );
 
   const pendingShotJobs = useMemo(() => {
-    const image = new Set<string>();
-    const video = new Set<string>();
+    const image = new Set<string>(justSubmitted.image);
+    const video = new Set<string>(justSubmitted.video);
     for (const job of jobsInFlight) {
       if (!job.shot_id) continue;
       (job.type === "video" ? video : image).add(job.shot_id);
     }
     return { image, video };
-  }, [jobsInFlight]);
+  }, [jobsInFlight, justSubmitted]);
+
+  // Once a shot's job reaches a terminal state, the optimistic mark has done its
+  // job and must not outlive it.
+  useEffect(() => {
+    const settled = new Set((data?.production?.generationJobs || [])
+      .filter((job) => ["completed", "failed", "cancelled"].includes(job.status) && job.shot_id)
+      .map((job) => job.shot_id as string));
+    if (!settled.size) return;
+    setJustSubmitted((current) => {
+      const image = current.image.filter((id) => !settled.has(id));
+      const video = current.video.filter((id) => !settled.has(id));
+      return image.length === current.image.length && video.length === current.video.length ? current : { image, video };
+    });
+  }, [data?.production?.generationJobs]);
 
   useEffect(() => {
     if (!jobsInFlight.length) return;
@@ -560,6 +578,16 @@ export default function WorkspacePage({
   const decideProposal = async (proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) => {
     setProposalBusy(proposalId);
     setChatError(null);
+    if (decision === "approved") {
+      const proposal = data?.actionProposals.find((item) => item.id === proposalId);
+      const request = (overrides?.request || (proposal?.payload as { request?: GenerationProposalRequest } | undefined)?.request) as GenerationProposalRequest | undefined;
+      const shotIds = request?.shotIds || [];
+      if (shotIds.length) {
+        setJustSubmitted((current) => request?.type === "video"
+          ? { ...current, video: Array.from(new Set([...current.video, ...shotIds])) }
+          : { ...current, image: Array.from(new Set([...current.image, ...shotIds])) });
+      }
+    }
     try {
       const response = await fetch(`/api/studio/projects/${projectId}/director/proposals/${proposalId}`, {
         method: "POST",
