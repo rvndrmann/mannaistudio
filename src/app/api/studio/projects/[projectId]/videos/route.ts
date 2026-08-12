@@ -84,6 +84,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Resolve canonical character, scene, and prop references plus direct shot references.
     let combinedReferencePaths: string[] = []
+    // A BytePlus asset id is what the provider needs, but it is not a storage
+    // path and cannot be signed, so recording it as the reference left the
+    // workspace showing empty tiles. The viewable image is kept alongside it.
+    const displayReferencePaths: string[] = []
     const rawImagesToOmit = new Set<string>()
 
     // Check if shot keyframe image has a registered BytePlus asset ID in metadata
@@ -92,7 +96,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     if (provider === "byteplus" && shotBytePlusAssetId) {
       combinedReferencePaths.push(shotBytePlusAssetId)
-      if (shot.keyframe_image) rawImagesToOmit.add(shot.keyframe_image)
+      if (shot.keyframe_image) { rawImagesToOmit.add(shot.keyframe_image); displayReferencePaths.push(shot.keyframe_image) }
     } else if (shot.keyframe_image && !input.startFrame) {
       combinedReferencePaths.push(shot.keyframe_image)
     }
@@ -103,6 +107,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
         if (provider === "byteplus" && typeof byteplusAssetId === "string" && byteplusAssetId.trim()) {
           combinedReferencePaths.push(byteplusAssetId.trim())
+          const viewable = entityPrimaryReference(entity as MentionableEntity)
+          if (viewable) displayReferencePaths.push(viewable)
           // Omit raw duplicates when BytePlus can use its canonical provider asset.
           if (Array.isArray(entity.reference_images)) {
             for (const img of entity.reference_images) {
@@ -125,10 +131,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     for (const refPath of input.referenceImages) {
       if (rawImagesToOmit.has(refPath)) continue
       combinedReferencePaths.push(refPath)
+      displayReferencePaths.push(refPath)
     }
 
     // Deduplicate reference paths
     combinedReferencePaths = Array.from(new Set(combinedReferencePaths))
+    // What the workspace shows: every reference as an image it can actually
+    // render, with provider asset ids swapped for their source picture.
+    const viewableReferencePaths = Array.from(new Set([
+      ...displayReferencePaths,
+      ...combinedReferencePaths.filter((path) => !/^asset:\/\//i.test(path) && !/^asset-[a-z0-9-]+$/i.test(path)),
+    ]))
 
     const references = await signedReferenceUrls(context, combinedReferencePaths)
 
@@ -191,7 +204,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
       await Promise.all([
         context.supabase.from("creator_generation_jobs").update({ status: "processing", provider_job_id: task.id, provider_response: task.response }).eq("id", job.id),
-        context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...resolvedEntityIds])), metadata: { ...(shot.metadata || {}), video_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, style, reference_images: combinedReferencePaths, character_entity_ids: input.characterEntityIds, mentioned_entity_ids: input.mentionedEntityIds, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
+        context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...resolvedEntityIds])), metadata: { ...(shot.metadata || {}), video_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, style, reference_images: viewableReferencePaths, character_entity_ids: input.characterEntityIds, mentioned_entity_ids: input.mentionedEntityIds, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
       ])
       return NextResponse.json({
         jobId: job.id,

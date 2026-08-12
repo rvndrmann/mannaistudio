@@ -26,6 +26,13 @@ function isDirectUrl(path: string) {
   return /^https?:\/\//i.test(path) || /^blob:/i.test(path) || /^data:/i.test(path)
 }
 
+// A BytePlus asset id identifies a picture held by the provider, not a file in
+// our bucket. Signing one always fails, so it is refused up front rather than
+// costing a round trip per tile.
+function isProviderAssetId(path: string) {
+  return /^asset:\/\//i.test(path) || /^asset-[a-z0-9-]+$/i.test(path)
+}
+
 async function flush() {
   const paths = Array.from(new Set(queue))
   queue = []
@@ -59,6 +66,7 @@ const resolvers = new Map<string, Array<(url: string | null) => void>>()
 export function getSignedMediaUrl(path: string): Promise<string | null> {
   if (!path) return Promise.resolve(null)
   if (isDirectUrl(path)) return Promise.resolve(path)
+  if (isProviderAssetId(path)) return Promise.resolve(null)
 
   const cached = cache.get(path)
   if (cached && cached.expiresAt - REFRESH_MARGIN_MS > Date.now()) return Promise.resolve(cached.url)
