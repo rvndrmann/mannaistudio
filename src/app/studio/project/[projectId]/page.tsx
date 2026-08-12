@@ -3560,9 +3560,19 @@ function ShotMediaWorkspace({
   const [activeGenId, setActiveGenId] = useState<string | null>(source ? "original" : null);
   const activeGen = genHistory.find((g) => g.id === activeGenId) || null;
 
-  // Reset expanded state when changing active generation
+  // Selecting a generation shows what produced it. The panel holds the settings
+  // for the next render, so without this it kept describing a different
+  // generation than the one on screen — and the reference strip showed images
+  // that had nothing to do with the picture being viewed.
   useEffect(() => {
     setPromptExpanded(false);
+    if (!activeGen) return;
+    if (activeGen.prompt?.trim()) setPrompt(activeGen.prompt);
+    if (activeGen.referenceImages?.length) setReferences(activeGen.referenceImages);
+    if (activeGen.model?.trim()) setModel(activeGen.model);
+    // Keyed on the selection alone: re-running when the entry's own fields
+    // settle would fight the user's edits mid-typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeGenId]);
 
   // Poll in-progress job until finished or failed
