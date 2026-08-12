@@ -4647,6 +4647,17 @@ function VideoGenerationProposalBlock({
   const shotCount = request.shotIds?.length || request.shotNumbers?.length || 1;
   const credits = calculateCreditCost(model, isVideo ? "video" : "image", durationSeconds, { aspectRatio, resolution }) * shotCount;
   const missing = useMemo(() => unresolvedMentions(prompt, entities), [prompt, entities]);
+  // The entities this prompt names are resolved into references at generation
+  // time, so the card must show them too. Without this it displayed only the
+  // composition keyframe and looked like the cast was being ignored.
+  const entityReferences = useMemo(() => {
+    const ids = findShotCastEntityIds(prompt, entities, request.mentionedEntityIds || []);
+    return ids
+      .map((id) => entities.find((entity) => entity.id === id))
+      .filter((entity): entity is Entity => Boolean(entity))
+      .map((entity) => ({ entity, image: entityPrimaryReference(entity) }))
+      .filter((item): item is { entity: Entity; image: string } => Boolean(item.image));
+  }, [prompt, entities, request.mentionedEntityIds]);
 
   const uploadReference = async (file?: File) => {
     if (!file) return;
@@ -4760,6 +4771,14 @@ function VideoGenerationProposalBlock({
 
       <div className="space-y-3 p-3">
         <div className="flex flex-wrap items-center gap-2">
+          {entityReferences.map(({ entity, image }) => (
+            <div key={`entity-${entity.id}`} className="relative h-14 w-14 overflow-hidden rounded-lg border border-[#b9f42e]/50" title={`${entity.name} — referenced because the prompt names it`}>
+              <AssetImage src={image} />
+              <span className="absolute inset-x-0 bottom-0 truncate bg-black/75 px-1 text-center text-[9px] font-bold text-[#b9f42e]">
+                {entity.name}
+              </span>
+            </div>
+          ))}
           {videoReferences.map((path) => (
             <div key={path} className="group relative h-14 w-14 overflow-hidden rounded-lg border border-[#c084fc]/50">
               <AssetVideo src={path} />
@@ -4862,6 +4881,11 @@ function VideoGenerationProposalBlock({
           />
         )}
 
+        {entityReferences.length > 0 && (
+          <p className="text-[11px] text-zinc-500">
+            {entityReferences.length} entity reference{entityReferences.length === 1 ? "" : "s"} come from the prompt&apos;s @mentions. Edit the prompt to change them.
+          </p>
+        )}
         {uploadError && <p className="text-[11px] text-red-300">{uploadError}</p>}
 
         {canDecide ? (
