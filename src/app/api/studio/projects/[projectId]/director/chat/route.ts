@@ -218,34 +218,21 @@ async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<t
   const bulkEntityImageIntent = !forbidsAllMediaGeneration && !forbidsImageGeneration ? parseBulkEntityImageIntent(input.message, input.mentionedEntities) : null
   if (bulkEntityImageIntent) return generateBulkEntityReferenceImages(input, bulkEntityImageIntent)
   if (!forbidsAllMediaGeneration && !forbidsVideoGeneration && /\b(video|animate|motion)\b/.test(normalized) && /\b(generate|create|make|render|produce)\b/.test(normalized)) {
-    const { data: shots, error } = await input.context.supabase.from("creator_shots").select("id,prompt,title,order_index").eq("episode_id", input.episodeId).order("order_index")
+    const { data: shots, error } = await input.context.supabase.from("creator_shots").select("id,prompt,title").eq("episode_id", input.episodeId).order("order_index").limit(6)
     if (error) throw error
-    // "Generate shot 2 video" means shot 2. This path answers in a fraction of
-    // the time the full agent takes, and taking the first three shots instead
-    // of the named one was the only reason it could not be used for a specific
-    // request. Numbers are 1-based, matching the storyboard.
-    const requestedNumbers = Array.from(normalized.matchAll(/\bshots?\s*(?:#\s*)?(\d+)/g)).map((match) => Number(match[1])).filter((value) => value > 0)
-    const withPrompt = (shots ?? []).filter((shot) => shot.prompt)
-    const named = requestedNumbers.length
-      ? withPrompt.filter((shot) => requestedNumbers.includes(shot.order_index + 1))
-      : []
-    if (requestedNumbers.length && !named.length) {
-      return textMessage(input.sessionId, `I could not find shot ${requestedNumbers.join(", ")} with a saved prompt in this episode.`)
-    }
-    const selectedShots = named.length ? named : withPrompt.slice(0, 3)
+    const selectedShots = (shots ?? []).filter((shot) => shot.prompt).slice(0, 3)
     if (!selectedShots.length) return textMessage(input.sessionId, "I need at least one storyboard shot with a prompt before I can prepare video generation.")
     const result = await requestDirectorTool(input.context, {
       tool: "submit_generation",
       input: {
-        request: { type: "video", shotIds: selectedShots.map((shot) => shot.id), episodeId: input.episodeId, mentionedEntityIds: input.mentionedEntities.map((entity) => entity.id), preference: "balanced", durationSeconds: 4 },
+        request: { type: "video", shotIds: selectedShots.map((shot) => shot.id), mentionedEntityIds: input.mentionedEntities.map((entity) => entity.id), preference: "balanced", durationSeconds: 4 },
         prompts: Object.fromEntries(selectedShots.map((shot) => [shot.id, shot.prompt || shot.title])),
         idempotencyKey: `${input.idempotencyKey}:video`,
       },
       sessionId: input.sessionId,
       idempotencyKey: `${input.idempotencyKey}:video-proposal`,
     })
-    const named_label = selectedShots.map((shot) => shot.order_index + 1).join(", ")
-    return proposalMessage(input.sessionId, `Video generation is ready for shot ${named_label}. Approve the card to start the render.`, result)
+    return proposalMessage(input.sessionId, `I prepared video generation for ${selectedShots.length} shot${selectedShots.length === 1 ? "" : "s"}. Review and approve before credits are reserved.`, result)
   }
   if (!forbidsAllMediaGeneration && !forbidsImageGeneration && /\b(image|keyframe|poster|visual)\b/.test(normalized) && /\b(generate|create|make|draw)\b/.test(normalized)) {
     const shotNumberMatch = normalized.match(/\b(?:storyboard\s+)?shot\s*(?:#\s*)?(\d+)\b/)
