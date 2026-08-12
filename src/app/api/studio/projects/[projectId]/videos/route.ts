@@ -88,6 +88,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // path and cannot be signed, so recording it as the reference left the
     // workspace showing empty tiles. The viewable image is kept alongside it.
     const displayReferencePaths: string[] = []
+    const facePaths = new Set<string>()
     const rawImagesToOmit = new Set<string>()
 
     // Check if shot keyframe image has a registered BytePlus asset ID in metadata
@@ -122,7 +123,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           // entity owns fills the reference budget with a few subjects and
           // drops the rest of the cast before the provider sees it.
           const chosen = entityPrimaryReference(entity as MentionableEntity)
-          if (chosen) combinedReferencePaths.push(chosen.trim())
+          if (chosen) {
+            combinedReferencePaths.push(chosen.trim())
+            // Registration clears the real-person check and only faces need it.
+            // The Asset Library holds 50 images, so props and locations must
+            // not be spending that quota.
+            if (entity.type === "character") facePaths.add(chosen.trim())
+          }
         }
       }
     }
@@ -144,6 +151,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     ]))
 
     const references = await signedReferenceUrls(context, combinedReferencePaths)
+    const faceReferences = await signedReferenceUrls(context, combinedReferencePaths.filter((path) => facePaths.has(path)))
 
     // Seedance accepts finished clips as references, so a shot can inherit the
     // motion and look of the one before it instead of restarting cold.
@@ -199,7 +207,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const gRes = await submitGoogleVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 4), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references })
         task = { id: gRes.id, response: gRes.response }
       } else {
-        const bpRes = await submitBytePlusVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references, videoReferenceUrls: videoReferences, generationMode: input.generationMode, audioEnabled: input.audioEnabled })
+        const bpRes = await submitBytePlusVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references, faceReferenceUrls: faceReferences, videoReferenceUrls: videoReferences, generationMode: input.generationMode, audioEnabled: input.audioEnabled })
         task = { id: bpRes.id, response: bpRes.response }
       }
       await Promise.all([

@@ -75,6 +75,13 @@ export async function executeGenerationJobsInBackground(
           const mentionReferencePaths = mentionedEntities
             .map((entity) => entityPrimaryReference(entity as MentionableEntity))
             .filter((path): path is string => Boolean(path))
+          // Only a character's image needs registering with the provider to
+          // clear its real-person check; the Asset Library holds 50 and props
+          // and locations would fill it for nothing.
+          const facePaths = new Set(mentionedEntities
+            .filter((entity) => entity.type === "character")
+            .map((entity) => entityPrimaryReference(entity as MentionableEntity))
+            .filter((path): path is string => Boolean(path)))
 
           const combinedReferencePaths = Array.from(new Set([...mentionReferencePaths, ...referencePaths])).slice(0, 8)
           const mentionContext = buildEntityMentionContext(mentionedEntities as MentionableEntity[])
@@ -86,9 +93,12 @@ export async function executeGenerationJobsInBackground(
           }
 
           const referenceUrls: string[] = []
+          const faceReferenceUrls: string[] = []
           for (const ref of combinedReferencePaths) {
             const signed = await signReference(ref)
-            if (signed) referenceUrls.push(signed)
+            if (!signed) continue
+            referenceUrls.push(signed)
+            if (facePaths.has(ref)) faceReferenceUrls.push(signed)
           }
 
           // Seedance takes clips alongside images so a shot can inherit motion
@@ -168,6 +178,7 @@ export async function executeGenerationJobsInBackground(
               resolution: typeof settings.resolution === "string" ? settings.resolution : "720p",
               ratio: effectiveAspectRatio,
               referenceUrls,
+              faceReferenceUrls,
               videoReferenceUrls,
               generationMode: settings.generationMode === "multi_image" ? "multi_image" : "keyframe",
               audioEnabled: typeof settings.audioEnabled === "boolean" ? settings.audioEnabled : true,

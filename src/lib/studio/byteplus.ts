@@ -65,9 +65,15 @@ export function formatBytePlusMediaUrl(url: string): string {
   return trimmed
 }
 
-export async function resolveBytePlusReferenceUrl(rawUrl: string): Promise<string> {
+/**
+ * Registration exists to clear the real-person privacy check, which only ever
+ * applies to faces. The Asset Library holds 50 images, so registering props and
+ * locations spends a quota they never needed and fills it within one project.
+ */
+export async function resolveBytePlusReferenceUrl(rawUrl: string, registerFace = false): Promise<string> {
   const formatted = formatBytePlusMediaUrl(rawUrl)
   if (/^asset:\/\//i.test(formatted)) return formatted
+  if (!registerFace) return formatted
 
   // If HTTP/HTTPS URL, register image to Asset Library to avoid PrivacyInformation real-person error
   if (/^https?:\/\//i.test(formatted)) {
@@ -115,9 +121,11 @@ export function bytePlusVideoReferenceLimit(model: string) {
     : bytePlusVideoReferenceLimits.default
 }
 
-export async function submitBytePlusVideo(input: { model: VideoGenerationModelId; prompt: string; duration: number; resolution: string; ratio: string; referenceUrls?: string[]; videoReferenceUrls?: string[]; generationMode?: "keyframe" | "multi_image"; audioEnabled?: boolean }) {
+export async function submitBytePlusVideo(input: { model: VideoGenerationModelId; prompt: string; duration: number; resolution: string; ratio: string; referenceUrls?: string[]; faceReferenceUrls?: string[]; videoReferenceUrls?: string[]; generationMode?: "keyframe" | "multi_image"; audioEnabled?: boolean }) {
   const content: Array<Record<string, unknown>> = [{ type: "text", text: input.prompt }]
-  const resolvedUrls = await Promise.all((input.referenceUrls || []).map(resolveBytePlusReferenceUrl))
+  // Only a character's reference is registered; everything else is sent as-is.
+  const faces = new Set(input.faceReferenceUrls || [])
+  const resolvedUrls = await Promise.all((input.referenceUrls || []).map((url) => resolveBytePlusReferenceUrl(url, faces.has(url))))
 
   if (input.generationMode === "keyframe") {
     resolvedUrls.forEach((url, index) => content.push({ type: "image_url", image_url: { url }, role: index === 0 ? "first_frame" : index === 1 ? "last_frame" : "reference_image" }))
