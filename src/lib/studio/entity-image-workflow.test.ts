@@ -48,6 +48,11 @@ describe("entity image workflow", () => {
     const prompt = buildEntityReferenceImagePrompt({ id: "2", name: "Rainy Alley", type: "scene", description: "Wet brick alley at night" }, "Realistic - Photorealistic")
     expect(prompt).toContain("empty establishing plate")
     expect(prompt).toContain("no background people")
+    // A plate is staged into later, so depth and a neutral camera matter as
+    // much as emptiness, and a moment's props would date it to one shot.
+    expect(prompt).toContain("Eye-level")
+    expect(prompt).toContain("background clearly layered")
+    expect(prompt).toContain("no story action")
     expect(prompt).not.toContain("reference sheet")
   })
 
