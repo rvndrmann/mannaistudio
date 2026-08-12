@@ -4689,7 +4689,20 @@ function VideoGenerationProposalBlock({
   const [reopened, setReopened] = useState(false);
   const wasCancelled = proposal.status === "rejected" && !reopened;
   const canDecide = proposal.status === "pending" || reopened;
-  const shotNumbers = request.shotNumbers?.length ? request.shotNumbers : null;
+  // The badge used to read "Shot 1" for every single-shot proposal, which made
+  // a request for shot 2 look like it had targeted the wrong shot.
+  const resolvedShotNumbers = useMemo(() => {
+    if (request.shotNumbers?.length) return request.shotNumbers;
+    const ids = request.shotIds || [];
+    return shots
+      .filter((shot) => ids.includes(shot.id))
+      .map((shot) => shot.order_index + 1)
+      .sort((a, b) => a - b);
+  }, [request.shotNumbers, request.shotIds, shots]);
+  const shotNumbers = resolvedShotNumbers.length ? resolvedShotNumbers : null;
+  const shotLabelText = shotNumbers
+    ? (shotNumbers.length === 1 ? `Shot ${shotNumbers[0]}` : `Shots ${shotNumbers.join(", ")}`)
+    : `${request.shotIds?.length || 1} shot${(request.shotIds?.length || 1) === 1 ? "" : "s"}`;
   const shotLabel = shotNumbers ? `shot ${shotNumbers.join(", ")}` : "this shot";
   const shotCount = request.shotIds?.length || request.shotNumbers?.length || 1;
   const credits = calculateCreditCost(model, isVideo ? "video" : "image", durationSeconds, { aspectRatio, resolution }) * shotCount;
@@ -4771,7 +4784,7 @@ function VideoGenerationProposalBlock({
           </div>
           <p className="truncate text-[13px] font-bold text-zinc-100">{isVideo ? "Video Production" : "Image Production"}</p>
           <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-zinc-400">
-            {shotCount === 1 ? "Shot 1" : `${shotCount} shots`}
+            {shotLabelText}
           </span>
         </div>
         <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold capitalize ${proposal.status === "rejected" ? "border-white/15 text-zinc-400" : "border-[#fff878]/30 text-[#fff878]"}`}>
