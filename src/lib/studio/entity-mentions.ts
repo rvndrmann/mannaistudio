@@ -49,6 +49,31 @@ export function findMentionedEntityIds(text: string, entities: MentionableEntity
     .filter((id, index, ids) => ids.indexOf(id) === index)
 }
 
+/**
+ * The cast of a shot: entities its prompt actually refers to.
+ *
+ * An `@mention` is unambiguous and always counts. A prompt often also names its
+ * location or props as plain prose ("the bedroom", "the suitcase"), which is
+ * still a real reference — but matching bare names against the whole entity
+ * library would drag in anything called "Note" or "Phone". So a bare name only
+ * counts when the model also declared that entity for this shot: the declared
+ * list bounds the candidates, and the prompt text confirms them.
+ */
+export function findShotCastEntityIds(text: string, entities: MentionableEntity[], declaredIds: string[] = []) {
+  const mentioned = findMentionedEntityIds(text, entities)
+  if (!declaredIds.length) return mentioned
+  const declared = new Set(declaredIds)
+  const confirmed = entities
+    .filter((entity) => declared.has(entity.id) && !mentioned.includes(entity.id))
+    .filter((entity) => {
+      const name = entity.name.trim()
+      if (name.length < 3) return false
+      return new RegExp(`(^|[^\\w@])${escapeRegExp(name)}($|[^\\w])`, "i").test(text)
+    })
+    .map((entity) => entity.id)
+  return [...mentioned, ...confirmed]
+}
+
 export function findActiveEntityMention(text: string, caret: number): ActiveEntityMention | null {
   const safeCaret = Math.max(0, Math.min(caret, text.length))
   const prefix = text.slice(0, safeCaret)

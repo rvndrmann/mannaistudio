@@ -49,7 +49,7 @@ import { EntityMentionInput } from "@/components/studio/EntityMentionInput";
 import ShareProjectDialog from "@/components/studio/ShareProjectDialog";
 import ConvertToEnterpriseDialog from "@/components/enterprise/ConvertToEnterpriseDialog";
 import ProjectActivityDialog from "@/components/studio/ProjectActivityDialog";
-import { entityPrimaryReference, findMentionedEntityIds } from "@/lib/studio/entity-mentions";
+import { entityPrimaryReference, findMentionedEntityIds, findShotCastEntityIds } from "@/lib/studio/entity-mentions";
 
 import {
   Share2,
@@ -3068,6 +3068,32 @@ function Storyboard({
   const [draftPrompt, setDraftPrompt] = useState("");
   const [savingShot, setSavingShot] = useState(false);
 
+  const [castPicker, setCastPicker] = useState<string | null>(null);
+  const [castQuery, setCastQuery] = useState("");
+
+  // Picking assets by hand marks the shot curated, so the prompt-derived list
+  // never silently replaces the choice on the next render.
+  const toggleShotEntity = async (shot: Shot, currentIds: string[], entityId: string) => {
+    const next = currentIds.includes(entityId)
+      ? currentIds.filter((id) => id !== entityId)
+      : [...currentIds, entityId];
+    await save({
+      action: "saveShot",
+      episodeId,
+      shot: {
+        id: shot.id,
+        title: shot.title,
+        prompt: shot.prompt,
+        duration_seconds: shot.duration_seconds,
+        aspect_ratio: shot.aspect_ratio,
+        resolution: shot.resolution,
+        entityIds: next,
+        metadata: { ...(shot.metadata || {}), cast_curated: true },
+      },
+    });
+    await reload();
+  };
+
   const saveShotPrompt = async (shot: Shot) => {
     setSavingShot(true);
     try {
@@ -3131,13 +3157,16 @@ function Storyboard({
           </div>
           <div className="space-y-3">
             {shots.map((shot, index) => {
-              // Shown from the shot's own prompt, the same rule generation
-              // follows, so the list matches what will actually be referenced.
-              // Shots stored before that rule existed carry the whole project
-              // in referenced_entities, and are corrected here on read.
-              const namedIds = findMentionedEntityIds(shot.prompt || "", entities);
-              const linked = namedIds.length
-                ? namedIds.map((id) => entities.find((entity) => entity.id === id)).filter((entity): entity is Entity => Boolean(entity))
+              // A cast the user set by hand is the truth and is never
+              // second-guessed. Otherwise it is read from the shot's own prompt,
+              // the same rule generation follows, which also corrects shots
+              // stored before that rule existed with the whole project in them.
+              const curated = Boolean((shot.metadata as { cast_curated?: boolean } | undefined)?.cast_curated);
+              const castIds = curated
+                ? (shot.referenced_entities || [])
+                : findShotCastEntityIds(shot.prompt || "", entities, shot.referenced_entities || []);
+              const linked = castIds.length
+                ? castIds.map((id) => entities.find((entity) => entity.id === id)).filter((entity): entity is Entity => Boolean(entity))
                 : entities.filter((e) => shot.referenced_entities?.includes(e.id));
               const isExpanded = expandedShots.has(shot.id);
               const toggleExpanded = () => {
@@ -3234,18 +3263,67 @@ function Storyboard({
                   </div>
                   <div className="flex flex-wrap content-start gap-2">
                     {linked.map((entity) => (
-                      <div key={entity.id} className="w-[62px]">
+                      <div key={entity.id} className="group/asset relative w-[62px]">
                         <AssetImage src={entityPrimaryReference(entity)} />
+                        <button
+                          type="button"
+                          onClick={() => toggleShotEntity(shot, castIds, entity.id)}
+                          className="absolute right-0.5 top-0.5 hidden rounded bg-black/75 px-1 text-[10px] text-white group-hover/asset:block"
+                          aria-label={`Remove ${entity.name} from this shot`}
+                        >
+                          ×
+                        </button>
                         <p className="mt-1 truncate text-[10px] text-zinc-400">
                           {entity.name}
                         </p>
                       </div>
                     ))}
-                    {!linked.length && (
-                      <button className="grid h-14 w-14 place-items-center rounded-full border border-dashed border-white/20 text-zinc-500">
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => { setCastPicker(castPicker === shot.id ? null : shot.id); setCastQuery(""); }}
+                        className="grid h-14 w-14 place-items-center rounded-full border border-dashed border-white/20 text-zinc-500 hover:border-[#b9f42e] hover:text-[#b9f42e]"
+                        aria-label="Add an asset to this shot"
+                      >
                         +
                       </button>
-                    )}
+                      {castPicker === shot.id && (
+                        <div className="absolute left-0 top-16 z-40 w-64 rounded-xl border border-white/10 bg-[#1c1c1c] p-2 shadow-2xl">
+                          <input
+                            value={castQuery}
+                            onChange={(event) => setCastQuery(event.target.value)}
+                            placeholder="Search subjects"
+                            autoFocus
+                            className="mb-2 w-full rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[#b9f42e]/40"
+                          />
+                          <div className="max-h-64 space-y-0.5 overflow-y-auto">
+                            {entities
+                              .filter((entity) => !castQuery.trim() || entity.name.toLowerCase().includes(castQuery.trim().toLowerCase()))
+                              .map((entity) => {
+                                const active = castIds.includes(entity.id);
+                                return (
+                                  <button
+                                    key={entity.id}
+                                    type="button"
+                                    onClick={() => toggleShotEntity(shot, castIds, entity.id)}
+                                    className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left hover:bg-white/5"
+                                  >
+                                    <span className={`grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] font-black ${active ? "border-[#b9f42e] bg-[#b9f42e] text-black" : "border-white/25 text-transparent"}`}>✓</span>
+                                    <span className="h-8 w-8 shrink-0 overflow-hidden rounded">
+                                      <AssetImage src={entityPrimaryReference(entity)} />
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                      <span className="block truncate text-[12px] text-zinc-200">{entity.name}</span>
+                                      <span className="block text-[10px] capitalize text-zinc-500">{entity.type}</span>
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            {!entities.length && <p className="px-2 py-3 text-[11px] text-zinc-500">No assets in this project yet.</p>}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="relative group">
                     <button

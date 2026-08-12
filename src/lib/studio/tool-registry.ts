@@ -8,7 +8,7 @@ import { generationRequestSchema, routeGeneration } from "./model-routing"
 import { revisionRequestSchema } from "./revisions"
 import { deductUserCredits } from "./credits"
 import { executeGenerationJobsInBackground } from "./execute-generation"
-import { findMentionedEntityIds, type MentionableEntity } from "./entity-mentions"
+import { findMentionedEntityIds, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
 
 export type ToolRisk = "read" | "write" | "costly" | "destructive"
 
@@ -273,9 +273,9 @@ export const createStoryboardBatchTool = defineDirectorTool({
     const { data: batchEntityRows } = await context.supabase.from("creator_entities").select("id,name,type").eq("project_id", context.project.id)
     const batchEntities = (batchEntityRows || []) as MentionableEntity[]
     const rows = input.shots.map((shot, index) => {
-      const named = findMentionedEntityIds(`${shot.prompt}\n${shot.description}\n${shot.scriptText}`, batchEntities)
-      const scoped = named.length ? shot.referencedEntityIds.filter((id) => named.includes(id)) : shot.referencedEntityIds
-      return { episode_id: input.episodeId, order_index: offset + index, title: shot.title, description: shot.description || null, script_text: shot.scriptText || null, prompt: shot.prompt, duration_seconds: shot.durationSeconds, aspect_ratio: shot.aspectRatio, referenced_entities: Array.from(new Set([...scoped, ...named])) }
+      const text = `${shot.prompt}\n${shot.description}\n${shot.scriptText}`
+      const cast = findShotCastEntityIds(text, batchEntities, shot.referencedEntityIds)
+      return { episode_id: input.episodeId, order_index: offset + index, title: shot.title, description: shot.description || null, script_text: shot.scriptText || null, prompt: shot.prompt, duration_seconds: shot.durationSeconds, aspect_ratio: shot.aspectRatio, referenced_entities: cast.length ? cast : shot.referencedEntityIds }
     })
     const { data, error } = await context.supabase.from("creator_shots").insert(rows).select("*")
     if (error) throw error

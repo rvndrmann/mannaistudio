@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildEntityMentionContext, findActiveEntityMention, findMentionedEntityIds, insertEntityMention, type MentionableEntity, entityPrimaryReference } from "./entity-mentions"
+import { buildEntityMentionContext, findActiveEntityMention, findMentionedEntityIds, insertEntityMention, type MentionableEntity, entityPrimaryReference, findShotCastEntityIds } from "./entity-mentions"
 
 const entities: MentionableEntity[] = [
   { id: "11111111-1111-4111-8111-111111111111", name: "Maya", type: "character", description: "Lead detective" },
@@ -59,5 +59,35 @@ describe("chosen entity reference", () => {
 
   it("has no reference when the entity has no images", () => {
     expect(entityPrimaryReference({ reference_images: [], primary_reference_image: "x.png" })).toBeUndefined()
+  })
+})
+
+describe("shot cast", () => {
+  const cast = [
+    { id: "c1", name: "Lena", type: "character" as const },
+    { id: "c2", name: "Ethan", type: "character" as const },
+    { id: "s1", name: "Bedroom", type: "scene" as const },
+    { id: "p1", name: "Suitcase", type: "prop" as const },
+    { id: "p2", name: "Ritual Note", type: "prop" as const },
+  ]
+
+  it("takes @mentions without needing them declared", () => {
+    expect(findShotCastEntityIds("@Lena packs while @Ethan waits", cast)).toEqual(["c1", "c2"])
+  })
+
+  it("recovers a location named in prose when the shot declared it", () => {
+    // The prompt says "bedroom", not "@Bedroom", which is how a scene usually
+    // reads — but it is still genuinely referenced.
+    const ids = findShotCastEntityIds("@Lena packs in the bedroom", cast, ["s1"])
+    expect(ids).toContain("s1")
+  })
+
+  it("ignores a declared entity the prompt never names", () => {
+    const ids = findShotCastEntityIds("@Lena packs in the bedroom", cast, ["s1", "p2"])
+    expect(ids).not.toContain("p2")
+  })
+
+  it("does not invent a cast from prose alone when nothing was declared", () => {
+    expect(findShotCastEntityIds("a suitcase sits in the bedroom", cast)).toEqual([])
   })
 })

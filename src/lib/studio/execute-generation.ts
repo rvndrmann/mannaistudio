@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { generateOpenAIImage, type OpenAIImageModel } from "./openai"
 import { submitBytePlusVideo, generateBytePlusImage, createBytePlusAsset } from "./byteplus"
 import type { VideoGenerationModelId, ImageGenerationModelId } from "./generation-models"
-import { buildEntityMentionContext, entityPrimaryReference, findMentionedEntityIds, type MentionableEntity } from "./entity-mentions"
+import { buildEntityMentionContext, entityPrimaryReference, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
 import { projectVisualStyle, visualStyleDirective } from "./entity-image-workflow"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { randomUUID } from "node:crypto"
@@ -42,8 +42,8 @@ export async function executeGenerationJobsInBackground(
           // unrelated character or prop from being fed into the frame.
           const { data: projectEntities } = await context.supabase
             .from("creator_entities").select("id,name,type,metadata,reference_images,primary_reference_image").eq("project_id", context.project.id)
-          const promptMentionIds = findMentionedEntityIds(job.prompt || "", (projectEntities || []) as MentionableEntity[])
           const declaredIds = Array.isArray(settings.mentionedEntityIds) ? settings.mentionedEntityIds as string[] : []
+          const promptMentionIds = findShotCastEntityIds(job.prompt || "", (projectEntities || []) as MentionableEntity[], declaredIds)
           // The prompt wins when it names anyone; the declared list is only the
           // fallback for a prompt written without mentions.
           const activeIds = promptMentionIds.length ? promptMentionIds : declaredIds
