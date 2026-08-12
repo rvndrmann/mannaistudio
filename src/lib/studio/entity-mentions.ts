@@ -113,8 +113,17 @@ export function buildEntityMentionContext(entities: MentionableEntity[]) {
     // A description written before the art existed will contradict it — a
     // photograph says what someone's hair and face are, and the text should not
     // be allowed to argue. Only the description's non-physical parts still count.
-    entities.length > withoutArt.length
-      ? "For any entity with reference art, that image is the authority on physical appearance: face, hair colour and style, skin, build, and age. Where a description disagrees with the image, follow the image and ignore the conflicting words. Descriptions still govern wardrobe, mood, and behaviour unless the shot says otherwise."
-      : "",
+    // Named one by one and placed last. A shot prompt states a character's hair
+    // and face outright, and a single generic sentence loses to that; the
+    // override has to be as specific as the thing it is overriding.
+    ...(entities.length > withoutArt.length
+      ? [
+        "LIKENESS LOCK — highest priority, overrides everything above:",
+        ...entities
+          .filter((entity) => (entity.reference_images || []).length)
+          .map((entity) => `- @${entity.name}: the supplied reference image of @${entity.name} defines their face, hair colour, hair style, skin tone, build, and age. Reproduce that person exactly. Any words above describing @${entity.name}'s appearance are outdated and must be ignored where they differ from the image.`),
+        "Do not restyle, recolour, age, or idealise a referenced person. Wardrobe, expression, pose, and lighting follow the shot; the person does not change.",
+      ]
+      : []),
   ].filter(Boolean).join("\n")
 }
