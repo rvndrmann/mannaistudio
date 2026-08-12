@@ -208,6 +208,11 @@ export function signBytePlusRequest(method: string, query: Record<string, string
   }
 }
 
+// Asset groups are a limited resource on the plan, so the studio uses exactly
+// one and remembers it for the life of the process.
+const sharedAssetGroupName = "aidirector_character_references"
+let cachedAssetGroupId: string | undefined
+
 export async function createBytePlusAssetGroup(name = "portrait_group", description = "Portraits for Seedance") {
   const ak = process.env.ARK_ACCESS_KEY
   const sk = process.env.ARK_SECRET_KEY
@@ -247,14 +252,23 @@ export async function createBytePlusAsset(input: { imageUrl: string; name?: stri
   // GroupId is required by CreateAsset, so there is no "attempt without it".
   // Swallowing a failed group creation here only moved the error one step later
   // and reported it as a missing parameter, hiding why the group was never made.
-  let groupId = input.groupId
+  let groupId = input.groupId || process.env.ARK_ASSET_GROUP_ID?.trim() || cachedAssetGroupId
   if (!groupId) {
-    const groupName = input.name ? `Group-${input.name.slice(0, 25).replace(/[^a-zA-Z0-9_-]/g, "_")}` : "portrait_group"
     try {
-      groupId = await createBytePlusAssetGroup(groupName, "Automated AIGC Portrait Group")
+      // One group for the whole studio. Naming it after each asset created a
+      // new group per registration and exhausted the account's group quota,
+      // which then surfaced as an unrelated "GroupId is missing" error.
+      groupId = await createBytePlusAssetGroup(sharedAssetGroupName, "AI Director character references")
+      cachedAssetGroupId = groupId
     } catch (err) {
       const detail = err instanceof Error ? err.message : "unknown error"
-      throw new BytePlusProviderError(`Could not create the BytePlus asset group needed to register this image: ${detail}`, err instanceof BytePlusProviderError ? err.status : 502)
+      const quotaHit = /quota|limit/i.test(detail)
+      throw new BytePlusProviderError(
+        quotaHit
+          ? `The BytePlus account has no asset groups left (${detail}). Reuse an existing group by setting ARK_ASSET_GROUP_ID to its id in the server environment, or delete unused groups in the Ark console.`
+          : `Could not create the BytePlus asset group needed to register this image: ${detail}`,
+        err instanceof BytePlusProviderError ? err.status : 502,
+      )
     }
   }
   if (!groupId) throw new BytePlusProviderError("BytePlus returned no asset group id, so the image cannot be registered.")
