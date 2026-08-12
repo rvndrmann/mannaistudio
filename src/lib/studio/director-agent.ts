@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { createDirectorToolTurn, type OpenAIDirectorFunction } from "./openai"
+import { createDirectorToolTurn, streamDirectorToolTurn, type OpenAIDirectorFunction } from "./openai"
 import { createGoogleDirectorToolTurn } from "./google"
 import { directorTools, type DirectorToolName } from "./tool-registry"
 import { requestDirectorTool } from "./tool-service"
@@ -10,6 +10,10 @@ import { buildVisionUserContent, type DirectorVisionAttachment } from "./directo
 import { agentForTool, fetchDirectorTeam, teamInstructions, type DirectorTeam } from "./director-team"
 import { addWorkflowStep, createWorkflowRun, finishWorkflowRun } from "./workflow-runs"
 import { directorRecovery } from "./recovery"
+
+export type DirectorStreamEvent =
+  | { type: "text"; delta: string }
+  | { type: "tool"; tool: string; label: string; status: string; agent?: string }
 
 const toolDescriptions: Record<DirectorToolName, string> = {
   inspect_current_project: "Read the current project settings and creative brief.",
@@ -62,7 +66,11 @@ export async function runDirectorAgent(input: {
   objective: string
   visionAttachments?: DirectorVisionAttachment[]
   team?: DirectorTeam
+  // Reports progress while the run is still in flight so the chat can show text
+  // and tool activity as they happen instead of after the whole loop finishes.
+  onEvent?: (event: DirectorStreamEvent) => void
 }) {
+  const emit = (event: DirectorStreamEvent) => { try { input.onEvent?.(event) } catch { /* a broken consumer must not fail the run */ } }
   const runtimeSettings = input.runtimeSettings || defaultDirectorRuntimeSettings
   const items: Array<Record<string, unknown>> = input.messages
     .filter((message) => message.role === "user" || message.role === "assistant")
@@ -109,6 +117,15 @@ export async function runDirectorAgent(input: {
             items,
             tools: toolDefs,
           })
+        : input.onEvent
+        ? await streamDirectorToolTurn({
+            userId: input.context.user.id,
+            model: input.model,
+            instructions: fullInstructions,
+            items,
+            tools: toolDefs,
+            onTextDelta: (delta) => emit({ type: "text", delta }),
+          })
         : await createDirectorToolTurn({
             userId: input.context.user.id,
             model: input.model,
@@ -148,6 +165,7 @@ export async function runDirectorAgent(input: {
       const agentName = owningAgent && team[owningAgent].enabled ? team[owningAgent].name : undefined
       const block: DirectorTimelineBlock = { type: "tool_execution", tool: call.name, label, status: "running", agent: agentName }
       timeline.push(block)
+      emit({ type: "tool", tool: call.name, label, status: "running", agent: agentName })
       try {
         const result = await requestDirectorTool(input.context, {
           tool: call.name,
@@ -165,6 +183,7 @@ export async function runDirectorAgent(input: {
         await addWorkflowStep(input.context, { runId: workflowRun.id, sequence: stepSequence, specialist: specialistForTool(call.name), label, status: block.status, toolExecutionId: block.executionId, toolInput: call.arguments, output: result })
         if (block.status === "completed") completedSteps += 1
         if (block.status === "awaiting_approval") awaitingApproval += 1
+        emit({ type: "tool", tool: call.name, label, status: block.status, agent: agentName })
         items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify(result), thoughtSignature: call.thoughtSignature })
       } catch (error) {
         const recovery = directorRecovery(error)
@@ -173,6 +192,7 @@ export async function runDirectorAgent(input: {
         block.error = message
         failedSteps += 1
         await addWorkflowStep(input.context, { runId: workflowRun.id, sequence: stepSequence, specialist: specialistForTool(call.name), label, status: "failed", toolInput: call.arguments, error: { message } })
+        emit({ type: "tool", tool: call.name, label, status: "failed", agent: agentName })
         items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify({ error: message }), thoughtSignature: call.thoughtSignature })
         timeline.push({ type: "warning", code: recovery.code, message: recovery.message, recoverable: recovery.recoverable, actions: recovery.suggestedIntent && recovery.suggestedLabel ? [{ id: `recover-${stepSequence}`, label: recovery.suggestedLabel, intent: recovery.suggestedIntent, payload: {}, risk: "read", recommended: true }] : [] })
       }

@@ -3,6 +3,7 @@ import { ZodError } from "zod"
 import { buildDirectorInstructions, selectConversationWindow } from "@/lib/studio/conversation"
 import { activeDirectorModels } from "@/lib/studio/ai-models"
 import { directorChatInputSchema } from "@/lib/studio/domain"
+import { describeError } from "@/lib/studio/errors"
 import { defaultOpenAIDirectorModel, OpenAIProviderError } from "@/lib/studio/openai"
 import { GoogleProviderError } from "@/lib/studio/google"
 import { generateOpenAIImage } from "@/lib/studio/openai"
@@ -86,14 +87,58 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       episodeId: episode.id,
       mentionedEntities: (mentionedEntities || []) as MentionableEntity[],
     })
-    const response = await runDirectorAgent({ context, model, instructions: await buildWorkflowInstructions(context, episode.id, sessionId, buildDirectorInstructions(project, globalInstructions)), messages: selectConversationWindow([...(history || []).filter((item) => item.content).map((item) => ({ role: item.role as "user" | "assistant", content: item.content as string })), { role: "user", content: modelMessage }]), sessionId, idempotencyKey: body.idempotencyKey, runtimeSettings, episodeId: episode.id, objective: modelMessage, visionAttachments })
-    const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, role: "assistant", content: response.content, tool_calls: response.toolCalls, suggested_actions: response.suggestedActions, timeline_blocks: response.timeline, timeline_version: 1 }).select().single()
-    if (assistantError) throw assistantError
-    return NextResponse.json({ sessionId, userMessage, assistantMessage, provider: model.startsWith("gemini") ? "google" : "openai", model, usage: response.usage })
+    const agentInput = {
+      context,
+      model,
+      instructions: await buildWorkflowInstructions(context, episode.id, sessionId, buildDirectorInstructions(project, globalInstructions)),
+      messages: selectConversationWindow([...(history || []).filter((item) => item.content).map((item) => ({ role: item.role as "user" | "assistant", content: item.content as string })), { role: "user", content: modelMessage }]),
+      sessionId,
+      idempotencyKey: body.idempotencyKey,
+      runtimeSettings,
+      episodeId: episode.id,
+      objective: modelMessage,
+      visionAttachments,
+    }
+    const persistAssistantMessage = async (response: Awaited<ReturnType<typeof runDirectorAgent>>) => {
+      const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, role: "assistant", content: response.content, tool_calls: response.toolCalls, suggested_actions: response.suggestedActions, timeline_blocks: response.timeline, timeline_version: 1 }).select().single()
+      if (assistantError) throw assistantError
+      return { sessionId, userMessage, assistantMessage, provider: model.startsWith("gemini") ? "google" : "openai", model, usage: response.usage }
+    }
+
+    // A non-streaming client still gets the single JSON body it expects.
+    if (!body.stream) return NextResponse.json(await persistAssistantMessage(await runDirectorAgent(agentInput)))
+
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const send = (event: Record<string, unknown>) => {
+          try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`)) } catch { /* client went away */ }
+        }
+        try {
+          send({ type: "start", sessionId })
+          const response = await runDirectorAgent({ ...agentInput, onEvent: send })
+          send({ type: "done", ...(await persistAssistantMessage(response)) })
+        } catch (error) {
+          console.error("DIRECTOR CHAT STREAM ERROR:", error)
+          send({ type: "error", error: describeError(error, "AI Director chat failed") })
+        } finally {
+          controller.close()
+        }
+      },
+    })
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        // Proxies that buffer would defeat the point of streaming.
+        "X-Accel-Buffering": "no",
+      },
+    })
   } catch (error) {
     console.error("DIRECTOR CHAT ERROR:", error)
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid chat request", issues: error.flatten() }, { status: 400 })
-    return NextResponse.json({ error: error instanceof Error ? error.message : "AI Director chat failed" }, { status: (error instanceof OpenAIProviderError || error instanceof GoogleProviderError) ? error.status : studioErrorStatus(error) })
+    return NextResponse.json({ error: describeError(error, "AI Director chat failed") }, { status: (error instanceof OpenAIProviderError || error instanceof GoogleProviderError) ? error.status : studioErrorStatus(error) })
   }
 }
 

@@ -233,6 +233,7 @@ export default function WorkspacePage({
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [chatSending, setChatSending] = useState(false);
+  const [streamingReply, setStreamingReply] = useState<{ content: string; status: string | null } | null>(null);
   const [chatError, setChatError] = useState<string | null>(null);
   const [proposalBusy, setProposalBusy] = useState<string | null>(null);
   const [chatUploading, setChatUploading] = useState(false);
@@ -392,22 +393,66 @@ export default function WorkspacePage({
       const response = await fetch(`/api/studio/projects/${projectId}/director/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ episodeId: episode.id, sessionId: data.activeSessionId || chatSessionId || undefined, message: outgoing, mentionedEntityIds, model: directorModel, idempotencyKey: crypto.randomUUID() }),
+        body: JSON.stringify({ episodeId: episode.id, sessionId: data.activeSessionId || chatSessionId || undefined, message: outgoing, mentionedEntityIds, model: directorModel, idempotencyKey: crypto.randomUUID(), stream: true }),
       });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "AI Director could not respond");
+      if (!response.ok || !response.body) {
+        const failed = await response.json().catch(() => ({}));
+        throw new Error(failed.error || "AI Director could not respond");
+      }
+
+      // The run answers as it goes: assistant text arrives as deltas and each
+      // tool reports when it starts and finishes, so the chat shows progress
+      // instead of sitting silent until the whole loop is done.
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let json: Record<string, unknown> = {};
+      let streamError = "";
+      setStreamingReply({ content: "", status: null });
+
+      const handleEvent = (event: Record<string, unknown>) => {
+        if (event.type === "text" && typeof event.delta === "string") {
+          setStreamingReply((current) => ({ status: null, content: (current?.content || "") + (event.delta as string) }));
+        } else if (event.type === "tool") {
+          const running = event.status === "running";
+          setStreamingReply((current) => ({
+            content: current?.content || "",
+            status: running ? `${event.label}…` : event.status === "failed" ? `${event.label} failed` : `${event.label} done`,
+          }));
+        } else if (event.type === "error") {
+          streamError = String(event.error || "AI Director could not respond");
+        } else if (event.type === "done") {
+          json = event;
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() || "";
+        for (const frame of frames) {
+          const line = frame.split("\n").find((entry) => entry.startsWith("data:"));
+          if (!line) continue;
+          try { handleEvent(JSON.parse(line.slice(5).trim())); } catch { /* ignore a partial frame */ }
+        }
+      }
+      setStreamingReply(null);
+      if (streamError) throw new Error(streamError);
       notifyCreditBalanceChanged(typeof json.creditBalance === "number" ? json.creditBalance : undefined);
-      if (json.sessionId) setChatSessionId(json.sessionId);
+      if (json.sessionId) setChatSessionId(json.sessionId as string);
       setData((current) => current && json.assistantMessage ? {
         ...current,
-        activeSessionId: json.sessionId || current.activeSessionId,
+        activeSessionId: (json.sessionId as string) || current.activeSessionId,
         chatMessages: [
           ...current.chatMessages,
-          json.assistantMessage,
+          json.assistantMessage as Workspace["chatMessages"][number],
         ],
       } : current);
       await load(true);
     } catch (error) {
+      setStreamingReply(null);
       notifyCreditBalanceChanged();
       setChatError(error instanceof Error ? error.message : "AI Director could not respond");
       await load(true);
@@ -949,7 +994,7 @@ export default function WorkspacePage({
                 <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} entities={data.entities} shots={data.shots} projectId={projectId} busyId={proposalBusy} onDecide={decideProposal} onAction={sendDirectorMessage} />
               </div>
             ))}
-            {chatSending && <ThinkingBubble />}
+            {chatSending && <ThinkingBubble reply={streamingReply} />}
             <PendingProposalCards
               proposals={data.actionProposals}
               excludeIds={data.chatMessages.flatMap((item) => proposalIdsFromActions(item.suggested_actions))}
@@ -4048,17 +4093,26 @@ function GenerationPreviewError({ message }: { message: string }) {
 
 type ChatProposal = Workspace["actionProposals"][number];
 
-function ThinkingBubble() {
+function ThinkingBubble({ reply }: { reply?: { content: string; status: string | null } | null }) {
+  // Once text starts arriving the bubble becomes the reply itself, so the
+  // answer reads as it is written rather than appearing all at once.
+  const label = reply?.status || "AI Director is thinking";
   return (
     <div className="mt-3 max-w-[90%] rounded-xl bg-[#1a1a1a] p-3 text-[13px] text-zinc-300">
       <div className="flex items-center gap-2">
-        <span className="text-[12px] text-zinc-400">AI Director is thinking</span>
+        <span className="text-[12px] text-zinc-400">{label}</span>
         <span className="flex gap-1" aria-hidden="true">
           <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#b9f42e]" />
           <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#b9f42e] [animation-delay:120ms]" />
           <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#b9f42e] [animation-delay:240ms]" />
         </span>
       </div>
+      {reply?.content ? (
+        <p className="mt-2 whitespace-pre-wrap leading-relaxed">
+          {reply.content}
+          <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-[#b9f42e] align-middle" aria-hidden="true" />
+        </p>
+      ) : null}
     </div>
   );
 }

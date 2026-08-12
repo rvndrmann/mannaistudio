@@ -100,6 +100,15 @@ export async function createDirectorToolTurn(input: {
     output?: Array<{ type?: string; call_id?: string; name?: string; arguments?: string; content?: Array<{ type?: string; text?: string }> }>
     usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number }
   }
+  return parseDirectorResponse(data)
+}
+
+function parseDirectorResponse(data: {
+  id?: string
+  output_text?: string
+  output?: Array<{ type?: string; call_id?: string; name?: string; arguments?: string; content?: Array<{ type?: string; text?: string }> }>
+  usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number }
+}) {
   const calls: OpenAIDirectorToolCall[] = (data.output || [])
     .filter((item) => item.type === "function_call" && item.call_id && item.name)
     .map((item) => {
@@ -109,6 +118,71 @@ export async function createDirectorToolTurn(input: {
     })
   const content = data.output_text?.trim() || (data.output || []).flatMap((item) => item.content || []).filter((item) => item.type === "output_text" || item.type === "text").map((item) => item.text || "").join("\n").trim()
   return { id: data.id || "", content, calls, usage: data.usage || {} }
+}
+
+/**
+ * Same turn as createDirectorToolTurn, but reports assistant text as it
+ * arrives. The Director runs a multi-step tool loop, so a turn that calls tools
+ * emits no text at all — the visible progress in that case comes from the
+ * timeline events the agent emits around each tool.
+ */
+export async function streamDirectorToolTurn(input: {
+  userId: string
+  model?: OpenAIDirectorModel
+  instructions: string
+  items: Array<Record<string, unknown>>
+  tools: OpenAIDirectorFunction[]
+  onTextDelta?: (delta: string) => void
+}) {
+  const model = input.model || defaultOpenAIDirectorModel()
+  const response = await openAIRequest("/v1/responses", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      instructions: input.instructions,
+      input: input.items,
+      tools: input.tools.map((tool) => ({ type: "function", ...tool, strict: false })),
+      tool_choice: "auto",
+      stream: true,
+    }),
+  }, input.userId)
+
+  if (!response.body) throw new OpenAIProviderError("OpenAI returned no response stream")
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+  let completed: Parameters<typeof parseDirectorResponse>[0] | null = null
+  let streamedText = ""
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    // SSE frames are separated by a blank line; keep the trailing partial.
+    const frames = buffer.split("\n\n")
+    buffer = frames.pop() || ""
+    for (const frame of frames) {
+      const dataLine = frame.split("\n").find((line) => line.startsWith("data:"))
+      if (!dataLine) continue
+      const payload = dataLine.slice(5).trim()
+      if (!payload || payload === "[DONE]") continue
+      let event: { type?: string; delta?: string; response?: Record<string, unknown> }
+      try { event = JSON.parse(payload) } catch { continue }
+      if (event.type === "response.output_text.delta" && typeof event.delta === "string") {
+        streamedText += event.delta
+        input.onTextDelta?.(event.delta)
+      } else if ((event.type === "response.completed" || event.type === "response.incomplete") && event.response) {
+        completed = event.response as Parameters<typeof parseDirectorResponse>[0]
+      } else if (event.type === "error") {
+        throw new OpenAIProviderError(typeof (event as { message?: string }).message === "string" ? (event as { message: string }).message : "OpenAI stream failed")
+      }
+    }
+  }
+
+  if (!completed) return { id: "", content: streamedText.trim(), calls: [] as OpenAIDirectorToolCall[], usage: {} }
+  const parsed = parseDirectorResponse(completed)
+  return { ...parsed, content: parsed.content || streamedText.trim() }
 }
 
 export async function createOpenAIRealtimeClientSecret(input: { userId: string; voice: string; instructions: string; tools?: OpenAIDirectorFunction[] }) {

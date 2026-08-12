@@ -49,6 +49,8 @@ export const directorChatInputSchema = z.object({
   mentionedEntityIds: z.array(z.string().uuid()).max(20).default([]),
   model: z.string().trim().min(1).max(120).optional(),
   idempotencyKey: z.string().trim().min(8).max(200),
+  // Opt-in so existing callers keep receiving one JSON body.
+  stream: z.boolean().default(false),
 }).strict()
 
 export const createStudioProjectInputSchema = z.object({
