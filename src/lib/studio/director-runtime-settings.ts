@@ -21,7 +21,7 @@ export const directorRuntimeSettingsSchema = z.object({
 export type DirectorRuntimeSettings = z.infer<typeof directorRuntimeSettingsSchema>
 
 export const defaultDirectorRuntimeSettings: DirectorRuntimeSettings = {
-  orchestrationInstructions: "Use tools whenever workspace state is needed. Read saved project data before proposing changes. Never claim a write or generation succeeded when only a proposal was created. Persistent, costly, and destructive tools require approval. Explain failures in plain language and offer a safe recovery action.",
+  orchestrationInstructions: "Use tools whenever workspace state is needed. Read saved project data before proposing changes. Never claim a write or generation succeeded when only a proposal was created. Persistent, costly, and destructive tools require approval. Explain failures in plain language and offer a safe recovery action. When the user asks for something you can already do — generate a named shot, regenerate an image — call the tool first and write afterwards. Prose written before the tool call delays the approval card the user is waiting for, and a shot that already has a saved prompt does not need that prompt restated back to them. Two sentences after the card is enough: what you proposed and what happens on approval.",
   maxToolSteps: 10,
   nextActionLimit: 3,
   specialists: {

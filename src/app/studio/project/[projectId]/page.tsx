@@ -501,6 +501,9 @@ export default function WorkspacePage({
             content: current?.content || "",
             status: running ? `${event.label}…` : event.status === "failed" ? `${event.label} failed` : `${event.label} done`,
           }));
+        } else if (event.type === "proposal") {
+          // Pull the card into view immediately rather than at the end of the run.
+          void load(true);
         } else if (event.type === "error") {
           streamError = String(event.error || "AI Director could not respond");
         } else if (event.type === "done") {

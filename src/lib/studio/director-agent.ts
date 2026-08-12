@@ -14,6 +14,7 @@ import { directorRecovery } from "./recovery"
 export type DirectorStreamEvent =
   | { type: "text"; delta: string }
   | { type: "tool"; tool: string; label: string; status: string; agent?: string }
+  | { type: "proposal"; proposalId: string; title: string }
 
 const toolDescriptions: Record<DirectorToolName, string> = {
   inspect_current_project: "Read the current project settings and creative brief.",
@@ -228,6 +229,10 @@ export async function runDirectorAgent(input: {
         if (result.proposal) {
           timeline.push({ type: "proposal", proposalId: result.proposal.id, title: result.proposal.title })
           suggestedActions.push({ type: "proposal", proposal: result.proposal })
+          // Announced the instant it exists. The run may still have steps left,
+          // and waiting for the whole loop to finish before showing an approval
+          // card is most of the delay between asking and being able to act.
+          emit({ type: "proposal", proposalId: result.proposal.id, title: result.proposal.title })
         }
         await addWorkflowStep(input.context, { runId: workflowRun.id, sequence: stepSequence, specialist: specialistForTool(call.name), label, status: block.status, toolExecutionId: block.executionId, toolInput: call.arguments, output: result })
         if (block.status === "completed") completedSteps += 1
