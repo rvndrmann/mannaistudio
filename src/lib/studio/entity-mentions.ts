@@ -110,5 +110,11 @@ export function buildEntityMentionContext(entities: MentionableEntity[]) {
     withoutArt.length
       ? `${withoutArt.map((entity) => `@${entity.name}`).join(", ")} have no reference image, so nothing visual is locked in for them yet. Offer to generate one before using them in a shot.`
       : "Every mentioned entity already has reference art. Reuse it for visual consistency instead of inventing a new look.",
-  ].join("\n")
+    // A description written before the art existed will contradict it — a
+    // photograph says what someone's hair and face are, and the text should not
+    // be allowed to argue. Only the description's non-physical parts still count.
+    entities.length > withoutArt.length
+      ? "For any entity with reference art, that image is the authority on physical appearance: face, hair colour and style, skin, build, and age. Where a description disagrees with the image, follow the image and ignore the conflicting words. Descriptions still govern wardrobe, mood, and behaviour unless the shot says otherwise."
+      : "",
+  ].filter(Boolean).join("\n")
 }
