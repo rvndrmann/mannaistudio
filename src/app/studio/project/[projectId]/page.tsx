@@ -3025,7 +3025,7 @@ function MentionedPrompt({ text, entities }: { text: string; entities: Entity[] 
             <span className="rounded bg-[#b9f42e]/15 px-1 font-semibold text-[#b9f42e]">@{part.name}</span>
             <span className="pointer-events-none absolute bottom-full left-0 z-30 mb-1 hidden w-40 overflow-hidden rounded-lg border border-white/15 bg-[#1c1c1c] shadow-xl group-hover/mention:block">
               {image
-                ? <AssetImage src={image} />
+                ? <AssetThumb src={image} />
                 : <span className="block px-2 py-3 text-[11px] text-zinc-500">No reference image yet</span>}
               <span className="block truncate px-2 py-1 text-[11px] text-zinc-300">{part.name}</span>
             </span>
@@ -3228,11 +3228,14 @@ function Storyboard({
                     ) : (
                       <>
                         <div className="mt-3 text-sm leading-6 text-zinc-300">
-                          <p className={isExpanded ? "" : "line-clamp-3"}>
+                          {/* A div, not a p: the mention chips carry a hover
+                              preview containing block elements, which is
+                              invalid inside a paragraph and breaks hydration. */}
+                          <div className={isExpanded ? "" : "line-clamp-3"}>
                             {shot.prompt
                               ? <MentionedPrompt text={shot.prompt} entities={entities} />
                               : "Add a detailed prompt with the visual direction, camera framing, movement and continuity for this shot."}
-                          </p>
+                          </div>
                           {shot.prompt && shot.prompt.length > 130 && (
                             <button
                               onClick={toggleExpanded}
@@ -3309,8 +3312,8 @@ function Storyboard({
                                     className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left hover:bg-white/5"
                                   >
                                     <span className={`grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] font-black ${active ? "border-[#b9f42e] bg-[#b9f42e] text-black" : "border-white/25 text-transparent"}`}>✓</span>
-                                    <span className="h-8 w-8 shrink-0 overflow-hidden rounded">
-                                      <AssetImage src={entityPrimaryReference(entity)} />
+                                    <span className="block h-8 w-8 shrink-0 overflow-hidden rounded">
+                                      <AssetThumb src={entityPrimaryReference(entity)} className="block h-full w-full object-cover" />
                                     </span>
                                     <span className="min-w-0 flex-1">
                                       <span className="block truncate text-[12px] text-zinc-200">{entity.name}</span>
@@ -5557,6 +5560,20 @@ function AssetImage({ src, className }: { src?: string; className?: string }) {
     </div>
   );
 }
+// AssetImage wraps its <img> in a div, which is invalid inside a <span> and
+// breaks hydration. Mention chips are inline, so they need a bare image.
+function AssetThumb({ src, className }: { src?: string; className?: string }) {
+  const [url, setUrl] = useState<string>();
+  useEffect(() => {
+    if (!src) return;
+    let active = true;
+    getSignedMediaUrl(src).then((signed) => { if (active && signed) setUrl(signed); });
+    return () => { active = false; };
+  }, [src]);
+  if (!url) return null;
+  return <img src={url} alt="" className={className || "block h-24 w-full object-cover"} />;
+}
+
 function AssetVideo({ src }: { src?: string }) {
   const [url, setUrl] = useState<string>();
   useEffect(() => {
