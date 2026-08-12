@@ -38,7 +38,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { data: mentionedEntities, error: mentionedEntityError } = uniqueMentionIds.length
       ? await context.supabase
         .from("creator_entities")
-        .select("id,name,type,description,reference_images,primary_reference_image,metadata")
+        .select("*")
         .eq("project_id", projectId)
         .in("id", uniqueMentionIds)
       : { data: [], error: null }
@@ -326,7 +326,7 @@ async function generateBulkEntityReferenceImages(
 ) {
   const { data: entities, error } = await input.context.supabase
     .from("creator_entities")
-    .select("id,name,type,description,reference_images,primary_reference_image,metadata,status")
+    .select("*")
     .eq("project_id", input.projectId)
     .in("type", intent.types)
     .order("created_at")
@@ -386,7 +386,7 @@ async function generateBulkEntityReferenceImages(
           console.warn(`Could not register ${entity.name} as a BytePlus asset:`, registrationError)
         }
       }
-      const referenceImages = intent.regenerate ? [path, ...existingReferences.filter((item) => item !== path)] : [...existingReferences, path]
+      const referenceImages = intent.regenerate ? [path, ...existingReferences.filter((item: string) => item !== path)] : [...existingReferences, path]
       const metadata = {
         ...currentMetadata,
         ...(byteplusAssetId ? { byteplus_asset_id: byteplusAssetId } : {}),

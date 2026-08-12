@@ -41,7 +41,7 @@ export async function executeGenerationJobsInBackground(
           // the project owns. Reading the @mentions out of the prompt keeps an
           // unrelated character or prop from being fed into the frame.
           const { data: projectEntities } = await context.supabase
-            .from("creator_entities").select("id,name,type,metadata,reference_images,primary_reference_image").eq("project_id", context.project.id)
+            .from("creator_entities").select("*").eq("project_id", context.project.id)
           const declaredIds = Array.isArray(settings.mentionedEntityIds) ? settings.mentionedEntityIds as string[] : []
           const promptMentionIds = findShotCastEntityIds(job.prompt || "", (projectEntities || []) as MentionableEntity[], declaredIds)
           // The prompt wins when it names anyone; the declared list is only the

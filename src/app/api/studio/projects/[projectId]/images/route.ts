@@ -45,7 +45,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { data: mentionedEntities, error: mentionedEntityError } = input.mentionedEntityIds.length
       ? await context.supabase
         .from("creator_entities")
-        .select("id,name,type,description,reference_images,primary_reference_image,metadata")
+        .select("*")
         .eq("project_id", projectId)
         .in("id", input.mentionedEntityIds)
       : { data: [], error: null }
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const metadata = entity.metadata && typeof entity.metadata === "object" ? entity.metadata as Record<string, unknown> : {}
       const byteplusAssetId = typeof metadata.byteplus_asset_id === "string" ? metadata.byteplus_asset_id.trim() : ""
       if (provider === "byteplus" && byteplusAssetId) mentionReferencePaths.push(byteplusAssetId)
-      else if (Array.isArray(entity.reference_images)) mentionReferencePaths.push(...entity.reference_images.filter((path): path is string => typeof path === "string" && Boolean(path.trim())))
+      else if (Array.isArray(entity.reference_images)) mentionReferencePaths.push(...(entity.reference_images as unknown[]).filter((path): path is string => typeof path === "string" && Boolean(path.trim())))
     }
     const combinedReferencePaths = Array.from(new Set([...mentionReferencePaths, ...input.referenceImages])).slice(0, 8)
     const mentionContext = buildEntityMentionContext((mentionedEntities || []) as MentionableEntity[])
