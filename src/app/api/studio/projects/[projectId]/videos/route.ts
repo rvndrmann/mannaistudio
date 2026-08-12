@@ -7,7 +7,7 @@ import { getGoogleVideoTask, GoogleProviderError, submitGoogleVideo } from "@/li
 import { generationProvider, isVideoGenerationModel } from "@/lib/studio/generation-models"
 import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
-import { buildEntityMentionContext, type MentionableEntity } from "@/lib/studio/entity-mentions"
+import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
 
 const submitSchema = z.object({
@@ -111,12 +111,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
               }
             }
           }
-        } else if (Array.isArray(entity.reference_images)) {
-          for (const img of entity.reference_images) {
-            if (typeof img === "string" && img.trim()) {
-              combinedReferencePaths.push(img.trim())
-            }
-          }
+        } else {
+          // One image per entity: its chosen reference. Pushing every image an
+          // entity owns fills the reference budget with a few subjects and
+          // drops the rest of the cast before the provider sees it.
+          const chosen = entityPrimaryReference(entity as MentionableEntity)
+          if (chosen) combinedReferencePaths.push(chosen.trim())
         }
       }
     }

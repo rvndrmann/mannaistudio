@@ -8,7 +8,7 @@ import { generateGoogleImage, GoogleProviderError } from "@/lib/studio/google"
 import { generationProvider, isImageGenerationModel, type ImageGenerationModelId } from "@/lib/studio/generation-models"
 import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
-import { buildEntityMentionContext, type MentionableEntity } from "@/lib/studio/entity-mentions"
+import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
 
 const imageRequestSchema = z.object({
@@ -66,7 +66,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const metadata = entity.metadata && typeof entity.metadata === "object" ? entity.metadata as Record<string, unknown> : {}
       const byteplusAssetId = typeof metadata.byteplus_asset_id === "string" ? metadata.byteplus_asset_id.trim() : ""
       if (provider === "byteplus" && byteplusAssetId) mentionReferencePaths.push(byteplusAssetId)
-      else if (Array.isArray(entity.reference_images)) mentionReferencePaths.push(...(entity.reference_images as unknown[]).filter((path): path is string => typeof path === "string" && Boolean(path.trim())))
+      else {
+        // One image per entity: its chosen reference. Sending every image an
+        // entity owns spends the eight-reference budget on a few subjects and
+        // silently drops the rest of the cast before the provider sees it.
+        const chosen = entityPrimaryReference(entity as MentionableEntity)
+        if (chosen) mentionReferencePaths.push(chosen)
+      }
     }
     const combinedReferencePaths = Array.from(new Set([...mentionReferencePaths, ...input.referenceImages])).slice(0, 8)
     const mentionContext = buildEntityMentionContext((mentionedEntities || []) as MentionableEntity[])

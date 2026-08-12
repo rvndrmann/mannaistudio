@@ -15,7 +15,7 @@ import { fetchDirectorWorkflows } from "@/lib/studio/workflows"
 import { normalizeDirectorGlobalInstructions } from "@/lib/studio/instructions"
 import { runDirectorAgent } from "@/lib/studio/director-agent"
 import { fetchDirectorRuntimeSettings } from "@/lib/studio/director-runtime-settings"
-import { buildEntityMentionContext, type MentionableEntity } from "@/lib/studio/entity-mentions"
+import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { collectDirectorVisionAttachments } from "@/lib/studio/director-vision"
 import { buildEntityReferenceImagePrompt, parseBulkEntityImageIntent, projectVisualStyle, visualStyleDirective, type BulkEntityImageIntent } from "@/lib/studio/entity-image-workflow"
 import { createBytePlusAsset } from "@/lib/studio/byteplus"
@@ -254,7 +254,11 @@ async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<t
     const projectDefaultAspect = typeof input.context.project.default_aspect === "string" ? input.context.project.default_aspect : null
     const aspectRatio = targetShot?.aspect_ratio || projectDefaultAspect || "9:16"
     const resolvedPrompt = [prompt, `Required composition: ${aspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
-    const referencePaths = Array.from(new Set(input.mentionedEntities.flatMap((entity) => entity.reference_images || []))).slice(0, 8)
+    // The chosen reference per entity, not every image it owns: eight slots
+    // should mean eight subjects, not three angles of the same character.
+    const referencePaths = Array.from(new Set(input.mentionedEntities
+      .map((entity) => entityPrimaryReference(entity))
+      .filter((path): path is string => Boolean(path)))).slice(0, 8)
     const referenceUrls = await signedMentionReferences(input.context, referencePaths)
     const creditCost = calculateCreditCost("gpt-image-2", "image", 5, { quality: "Medium", aspectRatio })
     const deduction = await deductUserCredits(
