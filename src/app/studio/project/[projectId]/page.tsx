@@ -4695,13 +4695,24 @@ function VideoGenerationProposalBlock({
   // time, so the card must show them too. Without this it displayed only the
   // composition keyframe and looked like the cast was being ignored.
   const entityReferences = useMemo(() => {
-    const ids = findShotCastEntityIds(prompt, entities, request.mentionedEntityIds || []);
-    return ids
+    // The shots this request covers, so the card can fall back to their saved
+    // cast exactly as generation does. A prompt that describes its characters
+    // in prose rather than with @mentions still references them, and showing
+    // nothing made the card look like it would generate with no likeness lock.
+    const targetShots = shots.filter((shot) =>
+      (request.shotIds || []).includes(shot.id)
+      || (request.shotNumbers || []).includes(shot.order_index + 1));
+    const shotCast = Array.from(new Set(targetShots.flatMap((shot) => shot.referenced_entities || [])));
+    const declared = Array.from(new Set([...(request.mentionedEntityIds || []), ...shotCast]));
+    const ids = findShotCastEntityIds(prompt, entities, declared);
+    const resolved = ids.length ? ids : shotCast;
+    return resolved
       .map((id) => entities.find((entity) => entity.id === id))
       .filter((entity): entity is Entity => Boolean(entity))
       .map((entity) => ({ entity, image: entityPrimaryReference(entity) }))
       .filter((item): item is { entity: Entity; image: string } => Boolean(item.image));
-  }, [prompt, entities, request.mentionedEntityIds]);
+  }, [prompt, entities, shots, request.mentionedEntityIds, request.shotIds, request.shotNumbers]);
+
 
   const uploadReference = async (file?: File) => {
     if (!file) return;
