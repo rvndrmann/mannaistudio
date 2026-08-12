@@ -146,7 +146,10 @@ export async function decideDirectorProposal(context: AuthenticatedProjectContex
     const payload = mergeProposalPayload(proposal.payload, overrides)
     const input = tool.input.parse(payload)
     if (overrides && Object.keys(overrides).length) {
-      await context.supabase.from("creator_action_proposals").update({ payload }).eq("id", proposalId)
+      // Bookkeeping only: execution already uses the merged payload above. A
+      // failure here must not block work the user has approved and paid for.
+      const { error: payloadError } = await context.supabase.from("creator_action_proposals").update({ payload }).eq("id", proposalId)
+      if (payloadError) console.warn("Could not persist edited proposal payload:", payloadError.message)
       await audit(context, "tool.proposal_edited", "creator_action_proposals", proposalId, { tool: proposal.action_type, overrides })
     }
     const data = await tool.execute(context, input as never)
@@ -161,7 +164,11 @@ export async function decideDirectorProposal(context: AuthenticatedProjectContex
   }
 }
 
+// Audit writes are a record of what happened, not a precondition for it. This
+// runs after generation has been submitted and credits deducted, so a failed
+// insert must be reported rather than thrown — throwing here marked a
+// successful, paid generation as failed.
 async function audit(context: AuthenticatedProjectContext, eventType: string, entityType: string, entityId: string, details: Record<string, unknown>) {
   const { error } = await context.supabase.from("creator_audit_events").insert({ project_id: context.project.id, user_id: context.user.id, actor_type: "user", event_type: eventType, entity_type: entityType, entity_id: entityId, details })
-  if (error) throw error
+  if (error) console.warn(`Could not record audit event ${eventType}:`, error.message)
 }

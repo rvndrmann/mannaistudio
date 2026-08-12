@@ -4,6 +4,7 @@ import { fetchStudioFeatureFlags } from "@/lib/studio/feature-flags"
 import { requireAuthenticatedProject, studioErrorStatus } from "@/lib/studio/server-context"
 import { decideDirectorProposal } from "@/lib/studio/tool-service"
 import { enforceStudioRateLimit, StudioRateLimitError } from "@/lib/studio/rate-limit"
+import { describeError } from "@/lib/studio/errors"
 
 // `overrides` carries edits made in the chat generation block. It is merged
 // into the stored payload and then validated by the tool's own input schema,
@@ -24,6 +25,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json(await decideDirectorProposal(context, proposalId, decision, overrides))
   } catch (error) {
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid proposal decision", issues: error.flatten() }, { status: 400 })
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Proposal decision failed" }, { status: error instanceof StudioRateLimitError ? 429 : studioErrorStatus(error) })
+    // Supabase rejects with a PostgrestError, which is a plain object rather
+    // than an Error. Reporting only "Proposal decision failed" for those hid
+    // every database cause behind an unactionable message.
+    console.error("PROPOSAL DECISION ERROR:", error)
+    return NextResponse.json({ error: describeError(error, "Proposal decision failed") }, { status: error instanceof StudioRateLimitError ? 429 : studioErrorStatus(error) })
   }
 }
