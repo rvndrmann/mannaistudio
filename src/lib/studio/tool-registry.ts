@@ -423,7 +423,7 @@ export const submitGenerationTool = defineDirectorTool({
     const { data: shots, error: shotError } = episodeIds.length ? await context.supabase.from("creator_shots").select("id").in("episode_id", episodeIds).in("id", request.shotIds) : { data: [], error: null }
     if (shotError) throw shotError
     if ((shots ?? []).length !== request.shotIds.length) throw new Error("One or more shots do not belong to this project")
-    const { data: generationShots, error: validationError } = await context.supabase.from("creator_shots").select("id,prompt,referenced_entities").in("id", request.shotIds)
+    const { data: generationShots, error: validationError } = await context.supabase.from("creator_shots").select("id,prompt,referenced_entities,keyframe_image,video_url").in("id", request.shotIds)
     if (validationError) throw validationError
     const { data: projectEntityRows } = await context.supabase.from("creator_entities").select("id,name,type").eq("project_id", context.project.id)
     const entityIndex = (projectEntityRows || []) as MentionableEntity[]
@@ -452,7 +452,22 @@ export const submitGenerationTool = defineDirectorTool({
     // References chosen in the generation block replace the ones captured when
     // the proposal was created, so an edited proposal generates from what the
     // user can actually see on the card.
-    const inputImages = request.referencePaths.length ? request.referencePaths : undefined
+    // One referencePaths list covers the whole batch, but a shot's keyframe is
+    // a composition reference for that shot alone. Without this, generating
+    // four shots fed every shot's keyframe into all four of them.
+    const shotOwnedMedia = new Map<string, string>()
+    for (const shot of generationShots || []) {
+      for (const path of [shot.keyframe_image, shot.video_url]) {
+        if (typeof path === "string" && path.trim()) shotOwnedMedia.set(path, shot.id)
+      }
+    }
+    const inputImagesFor = (shotId: string) => {
+      const scoped = request.referencePaths.filter((path) => {
+        const owner = shotOwnedMedia.get(path)
+        return !owner || owner === shotId
+      })
+      return scoped.length ? scoped : undefined
+    }
     // A model that addressed shots by number keys its prompts the same way, and
     // a shot that already carries a saved storyboard prompt does not need the
     // model to restate it — refusing to generate in that case only blocks work
@@ -466,7 +481,7 @@ export const submitGenerationTool = defineDirectorTool({
       }
       return savedPrompts.get(shotId) || ""
     }
-    const jobs = request.shotIds.map((shotId, index) => ({ user_id: context.user.id, project_id: context.project.id, shot_id: shotId, type: request.type, status: "approved", model: routing.selected.model, provider: routing.selected.provider, prompt: promptFor(shotId), settings: request, ...(inputImages ? { input_images: inputImages } : {}), estimated_credits: routing.creditsPerShot, requires_approval: true, approved_at: new Date().toISOString(), operation: request.type === "video" ? "submit_video_generation" : "submit_image_generation", idempotency_key: `${input.idempotencyKey}:${index}`, routing_decision: routing, cost_estimate: { credits: routing.creditsPerShot } }))
+    const jobs = request.shotIds.map((shotId, index) => ({ user_id: context.user.id, project_id: context.project.id, shot_id: shotId, type: request.type, status: "approved", model: routing.selected.model, provider: routing.selected.provider, prompt: promptFor(shotId), settings: request, ...((): Record<string, unknown> => { const images = inputImagesFor(shotId); return images ? { input_images: images } : {} })(), estimated_credits: routing.creditsPerShot, requires_approval: true, approved_at: new Date().toISOString(), operation: request.type === "video" ? "submit_video_generation" : "submit_image_generation", idempotency_key: `${input.idempotencyKey}:${index}`, routing_decision: routing, cost_estimate: { credits: routing.creditsPerShot } }))
     const unprompted = jobs.filter((job) => !job.prompt).map((job) => job.shot_id)
     if (unprompted.length) throw new Error(`No prompt available for ${unprompted.length} shot(s). Add a prompt to the storyboard shot, or pass one in prompts.`)
     const { data, error } = await context.supabase.from("creator_generation_jobs").insert(jobs).select("*")
