@@ -276,7 +276,7 @@ export default function WorkspacePage({
         if (!nextModels.length) return;
         setDirectorModels(nextModels);
         applyPreference(nextModels);
-      });
+      }, () => { /* the default catalog already applied above */ });
   }, []);
   const [assetType, setAssetType] = useState<Entity["type"] | null>(null);
   const [episodeId, setEpisodeId] = useState<string | null>(null);
@@ -2159,9 +2159,11 @@ function AssetWorkspace({
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   useEffect(() => {
+    // getUser touches the auth lock, which supabase may steal from a stalled
+    // refresh; an unhandled rejection here would crash the workspace.
     createClient().auth.getUser().then(({ data }) => {
-      if (data.user) getUserCredits(data.user.id).then(setCreditBalance);
-    });
+      if (data.user) getUserCredits(data.user.id).then(setCreditBalance).catch(() => {});
+    }).catch(() => {});
   }, []);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
   const [picker, setPicker] = useState(false);
@@ -3178,9 +3180,11 @@ function ShotMediaWorkspace({
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   useEffect(() => {
+    // getUser touches the auth lock, which supabase may steal from a stalled
+    // refresh; an unhandled rejection here would crash the workspace.
     createClient().auth.getUser().then(({ data }) => {
-      if (data.user) getUserCredits(data.user.id).then(setCreditBalance);
-    });
+      if (data.user) getUserCredits(data.user.id).then(setCreditBalance).catch(() => {});
+    }).catch(() => {});
   }, []);
   const [picker, setPicker] = useState(false);
   const [referenceSourcePicker, setReferenceSourcePicker] = useState(false);
@@ -5207,10 +5211,16 @@ function AssetImage({ src, className }: { src?: string; className?: string }) {
   const [url, setUrl] = useState<string>();
   useEffect(() => {
     if (!src || src.startsWith("http")) return;
+    let active = true;
     createClient()
       .storage.from("creator-studio-media")
       .createSignedUrl(src, 3600)
-      .then(({ data }) => setUrl(data?.signedUrl));
+      // Signing goes through the auth token, and supabase steals its own web
+      // lock to break a stalled refresh. That rejects with AbortError, which
+      // unhandled takes down the whole page over one missing thumbnail.
+      .then(({ data }) => { if (active) setUrl(data?.signedUrl); })
+      .catch(() => { /* leave the placeholder in place */ });
+    return () => { active = false; };
   }, [src]);
   const displayUrl = src?.startsWith("http") ? src : url;
   return (
@@ -5223,10 +5233,16 @@ function AssetVideo({ src }: { src?: string }) {
   const [url, setUrl] = useState<string>();
   useEffect(() => {
     if (!src || src.startsWith("http")) return;
+    let active = true;
     createClient()
       .storage.from("creator-studio-media")
       .createSignedUrl(src, 3600)
-      .then(({ data }) => setUrl(data?.signedUrl));
+      // Signing goes through the auth token, and supabase steals its own web
+      // lock to break a stalled refresh. That rejects with AbortError, which
+      // unhandled takes down the whole page over one missing thumbnail.
+      .then(({ data }) => { if (active) setUrl(data?.signedUrl); })
+      .catch(() => { /* leave the placeholder in place */ });
+    return () => { active = false; };
   }, [src]);
   const displayUrl = src?.startsWith("http") ? src : url;
   // Metadata-only preload with a first-frame fragment keeps the grid light
@@ -5284,7 +5300,8 @@ function ResolvedMedia({ src, type, className }: { src: string; type: "image" | 
       .createSignedUrl(src, 3600)
       .then(({ data }) => {
         if (active) setSignedUrl(data?.signedUrl || "");
-      });
+      })
+      .catch(() => { /* a failed signature must not reject unhandled */ });
     return () => {
       active = false;
     };
