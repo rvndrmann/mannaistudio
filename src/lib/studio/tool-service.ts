@@ -159,7 +159,25 @@ function mergeProposalPayload(payload: unknown, overrides: Record<string, unknow
 
 export async function decideDirectorProposal(context: AuthenticatedProjectContext, proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) {
   const { data: proposal, error } = await context.supabase.rpc("creator_decide_action_proposal", { p_proposal_id: proposalId, p_decision: decision })
-  if (error || !proposal) throw error ?? new Error("Proposal unavailable")
+  if (error || !proposal) {
+    // The RPC only says "proposal unavailable". Read the record to say which of
+    // the several reasons it was: the card is usually just stale, and telling
+    // the user it was already approved is the difference between an answer and
+    // a Postgres error code.
+    const { data: existing } = await context.supabase
+      .from("creator_action_proposals").select("status,expires_at,user_id").eq("id", proposalId).maybeSingle()
+    if (!existing) throw new Error("This proposal no longer exists. Ask the Director to prepare it again.")
+    if (existing.user_id !== context.user.id) throw new Error("This proposal belongs to another account.")
+    if (existing.status === "approved" || existing.status === "executed") {
+      throw new Error("This generation was already approved and is running. Check the storyboard for its progress.")
+    }
+    if (existing.status === "rejected") throw new Error("This proposal was already cancelled.")
+    if (existing.status === "failed") throw new Error("This proposal already ran and failed. Ask the Director to prepare it again.")
+    if (existing.expires_at && new Date(existing.expires_at).getTime() <= Date.now()) {
+      throw new Error("This proposal expired. Ask the Director to prepare it again.")
+    }
+    throw error ?? new Error("Proposal unavailable")
+  }
   if (proposal.project_id !== context.project.id || proposal.user_id !== context.user.id) throw new Error("Proposal does not belong to this project")
   if (decision === "rejected") {
     await audit(context, "tool.proposal_rejected", "creator_action_proposals", proposalId, { tool: proposal.action_type })
