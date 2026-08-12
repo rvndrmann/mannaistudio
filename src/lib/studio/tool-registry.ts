@@ -464,7 +464,12 @@ export const submitGenerationTool = defineDirectorTool({
     const inputImagesFor = (shotId: string) => {
       const scoped = request.referencePaths.filter((path) => {
         const owner = shotOwnedMedia.get(path)
-        return !owner || owner === shotId
+        if (!owner) return true
+        // Another shot's frame is never this shot's reference. This shot's own
+        // frame is only a reference when the user asked to keep the existing
+        // composition; otherwise a regenerate would just re-derive the picture
+        // it was meant to replace.
+        return owner === shotId && request.useExistingFrame
       })
       return scoped.length ? scoped : undefined
     }

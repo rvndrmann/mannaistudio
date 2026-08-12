@@ -41,3 +41,13 @@ describe("explicit model selection", () => {
     expect(() => routeGeneration({ type: "video", shotIds: [shotId], model: "gpt-image-2" })).toThrow(/does not support/)
   })
 })
+
+describe("existing frame reference", () => {
+  it("is off unless asked for", () => {
+    expect(generationRequestSchema.parse({ type: "image", shotIds: [shotId] }).useExistingFrame).toBe(false)
+  })
+
+  it("can be turned on when the user wants the current composition kept", () => {
+    expect(generationRequestSchema.parse({ type: "image", shotIds: [shotId], useExistingFrame: true }).useExistingFrame).toBe(true)
+  })
+})

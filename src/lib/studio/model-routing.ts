@@ -27,6 +27,10 @@ export const generationRequestSchema = z.object({
   // Clips referenced for motion and look continuity, kept apart from image
   // references because the provider treats the two differently.
   videoReferencePaths: z.array(z.string().trim().min(1).max(2_000)).max(10).default([]),
+  // Feeding a shot's existing frame back in locks the new render to the old
+  // composition. That is occasionally wanted and never the default, so it must
+  // be asked for rather than assumed.
+  useExistingFrame: z.boolean().default(false),
 }).strict().refine(
   (request) => request.shotNumbers.length === 0 || Boolean(request.episodeId),
   { message: "episodeId is required when shots are named by number", path: ["episodeId"] },
