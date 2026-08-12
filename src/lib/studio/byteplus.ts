@@ -236,19 +236,24 @@ export async function createBytePlusAsset(input: { imageUrl: string; name?: stri
     )
   }
 
+  // GroupId is required by CreateAsset, so there is no "attempt without it".
+  // Swallowing a failed group creation here only moved the error one step later
+  // and reported it as a missing parameter, hiding why the group was never made.
   let groupId = input.groupId
   if (!groupId) {
+    const groupName = input.name ? `Group-${input.name.slice(0, 25).replace(/[^a-zA-Z0-9_-]/g, "_")}` : "portrait_group"
     try {
-      const groupName = input.name ? `Group-${input.name.slice(0, 25).replace(/[^a-zA-Z0-9_-]/g, "_")}` : "portrait_group"
       groupId = await createBytePlusAssetGroup(groupName, "Automated AIGC Portrait Group")
     } catch (err) {
-      console.warn("Could not auto-create Asset Group, attempting default:", err)
+      const detail = err instanceof Error ? err.message : "unknown error"
+      throw new BytePlusProviderError(`Could not create the BytePlus asset group needed to register this image: ${detail}`, err instanceof BytePlusProviderError ? err.status : 502)
     }
   }
+  if (!groupId) throw new BytePlusProviderError("BytePlus returned no asset group id, so the image cannot be registered.")
 
   const query = { Action: "CreateAsset", Version: "2024-01-01" }
   const body = JSON.stringify({
-    ...(groupId ? { GroupId: groupId } : {}),
+    GroupId: groupId,
     URL: input.imageUrl,
     Name: input.name || "actor_portrait",
     AssetType: "Image", // strictly 'Image'
