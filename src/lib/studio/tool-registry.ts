@@ -382,6 +382,12 @@ export const submitGenerationTool = defineDirectorTool({
     // that only knows "shot 2" cannot target the wrong shot. order_index is
     // 0-based, matching the number list_storyboard_shots reports.
     let request = input.request
+    // Enforced here rather than on the shared schema: estimate_generation_cost
+    // uses the same shape and legitimately quotes a price before any shot is
+    // chosen, so a schema-level rule failed that tool for no reason.
+    if (!request.shotIds.length && !request.shotNumbers.length) {
+      throw new Error("Name the shots to generate, either as shot numbers from the storyboard or as shot ids from a tool result.")
+    }
     let promptsByNumber = new Map<number, string>()
     if (request.shotNumbers.length) {
       const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", request.episodeId!).eq("project_id", context.project.id).maybeSingle()

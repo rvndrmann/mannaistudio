@@ -15,8 +15,12 @@ describe("generation request shot addressing", () => {
     expect(() => generationRequestSchema.parse({ type: "video", shotNumbers: [2] })).toThrow()
   })
 
-  it("rejects a request that names no shots at all", () => {
-    expect(() => generationRequestSchema.parse({ type: "video" })).toThrow()
+  it("allows a request that names no shots, so a cost estimate can quote a price first", () => {
+    // submit_generation enforces the requirement itself; estimate_generation_cost
+    // shares this schema and legitimately runs before any shot is chosen.
+    const request = generationRequestSchema.parse({ type: "video" })
+    expect(request.shotIds).toEqual([])
+    expect(routeGeneration(request).estimatedCredits).toBe(routeGeneration(request).creditsPerShot)
   })
 
   it("counts unresolved shot numbers so estimates stay correct before lookup", () => {

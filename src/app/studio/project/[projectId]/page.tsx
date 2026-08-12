@@ -1020,7 +1020,7 @@ export default function WorkspacePage({
                 {item.content}
                 <ChatTimeline blocks={item.timeline_blocks} proposals={data.actionProposals} onAction={sendDirectorMessage} disabled={chatSending} />
                 <ChatMedia media={item.media} />
-                <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} entities={data.entities} shots={data.shots} projectId={projectId} busyId={proposalBusy} onDecide={decideProposal} onAction={sendDirectorMessage} />
+                <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} entities={data.entities} shots={data.shots} projectId={projectId} busyId={proposalBusy} onDecide={decideProposal} onAction={sendDirectorMessage} onOpenTab={setTab} />
               </div>
             ))}
             {(chatSending || resumedRun) && <ThinkingBubble reply={chatSending ? streamingReply : { content: "", status: "Picking up where the Director left off" }} />}
@@ -1034,6 +1034,7 @@ export default function WorkspacePage({
               busyId={proposalBusy}
               onDecide={decideProposal}
               onAction={sendDirectorMessage}
+              onOpenTab={setTab}
             />
             {chatError && <p role="alert" className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-[12px] text-red-200">{chatError}</p>}
             {voiceState !== "idle" && <p className={`mt-3 rounded-lg border p-2.5 text-[12px] ${voiceState === "connected" ? "border-[#b9f42e]/30 bg-[#b9f42e]/10 text-[#d9ff84]" : "border-white/[0.06] bg-white/[0.03] text-zinc-300"}`}>{voiceState === "connecting" ? "Connecting your AI Voice Director…" : voiceState === "connected" ? "AI Voice Director is listening. You can speak naturally." : voiceError}</p>}
@@ -4235,6 +4236,7 @@ function ChatSuggestedActions({
   busyId,
   onDecide,
   onAction,
+  onOpenTab,
 }: {
   actions?: Array<Record<string, unknown>> | null;
   proposals: ChatProposal[];
@@ -4244,13 +4246,14 @@ function ChatSuggestedActions({
   busyId: string | null;
   onDecide: (proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) => void;
   onAction: (intent: string) => void;
+  onOpenTab: (tab: string) => void;
 }) {
   const ids = proposalIdsFromActions(actions);
   const matched = proposals.filter((proposal) => ids.includes(proposal.id));
   if (!matched.length) return null;
   return (
     <div className="mt-3 space-y-2">
-      {matched.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} entities={entities} shots={shots} projectId={projectId} busy={busyId === proposal.id} onDecide={onDecide} onAction={onAction} />)}
+      {matched.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} entities={entities} shots={shots} projectId={projectId} busy={busyId === proposal.id} onDecide={onDecide} onAction={onAction} onOpenTab={onOpenTab} />)}
     </div>
   );
 }
@@ -4265,6 +4268,7 @@ function PendingProposalCards({
   busyId,
   onDecide,
   onAction,
+  onOpenTab,
 }: {
   proposals: ChatProposal[];
   excludeIds: string[];
@@ -4275,6 +4279,7 @@ function PendingProposalCards({
   busyId: string | null;
   onDecide: (proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) => void;
   onAction: (intent: string) => void;
+  onOpenTab: (tab: string) => void;
 }) {
   const excluded = new Set(excludeIds);
   // Only the current conversation's approvals belong in this timeline. Without
@@ -4285,7 +4290,7 @@ function PendingProposalCards({
   return (
     <div className="mt-4 flex flex-col">
       <div className="space-y-2 mb-2">
-        {pending.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} entities={entities} shots={shots} projectId={projectId} busy={busyId === proposal.id} onDecide={onDecide} onAction={onAction} />)}
+        {pending.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} entities={entities} shots={shots} projectId={projectId} busy={busyId === proposal.id} onDecide={onDecide} onAction={onAction} onOpenTab={onOpenTab} />)}
       </div>
       <div className="border-l-2 border-y border-[#fff878]/50 border-r-0 py-2.5 pl-3 mt-2 mb-1 rounded-l-md bg-gradient-to-r from-[#fff878]/10 to-transparent">
         <p className="text-[11px] font-medium text-zinc-300">Please handle the pending confirmations above before sending a new message</p>
@@ -4720,6 +4725,16 @@ function VideoGenerationProposalBlock({
   );
 }
 
+// Where an executed proposal's result actually lands, so "view" can go there
+// instead of being a label on the approve button.
+function proposalDestination(actionType: string): { tab: string; label: string } | null {
+  if (actionType.includes("entit") || actionType.includes("asset")) return { tab: "characters", label: "View in Characters & Assets" }
+  if (actionType.includes("shot") || actionType.includes("storyboard") || actionType === "submit_generation") return { tab: "storyboard", label: "View in Storyboard" }
+  if (actionType.includes("script")) return { tab: "script", label: "View in Script" }
+  if (actionType.includes("series") || actionType.includes("brief")) return { tab: "canvas", label: "View in Canvas" }
+  return null
+}
+
 function ProposalCard({
   proposal,
   entities,
@@ -4728,6 +4743,7 @@ function ProposalCard({
   busy,
   onDecide,
   onAction,
+  onOpenTab,
 }: {
   proposal: ChatProposal;
   entities: Entity[];
@@ -4736,11 +4752,13 @@ function ProposalCard({
   busy: boolean;
   onDecide: (proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) => void;
   onAction: (intent: string) => void;
+  onOpenTab: (tab: string) => void;
 }) {
   const canDecide = proposal.status === "pending";
   const isVideo = proposal.action_type.includes("video");
   const isImage = proposal.action_type.includes("image");
   const generationRequest = generationProposalRequest(proposal);
+  const destination = proposalDestination(proposal.action_type);
 
   if (generationRequest) {
     return (
@@ -4787,7 +4805,7 @@ function ProposalCard({
           {proposal.summary || `1 ${proposal.action_type.replaceAll("_", " ")} task is pending confirmation`}
         </p>
         
-        {canDecide && (
+        {canDecide ? (
           <div className="mt-4 flex justify-end gap-2">
             <button
               type="button"
@@ -4801,13 +4819,23 @@ function ProposalCard({
               type="button"
               disabled={busy}
               onClick={() => onDecide(proposal.id, "approved")}
-              className="flex items-center gap-1.5 rounded border border-white/20 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-white/10 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded bg-[#fff878] px-3 py-1.5 text-[11px] font-bold text-black transition hover:bg-[#fff878]/90 disabled:opacity-50"
             >
-              <ArrowRight className="h-3.5 w-3.5" /> 
-              {busy ? "Working..." : "View item"} 
+              {busy ? "Working..." : "Approve"}
             </button>
           </div>
-        )}
+        ) : proposal.status === "executed" && destination ? (
+          <div className="mt-4 flex justify-end">
+            <button
+              type="button"
+              onClick={() => onOpenTab(destination.tab)}
+              className="flex items-center gap-1.5 rounded border border-white/20 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-white/10"
+            >
+              <ArrowRight className="h-3.5 w-3.5" />
+              {destination.label}
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

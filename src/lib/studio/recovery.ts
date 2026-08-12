@@ -1,7 +1,21 @@
 export type DirectorRecovery = { code: string; message: string; recoverable: boolean; suggestedIntent?: string; suggestedLabel?: string }
 
+// A ZodError stringifies to its raw issue array, so a validation failure reached
+// the chat as a JSON dump. Turn it into the sentence it was always trying to be.
+function readableToolError(error: unknown) {
+  const issues = (error as { issues?: Array<{ path?: unknown[]; message?: string }> } | null)?.issues
+  if (!Array.isArray(issues) || !issues.length) return null
+  return issues
+    .slice(0, 4)
+    .map((issue) => {
+      const field = Array.isArray(issue.path) ? issue.path.filter((part) => typeof part === "string" || typeof part === "number").join(".") : ""
+      return field ? `${field}: ${issue.message || "is invalid"}` : issue.message || "Invalid input"
+    })
+    .join("; ")
+}
+
 export function directorRecovery(error: unknown): DirectorRecovery {
-  const raw = error instanceof Error ? error.message : String(error || "Unknown workflow error")
+  const raw = readableToolError(error) || (error instanceof Error ? error.message : String(error || "Unknown workflow error"))
   const value = raw.toLowerCase()
   if (value.includes("too many") || value.includes("return limit") || value.includes("row") && value.includes("limit")) return { code: "result_limit", message: "The query returned more records than one tool response can safely carry. I can retry it in smaller pages.", recoverable: true, suggestedIntent: "Retry the failed query in pages of 20 records", suggestedLabel: "Retry in smaller batches" }
   if (value.includes("moderation") || value.includes("safety") || value.includes("blocked")) return { code: "safety_block", message: "The provider safety system blocked this generation. Review the creative intent and use a neutral, policy-compliant prompt before retrying.", recoverable: true, suggestedIntent: "Review the blocked prompt and propose a neutral policy-compliant alternative without changing the story intent", suggestedLabel: "Review and rewrite prompt" }
