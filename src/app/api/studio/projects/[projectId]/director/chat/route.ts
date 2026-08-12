@@ -332,6 +332,11 @@ async function generateBulkEntityReferenceImages(
     requested = (entities || []).filter((entity) => intent.entityIds?.includes(entity.id))
   }
   if (!requested.length) {
+    // "All of them already have images" is vacuously true when the project has
+    // none at all, which turned "create characters from the script" into a
+    // refusal on an empty project. With nothing to image, hand back to the
+    // Director so it can read the script and create the entities first.
+    if (!(entities || []).length) return null
     const label = intent.types.length === 1 && intent.types[0] === "character" ? "characters" : "characters and assets"
     return textMessage(input.sessionId, `All matching ${label} already have reference images. Say “regenerate all” if you want to replace or refresh them.`)
   }
