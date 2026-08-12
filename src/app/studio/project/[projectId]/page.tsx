@@ -3506,10 +3506,13 @@ function ShotMediaWorkspace({
   const [referenceTarget, setReferenceTarget] = useState<"references" | "start" | "end">("references");
   const [references, setReferences] = useState<string[]>(() => {
     if (media.shot.referenced_entities && media.shot.referenced_entities.length > 0) {
+      // One image per entity — its chosen reference. Seeding every image an
+      // entity owns filled the eight-reference budget with several angles of
+      // one character and pushed the rest of the shot's cast out.
       return entities
         .filter((e) => media.shot.referenced_entities!.includes(e.id))
-        .flatMap((e) => Array.isArray(e.reference_images) ? e.reference_images : [])
-        .filter((url): url is string => typeof url === "string");
+        .map((e) => entityPrimaryReference(e))
+        .filter((url): url is string => typeof url === "string" && url.length > 0);
     }
     return [];
   });
