@@ -78,15 +78,40 @@ export async function requestDirectorTool(context: AuthenticatedProjectContext, 
 function describeProposal(toolName: string, input: unknown) {
   const payload = input && typeof input === "object" ? input as Record<string, unknown> : {}
   if (toolName === "submit_generation") {
-    const request = payload.request && typeof payload.request === "object" ? payload.request as { type?: unknown; shotIds?: unknown } : {}
+    const request = payload.request && typeof payload.request === "object" ? payload.request as { type?: unknown; shotIds?: unknown; shotNumbers?: unknown } : {}
     const shotIds = Array.isArray(request.shotIds) ? request.shotIds : []
+    const shotNumbers = Array.isArray(request.shotNumbers) ? request.shotNumbers : []
+    const shotCount = shotIds.length || shotNumbers.length
     return {
       title: request.type === "video" ? "Generate storyboard video" : "Generate storyboard image",
-      summary: `Review ${shotIds.length || 1} ${request.type === "video" ? "video" : "image"} generation job${shotIds.length === 1 ? "" : "s"} before credits are reserved.`,
+      summary: `Review ${shotCount || 1} ${request.type === "video" ? "video" : "image"} generation job${shotCount === 1 ? "" : "s"}${shotNumbers.length ? ` for shot ${shotNumbers.join(", ")}` : ""} before credits are reserved.`,
       estimatedCredits: 0,
       affectedEntities: shotIds.map((id) => ({ type: "shot", id })),
     }
   }
+  // A batch proposal is approved on what it will actually create, so name the
+  // items rather than restating the tool. The schema maximum ("up to 50") is
+  // guidance for the model and reads as intent on an approval card.
+  const namedItems = (value: unknown) => {
+    if (!Array.isArray(value)) return null
+    const names = value
+      .map((item) => (item && typeof item === "object" ? (item as { name?: unknown; title?: unknown }).name ?? (item as { title?: unknown }).title : null))
+      .filter((name): name is string => typeof name === "string" && name.trim().length > 0)
+    return names.length ? names : null
+  }
+  const batchNames = namedItems(payload.entities) || namedItems(payload.shots)
+  if (batchNames) {
+    const shown = batchNames.slice(0, 6).join(", ")
+    const rest = batchNames.length > 6 ? ` and ${batchNames.length - 6} more` : ""
+    const noun = payload.entities ? "asset" : "shot"
+    return {
+      title: payload.entities ? "Create production assets" : "Create storyboard shots",
+      summary: `${batchNames.length} ${noun}${batchNames.length === 1 ? "" : "s"}: ${shown}${rest}.`,
+      estimatedCredits: 0,
+      affectedEntities: [],
+    }
+  }
+
   const titles: Record<string, string> = {
     update_creative_brief: "Update the creative brief",
     create_series: "Create series",

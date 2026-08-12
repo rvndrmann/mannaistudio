@@ -46,6 +46,55 @@ const toolDescriptions: Record<DirectorToolName, string> = {
   create_revision_request: "Propose a structured production revision request.",
 }
 
+// What the user sees on a timeline row or approval card. Kept separate from
+// toolDescriptions, which is written for the model and states schema limits
+// like "up to 50" that read as intent when shown as a label.
+const toolLabels: Record<DirectorToolName, string> = {
+  inspect_current_project: "Read project settings",
+  read_episode_script: "Read the episode script",
+  save_script_prompts: "Save the prompt sheet",
+  read_script_prompts: "Read the prompt sheet",
+  search_episode_script: "Search the script",
+  list_production_entities: "List characters and assets",
+  list_storyboard_shots: "List storyboard shots",
+  update_creative_brief: "Update the creative brief",
+  create_series: "Create a series",
+  write_series_bible: "Write the series bible",
+  create_production_entity: "Create a production asset",
+  create_production_entities_batch: "Create production assets",
+  create_storyboard_batch: "Build the storyboard",
+  validate_production: "Validate the production",
+  record_continuity_fact: "Record a continuity fact",
+  inspect_continuity: "Read continuity facts",
+  estimate_generation_cost: "Estimate generation cost",
+  inspect_generation_jobs: "Check generation jobs",
+  submit_generation: "Generate media",
+  update_script: "Update the script",
+  update_shot: "Update a shot",
+  delete_shot: "Delete a shot",
+  update_asset: "Update an asset",
+  attach_media_to_asset: "Attach media to an asset",
+  delete_asset: "Delete an asset",
+  attach_media_to_shot: "Attach media to a shot",
+  update_full_auto_mode: "Change full-auto settings",
+  create_revision_request: "Create a revision request",
+}
+
+// A batch tool says far more when it reports how many items it is acting on
+// than when it repeats its own name.
+function toolLabel(name: DirectorToolName, args: unknown) {
+  const label = toolLabels[name]
+  if (!args || typeof args !== "object") return label
+  const record = args as Record<string, unknown>
+  const countable = ["entities", "shots", "shotIds", "shotNumbers", "prompts"]
+  for (const key of countable) {
+    const value = record[key]
+    const count = Array.isArray(value) ? value.length : value && typeof value === "object" ? Object.keys(value).length : 0
+    if (count > 0) return `${label} (${count})`
+  }
+  return label
+}
+
 export function directorFunctionDefinitions(): OpenAIDirectorFunction[] {
   return (Object.keys(directorTools) as DirectorToolName[]).map((name) => ({
     name,
@@ -158,7 +207,7 @@ export async function runDirectorAgent(input: {
         items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify({ error: "Unknown Director tool" }), thoughtSignature: call.thoughtSignature })
         continue
       }
-      const label = toolDescriptions[call.name as DirectorToolName].replace(/[.]$/, "")
+      const label = toolLabel(call.name as DirectorToolName, call.arguments)
       // Name the agent that owns this tool so a handoff is visible in chat under
       // whatever the admin renamed that agent to.
       const owningAgent = agentForTool(call.name)
