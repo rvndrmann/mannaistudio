@@ -42,10 +42,24 @@ export async function executeGenerationJobsInBackground(
           // unrelated character or prop from being fed into the frame.
           const { data: projectEntities } = await context.supabase
             .from("creator_entities").select("*").eq("project_id", context.project.id)
-          const declaredIds = Array.isArray(settings.mentionedEntityIds) ? settings.mentionedEntityIds as string[] : []
-          const promptMentionIds = findShotCastEntityIds(job.prompt || "", (projectEntities || []) as MentionableEntity[], declaredIds)
-          // The prompt wins when it names anyone; the declared list is only the
-          // fallback for a prompt written without mentions.
+          // The shot's own cast, which is what the storyboard displays. Reading
+          // it here is what makes generation reference exactly what the user can
+          // see listed against that shot.
+          const { data: castShot } = job.shot_id
+            ? await context.supabase.from("creator_shots").select("referenced_entities,metadata").eq("id", job.shot_id).maybeSingle()
+            : { data: null }
+          const shotCastIds = Array.isArray(castShot?.referenced_entities) ? castShot.referenced_entities as string[] : []
+          const curated = Boolean((castShot?.metadata as { cast_curated?: boolean } | null)?.cast_curated)
+          const declaredIds = Array.from(new Set([
+            ...(Array.isArray(settings.mentionedEntityIds) ? settings.mentionedEntityIds as string[] : []),
+            ...shotCastIds,
+          ]))
+          // A cast the user picked by hand is deliberate and is used as-is.
+          // Otherwise the prompt decides, with the declared list confirming
+          // anything it names in prose rather than with an @mention.
+          const promptMentionIds = curated
+            ? shotCastIds
+            : findShotCastEntityIds(job.prompt || "", (projectEntities || []) as MentionableEntity[], declaredIds)
           const activeIds = promptMentionIds.length ? promptMentionIds : declaredIds
           const mentionedEntities = (projectEntities || []).filter((entity) => activeIds.includes(entity.id))
 
