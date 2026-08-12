@@ -5248,16 +5248,19 @@ function ReferencePicker({
   const [choices, setChoices] = useState(selected);
   const [filter, setFilter] = useState<"all" | Entity["type"] | "storyboard">("all");
 
-  const entityItems = entities.flatMap((entity) =>
-    (entity.reference_images || []).map((img, index) => ({
-      id: `entity-${entity.id}-${index}`,
+  // One tile per entity: its chosen reference. The others are alternates the
+  // user decided against, and listing them invites picking a version of a
+  // character that is not the one the production locked in.
+  const entityItems = entities
+    .map((entity) => ({
+      id: `entity-${entity.id}`,
       name: entity.name,
       type: entity.type,
-      image: img,
+      image: entityPrimaryReference(entity),
       kind: "image" as const,
       number: null as number | null,
     }))
-  );
+    .filter((item): item is typeof item & { image: string } => Boolean(item.image));
 
   // Scene tiles are numbered by storyboard position so they can be matched to
   // the shot list at a glance, and each scene contributes its keyframe and its
