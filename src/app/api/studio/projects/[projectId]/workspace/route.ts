@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { describeError } from "@/lib/studio/errors"
 
 async function context(projectId: string) {
   const supabase = await createClient()
@@ -59,8 +60,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         provenance: body.asset.provenance || {},
         metadata: body.asset.metadata || {},
       }
-      const query = body.asset.id ? supabase.from("creator_entities").update(payload).eq("id", body.asset.id).eq("project_id", projectId) : supabase.from("creator_entities").insert({ ...payload, project_id: projectId })
-      const { data, error } = await query.select().single(); if (error) throw error; return NextResponse.json(data)
+      const writeAsset = (values: Record<string, unknown>) => body.asset.id
+        ? supabase.from("creator_entities").update(values).eq("id", body.asset.id).eq("project_id", projectId).select().single()
+        : supabase.from("creator_entities").insert({ ...values, project_id: projectId }).select().single()
+      let { data, error } = await writeAsset(payload)
+      // primary_reference_image ships with a migration. Until it is applied the
+      // column does not exist, and without this every asset save would fail on
+      // a field the user never asked for.
+      if (error && (error.code === "42703" || /primary_reference_image/i.test(error.message || ""))) {
+        console.warn("creator_entities.primary_reference_image is missing; run the pending migration to persist the chosen reference.")
+        const { primary_reference_image: _unused, ...withoutChosen } = payload
+        ;({ data, error } = await writeAsset(withoutChosen))
+      }
+      if (error) throw error; return NextResponse.json(data)
     }
     if (body.action === "deleteAsset") { const { error } = await supabase.from("creator_entities").delete().eq("id", body.id).eq("project_id", projectId); if (error) throw error; return NextResponse.json({ success: true }) }
     if (body.action === "saveShot") {
@@ -134,5 +146,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     if (body.action === "chat") { const { data: sessions } = await supabase.from("creator_chat_sessions").select("id").eq("episode_id", body.episodeId).eq("user_id", user.id).limit(1); let sessionId = sessions?.[0]?.id; if (!sessionId) { const { data, error } = await supabase.from("creator_chat_sessions").insert({ episode_id: body.episodeId, user_id: user.id, title: "Project direction" }).select("id").single(); if (error) throw error; sessionId = data.id } const { data, error } = await supabase.from("creator_chat_messages").insert({ session_id: sessionId, role: "user", content: body.content }).select().single(); if (error) throw error; return NextResponse.json(data) }
     return NextResponse.json({ error: "Unsupported workspace action" }, { status: 400 })
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Could not update workspace" }, { status: 400 }) }
+  } catch (error) {
+    // Supabase rejects with a PostgrestError, which is not an Error, so the
+    // generic fallback hid every real database cause behind one sentence.
+    console.error("WORKSPACE UPDATE ERROR:", error)
+    return NextResponse.json({ error: describeError(error, "Could not update workspace") }, { status: 400 })
+  }
 }
