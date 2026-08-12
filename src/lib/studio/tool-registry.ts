@@ -461,6 +461,26 @@ export const submitGenerationTool = defineDirectorTool({
         if (typeof path === "string" && path.trim()) shotOwnedMedia.set(path, shot.id)
       }
     }
+    // A continuing video shot inherits the previous shot's finished clip so
+    // motion, lighting, and pacing carry across the cut. Resolved here because
+    // it depends on storyboard order, which the model would have to look up and
+    // may simply forget to.
+    let request2 = request
+    if (request.type === "video" && !request.videoReferencePaths.length && request.episodeId) {
+      const { data: ordered } = await context.supabase
+        .from("creator_shots").select("id,order_index,video_url,video_status").eq("episode_id", request.episodeId).order("order_index")
+      const byId = new Map((ordered || []).map((shot) => [shot.id, shot]))
+      const previousClips: string[] = []
+      for (const shotId of request.shotIds) {
+        const target = byId.get(shotId)
+        if (!target) continue
+        const previous = (ordered || []).filter((shot) => shot.order_index < target.order_index).pop()
+        if (previous?.video_url && previous.video_status === "completed") previousClips.push(previous.video_url)
+      }
+      if (previousClips.length) request2 = { ...request, videoReferencePaths: Array.from(new Set(previousClips)).slice(0, 10) }
+    }
+    request = request2
+
     const inputImagesFor = (shotId: string) => {
       const scoped = request.referencePaths.filter((path) => {
         const owner = shotOwnedMedia.get(path)
