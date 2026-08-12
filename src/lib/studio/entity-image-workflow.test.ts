@@ -31,11 +31,38 @@ describe("entity image workflow", () => {
     expect(directive).toContain("collage")
   })
 
-  it("builds one text-free production reference prompt per entity", () => {
+  it("renders a character as a multi-view sheet on a plain backdrop", () => {
     const prompt = buildEntityReferenceImagePrompt({ id: "1", name: "Maya", type: "character", description: "Lead driver in her late twenties" }, "Realistic - Photorealistic")
-    expect(prompt).toContain("exactly one character")
     expect(prompt).toContain("Maya")
-    expect(prompt).toContain("Do not add names")
+    expect(prompt).toContain("character reference sheet")
+    expect(prompt).toContain("plain, uncluttered neutral backdrop")
+    // Several angles of one identical person is what makes the sheet an
+    // identity lock rather than one lucky portrait.
+    expect(prompt).toContain("three-quarter")
+    expect(prompt).toContain("profile")
+    expect(prompt).toContain("Identical face")
+    expect(prompt).toContain("Lead driver in her late twenties")
+  })
+
+  it("renders a location as an establishing plate with nobody in it", () => {
+    const prompt = buildEntityReferenceImagePrompt({ id: "2", name: "Rainy Alley", type: "scene", description: "Wet brick alley at night" }, "Realistic - Photorealistic")
+    expect(prompt).toContain("empty establishing plate")
+    expect(prompt).toContain("no background people")
+    expect(prompt).not.toContain("reference sheet")
+  })
+
+  it("renders a prop alone on a plain background", () => {
+    const prompt = buildEntityReferenceImagePrompt({ id: "3", name: "Brass Key", type: "prop", description: "Tarnished brass key" }, "Realistic - Photorealistic")
+    expect(prompt).toContain("plain, uncluttered neutral background")
+    expect(prompt).toContain("no hands holding it")
+    expect(prompt).not.toContain("reference sheet")
+  })
+
+  it("keeps every reference prompt free of rendered text", () => {
+    for (const type of ["character", "scene", "prop"] as const) {
+      const prompt = buildEntityReferenceImagePrompt({ id: "4", name: "Subject", type, description: "" }, "Realistic - Photorealistic")
+      expect(prompt).toContain("no names, ages, biographies, captions, callouts, borders, panels, watermarks, or any text inside the image")
+    }
   })
 
   it("reads the persisted project style used by generation routes", () => {

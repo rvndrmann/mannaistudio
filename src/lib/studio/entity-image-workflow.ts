@@ -63,14 +63,23 @@ export function projectVisualStyle(project: Record<string, unknown>) {
 }
 
 export function buildEntityReferenceImagePrompt(entity: MentionableEntity, style: string) {
+  // Each entity type earns a different frame. A character is only a usable
+  // identity lock when the same face is visible from several angles; a location
+  // is only a usable backdrop when nobody is standing in it; a prop is only a
+  // usable cutout when nothing else shares the frame.
   const subject = entity.type === "character"
-    ? `Create one production reference portrait for the character “${entity.name}”. Show exactly one character in a clean full-body or three-quarter view with a neutral, readable pose.`
-    : `Create one production design reference image for the ${entity.type === "scene" ? "location/scene" : "prop/asset"} “${entity.name}”. Show exactly one coherent asset design with a clear silhouette and useful production detail.`
+    ? `Create one character reference sheet for “${entity.name}” on a plain, uncluttered neutral backdrop. Show the same single character in a consistent multi-view turnaround: full-body front view, full-body three-quarter view, full-body profile, and one head-and-shoulders close-up for facial detail. Identical face, hair, build, and wardrobe in every view, even neutral lighting, relaxed reference pose. No environment, no scene, no other characters, no props beyond what the character wears or carries.`
+    : entity.type === "scene"
+    ? `Create one empty establishing plate for the location “${entity.name}”. Render the place itself with nobody in it: no named characters and no background people, crowds, or silhouettes of any kind. Natural establishing framing that reads the space, its architecture, and its light, so characters can be placed into it later.`
+    : `Create one production design reference for the ${entity.type === "prop" ? "prop" : "asset"} “${entity.name}” on a plain, uncluttered neutral background. Show exactly one coherent object with a clear silhouette, even lighting, and useful production detail. No scene, no environment, no people, and no hands holding it.`
   return [
     subject,
     entity.description?.trim() ? `Canonical description: ${entity.description.trim()}` : "Preserve the canonical identity implied by the entity name.",
     `Required project style: ${style || "cinematic"}.`,
     visualStyleDirective(style),
-    "This is a reusable production reference image, not a character card or presentation sheet. Do not add names, ages, biographies, borders, panels, or written text inside the image.",
+    // The multi-view layout is wanted; rendered text is not. Image models set
+    // labels and captions badly, and they contaminate the reference when it is
+    // fed back in as a visual input.
+    "This is a reusable production reference, so keep it free of written matter: no names, ages, biographies, captions, callouts, borders, panels, watermarks, or any text inside the image.",
   ].join("\n")
 }
