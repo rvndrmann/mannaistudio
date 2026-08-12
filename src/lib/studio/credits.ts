@@ -19,8 +19,10 @@ export const MODEL_CREDIT_COSTS: Record<string, { cost: number; unit: string; de
   "fal-flux-realism": { cost: 5, unit: "per image", description: "Flux Realism" },
 
   // Video Models (~4-5s standard output)
-  "dreamina-seedance-2-5-260628": { cost: 16, unit: "per video", description: "Seedance 2.5 (BytePlus)" },
-  "fal-seedance-2-5": { cost: 16, unit: "per video", description: "Seedance 2.5 (fal.ai)" },
+  // Priced by the second: a 2.5 clip costs the same per second whatever its
+  // length, so a flat per-video figure under-charged every long shot.
+  "dreamina-seedance-2-5-260628": { cost: 50, unit: "per second", description: "Seedance 2.5 (BytePlus)" },
+  "fal-seedance-2-5": { cost: 50, unit: "per second", description: "Seedance 2.5 (fal.ai)" },
   "dreamina-seedance-2-0-260128": { cost: 14, unit: "per video", description: "Seedance 2.0 (BytePlus)" },
   "fal-seedance-2-0": { cost: 14, unit: "per video", description: "Seedance 2.0 (fal.ai)" },
   "dreamina-seedance-2-0-fast-260128": { cost: 10, unit: "per video", description: "Seedance 2.0 Fast (BytePlus)" },
@@ -52,7 +54,12 @@ export function calculateCreditCost(
   const modelConfig = MODEL_CREDIT_COSTS[modelId]
   let baseCost = modelConfig ? modelConfig.cost : (type === "video" ? 10 : 3)
 
-  if (type === "video" && durationSeconds > 5) {
+  // A per-second model bills its rate for every second of the clip. A per-video
+  // model quotes a five-second clip and scales beyond that.
+  const perSecond = modelConfig?.unit === "per second"
+  if (type === "video" && perSecond) {
+    baseCost = Math.ceil(baseCost * Math.max(1, durationSeconds))
+  } else if (type === "video" && durationSeconds > 5) {
     baseCost = Math.ceil(baseCost * (durationSeconds / 5))
   }
 

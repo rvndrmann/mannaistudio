@@ -62,7 +62,7 @@ export const generationModels: GenerationModel[] = [
   { provider: "openai", model: "gpt-image-2", types: ["image"], sources: ["text", "image"], referenceImages: true, dialogue: false, quality: 4, speed: 4, costPerSecond: 0, baseCredits: 8 },
   { provider: "openai", model: "gpt-image-1.5", types: ["image"], sources: ["text", "image"], referenceImages: true, dialogue: false, quality: 3, speed: 5, costPerSecond: 0, baseCredits: 6 },
   { provider: "byteplus", model: "dola-seedream-5-0-pro-260628", types: ["image"], sources: ["text", "image"], referenceImages: true, dialogue: false, quality: 5, speed: 3, costPerSecond: 0, baseCredits: 4 },
-  { provider: "byteplus", model: "dreamina-seedance-2-5-260628", types: ["video"], sources: ["text", "image"], referenceImages: true, dialogue: true, quality: 5, speed: 2, costPerSecond: 5, baseCredits: 10 },
+  { provider: "byteplus", model: "dreamina-seedance-2-5-260628", types: ["video"], sources: ["text", "image"], referenceImages: true, dialogue: true, quality: 5, speed: 2, costPerSecond: 50, baseCredits: 0 },
   { provider: "byteplus", model: "dreamina-seedance-2-0-260128", types: ["video"], sources: ["text", "image"], referenceImages: true, dialogue: true, quality: 5, speed: 2, costPerSecond: 4, baseCredits: 8 },
   { provider: "byteplus", model: "dreamina-seedance-2-0-fast-260128", types: ["video"], sources: ["text", "image"], referenceImages: true, dialogue: true, quality: 4, speed: 4, costPerSecond: 3, baseCredits: 6 },
   { provider: "byteplus", model: "dreamina-seedance-2-0-mini-260615", types: ["video"], sources: ["text", "image"], referenceImages: true, dialogue: true, quality: 3, speed: 5, costPerSecond: 2, baseCredits: 4 },

@@ -1,3 +1,4 @@
+import { calculateCreditCost } from "./credits"
 import { describe, expect, it } from "vitest"
 import { generationProvider, imageGenerationModels, isImageGenerationModel, isVideoGenerationModel, videoGenerationModels } from "./generation-models"
 
@@ -23,5 +24,19 @@ describe("studio generation model registry", () => {
   it("rejects unknown model identifiers", () => {
     expect(isImageGenerationModel("seedream-latest")).toBe(false)
     expect(isVideoGenerationModel("seedance-latest")).toBe(false)
+  })
+})
+
+describe("Seedance 2.5 pricing", () => {
+  it("bills fifty credits for every second of the clip", () => {
+    expect(calculateCreditCost("fal-seedance-2-5", "video", 3)).toBe(150)
+    expect(calculateCreditCost("fal-seedance-2-5", "video", 4)).toBe(200)
+    expect(calculateCreditCost("dreamina-seedance-2-5-260628", "video", 10)).toBe(500)
+  })
+
+  it("leaves per-video models on their own scale", () => {
+    // Seedance 2.0 stays flat to five seconds, so the per-second rule must not
+    // leak into models that are not priced that way.
+    expect(calculateCreditCost("fal-seedance-2-0", "video", 4)).toBe(calculateCreditCost("fal-seedance-2-0", "video", 5))
   })
 })
