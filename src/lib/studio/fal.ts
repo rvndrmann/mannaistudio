@@ -122,6 +122,9 @@ export async function submitFalVideo(input: {
   }
 }
 
+// The endpoint a request was submitted to is required to poll it. Defaulting to
+// an unrelated model returns "Not Found" for a job that is running perfectly
+// well, which reads as a failed generation.
 export async function getFalVideoTask(taskId: string, endpoint = "fal-ai/kling-video/v1.6/pro/text-to-video") {
   const falKey = getFalKey()
   fal.config({ credentials: falKey })
@@ -165,6 +168,6 @@ export async function getFalVideoTask(taskId: string, endpoint = "fal-ai/kling-v
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Failed to fetch fal.ai task status"
-    throw new FalProviderError(msg)
+    throw new FalProviderError(`fal.ai status check failed for ${endpoint}: ${msg}`)
   }
 }

@@ -230,7 +230,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     let task: { status: "queued" | "running" | "succeeded" | "failed" | "cancelled"; content?: { video_url?: string }; error?: { message?: string } }
 
     if (provider === "fal") {
-      const endpoint = (job.provider_response as Record<string, unknown>)?.endpoint as string || "bytedance/seedance-2.0/image-to-video"
+      // fal endpoints are namespaced. The old fallback dropped the "fal-ai/"
+      // prefix, so a job without a stored endpoint polled a path that does not
+      // exist and reported "Not Found" as if the video had vanished.
+      const storedEndpoint = (job.provider_response as Record<string, unknown>)?.endpoint
+      const endpoint = typeof storedEndpoint === "string" && storedEndpoint.trim()
+        ? (storedEndpoint.startsWith("fal-ai/") ? storedEndpoint : `fal-ai/${storedEndpoint}`)
+        : "fal-ai/bytedance/seedance-2.0/image-to-video"
       task = await getFalVideoTask(job.provider_job_id, endpoint)
     } else if (provider === "google") {
       task = await getGoogleVideoTask(job.provider_job_id)
