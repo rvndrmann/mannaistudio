@@ -154,6 +154,7 @@ type Workspace = {
     revisions: Array<Record<string, unknown>>;
     generationJobs: Array<Record<string, unknown>>;
     creditAccount: { balance: number; reserved: number } | null;
+    workflowRuns?: Array<{ id: string; session_id?: string | null; status: string; completed_at?: string | null; started_at?: string | null; objective?: string | null }>;
   };
 };
 const tabs = [
@@ -234,6 +235,7 @@ export default function WorkspacePage({
   const [message, setMessage] = useState("");
   const [chatSending, setChatSending] = useState(false);
   const [streamingReply, setStreamingReply] = useState<{ content: string; status: string | null } | null>(null);
+  const [resumedRun, setResumedRun] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [proposalBusy, setProposalBusy] = useState<string | null>(null);
   const [chatUploading, setChatUploading] = useState(false);
@@ -289,6 +291,33 @@ export default function WorkspacePage({
   const [shareOpen, setShareOpen] = useState(false);
   const [enterpriseOpen, setEnterpriseOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
+  // A Director run is server-side work tracked in creator_workflow_runs, so it
+  // outlives the page that started it. After a reload the browser has no
+  // stream to read, but the run is still going and will persist its reply — so
+  // rejoin it by polling until it finishes instead of pretending it stopped.
+  const activeRun = useMemo(() => {
+    const runs = data?.production?.workflowRuns || [];
+    // A run whose server died never gets completed_at, so anything older than
+    // the longest plausible run is treated as gone rather than polled forever.
+    const cutoff = Date.now() - 15 * 60 * 1000;
+    return runs.find((run) => run.session_id === data?.activeSessionId
+      && !run.completed_at
+      && (run.status === "planning" || run.status === "running")
+      && (!run.started_at || new Date(run.started_at).getTime() > cutoff)) || null;
+  }, [data?.production?.workflowRuns, data?.activeSessionId]);
+
+  useEffect(() => {
+    if (!activeRun || chatSending) {
+      setResumedRun(false);
+      return;
+    }
+    setResumedRun(true);
+    const timer = setInterval(() => { void load(true); }, 3000);
+    return () => clearInterval(timer);
+    // load is stable enough for this poll; the run id is what should restart it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRun?.id, chatSending]);
+
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -994,7 +1023,7 @@ export default function WorkspacePage({
                 <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} entities={data.entities} shots={data.shots} projectId={projectId} busyId={proposalBusy} onDecide={decideProposal} onAction={sendDirectorMessage} />
               </div>
             ))}
-            {chatSending && <ThinkingBubble reply={streamingReply} />}
+            {(chatSending || resumedRun) && <ThinkingBubble reply={chatSending ? streamingReply : { content: "", status: "Picking up where the Director left off" }} />}
             <PendingProposalCards
               proposals={data.actionProposals}
               excludeIds={data.chatMessages.flatMap((item) => proposalIdsFromActions(item.suggested_actions))}

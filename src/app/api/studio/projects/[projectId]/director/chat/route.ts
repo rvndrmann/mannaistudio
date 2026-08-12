@@ -22,6 +22,11 @@ import { createBytePlusAsset } from "@/lib/studio/byteplus"
 import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
 import { buildProjectStateSummary } from "@/lib/studio/project-state-summary"
 
+// A Director run can take minutes, and it must finish even when the browser
+// that started it goes away: the reply and the workflow run are persisted
+// server-side, and the page rejoins the run after a reload.
+export const maxDuration = 300
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   try {
     const { projectId } = await params
