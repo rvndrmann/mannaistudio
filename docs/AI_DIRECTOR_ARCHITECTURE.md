@@ -1,5 +1,5 @@
 # AI Director Hub architecture
-/Users/apple/Downloads/upto june all 2026/june- next-2026/HOLD/all websites/mannaistudio/docs/AI_DIRECTOR_ARCHITECTURE.md
+
 ## Compatibility contract
 
 - `creator_projects` remains the canonical project table.
@@ -108,7 +108,46 @@ Storyboard video generation supports:
 - **fal.ai Provider**: Seedance 2.5 (`fal-seedance-2-5`), Seedance 2.0 (`fal-seedance-2-0`), Seedance 2.0 Fast (`fal-seedance-2-0-fast`), Seedance 2.0 Mini (`fal-seedance-2-0-mini`), Kling 3 (`fal-kling-3`), Kling O3 (`fal-kling-o3`), Kling 1.6 Pro (`fal-kling-1-6-pro`), MiniMax H3 (`fal-minimax-h3`), MiniMax Video-01 (`fal-minimax-video-01`), Hunyuan Video (`fal-hunyuan-video`), Luma Dream Machine (`fal-luma-dream-machine`).
 - **BytePlus Direct**: Seedance 2.5 (`dreamina-seedance-2-5-260628`), Seedance 2.0 (`dreamina-seedance-2-0-260128`), Fast (`dreamina-seedance-2-0-fast-260128`), and Mini (`dreamina-seedance-2-0-mini-260615`).
 
+Seedance 2.5 renders up to 30 seconds and is billed at 50 credits per second; 2.0
+and its Fast and Mini variants stop at 15. `videoModelMaxDuration` is the single
+rule, applied by both providers and by the duration selectors, so a length that
+cannot be rendered is never offered or charged for.
+
 For complete AI Social Media + Advertising Agent architecture, see [`docs/MARKETING_AGENT_ARCHITECTURE.md`](file:///Users/apple/Downloads/upto%20june%20all%202026/june-%20next-2026/HOLD/all%20websites/mannaistudio/docs/MARKETING_AGENT_ARCHITECTURE.md).
+
+## Reference resolution
+
+A shot references only what its own prompt names. `findShotCastEntityIds` takes
+every `@mention`, then re-admits an entity whose name appears as plain prose
+only when that shot also declared it — which recovers a location written as "the
+bedroom" without a prop called "Note" matching any prompt containing the word. A
+cast set by hand in the storyboard marks the shot `cast_curated` and is then used
+verbatim.
+
+Generation sends **one image per entity**: `primary_reference_image` when set,
+otherwise the first saved reference. Sending every image an entity owns spends
+the eight-reference budget on a few subjects and drops the rest of the cast. This
+rule applies in all five paths that build references: Director execution, the
+direct image and video routes, the chat's inline image workflow, and the shot
+workspace composer.
+
+Shot media is scoped per shot. Another shot's keyframe is never a reference, and
+a shot's own keyframe is used only when `useExistingFrame` is set — a regenerate
+should build from the entity references and the prompt rather than re-derive the
+picture it replaces. A continuing video shot inherits the previous shot's
+completed clip as a video reference automatically.
+
+Prompts never describe a referenced character's appearance. The reference image
+defines face, hair, build, and wardrobe; words describing appearance compete with
+the photograph and win, which is what makes a character drift between shots. The
+mention context states that the image outranks any conflicting text, per entity
+by name.
+
+Only entities typed as `character` are registered with the BytePlus Asset
+Library. Registration clears the provider's real-person privacy check, which
+applies to faces alone, and the library holds 50 images across a limited number
+of groups. The studio uses one shared group; `ARK_ASSET_GROUP_ID` reuses an
+existing one when the account's group quota is already spent.
 
 ## Continuity
 

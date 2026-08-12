@@ -139,6 +139,12 @@ export default function LandingPage() {
     }, [])
 
     const heroFeatured = adminShowcase[0]
+    // The hero already plays adminShowcase[0], so the grid starts after it when
+    // there is enough material, and uses everything when there is not.
+    const slotShowcase = useMemo(() => {
+        const pool = adminShowcase.length > 4 ? adminShowcase.slice(1) : adminShowcase
+        return [0, 1, 2, 3].map((index) => pool[index])
+    }, [adminShowcase])
 
     return (
         <main className="min-h-screen bg-[#070806] text-white">
@@ -441,7 +447,12 @@ export default function LandingPage() {
                 {/* Vertical 9:16 UGC & Commercial Ads Grid */}
                 <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
                     {adFormats.map((ad, idx) => {
-                        const showcaseItem = adminShowcase[idx + 1] || adminShowcase[0]
+                        // One showcase item per slot. The fallback used to be
+                        // adminShowcase[0] for every empty slot, so a single
+                        // uploaded video played in all four tiles. A slot with
+                        // nothing behind it now shows its reserved placeholder,
+                        // which also makes it obvious where the next one goes.
+                        const showcaseItem = slotShowcase[idx]
                         return (
                             <div
                                 key={ad.id}
