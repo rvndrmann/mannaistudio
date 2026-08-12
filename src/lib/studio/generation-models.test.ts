@@ -1,6 +1,6 @@
 import { calculateCreditCost } from "./credits"
 import { describe, expect, it } from "vitest"
-import { generationProvider, imageGenerationModels, isImageGenerationModel, isVideoGenerationModel, videoGenerationModels } from "./generation-models"
+import { generationProvider, imageGenerationModels, isImageGenerationModel, isVideoGenerationModel, videoGenerationModels, videoDurationOptions, videoModelMaxDuration } from "./generation-models"
 
 describe("studio generation model registry", () => {
   it("exposes Seedream 5.0 Pro through BytePlus", () => {
@@ -38,5 +38,21 @@ describe("Seedance 2.5 pricing", () => {
     // Seedance 2.0 stays flat to five seconds, so the per-second rule must not
     // leak into models that are not priced that way.
     expect(calculateCreditCost("fal-seedance-2-0", "video", 4)).toBe(calculateCreditCost("fal-seedance-2-0", "video", 5))
+  })
+})
+
+describe("video duration limits", () => {
+  it("gives Seedance 2.5 thirty seconds and everything else fifteen", () => {
+    expect(videoModelMaxDuration("fal-seedance-2-5")).toBe(30)
+    expect(videoModelMaxDuration("dreamina-seedance-2-5-260628")).toBe(30)
+    expect(videoModelMaxDuration("fal-seedance-2-0")).toBe(15)
+    expect(videoModelMaxDuration("dreamina-seedance-2-0-fast-260128")).toBe(15)
+    expect(videoModelMaxDuration("dreamina-seedance-2-0-mini-260615")).toBe(15)
+  })
+
+  it("never offers a length the model cannot render", () => {
+    expect(videoDurationOptions("fal-seedance-2-5")).toContain(30)
+    expect(videoDurationOptions("fal-seedance-2-0").every((s) => s <= 15)).toBe(true)
+    expect(videoDurationOptions("fal-seedance-2-0")).not.toContain(30)
   })
 })

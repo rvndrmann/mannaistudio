@@ -1,4 +1,4 @@
-import type { ImageGenerationModelId, VideoGenerationModelId } from "@/lib/studio/generation-models"
+import { videoModelMaxDuration, type ImageGenerationModelId, type VideoGenerationModelId } from "@/lib/studio/generation-models"
 
 const defaultBaseUrl = "https://ark.ap-southeast.bytepluses.com/api/v3"
 
@@ -129,7 +129,7 @@ export async function submitBytePlusVideo(input: { model: VideoGenerationModelId
   for (const url of (input.videoReferenceUrls || []).filter((value) => typeof value === "string" && value.trim()).slice(0, videoLimit.maxVideos)) {
     content.push({ type: "video_url", video_url: { url } })
   }
-  const maxDuration = input.model === "dreamina-seedance-2-5-260628" ? 30 : 15
+  const maxDuration = videoModelMaxDuration(input.model)
   const data = await request("/contents/generations/tasks", {
     method: "POST",
     body: JSON.stringify({

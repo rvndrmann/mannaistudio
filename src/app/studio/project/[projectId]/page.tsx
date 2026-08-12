@@ -37,7 +37,7 @@ import {
   Zap,
 } from "lucide-react";
 import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models";
-import { getModelLabel, imageGenerationModels, videoGenerationModels } from "@/lib/studio/generation-models";
+import { getModelLabel, imageGenerationModels, videoDurationOptions, videoGenerationModels, videoModelMaxDuration } from "@/lib/studio/generation-models";
 import { defaultDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows";
 import { calculateCreditCost, getUserCredits } from "@/lib/studio/credits";
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
@@ -3490,6 +3490,13 @@ function ShotMediaWorkspace({
   const [resolution, setResolution] = useState<string>(savedResolution || media.shot.resolution || "720p");
   const [audioEnabled, setAudioEnabled] = useState<boolean>(savedAudio);
   const [durationSeconds, setDurationSeconds] = useState<number>(Number(media.shot.duration_seconds || 4));
+  // Switching to a model with a shorter ceiling must pull the duration down.
+  // The provider would otherwise truncate the clip while the user is charged
+  // for the length they picked.
+  useEffect(() => {
+    const max = videoModelMaxDuration(model);
+    setDurationSeconds((current) => (current > max ? max : current));
+  }, [model]);
   const [busy, setBusy] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
@@ -4332,13 +4339,9 @@ function ShotMediaWorkspace({
                       <div className="relative flex items-center gap-1.5 text-xs font-semibold text-zinc-400 transition hover:text-white group">
                         <span className="font-mono text-[10px]">⏱</span>
                         <select value={`${durationSeconds}s`} onChange={(e) => setDurationSeconds(Number(e.target.value.replace(/s$/, "")))} className="appearance-none bg-transparent outline-none cursor-pointer pr-4">
-                          <option className="bg-[#1c1c1c]" value="4s">4s</option>
-                          <option className="bg-[#1c1c1c]" value="6s">6s</option>
-                          <option className="bg-[#1c1c1c]" value="8s">8s</option>
-                          <option className="bg-[#1c1c1c]" value="10s">10s</option>
-                          <option className="bg-[#1c1c1c]" value="15s">15s</option>
-                          <option className="bg-[#1c1c1c]" value="20s">20s</option>
-                          <option className="bg-[#1c1c1c]" value="30s">30s</option>
+                          {videoDurationOptions(model).map((seconds) => (
+                            <option key={seconds} className="bg-[#1c1c1c]" value={`${seconds}s`}>{seconds}s</option>
+                          ))}
                         </select>
                         <ChevronDown className="absolute right-0 h-3 w-3 opacity-50 pointer-events-none" />
                       </div>
@@ -4984,7 +4987,7 @@ function VideoGenerationProposalBlock({
           {isVideo && (
             <>
               <select value={durationSeconds} onChange={(event) => setDurationSeconds(Number(event.target.value))} disabled={!canDecide} className="rounded-md border border-white/10 bg-[#141414] px-2 py-1 text-zinc-300 outline-none disabled:opacity-60">
-                {[3, 4, 5, 6, 8, 10, 12].map((option) => <option key={option} value={option}>{option}s</option>)}
+                {videoDurationOptions(model).map((option) => <option key={option} value={option}>{option}s</option>)}
               </select>
               <button
                 type="button"

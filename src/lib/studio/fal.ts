@@ -1,5 +1,5 @@
 import { fal } from "@fal-ai/client"
-import type { ImageGenerationModelId, VideoGenerationModelId } from "@/lib/studio/generation-models"
+import { videoModelMaxDuration, type ImageGenerationModelId, type VideoGenerationModelId } from "@/lib/studio/generation-models"
 
 export class FalProviderError extends Error {
   constructor(message: string, public readonly status = 502) {
@@ -101,7 +101,9 @@ export async function submitFalVideo(input: {
     const payload: Record<string, unknown> = {
       prompt: input.prompt,
       aspect_ratio: input.ratio || "9:16",
-      duration: Math.min(15, Math.max(3, Math.round(input.duration || 4))),
+      // 2.5 renders up to 30 seconds; the rest stop at 15. Capping at a flat 15
+      // silently shortened every long Seedance 2.5 clip.
+      duration: Math.min(videoModelMaxDuration(input.model), Math.max(3, Math.round(input.duration || 4))),
     }
 
     if (hasRef && input.referenceUrls?.length) {

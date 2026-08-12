@@ -51,3 +51,21 @@ export function getModelLabel(modelId: string) {
   const found = [...imageGenerationModels, ...videoGenerationModels].find((m) => m.id === modelId)
   return found ? found.label : modelId
 }
+
+/**
+ * Longest clip a video model will produce, in seconds.
+ *
+ * Seedance 2.5 takes 30; 2.0 and its fast and mini variants stop at 15. Asking
+ * for more does not fail — the provider silently truncates — so the limit has
+ * to be applied before the request is priced or sent, or the user is charged
+ * for seconds they never receive.
+ */
+export function videoModelMaxDuration(model: string) {
+  return /seedance-2[-.]5/i.test(model) ? 30 : 15
+}
+
+/** Duration choices to offer for a model, never exceeding what it can render. */
+export function videoDurationOptions(model: string) {
+  const max = videoModelMaxDuration(model)
+  return [3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30].filter((seconds) => seconds <= max)
+}
