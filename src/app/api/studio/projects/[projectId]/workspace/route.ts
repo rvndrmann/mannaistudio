@@ -45,6 +45,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         handle: body.asset.handle || body.asset.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""),
         description: body.asset.description || null,
         reference_images: body.asset.reference_images || [],
+        // Which saved image represents this entity during generation. Only
+        // honoured when it is one of the entity's own images.
+        primary_reference_image: (body.asset.reference_images || []).includes(body.asset.primary_reference_image) ? body.asset.primary_reference_image : null,
         voice_id: body.asset.voice_id || null,
         status: body.asset.status || "draft",
         character_type: body.asset.character_type || "ai_human",

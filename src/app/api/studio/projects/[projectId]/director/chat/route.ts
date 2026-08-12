@@ -38,7 +38,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { data: mentionedEntities, error: mentionedEntityError } = uniqueMentionIds.length
       ? await context.supabase
         .from("creator_entities")
-        .select("id,name,type,description,reference_images,metadata")
+        .select("id,name,type,description,reference_images,primary_reference_image,metadata")
         .eq("project_id", projectId)
         .in("id", uniqueMentionIds)
       : { data: [], error: null }
@@ -326,7 +326,7 @@ async function generateBulkEntityReferenceImages(
 ) {
   const { data: entities, error } = await input.context.supabase
     .from("creator_entities")
-    .select("id,name,type,description,reference_images,metadata,status")
+    .select("id,name,type,description,reference_images,primary_reference_image,metadata,status")
     .eq("project_id", input.projectId)
     .in("type", intent.types)
     .order("created_at")

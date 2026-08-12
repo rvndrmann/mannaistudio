@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
-import type { MentionableEntity } from "./entity-mentions"
+import { entityPrimaryReference, type MentionableEntity } from "./entity-mentions"
 
 const MEDIA_BUCKET = "creator-studio-media"
 const SIGNED_URL_TTL_SECONDS = 60 * 60
@@ -35,7 +35,7 @@ export async function collectDirectorVisionAttachments(input: {
 
   // Highest value first: the user pointed at these entities in this message.
   for (const entity of input.mentionedEntities || []) {
-    const first = (entity.reference_images || []).find((path) => typeof path === "string" && path.trim())
+    const first = entityPrimaryReference(entity)
     if (first) candidates.push({ label: `reference art for @${entity.name}`, path: first })
   }
 

@@ -4,6 +4,21 @@ export type MentionableEntity = {
   type: "character" | "scene" | "prop"
   description?: string | null
   reference_images?: string[]
+  primary_reference_image?: string | null
+}
+
+/**
+ * The single image that stands for this entity during generation.
+ *
+ * Generation sends one reference per entity, so which one it is decides the
+ * entity's visual identity in every shot. An explicit choice wins; otherwise
+ * the first saved image does, which is what happened before the choice existed.
+ */
+export function entityPrimaryReference(entity: { reference_images?: string[] | null; primary_reference_image?: string | null }) {
+  const images = (entity.reference_images || []).filter((path): path is string => typeof path === "string" && path.trim().length > 0)
+  const chosen = typeof entity.primary_reference_image === "string" ? entity.primary_reference_image.trim() : ""
+  if (chosen && images.includes(chosen)) return chosen
+  return images[0]
 }
 
 export type ActiveEntityMention = {

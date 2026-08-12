@@ -48,7 +48,7 @@ import { EntityMentionInput } from "@/components/studio/EntityMentionInput";
 import ShareProjectDialog from "@/components/studio/ShareProjectDialog";
 import ConvertToEnterpriseDialog from "@/components/enterprise/ConvertToEnterpriseDialog";
 import ProjectActivityDialog from "@/components/studio/ProjectActivityDialog";
-import { findMentionedEntityIds } from "@/lib/studio/entity-mentions";
+import { entityPrimaryReference, findMentionedEntityIds } from "@/lib/studio/entity-mentions";
 
 import {
   Share2,
@@ -74,6 +74,7 @@ type Entity = {
   type: "character" | "scene" | "prop";
   description: string | null;
   reference_images: string[];
+  primary_reference_image?: string | null;
   metadata: Record<string, unknown>;
   voice_id: string | null;
   status: string;
@@ -2252,7 +2253,7 @@ function AssetWorkspace({
 
   const activeImage = libraryImages[selected] || null;
   const chosenImage = libraryImages[0] || null;
-  const isCurrentlyChosen = Boolean(activeImage && selected === 0);
+  const isCurrentlyChosen = Boolean(activeImage && (asset.primary_reference_image ? activeImage === asset.primary_reference_image : selected === 0));
 
   const saveReferences = async (nextReferences: string[]) => {
     setReferences(nextReferences);
@@ -2273,11 +2274,14 @@ function AssetWorkspace({
       const nextLibrary = [activeImage, ...libraryImages.filter((_, idx) => idx !== selected)];
       setLibraryImages(nextLibrary);
       setSelected(0);
+      // Recorded explicitly as well as re-ordered: generation sends one image
+      // per entity, and which one that is should not depend on array position.
       await save({
         action: "saveAsset",
         asset: {
           ...asset,
           reference_images: nextLibrary,
+          primary_reference_image: activeImage,
           metadata: asset.metadata,
         },
       });
@@ -2408,7 +2412,9 @@ function AssetWorkspace({
           <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600">Asset Concept Gallery</p>
           <div className="space-y-2.5">
             {libraryImages.map((image, index) => {
-              const isChosen = index === 0;
+              const isChosen = asset.primary_reference_image
+                ? image === asset.primary_reference_image
+                : index === 0;
               const isSel = index === selected;
               return (
                 <div key={`${image}-${index}`} className="relative group">
@@ -3014,7 +3020,7 @@ function MentionedPrompt({ text, entities }: { text: string; entities: Entity[] 
     <>
       {parts.map((part, index) => {
         if (typeof part === "string") return <span key={index}>{part}</span>;
-        const image = (part.reference_images || [])[0];
+        const image = entityPrimaryReference(part);
         return (
           <span key={index} className="group/mention relative inline-block">
             <span className="rounded bg-[#b9f42e]/15 px-1 font-semibold text-[#b9f42e]">@{part.name}</span>
@@ -3056,6 +3062,35 @@ function Storyboard({
     type: "image" | "video";
   } | null>(null);
   const [expandedShots, setExpandedShots] = useState<Set<string>>(new Set());
+  // The Edit button had no handler at all, so a prompt could only be changed
+  // from the media workspace. Editing here uses the same mention autocomplete
+  // as Director chat, and the mentions decide the shot's cast on save.
+  const [editingShot, setEditingShot] = useState<string | null>(null);
+  const [draftPrompt, setDraftPrompt] = useState("");
+  const [savingShot, setSavingShot] = useState(false);
+
+  const saveShotPrompt = async (shot: Shot) => {
+    setSavingShot(true);
+    try {
+      await save({
+        action: "saveShot",
+        episodeId,
+        shot: {
+          id: shot.id,
+          title: shot.title,
+          prompt: draftPrompt,
+          duration_seconds: shot.duration_seconds,
+          aspect_ratio: shot.aspect_ratio,
+          resolution: shot.resolution,
+          entityIds: findMentionedEntityIds(draftPrompt, entities),
+        },
+      });
+      setEditingShot(null);
+      await reload();
+    } finally {
+      setSavingShot(false);
+    }
+  };
   const activeMedia = media
     ? { ...media, shot: shots.find((shot) => shot.id === media.shot.id) || media.shot }
     : null;
@@ -3127,34 +3162,76 @@ function Storyboard({
                       </span>
                       <p className="font-bold">{shot.title}</p>
                     </div>
-                    <div className="mt-3 text-sm leading-6 text-zinc-300">
-                      <p className={isExpanded ? "" : "line-clamp-3"}>
-                        {shot.prompt
-                          ? <MentionedPrompt text={shot.prompt} entities={entities} />
-                          : "Add a detailed prompt with the visual direction, camera framing, movement and continuity for this shot."}
-                      </p>
-                      {shot.prompt && shot.prompt.length > 130 && (
-                        <button
-                          onClick={toggleExpanded}
-                          className="mt-1 text-[11px] font-bold text-[#b9f42e] hover:underline"
-                        >
-                          {isExpanded ? "Show less" : "Read more"}
-                        </button>
-                      )}
-                    </div>
-                    <div className="mt-3 flex gap-2">
-                      <button className="text-xs font-semibold text-zinc-300">
-                        ✎ Edit
-                      </button>
-                      <button className="text-xs font-semibold text-[#b9f42e]">
-                        ↻ Redo
-                      </button>
-                    </div>
+                    {editingShot === shot.id ? (
+                      <div className="mt-3 space-y-2">
+                        <EntityMentionInput
+                          value={draftPrompt}
+                          onChange={setDraftPrompt}
+                          entities={entities}
+                          ariaLabel={`Prompt for ${shot.title}`}
+                          placeholder="Describe the shot. Type @ to reference a character, scene, or prop."
+                          className="min-h-[140px] w-full rounded-lg border border-white/10 bg-black/30 p-2.5 text-sm leading-6 text-zinc-200 outline-none focus:border-[#b9f42e]/40"
+                        />
+                        <p className="text-[11px] text-zinc-500">Mentioned assets become this shot's references.</p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={savingShot}
+                            onClick={() => saveShotPrompt(shot)}
+                            className="rounded bg-[#b9f42e] px-3 py-1.5 text-[11px] font-bold text-black hover:bg-[#a6de25] disabled:opacity-50"
+                          >
+                            {savingShot ? "Saving…" : "Save prompt"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={savingShot}
+                            onClick={() => setEditingShot(null)}
+                            className="rounded border border-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-400 hover:bg-white/5 disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="mt-3 text-sm leading-6 text-zinc-300">
+                          <p className={isExpanded ? "" : "line-clamp-3"}>
+                            {shot.prompt
+                              ? <MentionedPrompt text={shot.prompt} entities={entities} />
+                              : "Add a detailed prompt with the visual direction, camera framing, movement and continuity for this shot."}
+                          </p>
+                          {shot.prompt && shot.prompt.length > 130 && (
+                            <button
+                              onClick={toggleExpanded}
+                              className="mt-1 text-[11px] font-bold text-[#b9f42e] hover:underline"
+                            >
+                              {isExpanded ? "Show less" : "Read more"}
+                            </button>
+                          )}
+                        </div>
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { setDraftPrompt(shot.prompt || ""); setEditingShot(shot.id); }}
+                            className="text-xs font-semibold text-zinc-300 hover:text-white"
+                          >
+                            ✎ Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setMedia({ shot, type: "image" })}
+                            className="text-xs font-semibold text-[#b9f42e] hover:underline"
+                          >
+                            ↻ Redo
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                   <div className="flex flex-wrap content-start gap-2">
                     {linked.map((entity) => (
                       <div key={entity.id} className="w-[62px]">
-                        <AssetImage src={entity.reference_images?.[0]} />
+                        <AssetImage src={entityPrimaryReference(entity)} />
                         <p className="mt-1 truncate text-[10px] text-zinc-400">
                           {entity.name}
                         </p>

@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { generateOpenAIImage, type OpenAIImageModel } from "./openai"
 import { submitBytePlusVideo, generateBytePlusImage, createBytePlusAsset } from "./byteplus"
 import type { VideoGenerationModelId, ImageGenerationModelId } from "./generation-models"
-import { buildEntityMentionContext, findMentionedEntityIds, type MentionableEntity } from "./entity-mentions"
+import { buildEntityMentionContext, entityPrimaryReference, findMentionedEntityIds, type MentionableEntity } from "./entity-mentions"
 import { projectVisualStyle, visualStyleDirective } from "./entity-image-workflow"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { randomUUID } from "node:crypto"
@@ -41,7 +41,7 @@ export async function executeGenerationJobsInBackground(
           // the project owns. Reading the @mentions out of the prompt keeps an
           // unrelated character or prop from being fed into the frame.
           const { data: projectEntities } = await context.supabase
-            .from("creator_entities").select("id,name,type,metadata,reference_images").eq("project_id", context.project.id)
+            .from("creator_entities").select("id,name,type,metadata,reference_images,primary_reference_image").eq("project_id", context.project.id)
           const promptMentionIds = findMentionedEntityIds(job.prompt || "", (projectEntities || []) as MentionableEntity[])
           const declaredIds = Array.isArray(settings.mentionedEntityIds) ? settings.mentionedEntityIds as string[] : []
           // The prompt wins when it names anyone; the declared list is only the
@@ -53,7 +53,7 @@ export async function executeGenerationJobsInBackground(
           // entity owns burns the reference budget on two or three characters
           // and drops the rest of the shot's cast entirely.
           const mentionReferencePaths = mentionedEntities
-            .map((entity) => (Array.isArray(entity.reference_images) ? (entity.reference_images as string[]) : []).find((path) => typeof path === "string" && path.length > 0))
+            .map((entity) => entityPrimaryReference(entity as MentionableEntity))
             .filter((path): path is string => Boolean(path))
 
           const combinedReferencePaths = Array.from(new Set([...mentionReferencePaths, ...referencePaths])).slice(0, 8)

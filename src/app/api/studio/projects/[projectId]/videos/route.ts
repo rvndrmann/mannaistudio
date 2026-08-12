@@ -66,7 +66,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { data: resolvedEntities, error: resolvedEntityError } = resolvedEntityIds.length
       ? await context.supabase
         .from("creator_entities")
-        .select("id,name,type,description,reference_images,metadata")
+        .select("id,name,type,description,reference_images,primary_reference_image,metadata")
         .eq("project_id", projectId)
         .in("id", resolvedEntityIds)
       : { data: [], error: null }
