@@ -43,6 +43,7 @@ import { calculateCreditCost, getUserCredits } from "@/lib/studio/credits";
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
 import { parseVoiceToolCall, type VoiceToolCall } from "@/lib/studio/voice";
 import { createClient } from "@/lib/supabase/client";
+import { downloadSignedMedia, getSignedMediaUrl } from "@/lib/studio/signed-media";
 import { parseDirectorTimeline, type DirectorTimelineBlock } from "@/lib/studio/timeline";
 import { EntityMentionInput } from "@/components/studio/EntityMentionInput";
 import ShareProjectDialog from "@/components/studio/ShareProjectDialog";
@@ -2475,17 +2476,15 @@ function AssetWorkspace({
             )}
 
             {activeImage && (
-              <a
-                href={activeImage}
-                download
-                target="_blank"
-                rel="noreferrer"
+              <button
+                type="button"
+                onClick={() => downloadSignedMedia(activeImage, `${asset.name.replace(/[^a-zA-Z0-9._-]/g, "-")}.png`).catch(() => {})}
                 className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/5"
                 title="Download asset image"
               >
                 <Download className="h-3.5 w-3.5" />
                 Download
-              </a>
+              </button>
             )}
 
             <button
@@ -3936,17 +3935,15 @@ function ShotMediaWorkspace({
             )}
 
             {previewSource && (
-              <a
-                href={previewSource}
-                download
-                target="_blank"
-                rel="noreferrer"
+              <button
+                type="button"
+                onClick={() => downloadSignedMedia(previewSource, `shot-${shotNumber}-${isImage ? "keyframe.png" : "video.mp4"}`).catch((error) => setGenerationError(error instanceof Error ? error.message : "Download failed"))}
                 className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/5"
                 title={`Download ${isImage ? "image" : "video"}`}
               >
                 <Download className="h-3.5 w-3.5" />
                 Download
-              </a>
+              </button>
             )}
 
             <button onClick={addCurrentSourceAsReference} disabled={!previewSource} className="rounded-lg px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40">
@@ -5446,14 +5443,9 @@ function AssetImage({ src, className }: { src?: string; className?: string }) {
   useEffect(() => {
     if (!src || src.startsWith("http")) return;
     let active = true;
-    createClient()
-      .storage.from("creator-studio-media")
-      .createSignedUrl(src, 3600)
-      // Signing goes through the auth token, and supabase steals its own web
-      // lock to break a stalled refresh. That rejects with AbortError, which
-      // unhandled takes down the whole page over one missing thumbnail.
-      .then(({ data }) => { if (active) setUrl(data?.signedUrl); })
-      .catch(() => { /* leave the placeholder in place */ });
+    // Batched and cached: a grid of thumbnails resolves in one signing request
+    // instead of one per tile fighting over the auth token.
+    getSignedMediaUrl(src).then((signed) => { if (active && signed) setUrl(signed); });
     return () => { active = false; };
   }, [src]);
   const displayUrl = src?.startsWith("http") ? src : url;
@@ -5468,14 +5460,9 @@ function AssetVideo({ src }: { src?: string }) {
   useEffect(() => {
     if (!src || src.startsWith("http")) return;
     let active = true;
-    createClient()
-      .storage.from("creator-studio-media")
-      .createSignedUrl(src, 3600)
-      // Signing goes through the auth token, and supabase steals its own web
-      // lock to break a stalled refresh. That rejects with AbortError, which
-      // unhandled takes down the whole page over one missing thumbnail.
-      .then(({ data }) => { if (active) setUrl(data?.signedUrl); })
-      .catch(() => { /* leave the placeholder in place */ });
+    // Batched and cached: a grid of thumbnails resolves in one signing request
+    // instead of one per tile fighting over the auth token.
+    getSignedMediaUrl(src).then((signed) => { if (active && signed) setUrl(signed); });
     return () => { active = false; };
   }, [src]);
   const displayUrl = src?.startsWith("http") ? src : url;
@@ -5529,13 +5516,7 @@ function ResolvedMedia({ src, type, className }: { src: string; type: "image" | 
   useEffect(() => {
     let active = true;
     if (src.startsWith("http")) return;
-    createClient()
-      .storage.from("creator-studio-media")
-      .createSignedUrl(src, 3600)
-      .then(({ data }) => {
-        if (active) setSignedUrl(data?.signedUrl || "");
-      })
-      .catch(() => { /* a failed signature must not reject unhandled */ });
+    getSignedMediaUrl(src).then((signed) => { if (active) setSignedUrl(signed || ""); });
     return () => {
       active = false;
     };
