@@ -135,8 +135,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Include direct shot reference images
+    // A clip picked from the reference library is a motion reference, not an
+    // image one. Sending it as image_url makes the provider reject the whole
+    // request for an unsupported image format.
+    const looksLikeVideo = (path: string) => /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(path)
+    const pickedVideoPaths: string[] = []
     for (const refPath of input.referenceImages) {
       if (rawImagesToOmit.has(refPath)) continue
+      if (looksLikeVideo(refPath)) {
+        pickedVideoPaths.push(refPath)
+        continue
+      }
       combinedReferencePaths.push(refPath)
       displayReferencePaths.push(refPath)
     }
@@ -155,7 +164,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Seedance accepts finished clips as references, so a shot can inherit the
     // motion and look of the one before it instead of restarting cold.
-    const videoReferencePaths = [...input.referenceVideos]
+    // Clips that arrived in the image list belong here instead.
+    const videoReferencePaths = [...input.referenceVideos, ...pickedVideoPaths]
     if (input.continueFromPreviousShot) {
       const { data: previousShot } = await context.supabase
         .from("creator_shots")
