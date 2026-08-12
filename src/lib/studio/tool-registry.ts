@@ -8,6 +8,7 @@ import { generationRequestSchema, routeGeneration } from "./model-routing"
 import { revisionRequestSchema } from "./revisions"
 import { deductUserCredits } from "./credits"
 import { executeGenerationJobsInBackground } from "./execute-generation"
+import { findMentionedEntityIds, type MentionableEntity } from "./entity-mentions"
 
 export type ToolRisk = "read" | "write" | "costly" | "destructive"
 
@@ -415,17 +416,27 @@ export const submitGenerationTool = defineDirectorTool({
     if ((shots ?? []).length !== request.shotIds.length) throw new Error("One or more shots do not belong to this project")
     const { data: generationShots, error: validationError } = await context.supabase.from("creator_shots").select("id,prompt,referenced_entities").in("id", request.shotIds)
     if (validationError) throw validationError
+    const { data: projectEntityRows } = await context.supabase.from("creator_entities").select("id,name,type").eq("project_id", context.project.id)
+    const entityIndex = (projectEntityRows || []) as MentionableEntity[]
     const referencedIds = Array.from(new Set([...(generationShots || []).flatMap((shot) => shot.referenced_entities || []), ...request.mentionedEntityIds]))
     if (referencedIds.length) {
       const { data: references, error: referenceError } = await context.supabase.from("creator_entities").select("id").eq("project_id", context.project.id).in("id", referencedIds)
       if (referenceError) throw referenceError
       if ((references || []).length !== referencedIds.length) throw new Error("Generation blocked: one or more shot entity references are stale")
     }
+    // Generation reads a shot's cast; it does not widen it. Unioning every
+    // mention of a batch into every shot made one shot accumulate the whole
+    // project, and the storyboard then showed all of it as that shot's assets.
     if (request.mentionedEntityIds.length) {
-      const updates = await Promise.all((generationShots || []).map((shot) => context.supabase
-        .from("creator_shots")
-        .update({ referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...request.mentionedEntityIds])) })
-        .eq("id", shot.id)))
+      const updates = await Promise.all((generationShots || []).map((shot) => {
+        const mentionedInThisShot = findMentionedEntityIds(shot.prompt || "", entityIndex)
+        const additions = request.mentionedEntityIds.filter((id) => mentionedInThisShot.includes(id))
+        if (!additions.length) return Promise.resolve({ error: null })
+        return context.supabase
+          .from("creator_shots")
+          .update({ referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...additions])) })
+          .eq("id", shot.id)
+      }))
       const updateError = updates.find((result) => result.error)?.error
       if (updateError) throw updateError
     }

@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { generateOpenAIImage, type OpenAIImageModel } from "./openai"
 import { submitBytePlusVideo, generateBytePlusImage, createBytePlusAsset } from "./byteplus"
 import type { VideoGenerationModelId, ImageGenerationModelId } from "./generation-models"
-import { buildEntityMentionContext, type MentionableEntity } from "./entity-mentions"
+import { buildEntityMentionContext, findMentionedEntityIds, type MentionableEntity } from "./entity-mentions"
 import { projectVisualStyle, visualStyleDirective } from "./entity-image-workflow"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { randomUUID } from "node:crypto"
@@ -37,17 +37,27 @@ export async function executeGenerationJobsInBackground(
           const effectiveAspectRatio = typeof settings.aspectRatio === "string" ? settings.aspectRatio : projectDefaultAspect || "9:16"
           const referencePaths = Array.isArray(job.input_images) ? (job.input_images as string[]) : []
           
-          const mentionedEntityIds = Array.isArray(settings.mentionedEntityIds) ? settings.mentionedEntityIds : []
-          const { data: mentionedEntities } = mentionedEntityIds.length
-            ? await context.supabase.from("creator_entities").select("id,name,type,metadata,reference_images").in("id", mentionedEntityIds)
-            : { data: [] }
-            
-          const mentionReferencePaths = (mentionedEntities || [])
-            .flatMap((entity) => Array.isArray(entity.reference_images) ? (entity.reference_images as string[]) : [])
-            .filter((path) => typeof path === "string" && path.length > 0)
-            
+          // A shot is referenced by what its own prompt names, not by everything
+          // the project owns. Reading the @mentions out of the prompt keeps an
+          // unrelated character or prop from being fed into the frame.
+          const { data: projectEntities } = await context.supabase
+            .from("creator_entities").select("id,name,type,metadata,reference_images").eq("project_id", context.project.id)
+          const promptMentionIds = findMentionedEntityIds(job.prompt || "", (projectEntities || []) as MentionableEntity[])
+          const declaredIds = Array.isArray(settings.mentionedEntityIds) ? settings.mentionedEntityIds as string[] : []
+          // The prompt wins when it names anyone; the declared list is only the
+          // fallback for a prompt written without mentions.
+          const activeIds = promptMentionIds.length ? promptMentionIds : declaredIds
+          const mentionedEntities = (projectEntities || []).filter((entity) => activeIds.includes(entity.id))
+
+          // One image per entity — the chosen reference. Sending every image an
+          // entity owns burns the reference budget on two or three characters
+          // and drops the rest of the shot's cast entirely.
+          const mentionReferencePaths = mentionedEntities
+            .map((entity) => (Array.isArray(entity.reference_images) ? (entity.reference_images as string[]) : []).find((path) => typeof path === "string" && path.length > 0))
+            .filter((path): path is string => Boolean(path))
+
           const combinedReferencePaths = Array.from(new Set([...mentionReferencePaths, ...referencePaths])).slice(0, 8)
-          const mentionContext = buildEntityMentionContext((mentionedEntities || []) as MentionableEntity[])
+          const mentionContext = buildEntityMentionContext(mentionedEntities as MentionableEntity[])
 
           const signReference = async (ref: string) => {
             if (/^https?:\/\//i.test(ref) || /^asset:\/\//i.test(ref) || /^asset-[a-z0-9-]+$/i.test(ref)) return ref

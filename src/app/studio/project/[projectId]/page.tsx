@@ -2977,6 +2977,60 @@ function AssetModal({
     </div>
   );
 }
+// Renders @mentions in a shot prompt as chips that preview the entity's chosen
+// reference on hover, so it is obvious which art a shot will actually be built
+// from without opening the asset library.
+function MentionedPrompt({ text, entities }: { text: string; entities: Entity[] }) {
+  const byName = useMemo(() => {
+    const index = new Map<string, Entity>();
+    for (const entity of entities) index.set(entity.name.trim().toLowerCase(), entity);
+    return index;
+  }, [entities]);
+
+  // Longest names first so "@Old Picture Frame" is not cut short by "@Old".
+  const pattern = useMemo(() => {
+    const names = entities
+      .map((entity) => entity.name.trim())
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length)
+      .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    return names.length ? new RegExp(`@(${names.join("|")})`, "gi") : null;
+  }, [entities]);
+
+  if (!pattern) return <>{text}</>;
+  const parts: Array<string | Entity> = [];
+  let cursor = 0;
+  for (const match of Array.from(text.matchAll(pattern))) {
+    const index = match.index ?? 0;
+    const entity = byName.get(match[1].trim().toLowerCase());
+    if (!entity) continue;
+    if (index > cursor) parts.push(text.slice(cursor, index));
+    parts.push(entity);
+    cursor = index + match[0].length;
+  }
+  if (cursor < text.length) parts.push(text.slice(cursor));
+
+  return (
+    <>
+      {parts.map((part, index) => {
+        if (typeof part === "string") return <span key={index}>{part}</span>;
+        const image = (part.reference_images || [])[0];
+        return (
+          <span key={index} className="group/mention relative inline-block">
+            <span className="rounded bg-[#b9f42e]/15 px-1 font-semibold text-[#b9f42e]">@{part.name}</span>
+            <span className="pointer-events-none absolute bottom-full left-0 z-30 mb-1 hidden w-40 overflow-hidden rounded-lg border border-white/15 bg-[#1c1c1c] shadow-xl group-hover/mention:block">
+              {image
+                ? <AssetImage src={image} />
+                : <span className="block px-2 py-3 text-[11px] text-zinc-500">No reference image yet</span>}
+              <span className="block truncate px-2 py-1 text-[11px] text-zinc-300">{part.name}</span>
+            </span>
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
 function Storyboard({
   shots,
   entities,
@@ -3075,8 +3129,9 @@ function Storyboard({
                     </div>
                     <div className="mt-3 text-sm leading-6 text-zinc-300">
                       <p className={isExpanded ? "" : "line-clamp-3"}>
-                        {shot.prompt ||
-                          "Add a detailed prompt with the visual direction, camera framing, movement and continuity for this shot."}
+                        {shot.prompt
+                          ? <MentionedPrompt text={shot.prompt} entities={entities} />
+                          : "Add a detailed prompt with the visual direction, camera framing, movement and continuity for this shot."}
                       </p>
                       {shot.prompt && shot.prompt.length > 130 && (
                         <button
