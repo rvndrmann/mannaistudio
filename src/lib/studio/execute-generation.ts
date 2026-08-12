@@ -57,10 +57,16 @@ export async function executeGenerationJobsInBackground(
           // A cast the user picked by hand is deliberate and is used as-is.
           // Otherwise the prompt decides, with the declared list confirming
           // anything it names in prose rather than with an @mention.
-          const promptMentionIds = curated
+          // A hand-curated strip on the approval card outranks everything: the
+          // user looked at the references and said which ones to send.
+          const pickedIds = Array.isArray(settings.entityReferenceIds) ? settings.entityReferenceIds as string[] : null
+          const promptMentionIds = pickedIds
+            ? pickedIds
+            : curated
             ? shotCastIds
             : findShotCastEntityIds(job.prompt || "", (projectEntities || []) as MentionableEntity[], declaredIds)
-          const activeIds = promptMentionIds.length ? promptMentionIds : declaredIds
+          // An empty picked list means "no entity references", not "fall back".
+          const activeIds = pickedIds ? pickedIds : promptMentionIds.length ? promptMentionIds : declaredIds
           const mentionedEntities = (projectEntities || []).filter((entity) => activeIds.includes(entity.id))
 
           // One image per entity — the chosen reference. Sending every image an

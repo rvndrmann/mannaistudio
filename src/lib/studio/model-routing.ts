@@ -31,6 +31,10 @@ export const generationRequestSchema = z.object({
   // composition. That is occasionally wanted and never the default, so it must
   // be asked for rather than assumed.
   useExistingFrame: z.boolean().default(false),
+  // Set when the user has curated the reference strip by hand. It is the cast
+  // verbatim, so removing an entity sticks even though the prompt still names
+  // it — otherwise the derivation would put it straight back.
+  entityReferenceIds: z.array(z.string().uuid()).max(20).optional(),
 }).strict().refine(
   (request) => request.shotNumbers.length === 0 || Boolean(request.episodeId),
   { message: "episodeId is required when shots are named by number", path: ["episodeId"] },

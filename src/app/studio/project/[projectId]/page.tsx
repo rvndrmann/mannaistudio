@@ -4680,6 +4680,9 @@ function VideoGenerationProposalBlock({
   const [audioEnabled, setAudioEnabled] = useState(request.audioEnabled !== false);
   const [references, setReferences] = useState<string[]>(request.referencePaths || []);
   const [videoReferences, setVideoReferences] = useState<string[]>(request.videoReferencePaths || []);
+  // Entity tiles are derived from the prompt, so removing one has to be
+  // remembered here — and sent explicitly, or the server would derive it back.
+  const [removedEntityIds, setRemovedEntityIds] = useState<string[]>([]);
   const [addMenu, setAddMenu] = useState(false);
   const [assetPicker, setAssetPicker] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -4728,9 +4731,10 @@ function VideoGenerationProposalBlock({
     return resolved
       .map((id) => entities.find((entity) => entity.id === id))
       .filter((entity): entity is Entity => Boolean(entity))
+      .filter((entity) => !removedEntityIds.includes(entity.id))
       .map((entity) => ({ entity, image: entityPrimaryReference(entity) }))
       .filter((item): item is { entity: Entity; image: string } => Boolean(item.image));
-  }, [prompt, entities, shots, request.mentionedEntityIds, request.shotIds, request.shotNumbers]);
+  }, [prompt, entities, shots, removedEntityIds, request.mentionedEntityIds, request.shotIds, request.shotNumbers]);
 
 
   const uploadReference = async (file?: File) => {
@@ -4770,6 +4774,9 @@ function VideoGenerationProposalBlock({
         // Entity images are resolved from the prompt server-side, so sending
         // them again here would spend two reference slots on one subject.
         referencePaths: references.filter((path) => !entityReferences.some((item) => item.image === path)),
+        // Sent whenever the strip was edited, so a removal is honoured instead
+        // of being derived back from the prompt that still names the entity.
+        ...(removedEntityIds.length ? { entityReferenceIds: entityReferences.map((item) => item.entity.id) } : {}),
         videoReferencePaths: videoReferences,
       },
       // Every shot in the batch takes the edited prompt, matching what the card
@@ -4848,8 +4855,18 @@ function VideoGenerationProposalBlock({
       <div className="space-y-3 p-3">
         <div className="flex flex-wrap items-center gap-2">
           {entityReferences.map(({ entity, image }) => (
-            <div key={`entity-${entity.id}`} className="relative h-14 w-14 overflow-hidden rounded-lg border border-[#b9f42e]/50" title={`${entity.name} — referenced because the prompt names it`}>
+            <div key={`entity-${entity.id}`} className="group/ref relative h-14 w-14 overflow-hidden rounded-lg border border-[#b9f42e]/50" title={`${entity.name} — referenced because the prompt names it`}>
               <AssetImage src={image} />
+              {canDecide && (
+                <button
+                  type="button"
+                  onClick={() => setRemovedEntityIds((current) => [...current, entity.id])}
+                  className="absolute right-0.5 top-0.5 hidden rounded bg-black/75 px-1 text-[10px] text-white group-hover/ref:block"
+                  aria-label={`Remove ${entity.name} from this generation`}
+                >
+                  ×
+                </button>
+              )}
               <span className="absolute inset-x-0 bottom-0 truncate bg-black/75 px-1 text-center text-[9px] font-bold text-[#b9f42e]">
                 {entity.name}
               </span>
