@@ -8,6 +8,7 @@ import { stripIdentityDescriptions } from "./prompt-sanitizer"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { randomUUID } from "node:crypto"
 import { verifyGenerationTarget } from "./generation-target"
+import { refundGenerationCredits } from "./credits"
 
 async function verifyAttachedOutput(context: AuthenticatedProjectContext, job: Record<string, unknown>, resultPath: string) {
   if (typeof job.shot_id !== "string") throw new Error("Generation completed without a target shot")
@@ -257,6 +258,14 @@ export async function executeGenerationJobsInBackground(
             status: "failed",
             error: err instanceof Error ? err.message : "Unknown error",
           }).eq("id", job.id)
+          const charged = Number(job.credits_used || job.estimated_credits || 0)
+          if (charged > 0) {
+            try {
+              await refundGenerationCredits(context.user.id, charged, `generation-job:${job.id}`, "Refund: failed AI Director generation", job.id, context.supabase)
+            } catch (refundError) {
+              console.error(`Could not refund generation job ${job.id}:`, refundError)
+            }
+          }
           await settleWorkflowRun(context, job.workflow_run_id)
         }
       }

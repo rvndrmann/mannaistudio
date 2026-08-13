@@ -140,3 +140,24 @@ export async function addUserCredits(
 
   return Number(data ?? 0)
 }
+
+export async function refundGenerationCredits(
+  userId: string,
+  amount: number,
+  refundKey: string,
+  description = "Failed generation refund",
+  jobId?: string | null,
+  client?: SupabaseClient,
+): Promise<{ refunded: boolean; newBalance: number }> {
+  const supabase = client ?? createBrowserClient()
+  const { data, error } = await supabase.rpc("refund_generation_credits", {
+    p_user_id: userId,
+    p_amount: amount,
+    p_refund_key: refundKey,
+    p_description: description,
+    p_job_id: jobId || null,
+  })
+  if (error) throw new Error(`Failed to refund credits: ${error.message}`)
+  const result = Array.isArray(data) ? data[0] : data
+  return { refunded: Boolean(result?.refunded), newBalance: Number(result?.new_balance ?? 0) }
+}

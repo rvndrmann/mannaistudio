@@ -19,7 +19,7 @@ import { buildEntityMentionContext, entityPrimaryReference, type MentionableEnti
 import { collectDirectorVisionAttachments } from "@/lib/studio/director-vision"
 import { buildEntityReferenceImagePrompt, openAIImageQuality, parseBulkEntityImageIntent, projectImageQuality, projectVisualStyle, visualStyleDirective, type BulkEntityImageIntent } from "@/lib/studio/entity-image-workflow"
 import { createBytePlusAsset } from "@/lib/studio/byteplus"
-import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
+import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
 import { buildProjectStateSummary, loadProductionSnapshot } from "@/lib/studio/project-state-summary"
 import { computePipelineStage } from "@/lib/studio/pipeline"
 import type { DirectorTimelineBlock } from "@/lib/studio/timeline"
@@ -406,6 +406,8 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
       input.context.supabase,
     )
     if (!deduction.success) throw new OpenAIProviderError(deduction.errorMessage || "Insufficient credits", 402)
+    const refundKey = `director-image:${input.idempotencyKey}`
+    try {
     input.onProgress?.(requestedShotNumber ? `Generating the keyframe for shot ${requestedShotNumber}` : "Generating the image")
     const image = await generateOpenAIImage({ userId: input.context.user.id, model: "gpt-image-2", prompt: resolvedPrompt, referenceUrls, aspectRatio, quality: openAIImageQuality(quality) })
     input.onProgress?.(requestedShotNumber ? `Saving the keyframe to shot ${requestedShotNumber}` : "Saving the image")
@@ -445,6 +447,8 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
         target_snapshot: targetSnapshot,
         verification: { status: "verified", checkedAt: new Date().toISOString(), checks: verificationResult.checks, resultPath: path },
         completed_at: completedAt,
+        estimated_credits: creditCost,
+        credits_used: creditCost,
       })
     }
     const { data: signed } = await input.context.supabase.storage.from("creator-studio-media").createSignedUrl(path, 60 * 60)
@@ -466,6 +470,10 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
         referenced_entity_ids: referencedEntities.map((entity) => entity.id),
         media: [{ type: "image", path, url: signed?.signedUrl, prompt, referencedEntityIds: referencedEntities.map((entity) => entity.id), provider: "openai", model: "gpt-image-2" }],
       },
+    }
+    } catch (error) {
+      await refundGenerationCredits(input.context.user.id, creditCost, refundKey, "Refund: failed AI Director image generation", null, input.context.supabase)
+      throw error
     }
   }
   return null
@@ -521,8 +529,8 @@ async function generateBulkEntityReferenceImages(
         input.context.supabase,
       )
       if (!deduction.success) throw new OpenAIProviderError(deduction.errorMessage || "Insufficient credits", 402)
-      creditsCharged += creditCost
-      creditBalance = deduction.newBalance
+      const refundKey = `director-entity-image:${input.idempotencyKey}:${entity.id}`
+      try {
       const image = await generateOpenAIImage({ userId: input.context.user.id, model: "gpt-image-2", prompt, referenceUrls, aspectRatio: "2:3", quality: openAIImageQuality(quality) })
       const path = `${input.context.user.id}/${input.projectId}/entities/${entity.id}/gpt-image-2-${crypto.randomUUID()}.png`
       const { error: uploadError } = await input.context.supabase.storage.from("creator-studio-media").upload(path, image, { contentType: "image/png", upsert: false })
@@ -570,8 +578,16 @@ async function generateBulkEntityReferenceImages(
         requires_approval: false,
         result_url: path,
         completed_at: completedAt,
+        estimated_credits: creditCost,
+        credits_used: creditCost,
       })
+      creditsCharged += creditCost
+      creditBalance = deduction.newBalance
       return { entityId: entity.id, entityName: entity.name, path, url: signedOutput?.signedUrl, prompt }
+      } catch (error) {
+        await refundGenerationCredits(input.context.user.id, creditCost, refundKey, `Refund: failed reference image for ${entity.name}`, null, input.context.supabase)
+        throw error
+      }
     }))
     results.forEach((result, index) => {
       if (result.status === "fulfilled") completed.push(result.value)

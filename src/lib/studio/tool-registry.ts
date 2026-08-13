@@ -540,6 +540,7 @@ export const submitGenerationTool = defineDirectorTool({
       await context.supabase.rpc("creator_cancel_unreserved_jobs", { p_job_ids: jobIds })
       throw new Error(deduction.errorMessage || "Insufficient credits")
     }
+    await context.supabase.from("creator_generation_jobs").update({ credits_used: routing.creditsPerShot }).in("id", jobIds)
     // Trigger background generation for the approved jobs
     executeGenerationJobsInBackground(context, jobIds)
 

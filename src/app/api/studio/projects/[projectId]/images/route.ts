@@ -6,7 +6,7 @@ import { createBytePlusAsset, generateBytePlusImage, BytePlusProviderError } fro
 import { FalProviderError, generateFalImage } from "@/lib/studio/fal"
 import { generateGoogleImage, GoogleProviderError } from "@/lib/studio/google"
 import { generationProvider, isImageGenerationModel, type ImageGenerationModelId } from "@/lib/studio/generation-models"
-import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
+import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { openAIImageQuality, projectImageQuality, projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
@@ -25,6 +25,7 @@ const imageRequestSchema = z.object({
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   let pendingAssetGeneration: { context: Awaited<ReturnType<typeof requireAuthenticatedProject>>; projectId: string; entityId: string } | null = null
+  let pendingRefund: { context: Awaited<ReturnType<typeof requireAuthenticatedProject>>; amount: number; key: string } | null = null
   try {
     const { projectId } = await params
     const context = await requireAuthenticatedProject(projectId)
@@ -64,6 +65,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!deduct.success) {
       return NextResponse.json({ error: deduct.errorMessage || "Insufficient credits" }, { status: 402 })
     }
+    pendingRefund = { context, amount: creditCost, key: `image-request:${randomUUID()}` }
 
     const mentionReferencePaths: string[] = []
     for (const entity of mentionedEntities || []) {
@@ -215,6 +217,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       // Record in creator_generation_jobs so history displays prompt and model
       await context.supabase.from("creator_generation_jobs").insert({
+        user_id: context.user.id,
         project_id: projectId,
         episode_id: typeof shotData?.episode_id === "string" ? shotData.episode_id : null,
         shot_id: input.targetId,
@@ -224,8 +227,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         input_images: combinedReferencePaths,
         status: "completed",
         result_url: storagePath,
+        estimated_credits: creditCost,
+        credits_used: creditCost,
       })
     }
+    pendingRefund = null
     return NextResponse.json({
       path: storagePath,
       provider,
@@ -236,6 +242,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       creditBalance: deduct.newBalance,
     })
   } catch (error) {
+    if (pendingRefund) {
+      try {
+        await refundGenerationCredits(pendingRefund.context.user.id, pendingRefund.amount, pendingRefund.key, "Refund: failed image generation", null, pendingRefund.context.supabase)
+      } catch (refundError) {
+        console.error("Could not refund failed image generation", refundError)
+      }
+    }
     if (pendingAssetGeneration) {
       try {
         const { data: asset } = await pendingAssetGeneration.context.supabase

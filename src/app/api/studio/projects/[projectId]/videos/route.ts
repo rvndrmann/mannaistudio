@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from "node:crypto"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { BytePlusProviderError, bytePlusVideoReferenceLimit, createBytePlusAsset, getBytePlusAsset, getBytePlusVideoTask, submitBytePlusVideo } from "@/lib/studio/byteplus"
 import { FalProviderError, getFalVideoTask, submitFalVideo } from "@/lib/studio/fal"
 import { getGoogleVideoTask, GoogleProviderError, submitGoogleVideo } from "@/lib/studio/google"
 import { generationProvider, isVideoGenerationModel } from "@/lib/studio/generation-models"
-import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
+import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
@@ -56,6 +57,7 @@ async function signedReferenceUrls(context: Awaited<ReturnType<typeof requireAut
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
+  let pendingRefund: { userId: string; amount: number; key: string; client: SupabaseClient } | null = null
   try {
     const { projectId } = await params
     const context = await requireAuthenticatedProject(projectId)
@@ -83,6 +85,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!deduct.success) {
       return NextResponse.json({ error: deduct.errorMessage || "Insufficient credits" }, { status: 402 })
     }
+    pendingRefund = { userId: context.user.id, amount: creditCost, key: `video-request:${randomUUID()}`, client: context.supabase }
 
     // Resolve canonical character, scene, and prop references plus direct shot references.
     let combinedReferencePaths: string[] = []
@@ -211,8 +214,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       started_at: new Date().toISOString(),
       idempotency_key: randomUUID(),
       operation: "submit_video_generation",
+      estimated_credits: creditCost,
+      credits_used: creditCost,
     }).select("*").single()
     if (jobError) throw jobError
+    pendingRefund.key = `generation-job:${job.id}`
 
     try {
       let task: { id: string; response?: unknown }
@@ -245,6 +251,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         context.supabase.from("creator_generation_jobs").update({ status: "failed", error: errorMessage, completed_at: new Date().toISOString() }).eq("id", job.id),
         context.supabase.from("creator_shots").update({ video_status: "failed" }).eq("id", shot.id),
       ])
+      const refund = await refundGenerationCredits(context.user.id, creditCost, `generation-job:${job.id}`, "Refund: failed video generation", job.id, context.supabase)
+      pendingRefund = null
       const rejected = parseSeedanceRejectedReference(errorMessage)
       return NextResponse.json({
         error: errorMessage,
@@ -253,9 +261,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           ...rejected,
           path: combinedReferencePaths[rejected.referenceIndex] || null,
         } : null,
+        creditsRefunded: refund.refunded ? creditCost : 0,
+        creditBalance: refund.newBalance,
       }, { status: error instanceof BytePlusProviderError || error instanceof FalProviderError || error instanceof GoogleProviderError ? error.status : studioErrorStatus(error) })
     }
   } catch (error) {
+    if (pendingRefund) {
+      try {
+        await refundGenerationCredits(pendingRefund.userId, pendingRefund.amount, pendingRefund.key, "Refund: video generation could not start", null, pendingRefund.client)
+      } catch (refundError) {
+        console.error("Could not refund failed video generation", refundError)
+      }
+    }
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid video request", issues: error.flatten() }, { status: 400 })
     return NextResponse.json({ error: studioErrorMessage(error, "Video generation failed") }, { status: error instanceof BytePlusProviderError || error instanceof FalProviderError || error instanceof GoogleProviderError ? error.status : studioErrorStatus(error) })
   }
@@ -292,12 +309,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     if (task.status === "failed" || task.status === "cancelled") {
       const error = task.error?.message || `${provider} task ${task.status}`
+      const charged = Number(job.credits_used || job.estimated_credits || 0)
+      const refund = charged > 0
+        ? await refundGenerationCredits(context.user.id, charged, `generation-job:${job.id}`, `Refund: ${task.status} video generation`, job.id, context.supabase)
+        : { refunded: false, newBalance: 0 }
       await Promise.all([
         context.supabase.from("creator_generation_jobs").update({ status: task.status === "cancelled" ? "cancelled" : "failed", provider_response: task, error, completed_at: new Date().toISOString() }).eq("id", job.id),
         job.shot_id ? context.supabase.from("creator_shots").update({ video_status: task.status === "cancelled" ? "cancelled" : "failed" }).eq("id", job.shot_id) : Promise.resolve(),
       ])
       if (job.workflow_run_id) await context.supabase.from("creator_workflow_runs").update({ status: task.status === "cancelled" ? "cancelled" : "failed", error: { message: error }, completed_at: new Date().toISOString() }).eq("id", job.workflow_run_id)
-      return NextResponse.json({ ...job, status: task.status === "cancelled" ? "cancelled" : "failed", error })
+      return NextResponse.json({ ...job, status: task.status === "cancelled" ? "cancelled" : "failed", error, creditsRefunded: refund.refunded ? charged : 0, creditBalance: refund.newBalance })
     }
     if (task.status !== "succeeded" || !task.content?.video_url) return NextResponse.json({ ...job, status: "processing", providerStatus: task.status })
 
