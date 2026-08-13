@@ -5027,9 +5027,14 @@ function ChatNextStep({ messages, proposals, sessionId, busy, onAction }: {
   onAction: (intent: string) => void;
 }) {
   if (busy) return null;
-  if (proposals.some((proposal) => proposal.status === "pending" && proposal.session_id === sessionId)) return null;
   const latest = messages.filter((item) => item.role === "assistant").at(-1);
   if (!latest) return null;
+  // Only the newest reply's own approval blocks the step, not any card left
+  // unanswered earlier in the session. Suppressing on those meant one abandoned
+  // proposal removed the next step from every reply that followed it.
+  const awaitingThisReply = proposalIdsFromActions(latest.suggested_actions)
+    .some((id) => proposals.some((proposal) => proposal.id === id && proposal.status === "pending" && proposal.session_id === sessionId));
+  if (awaitingThisReply) return null;
   const block = parseDirectorTimeline(latest.timeline_blocks).filter((item) => item.type === "suggested_actions").at(-1);
   if (!block || block.type !== "suggested_actions") return null;
   return (

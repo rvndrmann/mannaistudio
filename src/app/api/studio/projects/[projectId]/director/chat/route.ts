@@ -23,7 +23,7 @@ import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from 
 import { buildProjectStateSummary, loadProductionSnapshot } from "@/lib/studio/project-state-summary"
 import { computePipelineStage } from "@/lib/studio/pipeline"
 import type { DirectorTimelineBlock } from "@/lib/studio/timeline"
-import { actionMatchesRequestedShots, buildVideoContinuationPrompt, parseTargetShotNumbers, parseVideoShotReferenceIntent } from "@/lib/studio/shot-intent"
+import { actionMatchesRequestedShots, buildVideoContinuationPrompt, parseTargetShotNumbers, parseVideoShotReferenceIntent, wantsRedo } from "@/lib/studio/shot-intent"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 import { addWorkflowStep, createWorkflowRun, finishWorkflowRun } from "@/lib/studio/workflow-runs"
 import { buildGenerationTargetSnapshot, verifyGenerationTarget } from "@/lib/studio/generation-target"
@@ -315,7 +315,11 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
   }
   const bulkEntityImageIntent = !forbidsAllMediaGeneration && !forbidsImageGenerationRequest ? parseBulkEntityImageIntent(input.message, input.mentionedEntities) : null
   if (bulkEntityImageIntent) return generateBulkEntityReferenceImages(input, bulkEntityImageIntent)
-  if (!forbidsAllMediaGeneration && !forbidsVideoGenerationRequest && /\b(video|animate|motion)\b/.test(normalized) && /\b(generate|create|make|render|produce)\b/.test(normalized)) {
+  // "recreate the shot 6 video" is a video request; it just never says the word
+  // "generate". Left to the agent it came back as an inspection report on a
+  // different shot entirely.
+  const wantsMediaVerb = /\b(generate|create|make|render|produce)\b/.test(normalized) || wantsRedo(normalized)
+  if (!forbidsAllMediaGeneration && !forbidsVideoGenerationRequest && /\b(video|animate|motion)\b/.test(normalized) && wantsMediaVerb) {
     const { data: shots, error } = await input.context.supabase.from("creator_shots").select("id,prompt,title,order_index,keyframe_image,video_url,video_status").eq("episode_id", input.episodeId).order("order_index")
     if (error) throw error
     // Same 1-based numbering submit_generation resolves against, so a number
@@ -413,7 +417,7 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
   // different shot entirely. A named shot with a redo verb is unambiguous enough
   // to answer here, and the keyframe is what a bare redo means — the reply says
   // so, so asking for the clip instead is one sentence away.
-  const wantsShotRedo = /\b(regenerate|re-generate|redo|remake|re-render|rerender)\b/.test(normalized) && parseTargetShotNumbers(input.message).length > 0
+  const wantsShotRedo = wantsRedo(normalized) && parseTargetShotNumbers(input.message).length > 0
   const namesImage = /\b(image|keyframe|poster|visual)\b/.test(normalized) && /\b(generate|create|make|draw)\b/.test(normalized)
   if (!forbidsAllMediaGeneration && !forbidsImageGenerationRequest && (namesImage || wantsShotRedo)) {
     const shotNumberMatch = normalized.match(/\b(?:storyboard\s+)?shots?\s*(?:#\s*)?(\d+)\b/)

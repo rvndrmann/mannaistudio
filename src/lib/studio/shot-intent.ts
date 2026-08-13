@@ -79,6 +79,19 @@ export function parseVideoShotReferenceIntent(message: string): VideoShotReferen
   }
 }
 
+/**
+ * Asking for the same thing again, in the ways people actually write it.
+ *
+ * "recreate the shot 6 video" matched nothing before: \bcreate\b does not fire
+ * inside "recreate", so the request fell past both media paths to the agent,
+ * which answered it with an inspection report on a different shot.
+ */
+const REDO_VERB = /\b(regenerate|re-generate|recreate|re-create|redo|re-do|remake|re-make|rerender|re-render|rerun|re-run|again)\b/i
+
+export function wantsRedo(message: string) {
+  return REDO_VERB.test(message)
+}
+
 export function parseTargetShotNumbers(message: string) {
   return parseVideoShotReferenceIntent(message).targetShotNumbers
 }

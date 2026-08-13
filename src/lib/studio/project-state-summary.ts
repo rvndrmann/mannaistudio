@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { computePipelineStage, emptySnapshot, pipelineInstructionBlock, type ProductionSnapshot } from "./pipeline"
 
+// Past this, a job that never reached a terminal status is treated as abandoned
+// rather than as work in flight. Generation takes 30–90 seconds; twenty minutes
+// is long enough that nothing healthy is still running.
+const STALE_JOB_AFTER_MS = 20 * 60 * 1000
+
 /**
  * What the workspace actually contains right now, read once and shared by
  * everything that has to agree on where the production stands: the instructions
@@ -45,11 +50,17 @@ export async function loadProductionSnapshot(
     // Generations already running. A shot mid-render still has no keyframe, so
     // on stored state alone it reads as the obvious next step — and offering it
     // charges the user for the same frame twice.
+    //
+    // Only recent ones count. A job that died without reaching a terminal status
+    // stays "processing" forever, and treating that as work in progress removed
+    // its shot from the pipeline permanently: no next step, no button, no way
+    // forward except knowing to ask.
     supabase
       .from("creator_generation_jobs")
       .select("shot_id, type, status")
       .eq("project_id", projectId)
-      .in("status", ["queued", "approved", "generating", "processing"]),
+      .in("status", ["queued", "approved", "generating", "processing"])
+      .gte("created_at", new Date(Date.now() - STALE_JOB_AFTER_MS).toISOString()),
   ])
 
   const episodes = episodesRes.data || []

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { actionMatchesRequestedShots, buildVideoContinuationPrompt, parseRequestedShotNumbers, parseTargetShotNumbers, parseVideoShotReferenceIntent } from "./shot-intent"
+import { actionMatchesRequestedShots, buildVideoContinuationPrompt, parseRequestedShotNumbers, parseTargetShotNumbers, parseVideoShotReferenceIntent , wantsRedo } from "./shot-intent"
 
 describe("parseRequestedShotNumbers", () => {
   it("reads a single named shot", () => {
@@ -100,5 +100,32 @@ describe("actionMatchesRequestedShots", () => {
   it("keeps non-shot pipeline actions and untargeted turns", () => {
     expect(actionMatchesRequestedShots("Review the cut for continuity", [1])).toBe(true)
     expect(actionMatchesRequestedShots("Generate the image for shot 4", [])).toBe(true)
+  })
+})
+
+describe("redo requests", () => {
+  // "recreate the shot 6 video" matched neither media path — \bcreate\b does not
+  // fire inside "recreate" — so it reached the agent, which replied with an
+  // inspection report on a different shot.
+  it("recognises the ways a redo is actually written", () => {
+    for (const message of [
+      "recreate the shot 6 video",
+      "re-create shot 6 video",
+      "regenerate shot 1",
+      "redo the keyframe for shot 4",
+      "remake shot 2 video",
+      "render shot 3 again",
+    ]) {
+      expect(wantsRedo(message)).toBe(true)
+    }
+  })
+
+  it("leaves an ordinary request alone", () => {
+    expect(wantsRedo("generate the video for shot 7")).toBe(false)
+    expect(wantsRedo("what is left to do?")).toBe(false)
+  })
+
+  it("keeps the shot number a redo names", () => {
+    expect(parseTargetShotNumbers("recreate the shot 6 video")).toEqual([6])
   })
 })
