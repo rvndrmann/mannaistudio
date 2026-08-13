@@ -116,6 +116,11 @@ const adFormats = [
  * black box. Returns null for anything that is a real media URL, which keeps the
  * normal video element in use for uploads.
  */
+/** A Short is shot vertically, so the frame that holds it should be too. */
+function isVerticalVideo(url: string) {
+    return /youtube\.com\/shorts\//i.test(url || "")
+}
+
 function youtubeEmbedUrl(url: string): string | null {
     if (!url) return null
     const watch = url.match(/(?:youtube\.com\/watch\?(?:.*&)?v=|youtu\.be\/|youtube\.com\/(?:embed|shorts|live)\/)([A-Za-z0-9_-]{6,})/)
@@ -242,7 +247,14 @@ export default function LandingPage() {
 
                         {/* HERO FEATURED VIDEO / MEDIA CONTAINER SLOT (USER CAN EMBED VIDEO HERE LATER) */}
                         <div className="relative group overflow-hidden rounded-[26px] border border-white/15 bg-[#141715] shadow-2xl transition duration-500 hover:border-primary/50">
-                            <div className="relative aspect-video w-full bg-[#0a0c0b]">
+                            <div className={cn(
+                                "relative w-full bg-[#0a0c0b]",
+                                // Matching the source's shape beats letterboxing it: a vertical
+                                // episode shown in a landscape card is mostly black bars.
+                                heroFeatured?.videoUrl && isVerticalVideo(heroFeatured.videoUrl)
+                                    ? "mx-auto aspect-[9/16] max-w-[420px]"
+                                    : "aspect-video",
+                            )}>
                                 {heroFeatured?.videoUrl && youtubeEmbedUrl(heroFeatured.videoUrl) ? (
                                     <iframe
                                         src={`${youtubeEmbedUrl(heroFeatured.videoUrl)}&autoplay=1&mute=1&controls=0&playsinline=1`}
