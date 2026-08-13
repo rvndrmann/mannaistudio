@@ -216,7 +216,12 @@ async function nextStepBlock(
     if (!actionMatchesRequestedShots(stage.nextAction.intent, requestedShotNumbers)) return null
     return {
       type: "suggested_actions",
-      actions: [{ ...stage.nextAction, payload: { stage: stage.key, summary: stage.summary } }],
+      // The primary step first, then the moves that make sense beside it: finish
+      // the rest in one batch, or film a shot whose frame is already approved.
+      // The schema caps this at five.
+      actions: [stage.nextAction, ...stage.alternatives]
+        .slice(0, 5)
+        .map((action) => ({ ...action, payload: { stage: stage.key, summary: stage.summary } })),
     }
   } catch (error) {
     // A reply that lost its next-step button is still a reply. Failing the whole
@@ -417,6 +422,10 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
     // conversation to resolve it, and the agent has that context — guessing
     // here would attach the picture to whichever shot happened to be first.
     if (!requestedShotNumber && /\bshots?\b/.test(normalized)) return null
+    // "images for shot 8, 9, 10" is a batch. This path renders exactly one
+    // shot, and the single-number regex above would silently keep the first and
+    // drop the rest, so the batch goes to the agent instead.
+    if (parseTargetShotNumbers(input.message).length > 1) return null
     const { data: targetShot } = requestedShotNumber
       ? await input.context.supabase
         .from("creator_shots")

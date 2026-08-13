@@ -64,6 +64,13 @@ export type PipelineStage = {
   /** One sentence on where the production stands. */
   summary: string
   nextAction: PipelineAction | null
+  /**
+   * The other moves that make sense from here — finish the rest of the images
+   * in one batch, start a clip on a shot whose frame is already approved. Shown
+   * beside the primary step so a user who has just watched one shot finish does
+   * not have to type the next request from scratch.
+   */
+  alternatives: PipelineAction[]
 }
 
 export const emptySnapshot: ProductionSnapshot = {
@@ -101,6 +108,24 @@ export function missingEntityNames(snapshot: ProductionSnapshot): string[] {
   return Array.from(missing.values())
 }
 
+/** Shots with a prompt but no keyframe yet, in storyboard order. */
+export function shotsAwaitingKeyframe(snapshot: ProductionSnapshot): SnapshotShot[] {
+  return snapshot.shots.filter((shot) => shot.hasPrompt && !shot.hasKeyframe)
+}
+
+/** Shots whose keyframe is ready but which have no clip yet, in storyboard order. */
+export function shotsAwaitingVideo(snapshot: ProductionSnapshot): SnapshotShot[] {
+  return snapshot.shots.filter((shot) => shot.hasKeyframe && !shot.hasVideo)
+}
+
+/** What the production still owes, in one phrase for the summary line. */
+export function remainingWork(snapshot: ProductionSnapshot): string {
+  const images = shotsAwaitingKeyframe(snapshot).length
+  const videos = snapshot.shots.filter((shot) => !shot.hasVideo).length
+  if (!images && !videos) return "Nothing is outstanding."
+  return `${images} ${plural(images, "image")} and ${videos} ${plural(videos, "video")} still to generate.`
+}
+
 export function entitiesWithoutArt(snapshot: ProductionSnapshot): string[] {
   return snapshot.entities.filter((entity) => !entity.hasReferenceImage).map((entity) => entity.name)
 }
@@ -132,6 +157,7 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
         risk: "write",
         recommended: true,
       },
+      alternatives: [],
     }
   }
 
@@ -147,6 +173,7 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
         risk: "write",
         recommended: true,
       },
+      alternatives: [],
     }
   }
 
@@ -163,6 +190,7 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
         risk: "write",
         recommended: true,
       },
+      alternatives: [],
     }
   }
 
@@ -179,6 +207,7 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
         risk: "costly",
         recommended: true,
       },
+      alternatives: [],
     }
   }
 
@@ -194,16 +223,33 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
         risk: "write",
         recommended: true,
       },
+      alternatives: [],
     }
   }
 
   const keyframed = snapshot.shots.filter((shot) => shot.hasKeyframe).length
-  const nextKeyframe = nextShotWithoutKeyframe(snapshot)
+  const rendered = snapshot.shots.filter((shot) => shot.hasVideo).length
+  const awaitingKeyframe = shotsAwaitingKeyframe(snapshot)
+  const awaitingVideo = shotsAwaitingVideo(snapshot)
+  const nextKeyframe = awaitingKeyframe[0] || null
+  const nextVideo = awaitingVideo[0] || null
+
+  // A shot whose frame is already approved can be filmed now. Offering that
+  // beside the images means a user who wants one shot finished end to end does
+  // not have to wait for every keyframe first, or ask for it by hand.
+  const videoAction = (shot: SnapshotShot): PipelineAction => ({
+    id: `pipeline-video-${shot.number}`,
+    label: `Generate the video for shot ${shot.number}`,
+    intent: `Generate the video for shot ${shot.number} from its approved keyframe and saved prompt, carrying continuity from the previous shot's clip.`,
+    risk: "costly",
+    recommended: false,
+  })
+
   if (nextKeyframe) {
     return {
       key: "keyframes",
       title: "Storyboard images",
-      summary: `${keyframed} of ${snapshot.shots.length} ${plural(snapshot.shots.length, "shot")} ${plural(keyframed, "has", "have")} a keyframe. Shot ${nextKeyframe.number} is next.`,
+      summary: `${keyframed} of ${snapshot.shots.length} ${plural(snapshot.shots.length, "shot")} ${plural(keyframed, "has", "have")} a keyframe and ${rendered} ${plural(rendered, "is", "are")} rendered. ${remainingWork(snapshot)} Shot ${nextKeyframe.number} is the next image.`,
       nextAction: {
         id: `pipeline-keyframe-${nextKeyframe.number}`,
         label: `Generate the image for shot ${nextKeyframe.number}`,
@@ -211,23 +257,34 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
         risk: "costly",
         recommended: true,
       },
+      alternatives: [
+        ...(awaitingKeyframe.length > 1 ? [{
+          id: "pipeline-keyframes-remaining",
+          label: `Generate the remaining ${awaitingKeyframe.length} images`,
+          intent: `Generate the storyboard keyframe images for shot ${awaitingKeyframe.map((shot) => shot.number).join(", ")} from their saved prompts, each using the reference art its own shot links to.`,
+          risk: "costly" as const,
+          recommended: false,
+        }] : []),
+        ...(nextVideo ? [videoAction(nextVideo)] : []),
+      ],
     }
   }
 
-  const rendered = snapshot.shots.filter((shot) => shot.hasVideo).length
-  const nextVideo = nextShotWithoutVideo(snapshot)
   if (nextVideo) {
     return {
       key: "videos",
       title: "Shot video",
-      summary: `Every shot has a keyframe. ${rendered} of ${snapshot.shots.length} ${plural(snapshot.shots.length, "shot")} ${plural(rendered, "is", "are")} rendered. Shot ${nextVideo.number} is next.`,
-      nextAction: {
-        id: `pipeline-video-${nextVideo.number}`,
-        label: `Generate the video for shot ${nextVideo.number}`,
-        intent: `Generate the video for shot ${nextVideo.number} from its approved keyframe and saved prompt, carrying continuity from the previous shot's clip.`,
-        risk: "costly",
-        recommended: true,
-      },
+      summary: `Every shot has a keyframe. ${rendered} of ${snapshot.shots.length} ${plural(snapshot.shots.length, "shot")} ${plural(rendered, "is", "are")} rendered. ${remainingWork(snapshot)} Shot ${nextVideo.number} is next.`,
+      nextAction: { ...videoAction(nextVideo), recommended: true },
+      alternatives: awaitingVideo.length > 1
+        ? [{
+          id: "pipeline-videos-remaining",
+          label: `Generate the remaining ${awaitingVideo.length} videos`,
+          intent: `Generate the videos for shot ${awaitingVideo.map((shot) => shot.number).join(", ")} from their approved keyframes and saved prompts.`,
+          risk: "costly" as const,
+          recommended: false,
+        }]
+        : [],
     }
   }
 
@@ -242,6 +299,7 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
       risk: "read",
       recommended: true,
     },
+    alternatives: [],
   }
 }
 
@@ -261,7 +319,11 @@ export function pipelineInstructionBlock(snapshot: ProductionSnapshot): string {
     `Characters and assets: ${snapshot.entities.length} saved, ${missing.length} named by the prompt sheet but missing${missing.length ? ` (${list(missing, 24)})` : ""}, ${withoutArt.length} without reference art${withoutArt.length ? ` (${list(withoutArt, 24)})` : ""}`,
     `Storyboard: ${snapshot.shots.length} shots, ${snapshot.shots.filter((shot) => shot.hasKeyframe).length} with a keyframe, ${snapshot.shots.filter((shot) => shot.hasVideo).length} rendered`,
     `Current stage: ${stage.title} — ${stage.summary}`,
-    stage.nextAction ? `The workspace is showing the user one button for the next step: "${stage.nextAction.label}". Close your reply by saying in plain language what that step will do, so pressing it is the obvious move. Never tell the user to open a tab or click through the interface themselves — you do the work when they press it.` : "",
+    `Outstanding: ${remainingWork(snapshot)}`,
+    stage.alternatives.length
+      ? `Also offered beside it: ${stage.alternatives.map((action) => `"${action.label}"`).join(", ")}.`
+      : "",
+    stage.nextAction ? `The workspace is showing the user a button for the next step: "${stage.nextAction.label}". Close your reply by saying what you just finished, what is still outstanding, and what that step will do, so pressing it is the obvious move. Never tell the user to open a tab or click through the interface themselves — you do the work when they press it.` : "",
     "Do the stage you are on, then stop and hand back. Never skip a stage, never re-create something that already exists, and never generate media for a stage the user has not reached.",
     "===========================",
   ].filter(Boolean).join("\n")

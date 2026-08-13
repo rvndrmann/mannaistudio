@@ -150,6 +150,55 @@ describe("production pipeline stages", () => {
     expect(parseRequestedShotNumbers(video.nextAction!.intent)).toEqual([2])
   })
 
+  // After one shot finishes, the reply should say what is still outstanding and
+  // offer the ways forward, rather than stopping and waiting to be asked again.
+  it("reports what is left and offers the batch and the ready video", () => {
+    const stage = computePipelineStage(snapshot({
+      hasScript: true,
+      promptSheetCount: 4,
+      shots: [shot(1, { hasKeyframe: true, hasVideo: true }), shot(2, { hasKeyframe: true }), shot(3), shot(4)],
+    }))
+    expect(stage.key).toBe("keyframes")
+    expect(stage.nextAction?.label).toBe("Generate the image for shot 3")
+    expect(stage.summary).toContain("2 images and 3 videos still to generate.")
+    expect(stage.alternatives.map((action) => action.label)).toEqual([
+      "Generate the remaining 2 images",
+      "Generate the video for shot 2",
+    ])
+  })
+
+  it("offers the rest of the videos once every frame is approved", () => {
+    const stage = computePipelineStage(snapshot({
+      hasScript: true,
+      promptSheetCount: 3,
+      shots: [shot(1, { hasKeyframe: true, hasVideo: true }), shot(2, { hasKeyframe: true }), shot(3, { hasKeyframe: true })],
+    }))
+    expect(stage.key).toBe("videos")
+    expect(stage.nextAction?.label).toBe("Generate the video for shot 2")
+    expect(stage.alternatives.map((action) => action.label)).toEqual(["Generate the remaining 2 videos"])
+  })
+
+  it("offers no batch when a single shot is left", () => {
+    const stage = computePipelineStage(snapshot({
+      hasScript: true,
+      promptSheetCount: 2,
+      shots: [shot(1, { hasKeyframe: true, hasVideo: true }), shot(2)],
+    }))
+    expect(stage.nextAction?.label).toBe("Generate the image for shot 2")
+    expect(stage.alternatives).toEqual([])
+  })
+
+  it("keeps a batch image intent off the single-shot fast path", () => {
+    const stage = computePipelineStage(snapshot({
+      hasScript: true,
+      promptSheetCount: 3,
+      shots: [shot(1), shot(2), shot(3)],
+    }))
+    const batch = stage.alternatives.find((action) => action.id === "pipeline-keyframes-remaining")
+    expect(parseRequestedShotNumbers(batch!.intent)).toEqual([1, 2, 3])
+    expect(parseBulkEntityImageIntent(batch!.intent, [])).toBeNull()
+  })
+
   it("tells the Director which button the user is looking at", () => {
     const block = pipelineInstructionBlock(snapshot({ hasScript: true }))
     expect(block).toContain("Write the prompt sheet")
