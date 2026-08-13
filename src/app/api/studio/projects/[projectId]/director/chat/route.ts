@@ -325,9 +325,19 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
     const skipped = unprompted.length ? ` Shot ${unprompted.join(", ")} has no prompt yet, so I left ${unprompted.length === 1 ? "it" : "them"} out.` : ""
     return proposalMessage(input.sessionId, `Video generation is ready for shot ${selectedNumbers.join(", ")}.${skipped} Review and approve before credits are reserved.`, result)
   }
-  if (!forbidsAllMediaGeneration && !forbidsImageGeneration && /\b(image|keyframe|poster|visual)\b/.test(normalized) && /\b(generate|create|make|draw)\b/.test(normalized)) {
-    const shotNumberMatch = normalized.match(/\b(?:storyboard\s+)?shot\s*(?:#\s*)?(\d+)\b/)
+  // "regenerate shot 1" names no medium, and left to the agent it resolved to a
+  // different shot entirely. A named shot with a redo verb is unambiguous enough
+  // to answer here, and the keyframe is what a bare redo means — the reply says
+  // so, so asking for the clip instead is one sentence away.
+  const wantsShotRedo = /\b(regenerate|re-generate|redo|remake|re-render|rerender)\b/.test(normalized) && parseRequestedShotNumbers(input.message).length > 0
+  const namesImage = /\b(image|keyframe|poster|visual)\b/.test(normalized) && /\b(generate|create|make|draw)\b/.test(normalized)
+  if (!forbidsAllMediaGeneration && !forbidsImageGeneration && (namesImage || wantsShotRedo)) {
+    const shotNumberMatch = normalized.match(/\b(?:storyboard\s+)?shots?\s*(?:#\s*)?(\d+)\b/)
     const requestedShotNumber = shotNumberMatch ? Number(shotNumberMatch[1]) : /\bfirst\s+(?:storyboard\s+)?shot\b/.test(normalized) ? 1 : null
+    // A message that says "shot" without saying which one needs the
+    // conversation to resolve it, and the agent has that context — guessing
+    // here would attach the picture to whichever shot happened to be first.
+    if (!requestedShotNumber && /\bshots?\b/.test(normalized)) return null
     const { data: targetShot } = requestedShotNumber
       ? await input.context.supabase
         .from("creator_shots")
@@ -340,14 +350,26 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
     const prompt = (typeof targetShot?.prompt === "string" && targetShot.prompt.trim())
       ? targetShot.prompt
       : input.message.replace(/^.*?\b(generate|create|make|draw)\b/i, "").trim() || input.message
-    const mentionContext = buildEntityMentionContext(input.mentionedEntities)
+    // The shot's own cast, not just the entities the user retyped with @. A
+    // "regenerate shot 1" names nobody, and sending no reference art at all is
+    // what made the regenerated frame come back with a different face — the one
+    // thing the reference library exists to prevent.
+    const castIds = Array.isArray(targetShot?.referenced_entities) ? targetShot.referenced_entities as string[] : []
+    const { data: castEntities } = castIds.length
+      ? await input.context.supabase.from("creator_entities").select("*").eq("project_id", input.projectId).in("id", castIds)
+      : { data: [] }
+    const referencedEntities = [
+      ...input.mentionedEntities,
+      ...((castEntities || []) as ResolvedMention[]).filter((entity) => !input.mentionedEntities.some((mentioned) => mentioned.id === entity.id)),
+    ]
+    const mentionContext = buildEntityMentionContext(referencedEntities)
     const style = projectVisualStyle(input.context.project)
     const projectDefaultAspect = typeof input.context.project.default_aspect === "string" ? input.context.project.default_aspect : null
     const aspectRatio = targetShot?.aspect_ratio || projectDefaultAspect || "9:16"
     const resolvedPrompt = [stripIdentityDescriptions(prompt), `Required composition: ${aspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
     // The chosen reference per entity, not every image it owns: eight slots
     // should mean eight subjects, not three angles of the same character.
-    const referencePaths = Array.from(new Set(input.mentionedEntities
+    const referencePaths = Array.from(new Set(referencedEntities
       .map((entity) => entityPrimaryReference(entity))
       .filter((path): path is string => Boolean(path)))).slice(0, 8)
     const referenceUrls = await signedMentionReferences(input.context, referencePaths)
@@ -575,10 +597,16 @@ async function signedMentionReferences(context: Awaited<ReturnType<typeof requir
  * has to change what is stored, not only what is sent.
  */
 async function maybeCleanSavedPrompts(input: WorkflowRequestInput, normalized: string) {
-  const wantsFix = /\b(fix|clean|clean up|strip|remove|rewrite)\b/.test(normalized)
-  const namesPrompts = /\b(prompts?|storyboard|shots?)\b/.test(normalized)
-  const namesDescriptions = /\b(character description|character descriptions|descriptions?|character lock|asset lock|identity)\b/.test(normalized)
-  if (!wantsFix || !namesPrompts || !namesDescriptions) return null
+  const wantsFix = /\b(fix|clean|cleanup|strip|remove|delete|rewrite)\b/.test(normalized)
+  if (!wantsFix) return null
+  // Either the message names the identity text directly ("remove the character
+  // lock"), or it names both a target and the descriptions ("fix the prompts,
+  // drop the character descriptions"). Requiring all three at once meant the
+  // ordinary way of asking sailed past this and reached the agent instead.
+  const namesTarget = /\b(prompts?|storyboard|shots?|scenes?)\b/.test(normalized)
+  const namesIdentityText = /\b(?:character|asset|cast)\s+(?:lock|descriptions?)\b|\bdescriptions?\s+of\s+(?:the\s+)?characters?\b|\bcharacter\s+description\s+remover\b/.test(normalized)
+  const namesDescriptions = /\b(descriptions?|identity|likeness|appearance)\b/.test(normalized)
+  if (!namesIdentityText && !(namesTarget && namesDescriptions)) return null
 
   const { data: shots, error } = await input.context.supabase
     .from("creator_shots")
@@ -599,15 +627,39 @@ async function maybeCleanSavedPrompts(input: WorkflowRequestInput, normalized: s
     cleaned.push(shot.order_index + 1)
   }
 
-  if (!cleaned.length) {
+  // The prompt sheet is where the storyboard's prompts came from, so leaving it
+  // dirty means the block comes back the next time shots are rebuilt from it.
+  let cleanedSheetRows = 0
+  if (!requested.length) {
+    const { data: sheet } = await input.context.supabase
+      .from("creator_script_prompts")
+      .select("id,prompt")
+      .eq("episode_id", input.episodeId)
+      .eq("project_id", input.projectId)
+    for (const row of sheet || []) {
+      const current = typeof row.prompt === "string" ? row.prompt : ""
+      const next = stripIdentityDescriptions(current)
+      if (!current.trim() || next === current) continue
+      const { error: sheetError } = await input.context.supabase.from("creator_script_prompts").update({ prompt: next }).eq("id", row.id)
+      if (sheetError) throw sheetError
+      cleanedSheetRows += 1
+    }
+  }
+
+  if (!cleaned.length && !cleanedSheetRows) {
     return textMessage(input.sessionId, requested.length
       ? `Shot ${requested.join(", ")} carries no written character description, so there was nothing to strip.`
       : "None of the saved shot prompts carry a written character description, so there was nothing to strip.")
   }
+  const parts = [
+    cleaned.length ? `Stripped the written character descriptions from ${cleaned.length} storyboard prompt${cleaned.length === 1 ? "" : "s"} (shot ${cleaned.join(", ")}).` : "",
+    cleanedSheetRows ? `Cleaned ${cleanedSheetRows} prompt sheet entr${cleanedSheetRows === 1 ? "y" : "ies"} too, so a storyboard rebuild stays clean.` : "",
+    "Each prompt keeps its @mentions, so the cast still resolves and every character is now locked by its reference art instead of by words.",
+  ].filter(Boolean)
   return textMessage(
     input.sessionId,
-    `Stripped the written character descriptions from ${cleaned.length} shot prompt${cleaned.length === 1 ? "" : "s"} (shot ${cleaned.join(", ")}). Each shot keeps its @mentions, so the cast still resolves and every character is now locked by its reference art instead of by words.`,
-    { type: "prompts_cleaned", shots: cleaned },
+    parts.join(" "),
+    { type: "prompts_cleaned", shots: cleaned, sheetEntries: cleanedSheetRows },
   )
 }
 

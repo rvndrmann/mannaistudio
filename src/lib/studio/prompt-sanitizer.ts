@@ -27,13 +27,31 @@ const IDENTITY_LINE = /^\s*@[\w-]+(?:\s+[\w-]+)?\s*[—–:-]\s*\S.{24,}$/
 
 const MENTION = /@[\w-]+/g
 
+// An emoji or symbol run, which is how these prompts mark a new section.
+const SECTION_MARKER = "(?:[\\uD800-\\uDBFF][\\uDC00-\\uDFFF]|[\\u2190-\\u21FF\\u2300-\\u27BF\\u2B00-\\u2BFF])[\\uFE0F\\u20E3]*"
+const INLINE_SECTION = new RegExp(`[ \\t]*(${SECTION_MARKER})`, "g")
+// "@Ethan — Young adult man, ..." starting an entry rather than a sentence.
+const INLINE_IDENTITY = /[ \t]*(@[\w-]+\s*[—–]\s)/g
+
+/**
+ * Puts each section and each cast entry on its own line.
+ *
+ * A prompt saved as one long paragraph carries exactly the same lock block as
+ * one saved with line breaks, and the reader cannot tell them apart — but a
+ * line-based filter can only see the second. Normalising first is what makes
+ * the strip work on prompts the model wrote as a single run of text.
+ */
+function normalize(prompt: string) {
+  return prompt.replace(INLINE_SECTION, "\n$1").replace(INLINE_IDENTITY, "\n$1")
+}
+
 /**
  * Returns the prompt with identity descriptions removed. When a dropped block
  * named characters, one line naming them replaces it, so the model still knows
  * the cast without being told what they look like.
  */
 export function stripIdentityDescriptions(prompt: string): string {
-  const lines = prompt.split("\n")
+  const lines = normalize(prompt).split("\n")
   const kept: string[] = []
   const dropped: string[] = []
   let inLockSection = false

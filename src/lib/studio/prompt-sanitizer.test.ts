@@ -51,6 +51,18 @@ describe("shot prompt identity stripping", () => {
     expect(result).toContain("Cast in frame: @Lena.")
   })
 
+  // The prompts already saved in this project have no line breaks at all, and a
+  // line-based filter saw one enormous line and stripped nothing.
+  it("strips the same block when the prompt was saved as one paragraph", () => {
+    const inline = shotPrompt.replace(/\n+/g, " ")
+    const result = stripIdentityDescriptions(inline)
+    expect(result).not.toContain("freckled skin")
+    expect(result).not.toContain("lounge pants")
+    expect(result).toContain("Cast in frame: @Ethan, @Lena.")
+    expect(result).toContain("bedside lamp")
+    expect(result).toContain("@Ethan wakes abruptly")
+  })
+
   it("does not treat an action line that names a character as identity", () => {
     const prompt = "Slow push-in on @Lena's calm smile while @Ethan whispers the question and the room goes still."
     expect(stripIdentityDescriptions(prompt)).toBe(prompt)

@@ -16,6 +16,11 @@ export function parseBulkEntityImageIntent(
   const mentionsEntities = /\b(characters?|assets?|props?|locations?|scenes?|ghost|monster|entity|entities)\b/.test(normalized) || Boolean(mentionedEntities && mentionedEntities.length > 0)
   
   if (!wantsGeneration || !mentionsEntities) return null
+  // A message about a shot is about the storyboard, not the entity library.
+  // "create shot image again with better character consistency" names
+  // "character", which used to be enough to route it here — and it answered a
+  // request to re-render a shot by reporting on reference art instead.
+  if (/\b(shots?|storyboards?|keyframes?)\b/.test(normalized)) return null
 
   const types = new Set<"character" | "scene" | "prop">()
   if (mentionedEntities && mentionedEntities.length > 0) {

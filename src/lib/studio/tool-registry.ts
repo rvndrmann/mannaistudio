@@ -9,6 +9,7 @@ import { revisionRequestSchema } from "./revisions"
 import { deductUserCredits } from "./credits"
 import { executeGenerationJobsInBackground } from "./execute-generation"
 import { findMentionedEntityIds, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
+import { stripIdentityDescriptions } from "./prompt-sanitizer"
 
 export type ToolRisk = "read" | "write" | "costly" | "destructive"
 
@@ -76,7 +77,7 @@ export const saveScriptPromptsTool = defineDirectorTool({
   async execute(context, input) {
     const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
     if (!episode) throw new Error("Episode not found in this project")
-    const prompts = input.prompts.map((entry, index) => ({ ...entry, orderIndex: entry.orderIndex ?? index }))
+    const prompts = input.prompts.map((entry, index) => ({ ...entry, orderIndex: entry.orderIndex ?? index, prompt: stripIdentityDescriptions(entry.prompt) }))
     const { data, error } = await context.supabase.rpc("save_script_prompt_sheet", { p_episode_id: input.episodeId, p_prompts: prompts })
     if (error) throw error
     return { saved: data ?? prompts.length, episodeId: input.episodeId }
@@ -275,7 +276,11 @@ export const createStoryboardBatchTool = defineDirectorTool({
     const rows = input.shots.map((shot, index) => {
       const text = `${shot.prompt}\n${shot.description}\n${shot.scriptText}`
       const cast = findShotCastEntityIds(text, batchEntities, shot.referencedEntityIds)
-      return { episode_id: input.episodeId, order_index: offset + index, title: shot.title, description: shot.description || null, script_text: shot.scriptText || null, prompt: shot.prompt, duration_seconds: shot.durationSeconds, aspect_ratio: shot.aspectRatio, referenced_entities: cast.length ? cast : shot.referencedEntityIds }
+      // The cast is read from the prompt as written, then the written identity
+      // is dropped before the prompt is stored. A saved "CHARACTER / ASSET LOCK"
+      // block overrides the reference art at generation time, so it must never
+      // reach the row in the first place.
+      return { episode_id: input.episodeId, order_index: offset + index, title: shot.title, description: shot.description || null, script_text: shot.scriptText || null, prompt: stripIdentityDescriptions(shot.prompt), duration_seconds: shot.durationSeconds, aspect_ratio: shot.aspectRatio, referenced_entities: cast.length ? cast : shot.referencedEntityIds }
     })
     const { data, error } = await context.supabase.from("creator_shots").insert(rows).select("*")
     if (error) throw error
@@ -586,9 +591,14 @@ export const updateShotTool = defineDirectorTool({
     const { data: episodes, error: episodeError } = await context.supabase.from("creator_episodes").select("id").eq("project_id", context.project.id)
     if (episodeError) throw episodeError
     const episodeIds = (episodes ?? []).map((episode) => episode.id)
+    // Same rule as create_storyboard_batch: a patched prompt is stored without
+    // its written identity block.
+    const patch = typeof input.patch.prompt === "string"
+      ? { ...input.patch, prompt: stripIdentityDescriptions(input.patch.prompt) }
+      : input.patch
     const { data, error } = await context.supabase
       .from("creator_shots")
-      .update(input.patch)
+      .update(patch)
       .eq("id", input.shotId)
       .in("episode_id", episodeIds.length ? episodeIds : ["00000000-0000-0000-0000-000000000000"])
       .select("*")

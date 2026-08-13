@@ -24,6 +24,15 @@ describe("entity image workflow", () => {
     expect(parseBulkEntityImageIntent("what characters are pending?")).toBeNull()
   })
 
+  // "create shot image again with better character consistency" names
+  // "character", which routed a shot re-render to the entity-art path and
+  // answered with "all characters already have reference images".
+  it("leaves shot work alone even when the message mentions characters", () => {
+    expect(parseBulkEntityImageIntent("create shot image again with better character consistency")).toBeNull()
+    expect(parseBulkEntityImageIntent("regenerate the keyframe, keep the characters consistent")).toBeNull()
+    expect(parseBulkEntityImageIntent("redo the storyboard characters look wrong")).toBeNull()
+  })
+
   it("turns photorealistic settings into a strict anti-cartoon directive", () => {
     const directive = visualStyleDirective("Realistic - Photorealistic")
     expect(directive).toContain("live-action photorealism")
