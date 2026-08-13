@@ -13,6 +13,7 @@ The agent must feel like the AI Director already described in the platform, with
 - generate images directly when the user asks for image generation
 - require approval before video generation unless the project is in full-auto mode
 - support an OpenAI Realtime voice director that can execute the same validated tool registry as text chat, including approval proposals
+- end every turn on the one step the production is actually waiting for, so the user advances the pipeline by pressing a button rather than by working out what to ask for next
 
 ## Current Implemented Flow
 
@@ -22,13 +23,30 @@ User message (+ optional @mentions)
         v
 Project ownership, feature, model, and entity validation
         |
-        +-- Direct image intent --------------------------+
+        v
+Deterministic fast paths, run inside the SSE stream so progress is visible
+        |
+        +-- Script write/append/replace ------------------> Saved to the Script tab
+        |
+        +-- "Fix the character descriptions in the prompts"
         |                                                  |
-        |                                      Atomic credit debit
+        |                   Identity stripper over saved shot prompts + prompt sheet
+        |
+        +-- Bulk entity reference art ---------------------+
+        |   (never for messages naming a shot)              |
+        |                                      Atomic credit debit per entity
         |                                                  |
-        |                                      Provider image request
+        |                              Provider image request, saved to the entity
+        |
+        +-- Direct image / "regenerate shot N" ------------+
         |                                                  |
-        |                              Save image to entity or shot
+        |                                      Durable job row (approved)
+        |                                                  |
+        |                                      Atomic credit debit -> processing
+        |                                                  |
+        |                    Provider image request, references = the shot's own cast
+        |                                                  |
+        |                     Save to shot + job completed, or failed + refund
         |                                                  |
         |                           Chat media card + badge refresh
         |
@@ -41,6 +59,12 @@ Project ownership, feature, model, and entity validation
         +-- Write/destructive intent --> Proposal card --> User approval --> Validated tool execution
         |
         +-- Other intent --> Contextual AI Director response
+        |
+        v
+Pipeline stage computed from live workspace state
+        |
+        v
+Assistant message + one "Next step" button at the end of the chat
 ```
 
 ### 1. Context and mention resolution
@@ -52,13 +76,17 @@ The Studio sends the selected episode, session, message, and `@mentioned` entity
 The chat route handles several high-confidence requests directly before falling back to the text agent:
 
 - Script write/append/replace requests update the stored script through the workflow route.
-- **“Create all missing character images”** and related bulk requests generate one reference image per matching entity, then save it to that entity’s `reference_images`.
-- Direct image/keyframe requests generate a GPT Image 2 output, save it to Studio storage, and attach it to the named storyboard shot when one was requested.
+- **“Create all missing character images”** and related bulk requests generate one reference image per matching entity, then save it to that entity’s `reference_images`. A message that names a shot, storyboard, or keyframe is never routed here: it is storyboard work, and answering it with entity art reported on reference images the user had not asked about.
+- Direct image/keyframe requests generate a GPT Image 2 output, save it to Studio storage, and attach it to the named storyboard shot when one was requested. A bare **“regenerate shot 3”** is handled here too — a named shot with a redo verb means its keyframe — because leaving it to the agent resolved it to a different shot. A message that says “shot” without saying which one falls through to the agent, which has the conversation context to resolve it.
+- **“Fix the character descriptions in the prompts”** rewrites the saved shot prompts, and the prompt sheet behind them, through the identity stripper described below.
 - Video requests create an approval proposal; they do not submit a video until the user approves.
 - All other production questions pass to `runDirectorAgent`, which receives the selected workflow, project context, session history, global admin instructions, and current runtime settings.
 
+These paths run **inside** the SSE stream and report progress as they work (`Generating the keyframe for shot 2`, `Generating reference art: Bathroom, Bathroom Mirror (1–2 of 3)`). Before this they ran before the stream was opened, so a request that spent a minute inside an image model sent nothing at all to the browser and the chat appeared frozen on the message the user had just sent.
+
 ### 3. Generation, credits, and feedback
 
+- Image quality is a project setting (**Basic Settings → Image Quality**, `metadata.basic_settings.imageQuality`, one of Low/Medium/High, default Medium). Every image path reads it through `projectImageQuality`: chat keyframes, entity reference art, `images/route.ts`, and the job executor. It is sent to the OpenAI image endpoints — which previously always received `medium` — and feeds `calculateCreditCost`, so High costs more and Low costs less. An explicit `quality` on a direct API request still wins.
 - Direct chat images and bulk entity-reference images are charged through the atomic `deduct_user_credits` RPC before provider submission.
 - An approved generation proposal is charged through that same RPC when the user approves it. It no longer uses the separate legacy reservation account.
 - The direct image/video routes return `creditsCharged` and `creditBalance`; the chat route returns the same fields for direct chat workflows.
@@ -71,6 +99,49 @@ The chat route handles several high-confidence requests directly before falling 
 - Storyboard keyframes are saved to `creator_shots.keyframe_image`, with generation metadata recording the model, prompt, references, status, style, aspect ratio, and mention IDs.
 - Generation jobs capture provider/model/prompt/status details for the storyboard and job history. Image jobs are created before provider submission so queued/processing/failed attempts appear as visible blocks even when no output image was produced.
 - The chat timeline stores the assistant response and attached generated media for immediate review.
+
+## The production pipeline and the next step
+
+`src/lib/studio/pipeline.ts` is a state machine over what the workspace actually contains, not over what the last message said. It reads a `ProductionSnapshot` — script present, prompt sheet entries, entities and their reference art, shots and their keyframes and clips — and returns the stage the production is on plus the single action that advances it.
+
+| Stage | Condition | Action offered |
+| :--- | :--- | :--- |
+| `script` | No script saved | Confirm the script |
+| `prompt_sheet` | Script saved, no prompt sheet | Write the prompt sheet |
+| `entities` | The sheet names characters or assets the project does not have | Create only the missing ones |
+| `entity_images` | Entities exist without reference art | Generate art only for those |
+| `storyboard` | Sheet complete, storyboard empty | Build the storyboard |
+| `keyframes` | A shot has a prompt but no keyframe | Generate the image for that shot |
+| `videos` | A shot has a keyframe but no clip | Generate the video for that shot |
+| `complete` | Every shot keyframed and rendered | Review the cut for continuity |
+
+Rules that fall out of this design:
+
+- **One stage per turn.** The Director does the stage it is on and hands back. Keyframes and clips go one shot at a time, lowest-numbered first, so the user sees each shot before the next is paid for.
+- **Nothing is re-created.** The missing-entity set is a diff of the prompt sheet's names against the entity library, compared on handles, so "Detective Rao" and "detective rao" are one character. Entities that already have art are never regenerated unless the user asks by name.
+- **The user stays in the loop by pressing the button.** Full-auto, when it lands, is the same chain with the pressing done for it.
+
+The stage is computed twice per turn: once into the instructions the model reads (`pipelineInstructionBlock`, so the reply names the same step the button offers) and once *after* the run, from the state the run left behind, as a `suggested_actions` timeline block on the assistant message.
+
+The button's intent text is sent back verbatim as a user message, so it passes through the same routing as anything typed. The wording of each intent is therefore load-bearing and deliberately chosen: "create … characters" would be read as a request for reference art, and "generate the image … assets" as entity art rather than a shot keyframe. `pipeline.test.ts` asserts each stage's intent lands on the path that stage needs.
+
+In the UI, `ChatNextStep` renders the block at the **end of the chat** — after the messages, the generated media, and the approval cards — because a step only reads as the next step once the user can see everything it follows. It belongs to the newest reply, not the message it was stored on, and it hides while a run is in flight and while an approval card is pending, since that card is itself the next step.
+
+## Character identity: art, never words
+
+A referenced character's look is defined by their reference image. When a prompt *also* spells out hair, eyes, build, and wardrobe — the `CHARACTER / ASSET LOCK` block prompt writers like to open with — the model has two descriptions of the same person and follows the words, because words are what it reads first. That is what makes a face drift shot to shot despite a locked reference.
+
+`src/lib/studio/prompt-sanitizer.ts` removes written identity and keeps the mentions, replacing a dropped block with `Cast in frame: @Ethan, @Lena.` so the cast still resolves. It handles prompts saved as one long paragraph as well as ones with line breaks — the earlier line-based version saw a single enormous line and stripped nothing.
+
+It is applied in three places:
+
+1. **On write**, so the block never reaches storage: `create_storyboard_batch`, `update_shot`, and `save_script_prompts` in `tool-registry.ts`.
+2. **On the way to a provider**, for prompts that predate the rule: the chat keyframe path, `images/route.ts`, `videos/route.ts`, `execute-generation.ts`, and `submit_generation` prompts in `tool-service.ts`.
+3. **On request**, when the user asks the chat to fix the saved prompts.
+
+The Prompt Agent and Storyboard Agent instructions match: the Character/Asset Lock section is a cast list — the @tag and what that entity is doing — never a description. An entity with no reference art is handed back to the Character & Asset Agent to build, not papered over with a sentence.
+
+A keyframe request also attaches **the shot's own cast**, not only the entities the user retyped with `@`. A bare "regenerate shot 1" names nobody, and sending no reference art at all was what returned a different face — the exact failure the reference library exists to prevent.
 
 ## Permission Model
 
@@ -184,8 +255,11 @@ The chat panel should render more than plain text.
 - video proposal cards with shot list, duration, model, provider, credit estimate, and approval controls
 - generation status cards for queued, processing, completed, failed, and cancelled jobs
 - audit chips for applied edits, deleted content, credit deductions, and full-auto actions
+- a single **Next step** card pinned to the end of the conversation, labelled with what it will do and marked when it spends credits
 
 The user should never have to leave chat to understand what the agent is about to change or generate.
+
+The Director never answers with directions for the user to click through the workspace — "open the Storyboard tab", "press Generate". It holds the tools; it does the work and reports what it did, then closes on the one next step. The open episode is part of that continuity: it is stored per project and mirrored into the URL as `?episode=…`, restored before the first fetch, so a reload returns to the episode the user was working in rather than to whichever one the server lists first.
 
 ## Backend Mapping
 
@@ -202,6 +276,10 @@ Existing pieces already align with this design:
 - `src/lib/studio/tool-service.ts`
 - `src/lib/studio/conversation.ts`
 - `src/lib/studio/project-context.ts`
+- `src/lib/studio/pipeline.ts` — the stage machine and the next-step action
+- `src/lib/studio/project-state-summary.ts` — loads the snapshot both the instructions and the button read
+- `src/lib/studio/prompt-sanitizer.ts` — identity stripping
+- `src/lib/studio/director-team.ts` — the agent roles and the order they hand off in
 
 Implemented components:
 
@@ -212,11 +290,16 @@ Implemented components:
 
 5. Realtime voice sessions declare the Director tool registry, relay function calls through the validated tools endpoint, and honor the same approval cards as text chat.
 
+6. A pipeline stage machine that ends every turn on one next-step button, one stage per turn, shot by shot for keyframes and clips.
+7. Identity stripping on write, on the way to every provider, and on request, with agent instructions rewritten to stop producing the block in the first place.
+
 Remaining increments:
 
 1. Execute approved proposal jobs through a durable provider worker/webhook path and complete their lifecycle in the timeline.
 2. Add regression tests for direct-chat credits, badge events, approval boundaries, provider failure/refund UI, and destructive operations.
 3. Replace or formally retire the legacy `creator_credit_accounts` reservation subsystem after data migration/audit.
+4. Bind each `@mention` to the reference image slot it is attached to. Seedance binds positionally — `@Image1`, `@Video1` — while our prompts name entities (`@Ethan`), so a mention may not be resolving to any specific attached image. Third-party guides describe the syntax and the limits (9 images, 3 videos, 3 audio, 12 files, 15s); BytePlus's own pages render client-side and could not be read, so the index convention is unverified and was deliberately not shipped. GPT Image has no equivalent syntax at all — inputs are an ordered `image[]` array read contextually.
+5. Carry shot media across a storyboard rebuild. `create_storyboard_batch` with `replaceExisting` deletes the shot rows, which drops keyframes and orphans their generation history onto dead shot ids.
 
 ## Safety Rules
 
