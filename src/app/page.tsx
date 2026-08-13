@@ -135,6 +135,10 @@ export default function LandingPage() {
     const { user, signInWithGoogle } = useAuth()
     const [adminShowcase, setAdminShowcase] = useState<any[]>(mockShowcase)
     const [playingVideo, setPlayingVideo] = useState<{ url: string; title: string } | null>(null)
+    // An uploaded file carries no hint of its shape in the URL, so the video
+    // element reports it once metadata loads. A YouTube Short is known from the
+    // link alone and needs no measuring.
+    const [heroIsVertical, setHeroIsVertical] = useState(false)
     const [activePipelineStep, setActivePipelineStep] = useState(0)
 
     useEffect(() => {
@@ -162,6 +166,7 @@ export default function LandingPage() {
     }, [])
 
     const heroFeatured = adminShowcase[0]
+    useEffect(() => { setHeroIsVertical(false) }, [heroFeatured?.videoUrl])
     // The hero already plays adminShowcase[0], so the grid starts after it when
     // there is enough material, and uses everything when there is not.
     const slotShowcase = useMemo(() => {
@@ -251,7 +256,7 @@ export default function LandingPage() {
                                 "relative w-full bg-[#0a0c0b]",
                                 // Matching the source's shape beats letterboxing it: a vertical
                                 // episode shown in a landscape card is mostly black bars.
-                                heroFeatured?.videoUrl && isVerticalVideo(heroFeatured.videoUrl)
+                                heroIsVertical || (heroFeatured?.videoUrl && isVerticalVideo(heroFeatured.videoUrl))
                                     ? "mx-auto aspect-[9/16] max-w-[420px]"
                                     : "aspect-video",
                             )}>
@@ -270,6 +275,10 @@ export default function LandingPage() {
                                         autoPlay
                                         playsInline
                                         preload="metadata"
+                                        onLoadedMetadata={(event) => {
+                                            const el = event.currentTarget
+                                            setHeroIsVertical(el.videoHeight > el.videoWidth)
+                                        }}
                                         className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
                                     />
                                 ) : heroFeatured?.thumbnail ? (
