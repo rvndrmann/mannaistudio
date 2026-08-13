@@ -7,7 +7,7 @@ import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } fr
 const createSchema = z.object({
   entityId: z.string().uuid().optional(),
   shotId: z.string().uuid().optional(),
-  target: z.enum(["entity", "shot"]).default("entity"),
+  target: z.enum(["entity", "shot", "reference"]).default("entity"),
   targetId: z.string().uuid().optional(),
   imageUrl: z.string().max(4000).optional(),
   imagePath: z.string().max(2000).optional(),
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const input = createSchema.parse(body)
     const targetEntityId = input.entityId || (input.target === "entity" ? input.targetId : undefined)
-    const targetShotId = input.shotId || (input.target === "shot" ? input.targetId : undefined)
+    const targetShotId = input.shotId || (input.target === "shot" || input.target === "reference" ? input.targetId : undefined)
 
     let imagePathToResolve = input.imagePath || ""
     let resolvedUrl = input.imageUrl || ""
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (targetShotId) {
       const { data: shot } = await context.supabase.from("creator_shots").select("id, keyframe_image, metadata").eq("id", targetShotId).maybeSingle()
       if (!shot) return NextResponse.json({ error: "Shot not found" }, { status: 404 })
-      if (!imagePathToResolve && shot.keyframe_image) imagePathToResolve = shot.keyframe_image
+      if (!imagePathToResolve && input.target === "shot" && shot.keyframe_image) imagePathToResolve = shot.keyframe_image
     } else if (targetEntityId) {
       const { data: entity } = await context.supabase.from("creator_entities").select("id, reference_images, metadata").eq("id", targetEntityId).eq("project_id", projectId).maybeSingle()
       if (!entity) return NextResponse.json({ error: "Entity not found" }, { status: 404 })
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const result = await registerVirtualPortrait({ imageUrl: resolvedUrl, name: input.name || "shot_portrait" })
     const assetUri = result.assetUri
 
-    if (targetShotId) {
+    if (targetShotId && input.target === "shot") {
       const { data: shot } = await context.supabase.from("creator_shots").select("metadata").eq("id", targetShotId).single()
       const shotMeta = (shot?.metadata as Record<string, unknown>) || {}
       await context.supabase
@@ -80,6 +80,30 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             byteplus_asset_uri: assetUri,
             byteplus_asset_class: "private_virtual_portrait",
             verification_status: "verified",
+          },
+        })
+        .eq("id", targetShotId)
+    }
+
+    if (targetShotId && input.target === "reference") {
+      const { data: shot } = await context.supabase.from("creator_shots").select("metadata").eq("id", targetShotId).single()
+      const shotMeta = (shot?.metadata as Record<string, unknown>) || {}
+      const existingMappings = shotMeta.byteplus_reference_assets && typeof shotMeta.byteplus_reference_assets === "object" && !Array.isArray(shotMeta.byteplus_reference_assets)
+        ? shotMeta.byteplus_reference_assets as Record<string, unknown>
+        : {}
+      await context.supabase
+        .from("creator_shots")
+        .update({
+          metadata: {
+            ...shotMeta,
+            byteplus_reference_assets: {
+              ...existingMappings,
+              [imagePathToResolve]: {
+                assetId: result.assetId,
+                assetUri,
+                verifiedAt: new Date().toISOString(),
+              },
+            },
           },
         })
         .eq("id", targetShotId)

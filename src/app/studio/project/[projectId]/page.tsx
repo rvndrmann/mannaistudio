@@ -50,6 +50,7 @@ import ShareProjectDialog from "@/components/studio/ShareProjectDialog";
 import ConvertToEnterpriseDialog from "@/components/enterprise/ConvertToEnterpriseDialog";
 import ProjectActivityDialog from "@/components/studio/ProjectActivityDialog";
 import { entityPrimaryReference, findMentionedEntityIds, findShotCastEntityIds } from "@/lib/studio/entity-mentions";
+import { parseSeedanceRejectedReference } from "@/lib/studio/seedance-reference-error";
 
 import {
   Share2,
@@ -3601,6 +3602,8 @@ function ShotMediaWorkspace({
   const [busy, setBusy] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
+  const [verifyingReferencePath, setVerifyingReferencePath] = useState<string | null>(null);
+  const [verifiedReferencePaths, setVerifiedReferencePaths] = useState<Set<string>>(() => new Set());
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   useEffect(() => {
     // getUser touches the auth lock, which supabase may steal from a stalled
@@ -3875,7 +3878,12 @@ function ShotMediaWorkspace({
         const body = await response.json();
         if (!response.ok) {
           const errorMsg = body.error || "Video generation failed";
-          setGenHistory((prev) => prev.map((g) => g.id === genId ? { ...g, status: "failed" as const, error: errorMsg } : g));
+          setGenHistory((prev) => prev.map((g) => g.id === genId ? {
+            ...g,
+            status: "failed" as const,
+            error: errorMsg,
+            referenceImages: Array.isArray(body.inputImages) ? body.inputImages : g.referenceImages,
+          } : g));
           throw new Error(errorMsg);
         }
         notifyCreditBalanceChanged(typeof body.creditBalance === "number" ? body.creditBalance : undefined);
@@ -3897,6 +3905,50 @@ function ShotMediaWorkspace({
   const previewSource = activeGen?.videoUrl || source;
   const previewError = activeGen?.status === "failed" ? activeGen.error : generationError;
   const previewGenerating = activeGen?.status === "generating";
+  const rejectedReference = useMemo(() => {
+    if (!previewError) return null;
+    const parsed = parseSeedanceRejectedReference(previewError);
+    if (!parsed) return null;
+    const path = activeGen?.referenceImages?.[parsed.referenceIndex];
+    if (!path || /^asset:\/\//i.test(path) || /^asset-[a-z0-9-]+$/i.test(path)) return null;
+    const entity = entities.find((item) => entityPrimaryReference(item) === path || item.reference_images?.includes(path));
+    const isShotKeyframe = path === media.shot.keyframe_image;
+    return {
+      ...parsed,
+      path,
+      entity,
+      label: entity?.name || (isShotKeyframe ? `Scene ${shotNumber} keyframe` : `Reference image ${parsed.contentIndex}`),
+      isShotKeyframe,
+    };
+  }, [activeGen?.referenceImages, entities, media.shot.keyframe_image, previewError, shotNumber]);
+
+  const verifyRejectedReference = async () => {
+    if (!rejectedReference) return;
+    setVerifyingReferencePath(rejectedReference.path);
+    setGenerationError(null);
+    setGenerationStatus(null);
+    try {
+      const body = rejectedReference.entity
+        ? { entityId: rejectedReference.entity.id, imagePath: rejectedReference.path, name: rejectedReference.entity.name }
+        : rejectedReference.isShotKeyframe
+          ? { target: "shot", targetId: media.shot.id, imagePath: rejectedReference.path, name: `Scene ${shotNumber} keyframe` }
+          : { target: "reference", targetId: media.shot.id, imagePath: rejectedReference.path, name: `Scene ${shotNumber} reference ${rejectedReference.contentIndex}` };
+      const response = await fetch(`/api/studio/projects/${projectId}/assets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Seedance verification failed");
+      setVerifiedReferencePaths((current) => new Set(current).add(rejectedReference.path));
+      setGenerationStatus(`${rejectedReference.label} verified for Seedance ✓ You can regenerate now.`);
+      await reload(true);
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "Seedance verification failed");
+    } finally {
+      setVerifyingReferencePath(null);
+    }
+  };
 
   const addReferencePath = (path: string) => {
     if (referenceTarget === "start") {
@@ -4217,7 +4269,17 @@ function ShotMediaWorkspace({
                   </div>
                 </div>
               ) : previewError ? (
-                <GenerationPreviewError message={previewError} />
+                <GenerationPreviewError
+                  message={previewError}
+                  rejectedReference={rejectedReference ? {
+                    path: rejectedReference.path,
+                    label: rejectedReference.label,
+                    contentIndex: rejectedReference.contentIndex,
+                  } : null}
+                  verifying={Boolean(rejectedReference && verifyingReferencePath === rejectedReference.path)}
+                  verified={Boolean(rejectedReference && verifiedReferencePaths.has(rejectedReference.path))}
+                  onVerify={verifyRejectedReference}
+                />
               ) : previewSource ? (
                 <ResolvedMedia
                   src={previewSource}
@@ -4513,7 +4575,19 @@ function ShotMediaWorkspace({
   );
 }
 
-function GenerationPreviewError({ message }: { message: string }) {
+function GenerationPreviewError({
+  message,
+  rejectedReference,
+  verifying,
+  verified,
+  onVerify,
+}: {
+  message: string;
+  rejectedReference?: { path: string; label: string; contentIndex: number } | null;
+  verifying?: boolean;
+  verified?: boolean;
+  onVerify?: () => void;
+}) {
   const isRealPersonError = /real person/i.test(message);
   return (
     <div className="grid aspect-[9/14] place-items-center p-6 text-center">
@@ -4521,9 +4595,35 @@ function GenerationPreviewError({ message }: { message: string }) {
         <p className="text-xs font-bold uppercase tracking-wide text-red-200">Generation Error</p>
         <p className="mt-2 text-sm leading-6 text-red-100">{message}</p>
         {isRealPersonError && (
-          <div className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs leading-relaxed text-yellow-200">
-            💡 <strong>How to fix:</strong> Deselect unverified face photos from <em>Multi Image References</em> or <em>Project Characters</em>, or open your character in <strong>Characters &amp; Assets</strong> and click <strong>Verify for Seedance</strong>.
-          </div>
+          <>
+            {rejectedReference ? (
+              <div className="mt-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 text-yellow-100">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-yellow-300">Reference needing verification</p>
+                <div className="mt-3 flex items-center gap-3">
+                  <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-yellow-200/20 bg-black/30">
+                    <AssetImage src={rejectedReference.path} className="h-full w-full object-cover" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-white">{rejectedReference.label}</p>
+                    <p className="mt-1 text-[11px] leading-4 text-yellow-100/70">BytePlus rejected input image content[{rejectedReference.contentIndex}]. Add this exact image to the Seedance Asset Library before retrying.</p>
+                    <button
+                      type="button"
+                      onClick={onVerify}
+                      disabled={verifying || verified}
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-3 py-2 text-xs font-black text-black hover:bg-[#a6de25] disabled:cursor-default disabled:opacity-70"
+                    >
+                      {verifying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : verified ? <BadgeCheck className="h-3.5 w-3.5" /> : <BadgeCheck className="h-3.5 w-3.5" />}
+                      {verifying ? "Verifying…" : verified ? "Verified for Seedance" : "Verify for Seedance"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs leading-relaxed text-yellow-200">
+                <strong>How to fix:</strong> Deselect unverified face photos, or verify the relevant character image in Characters &amp; Assets before retrying.
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

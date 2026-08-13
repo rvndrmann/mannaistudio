@@ -10,6 +10,7 @@ import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } fr
 import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
+import { parseSeedanceRejectedReference, seedanceReferenceAssetUri } from "@/lib/studio/seedance-reference-error"
 
 const submitSchema = z.object({
   shotId: z.string().uuid(),
@@ -95,6 +96,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Check if shot keyframe image has a registered BytePlus asset ID in metadata
     const shotMeta = (shot.metadata as Record<string, unknown>) || {}
     const shotBytePlusAssetId = typeof shotMeta.byteplus_asset_id === "string" && shotMeta.byteplus_asset_id.trim() ? shotMeta.byteplus_asset_id.trim() : null
+    const shotReferenceAssets = shotMeta.byteplus_reference_assets && typeof shotMeta.byteplus_reference_assets === "object" && !Array.isArray(shotMeta.byteplus_reference_assets)
+      ? shotMeta.byteplus_reference_assets as Record<string, unknown>
+      : {}
 
     if (provider === "byteplus" && shotBytePlusAssetId) {
       combinedReferencePaths.push(shotBytePlusAssetId)
@@ -147,7 +151,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         pickedVideoPaths.push(refPath)
         continue
       }
-      combinedReferencePaths.push(refPath)
+      const registeredAssetUri = provider === "byteplus" ? seedanceReferenceAssetUri(shotReferenceAssets[refPath]) : null
+      combinedReferencePaths.push(registeredAssetUri || refPath)
       displayReferencePaths.push(refPath)
     }
 
@@ -235,11 +240,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         creditBalance: deduct.newBalance,
       }, { status: 202 })
     } catch (error) {
+      const errorMessage = studioErrorMessage(error, "Submission failed")
       await Promise.all([
-        context.supabase.from("creator_generation_jobs").update({ status: "failed", error: studioErrorMessage(error, "Submission failed"), completed_at: new Date().toISOString() }).eq("id", job.id),
+        context.supabase.from("creator_generation_jobs").update({ status: "failed", error: errorMessage, completed_at: new Date().toISOString() }).eq("id", job.id),
         context.supabase.from("creator_shots").update({ video_status: "failed" }).eq("id", shot.id),
       ])
-      throw error
+      const rejected = parseSeedanceRejectedReference(errorMessage)
+      return NextResponse.json({
+        error: errorMessage,
+        inputImages: combinedReferencePaths,
+        rejectedReference: rejected ? {
+          ...rejected,
+          path: combinedReferencePaths[rejected.referenceIndex] || null,
+        } : null,
+      }, { status: error instanceof BytePlusProviderError || error instanceof FalProviderError || error instanceof GoogleProviderError ? error.status : studioErrorStatus(error) })
     }
   } catch (error) {
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid video request", issues: error.flatten() }, { status: 400 })
