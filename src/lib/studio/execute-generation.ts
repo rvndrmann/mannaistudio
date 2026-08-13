@@ -173,11 +173,22 @@ export async function executeGenerationJobsInBackground(
           // Seedance takes clips alongside images so a shot can inherit motion
           // and look from an earlier shot's video. These travel separately
           // because the provider requires URLs for video, not inline data.
+          const videoReferencePaths = (Array.isArray(settings.videoReferencePaths) ? settings.videoReferencePaths as string[] : []).slice(0, 10)
           const videoReferenceUrls: string[] = []
-          for (const ref of (Array.isArray(settings.videoReferencePaths) ? settings.videoReferencePaths as string[] : []).slice(0, 10)) {
+          for (const ref of videoReferencePaths) {
             const signed = await signReference(ref)
             if (signed) videoReferenceUrls.push(signed)
           }
+
+          // The job was written with only the composition frames the request
+          // named; the cast is resolved here, from the prompt. Recording what is
+          // actually being sent is what lets the shot's panel show the same
+          // references the chat card promised — and leaves a true record on a
+          // job that fails.
+          await context.supabase.from("creator_generation_jobs").update({
+            input_images: combinedReferencePaths,
+            settings: { ...settings, videoReferencePaths, resolvedReferencePaths: combinedReferencePaths, resolvedEntityIds: mentionedEntities.map((entity) => entity.id) },
+          }).eq("id", job.id)
 
           if (job.type === "image" && job.provider === "openai") {
             const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")

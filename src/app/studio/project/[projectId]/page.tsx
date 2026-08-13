@@ -4627,6 +4627,17 @@ function ShotMediaWorkspace({
                       ))}
                     </div>
                   )}
+                  {/* A continuation clip travels with the previous shot's video,
+                      which has no slot of its own here — so the panel showed a
+                      reference list the run had not actually used. */}
+                  {activeGen?.videoReferencePaths?.length ? (
+                    <div className="mt-2 flex items-center gap-2 rounded-2xl border border-[#c084fc]/25 bg-[#c084fc]/[0.06] p-2.5">
+                      <Film className="h-3.5 w-3.5 shrink-0 text-[#c084fc]" />
+                      <p className="text-[11px] text-zinc-300">
+                        Continuing from {activeGen.videoReferencePaths.length === 1 ? "the previous shot's clip" : `${activeGen.videoReferencePaths.length} earlier clips`}, sent as a motion reference.
+                      </p>
+                    </div>
+                  ) : null}
                   {entities.some((e) => e.type === "character") && (
                     <div className="mt-2 rounded-2xl bg-white/[0.02] p-3 border border-white/5">
                       <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">Project Characters</p>
