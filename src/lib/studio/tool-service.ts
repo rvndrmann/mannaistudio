@@ -4,6 +4,7 @@ import type { AuthenticatedProjectContext } from "./server-context"
 import { directorTools, type DirectorToolName } from "./tool-registry"
 import { getUserCredits } from "./credits"
 import { stripIdentityDescriptionsFromPrompts } from "./prompt-sanitizer"
+import { projectDirectorVideoModel } from "./generation-models"
 
 export const toolRequestSchema = z.object({
   tool: z.preprocess(
@@ -39,6 +40,12 @@ export async function requestDirectorTool(context: AuthenticatedProjectContext, 
     && typeof parsedInput.prompts === "object"
     ? {
         ...parsedInput,
+        request: {
+          ...parsedInput.request,
+          model: typeof parsedInput.request.model === "string" && parsedInput.request.model.trim()
+            ? parsedInput.request.model
+            : projectDirectorVideoModel(context.project),
+        },
         prompts: stripIdentityDescriptionsFromPrompts(parsedInput.prompts as Record<string, string>),
       }
     : parsedInput

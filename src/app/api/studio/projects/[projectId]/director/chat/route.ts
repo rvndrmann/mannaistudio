@@ -375,6 +375,7 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
           videoReferencePaths,
           referencePaths: targetKeyframes,
           useExistingFrame: explicitContinuation && targetKeyframes.length > 0,
+          generationMode: explicitContinuation ? "multi_image" : "keyframe",
         },
         prompts,
         idempotencyKey: `${input.idempotencyKey}:video`,

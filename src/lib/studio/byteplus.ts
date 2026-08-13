@@ -121,11 +121,32 @@ export function bytePlusVideoReferenceLimit(model: string) {
     : bytePlusVideoReferenceLimits.default
 }
 
+export function formatBytePlusReferencePrompt(prompt: string, input: { imageCount: number; videoCount: number }) {
+  let formatted = prompt
+    .replace(/@previous\s+shot\s+video/gi, "[Video 1]")
+    .replace(/@storyboard\s+shot\s+\d+\s+video/gi, "[Video 1]")
+    .replace(/@storyboard\s+shot\s+\d+\s+image/gi, "[Image 1]")
+
+  const guidance: string[] = []
+  if (input.videoCount > 0 && !/\[video\s*1\]/i.test(formatted)) {
+    guidance.push("Use [Video 1] as the previous-shot continuity and motion reference.")
+  }
+  if (input.imageCount > 0 && !/\[image\s*1\]/i.test(formatted)) {
+    guidance.push("Use [Image 1] as the target storyboard composition reference.")
+  }
+  if (guidance.length) formatted = `${formatted.trim()}\n\n${guidance.join(" ")}`
+  return formatted
+}
+
 export async function submitBytePlusVideo(input: { model: VideoGenerationModelId; prompt: string; duration: number; resolution: string; ratio: string; referenceUrls?: string[]; faceReferenceUrls?: string[]; videoReferenceUrls?: string[]; generationMode?: "keyframe" | "multi_image"; audioEnabled?: boolean }) {
-  const content: Array<Record<string, unknown>> = [{ type: "text", text: input.prompt }]
   // Only a character's reference is registered; everything else is sent as-is.
   const faces = new Set(input.faceReferenceUrls || [])
   const resolvedUrls = await Promise.all((input.referenceUrls || []).map((url) => resolveBytePlusReferenceUrl(url, faces.has(url))))
+  const videoUrls = (input.videoReferenceUrls || []).filter((value) => typeof value === "string" && value.trim())
+  const content: Array<Record<string, unknown>> = [{
+    type: "text",
+    text: formatBytePlusReferencePrompt(input.prompt, { imageCount: resolvedUrls.length, videoCount: videoUrls.length }),
+  }]
 
   if (input.generationMode === "keyframe") {
     resolvedUrls.forEach((url, index) => content.push({ type: "image_url", image_url: { url }, role: index === 0 ? "first_frame" : index === 1 ? "last_frame" : "reference_image" }))
@@ -134,8 +155,8 @@ export async function submitBytePlusVideo(input: { model: VideoGenerationModelId
   }
 
   const videoLimit = bytePlusVideoReferenceLimit(input.model)
-  for (const url of (input.videoReferenceUrls || []).filter((value) => typeof value === "string" && value.trim()).slice(0, videoLimit.maxVideos)) {
-    content.push({ type: "video_url", video_url: { url } })
+  for (const url of videoUrls.slice(0, videoLimit.maxVideos)) {
+    content.push({ type: "video_url", video_url: { url }, role: "reference_video" })
   }
   const maxDuration = videoModelMaxDuration(input.model)
   const data = await request("/contents/generations/tasks", {

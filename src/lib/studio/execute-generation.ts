@@ -135,7 +135,13 @@ export async function executeGenerationJobsInBackground(
             .map((entity) => entityPrimaryReference(entity as MentionableEntity))
             .filter((path): path is string => Boolean(path)))
 
-          const combinedReferencePaths = Array.from(new Set([...mentionReferencePaths, ...referencePaths])).slice(0, 8)
+          // Video continuation names its target storyboard frame as [Image 1],
+          // so keep shot-owned composition images ahead of cast references.
+          const combinedReferencePaths = Array.from(new Set(
+            job.type === "video"
+              ? [...referencePaths, ...mentionReferencePaths]
+              : [...mentionReferencePaths, ...referencePaths],
+          )).slice(0, 8)
           const mentionContext = buildEntityMentionContext(mentionedEntities as MentionableEntity[])
 
           const signReference = async (ref: string) => {

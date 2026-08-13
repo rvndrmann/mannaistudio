@@ -46,6 +46,21 @@ export function generationProvider(model: ImageGenerationModelId | VideoGenerati
   return model.startsWith("dreamina-") || model.startsWith("dola-") ? "byteplus" : "openai"
 }
 
+export const defaultDirectorVideoModel: VideoGenerationModelId = "dreamina-seedance-2-5-260628"
+
+/**
+ * AI Director generation currently executes through the BytePlus background
+ * worker. Respect a saved BytePlus choice, but never let an absent or legacy
+ * fal selection silently become the approval card's model.
+ */
+export function projectDirectorVideoModel(project: Record<string, unknown>): VideoGenerationModelId {
+  const metadata = project.metadata && typeof project.metadata === "object" ? project.metadata as Record<string, unknown> : {}
+  const settings = metadata.basic_settings && typeof metadata.basic_settings === "object" ? metadata.basic_settings as Record<string, unknown> : {}
+  const configured = typeof settings.videoModel === "string" ? settings.videoModel : ""
+  const supported = videoGenerationModels.find((model) => model.id === configured && model.provider === "byteplus")
+  return supported?.id || defaultDirectorVideoModel
+}
+
 export function getModelLabel(modelId: string) {
   if (!modelId) return "Default Model"
   const found = [...imageGenerationModels, ...videoGenerationModels].find((m) => m.id === modelId)

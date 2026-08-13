@@ -4945,9 +4945,19 @@ function VideoGenerationProposalBlock({
   onAction: (intent: string) => void;
 }) {
   const isVideo = request.type !== "image";
+  // AI Director jobs are executed by the BytePlus background worker. Other
+  // providers remain available in the standalone video generator, but showing
+  // them here allowed an approval card to overwrite a valid BytePlus request
+  // with an unsupported fal model.
+  const proposalVideoModels = useMemo(() => videoGenerationModels.filter((option) => option.provider === "byteplus"), []);
   const [prompt, setPrompt] = useState(() => generationProposalPrompt(proposal));
   const [promptExpanded, setPromptExpanded] = useState(false);
-  const [model, setModel] = useState(request.model || (isVideo ? videoGenerationModels[0].id : imageGenerationModels[0].id));
+  const [model, setModel] = useState(() => {
+    if (!isVideo) return request.model || imageGenerationModels[0].id;
+    return proposalVideoModels.some((option) => option.id === request.model)
+      ? request.model!
+      : proposalVideoModels[0].id;
+  });
   const [mode, setMode] = useState<"keyframe" | "multi_image">(request.generationMode === "multi_image" ? "multi_image" : "keyframe");
   const [aspectRatio, setAspectRatio] = useState(request.aspectRatio || "16:9");
   const [resolution, setResolution] = useState(request.resolution || "720p");
@@ -5303,7 +5313,7 @@ function VideoGenerationProposalBlock({
             disabled={!canDecide}
             className="rounded-md border border-white/10 bg-[#141414] px-2 py-1 text-zinc-300 outline-none disabled:opacity-60"
           >
-            {(isVideo ? videoGenerationModels : imageGenerationModels).map((option) => (
+            {(isVideo ? proposalVideoModels : imageGenerationModels).map((option) => (
               <option key={option.id} value={option.id}>{option.label}</option>
             ))}
           </select>

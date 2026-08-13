@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { formatBytePlusError, formatBytePlusMediaUrl, bytePlusVideoReferenceLimit } from "./byteplus"
+import { formatBytePlusError, formatBytePlusMediaUrl, bytePlusVideoReferenceLimit, formatBytePlusReferencePrompt } from "./byteplus"
 
 describe("formatBytePlusError", () => {
   it("uses nested BytePlus error messages and redacts provider identifiers", () => {
@@ -37,5 +37,22 @@ describe("seedance video references", () => {
     const limit = bytePlusVideoReferenceLimit("dreamina-seedance-2-5-260628")
     expect(limit.maxVideos).toBe(10)
     expect(limit.maxTotalSeconds).toBe(30)
+  })
+
+  it("converts Studio aliases to BytePlus numbered input references", () => {
+    const prompt = formatBytePlusReferencePrompt(
+      "Extend from video @previous shot video using @storyboard shot 2 image.",
+      { imageCount: 1, videoCount: 1 },
+    )
+    expect(prompt).toContain("[Video 1]")
+    expect(prompt).toContain("[Image 1]")
+    expect(prompt).not.toContain("@previous shot video")
+    expect(prompt).not.toContain("@storyboard shot 2 image")
+  })
+
+  it("adds explicit guidance when references were not named", () => {
+    const prompt = formatBytePlusReferencePrompt("Continue the scene.", { imageCount: 1, videoCount: 1 })
+    expect(prompt).toContain("Use [Video 1]")
+    expect(prompt).toContain("Use [Image 1]")
   })
 })

@@ -1,6 +1,6 @@
 import { calculateCreditCost } from "./credits"
 import { describe, expect, it } from "vitest"
-import { generationProvider, imageGenerationModels, isImageGenerationModel, isVideoGenerationModel, videoGenerationModels, videoDurationOptions, videoModelMaxDuration } from "./generation-models"
+import { defaultDirectorVideoModel, generationProvider, imageGenerationModels, isImageGenerationModel, isVideoGenerationModel, projectDirectorVideoModel, videoGenerationModels, videoDurationOptions, videoModelMaxDuration } from "./generation-models"
 
 describe("studio generation model registry", () => {
   it("exposes Seedream 5.0 Pro through BytePlus", () => {
@@ -38,6 +38,17 @@ describe("Seedance 2.5 pricing", () => {
     // Seedance 2.0 stays flat to five seconds, so the per-second rule must not
     // leak into models that are not priced that way.
     expect(calculateCreditCost("fal-seedance-2-0", "video", 4)).toBe(calculateCreditCost("fal-seedance-2-0", "video", 5))
+  })
+})
+
+describe("AI Director video provider", () => {
+  it("uses the project's saved BytePlus model", () => {
+    expect(projectDirectorVideoModel({ metadata: { basic_settings: { videoModel: "dreamina-seedance-2-0-fast-260128" } } })).toBe("dreamina-seedance-2-0-fast-260128")
+  })
+
+  it("falls back to BytePlus Seedance 2.5 instead of fal", () => {
+    expect(projectDirectorVideoModel({ metadata: { basic_settings: { videoModel: "fal-seedance-2-5" } } })).toBe(defaultDirectorVideoModel)
+    expect(projectDirectorVideoModel({})).toBe("dreamina-seedance-2-5-260628")
   })
 })
 
