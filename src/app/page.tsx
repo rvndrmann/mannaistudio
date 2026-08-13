@@ -121,7 +121,9 @@ function youtubeEmbedUrl(url: string): string | null {
     const watch = url.match(/(?:youtube\.com\/watch\?(?:.*&)?v=|youtu\.be\/|youtube\.com\/(?:embed|shorts|live)\/)([A-Za-z0-9_-]{6,})/)
     if (!watch) return null
     const start = url.match(/[?&](?:t|start)=(\d+)/)
-    return `https://www.youtube-nocookie.com/embed/${watch[1]}?rel=0&modestbranding=1${start ? `&start=${start[1]}` : ""}`
+    // The standard domain, not youtube-nocookie: the privacy-enhanced host
+    // refuses some videos — Shorts especially — that youtube.com serves fine.
+    return `https://www.youtube.com/embed/${watch[1]}?rel=0&modestbranding=1${start ? `&start=${start[1]}` : ""}`
 }
 
 export default function LandingPage() {
