@@ -32,7 +32,7 @@ import { defaultDirectorModels, normalizeDirectorModels, type DirectorModelConfi
 import { defaultSiteFeatures, fetchSiteFeatures, fetchStudioFeatureFlags, studioFeatureFlagDefaults, type SiteFeatures, type StudioFeatureFlags } from "@/lib/studio/feature-flags"
 import { defaultDirectorWorkflows, fetchDirectorWorkflows, normalizeDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows"
 import { defaultDirectorGlobalInstructions, normalizeDirectorGlobalInstructions } from "@/lib/studio/instructions"
-import { defaultDirectorRuntimeSettings, fetchDirectorRuntimeSettings, normalizeDirectorRuntimeSettings, specialistInstructionKeys, type DirectorRuntimeSettings } from "@/lib/studio/director-runtime-settings"
+import { defaultDirectorRuntimeSettings, fetchDirectorRuntimeSettings, normalizeDirectorRuntimeSettings, type DirectorRuntimeSettings } from "@/lib/studio/director-runtime-settings"
 import { defaultDirectorTeam, directorAgentKeys, fetchDirectorTeam, normalizeDirectorTeam, type DirectorTeam } from "@/lib/studio/director-team"
 import AdminEnterpriseOrders from "@/components/enterprise/AdminEnterpriseOrders"
 import { defaultVoiceInstructions, fetchVoiceInstructions } from "@/lib/studio/voice-instructions"
@@ -2620,7 +2620,7 @@ function AdminDashboardContent() {
                                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                         <div>
                                             <h2 className="text-xl font-bold text-white">Agent Orchestration</h2>
-                                            <p className="mt-1 text-sm leading-6 text-white/45">Control how the Director chooses tools, delegates specialist responsibilities, recovers from errors, and limits each chat run.</p>
+                                            <p className="mt-1 text-sm leading-6 text-white/45">Control how the Director chooses tools, recovers from errors, and limits each chat run. Specialist responsibilities belong to the named Agent Team below.</p>
                                         </div>
                                         <button type="button" onClick={() => setDirectorRuntimeSettings(structuredClone(defaultDirectorRuntimeSettings))} className="rounded-xl border border-white/10 px-4 py-2 text-xs font-bold text-white/60 hover:bg-white/10">Restore Default</button>
                                     </div>
@@ -2641,19 +2641,6 @@ function AdminDashboardContent() {
                                             <input type="number" min={1} max={5} value={directorRuntimeSettings.nextActionLimit} onChange={(event) => setDirectorRuntimeSettings((settings) => ({ ...settings, nextActionLimit: Math.max(1, Math.min(5, Number(event.target.value) || 1)) }))} className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-primary" />
                                             <p className="text-xs text-white/35">Limits the number of contextual options shown after an agent response.</p>
                                         </label>
-                                    </div>
-
-                                    <div>
-                                        <h3 className="text-sm font-bold text-white">Specialist Instructions</h3>
-                                        <p className="mt-1 text-xs leading-5 text-white/35">These instructions are injected into every Director run alongside the selected production workflow.</p>
-                                    </div>
-                                    <div className="grid gap-4 md:grid-cols-2">
-                                        {specialistInstructionKeys.map((key) => (
-                                            <label key={key} className="space-y-2">
-                                                <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">{key} specialist</span>
-                                                <textarea value={directorRuntimeSettings.specialists[key]} onChange={(event) => setDirectorRuntimeSettings((settings) => ({ ...settings, specialists: { ...settings.specialists, [key]: event.target.value } }))} rows={5} className="w-full resize-y rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm leading-6 text-white outline-none focus:border-primary" />
-                                            </label>
-                                        ))}
                                     </div>
 
                                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

@@ -5,7 +5,7 @@ import { directorTools, type DirectorToolName } from "./tool-registry"
 import { requestDirectorTool } from "./tool-service"
 import type { AuthenticatedProjectContext } from "./server-context"
 import type { DirectorTimelineBlock } from "./timeline"
-import { defaultDirectorRuntimeSettings, runtimeInstructions, type DirectorRuntimeSettings, type SpecialistInstructionKey } from "./director-runtime-settings"
+import { defaultDirectorRuntimeSettings, runtimeInstructions, type DirectorRuntimeSettings } from "./director-runtime-settings"
 import { buildVisionUserContent, type DirectorVisionAttachment } from "./director-vision"
 import { agentForTool, fetchDirectorTeam, teamInstructions, type DirectorTeam } from "./director-team"
 import { addWorkflowStep, createWorkflowRun, finishWorkflowRun } from "./workflow-runs"
@@ -150,10 +150,8 @@ export async function runDirectorAgent(input: {
   let awaitingApproval = 0
   let stepSequence = 0
   let reachedStepLimit = false
-  const activeSpecialists = selectSpecialists(input.objective)
-  // The agent team travels on every run. Regex specialist selection only decides
-  // which legacy specialist notes are appended; the team block is complete, so
-  // agent guidance no longer depends on which words the user happened to use.
+  // The named agent team is the single source of specialist guidance. It travels
+  // on every run, so behavior never depends on keywords in the user's message.
   const team = input.team || await fetchDirectorTeam(input.context.supabase)
   const teamBlock = teamInstructions(team)
   const requestedShotNumbers = parseRequestedShotNumbers(input.objective)
@@ -164,7 +162,7 @@ export async function runDirectorAgent(input: {
   for (let step = 0; step < runtimeSettings.maxToolSteps; step += 1) {
     let turn: Awaited<ReturnType<typeof createDirectorToolTurn>>
     try {
-      const fullInstructions = `${input.instructions}\nCurrent episode ID: ${input.episodeId || "No episode selected"}\nCurrent project ID: ${input.context.project.id}\n${targetConstraint}\nExecutable workspace proposals must be created by calling the appropriate tool; never represent an executable proposal only as assistant text. Tool calls that require approval create the UI approval card and do not apply the change until the user approves it.\n\n${teamBlock}\n\n${runtimeInstructions(runtimeSettings, activeSpecialists)}`
+      const fullInstructions = `${input.instructions}\nCurrent episode ID: ${input.episodeId || "No episode selected"}\nCurrent project ID: ${input.context.project.id}\n${targetConstraint}\nExecutable workspace proposals must be created by calling the appropriate tool; never represent an executable proposal only as assistant text. Tool calls that require approval create the UI approval card and do not apply the change until the user approves it.\n\n${teamBlock}\n\n${runtimeInstructions(runtimeSettings)}`
       const toolDefs = directorFunctionDefinitions()
 
       turn = input.model.startsWith("gemini")
@@ -271,18 +269,6 @@ export async function runDirectorAgent(input: {
   // by this run, so the button offers the stage the workspace is actually on
   // rather than a guess made from which tools happened to be called.
   return { content, timeline, suggestedActions, toolCalls, usage, workflowRunId: workflowRun.id }
-}
-
-export function selectSpecialists(objective: string): SpecialistInstructionKey[] {
-  const value = objective.toLowerCase()
-  const selected = new Set<SpecialistInstructionKey>()
-  if (/script|screenplay|scene text|dialogue/.test(value)) selected.add("script")
-  if (/character|entity|entities|location|prop|asset/.test(value)) selected.add("entities")
-  if (/storyboard|shot|segment|keyframe/.test(value)) selected.add("storyboard")
-  if (/image|visual|video|generate|reference|keyframe/.test(value)) selected.add("visuals")
-  if (/continuity|consistent|match|validate|review/.test(value)) selected.add("continuity")
-  selected.add("recovery")
-  return Array.from(selected)
 }
 
 function specialistForTool(name: string) {
