@@ -487,6 +487,11 @@ export default function LandingPage() {
                         // nothing behind it now shows its reserved placeholder,
                         // which also makes it obvious where the next one goes.
                         const showcaseItem = slotShowcase[idx]
+                        // A filled slot shows what was actually uploaded. The
+                        // adFormats copy is placeholder text for an empty slot,
+                        // and leaving it over real footage mislabels the work.
+                        const slotTitle = showcaseItem?.title || ad.title
+                        const slotSubtitle = showcaseItem?.description || ad.niche
                         return (
                             <div
                                 key={ad.id}
@@ -496,7 +501,7 @@ export default function LandingPage() {
                                     {showcaseItem?.videoUrl && youtubeEmbedUrl(showcaseItem.videoUrl) ? (
                                         <iframe
                                             src={`${youtubeEmbedUrl(showcaseItem.videoUrl)}&autoplay=1&mute=1&loop=1&controls=0&playsinline=1&playlist=${youtubeEmbedUrl(showcaseItem.videoUrl)?.split("/embed/")[1]?.split("?")[0]}`}
-                                            title={ad.title}
+                                            title={slotTitle}
                                             allow="autoplay; encrypted-media; picture-in-picture"
                                             className="pointer-events-none h-full w-full scale-[1.35] object-cover"
                                         />
@@ -511,7 +516,7 @@ export default function LandingPage() {
                                             className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
                                         />
                                     ) : showcaseItem?.thumbnail ? (
-                                        <img src={showcaseItem.thumbnail} alt={ad.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+                                        <img src={showcaseItem.thumbnail} alt={slotTitle} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
                                     ) : (
                                         <div className="flex h-full w-full flex-col items-center justify-center p-6 text-center">
                                             <Smartphone className="h-10 w-10 text-primary/60 mb-3" />
@@ -527,15 +532,15 @@ export default function LandingPage() {
                                         <span className="rounded-full bg-primary/20 border border-primary/30 px-3 py-1 text-[10px] font-black uppercase text-primary">
                                             {ad.tag}
                                         </span>
-                                        <h3 className="mt-3 text-xl font-black">{ad.title}</h3>
-                                        <p className="mt-1 text-xs text-white/60">{ad.niche}</p>
+                                        <h3 className="mt-3 text-xl font-black">{slotTitle}</h3>
+                                        <p className="mt-1 text-xs text-white/60 line-clamp-2">{slotSubtitle}</p>
                                     </div>
 
                                     {/* Play trigger button */}
                                     {showcaseItem?.videoUrl && (
                                         <button
                                             type="button"
-                                            onClick={() => setPlayingVideo({ url: showcaseItem.videoUrl, title: ad.title })}
+                                            onClick={() => setPlayingVideo({ url: showcaseItem.videoUrl, title: slotTitle })}
                                             className="absolute right-5 top-5 grid h-10 w-10 place-items-center rounded-full bg-primary text-black transition group-hover:scale-110"
                                         >
                                             <Play className="h-4 w-4 fill-black" />
