@@ -248,7 +248,7 @@ export default function LandingPage() {
                                         src={`${youtubeEmbedUrl(heroFeatured.videoUrl)}&autoplay=1&mute=1&controls=0&playsinline=1`}
                                         title={heroFeatured.title}
                                         allow="autoplay; encrypted-media; picture-in-picture"
-                                        className="pointer-events-none h-full w-full scale-[1.35]"
+                                        className="pointer-events-none h-full w-full"
                                     />
                                 ) : heroFeatured?.videoUrl ? (
                                     <video
@@ -503,7 +503,7 @@ export default function LandingPage() {
                                             src={`${youtubeEmbedUrl(showcaseItem.videoUrl)}&autoplay=1&mute=1&loop=1&controls=0&playsinline=1&playlist=${youtubeEmbedUrl(showcaseItem.videoUrl)?.split("/embed/")[1]?.split("?")[0]}`}
                                             title={slotTitle}
                                             allow="autoplay; encrypted-media; picture-in-picture"
-                                            className="pointer-events-none h-full w-full scale-[1.35] object-cover"
+                                            className="pointer-events-none h-full w-full"
                                         />
                                     ) : showcaseItem?.videoUrl ? (
                                         <video
