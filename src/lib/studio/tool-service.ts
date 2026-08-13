@@ -3,6 +3,7 @@ import { z } from "zod"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { directorTools, type DirectorToolName } from "./tool-registry"
 import { getUserCredits } from "./credits"
+import { stripIdentityDescriptionsFromPrompts } from "./prompt-sanitizer"
 
 export const toolRequestSchema = z.object({
   tool: z.preprocess(
@@ -21,7 +22,26 @@ export async function requestDirectorTool(context: AuthenticatedProjectContext, 
   const rawInput = request.tool === "submit_generation" && request.workflowRunId && request.input && typeof request.input === "object"
     ? { ...(request.input as Record<string, unknown>), workflowRunId: request.workflowRunId }
     : request.input
-  const input = tool.input.parse(rawInput)
+  const parsedInput = tool.input.parse(rawInput)
+  // Generation execution strips identity prose as a final safety check. Apply
+  // the same rule before saving the approval proposal so the UI never shows a
+  // CHARACTER / ASSET LOCK block that will not be sent to the provider.
+  const input = request.tool === "submit_generation"
+    && parsedInput
+    && typeof parsedInput === "object"
+    && "request" in parsedInput
+    && "prompts" in parsedInput
+    && parsedInput.request
+    && typeof parsedInput.request === "object"
+    && "type" in parsedInput.request
+    && parsedInput.request.type === "video"
+    && parsedInput.prompts
+    && typeof parsedInput.prompts === "object"
+    ? {
+        ...parsedInput,
+        prompts: stripIdentityDescriptionsFromPrompts(parsedInput.prompts as Record<string, string>),
+      }
+    : parsedInput
 
   const { data: existing } = await context.supabase
     .from("creator_tool_executions")

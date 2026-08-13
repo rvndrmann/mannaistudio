@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { hasIdentityDescriptions, stripIdentityDescriptions } from "./prompt-sanitizer"
+import { hasIdentityDescriptions, stripIdentityDescriptions, stripIdentityDescriptionsFromPrompts } from "./prompt-sanitizer"
 
 const shotPrompt = `🎬 SEEDANCE 2.0 SCENE PROMPT — "Ethan Wakes to Lena Watching"
 
@@ -66,5 +66,16 @@ describe("shot prompt identity stripping", () => {
   it("does not treat an action line that names a character as identity", () => {
     const prompt = "Slow push-in on @Lena's calm smile while @Ethan whispers the question and the room goes still."
     expect(stripIdentityDescriptions(prompt)).toBe(prompt)
+  })
+
+  it("sanitizes the continuation prompt before it appears in a generation proposal", () => {
+    const continuation = `Extend from video @previous shot video into the next scene while following @storyboard shot 2 image.\n\nPhotorealistic, hyper realistic.\n\n${shotPrompt}`
+    const result = stripIdentityDescriptionsFromPrompts({ "2": continuation })["2"]
+    expect(result).toContain("Extend from video @previous shot video")
+    expect(result).toContain("Photorealistic, hyper realistic.")
+    expect(result).not.toContain("CHARACTER / ASSET LOCK")
+    expect(result).not.toContain("Young adult man")
+    expect(result).not.toContain("Young woman mid-20s")
+    expect(result).toContain("Cast in frame: @Ethan, @Lena.")
   })
 })

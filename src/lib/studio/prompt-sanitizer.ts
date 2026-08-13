@@ -90,3 +90,15 @@ export function stripIdentityDescriptions(prompt: string): string {
 export function hasIdentityDescriptions(prompt: string): boolean {
   return stripIdentityDescriptions(prompt) !== prompt
 }
+
+/**
+ * Sanitizes every prompt in a generation proposal before it is persisted and
+ * shown for approval. Execution also sanitizes defensively, but doing it here
+ * keeps the review card honest: the prompt the user sees is the prompt the
+ * provider receives.
+ */
+export function stripIdentityDescriptionsFromPrompts(prompts: Record<string, string>) {
+  return Object.fromEntries(
+    Object.entries(prompts).map(([key, prompt]) => [key, stripIdentityDescriptions(prompt)]),
+  )
+}
