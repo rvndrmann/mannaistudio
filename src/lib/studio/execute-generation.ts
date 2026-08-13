@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { generateOpenAIImage, type OpenAIImageModel } from "./openai"
 import { submitBytePlusVideo, generateBytePlusImage, createBytePlusAsset } from "./byteplus"
 import type { VideoGenerationModelId, ImageGenerationModelId } from "./generation-models"
-import { buildEntityMentionContext, entityPrimaryReference, fillReferenceBudget, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
+import { buildEntityMentionContext, chosenReferences, entityPrimaryReference, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
 import { openAIImageQuality, projectImageQuality, projectVisualStyle, visualStyleDirective } from "./entity-image-workflow"
 import { stripIdentityDescriptions } from "./prompt-sanitizer"
 import type { AuthenticatedProjectContext } from "./server-context"
@@ -121,14 +121,14 @@ export async function executeGenerationJobsInBackground(
           const activeIds = pickedIds ? pickedIds : promptMentionIds.length ? promptMentionIds : declaredIds
           const mentionedEntities = (projectEntities || []).filter((entity) => activeIds.includes(entity.id))
 
-          // GPT Image takes up to 16 references and treats them as material for
-          // one output, so a two-character shot can afford every view those two
-          // own. Seedance is held at the smaller budget it was tuned against.
+          // GPT Image takes up to 16 references, so a large cast no longer loses
+          // its last members to a budget inherited from the video path. Seedance
+          // stays on the eight it was tuned against.
           const referenceBudget = job.type === "image" && job.provider === "openai" ? 16 : 8
-          // One image per entity first, in cast order, then the additional views
-          // round by round — the cast can never lose its place to a second angle
-          // of somebody already in frame.
-          const mentionReferencePaths = fillReferenceBudget(mentionedEntities as MentionableEntity[], referenceBudget)
+          // One image per entity — the one the user chose. The rest of an
+          // entity's images are rejected attempts, and the model would blend
+          // them into the keeper.
+          const mentionReferencePaths = chosenReferences(mentionedEntities as MentionableEntity[], referenceBudget)
           // Only a character's image needs registering with the provider to
           // clear its real-person check; the Asset Library holds 50 and props
           // and locations would fill it for nothing.

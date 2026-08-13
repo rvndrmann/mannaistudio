@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildEntityMentionContext, findActiveEntityMention, findMentionedEntityIds, insertEntityMention, type MentionableEntity, entityPrimaryReference, findShotCastEntityIds , fillReferenceBudget } from "./entity-mentions"
+import { buildEntityMentionContext, findActiveEntityMention, findMentionedEntityIds, insertEntityMention, type MentionableEntity, entityPrimaryReference, findShotCastEntityIds , chosenReferences } from "./entity-mentions"
 
 const entities: MentionableEntity[] = [
   { id: "11111111-1111-4111-8111-111111111111", name: "Maya", type: "character", description: "Lead detective" },
@@ -95,29 +95,33 @@ describe("shot cast", () => {
 describe("reference budget", () => {
   const entity = (name: string, images: string[]) => ({ id: name, name, type: "character" as const, reference_images: images })
 
-  it("gives every entity a slot before anyone gets a second view", () => {
-    expect(fillReferenceBudget([
-      entity("Ethan", ["ethan-sheet.png", "ethan-alt.png", "ethan-third.png"]),
-      entity("Lena", ["lena-sheet.png", "lena-alt.png"]),
-      entity("Bedroom", ["bedroom.png"]),
-    ], 4)).toEqual(["ethan-sheet.png", "lena-sheet.png", "bedroom.png", "ethan-alt.png"])
+  // An entity's other images are the attempts the user rejected — that is what
+  // the Choose button settles. The models blend every reference into one output,
+  // so a reject sent alongside the keeper averages the face the user picked with
+  // the ones they threw away.
+  it("sends only the chosen image for each entity", () => {
+    expect(chosenReferences([
+      entity("Ethan", ["ethan-keeper.png", "ethan-rejected.png", "ethan-rejected-2.png"]),
+      entity("Lena", ["lena-keeper.png", "lena-rejected.png"]),
+    ], 16)).toEqual(["ethan-keeper.png", "lena-keeper.png"])
   })
 
-  it("spends the leftover budget on the extra views a small cast owns", () => {
-    expect(fillReferenceBudget([
-      entity("Ethan", ["ethan-sheet.png", "ethan-alt.png"]),
-      entity("Lena", ["lena-sheet.png", "lena-alt.png"]),
-    ], 16)).toEqual(["ethan-sheet.png", "lena-sheet.png", "ethan-alt.png", "lena-alt.png"])
+  it("honours an explicitly chosen reference over list order", () => {
+    expect(chosenReferences([
+      { id: "e", name: "Ethan", type: "character", reference_images: ["old.png", "picked.png"], primary_reference_image: "picked.png" },
+    ], 16)).toEqual(["picked.png"])
   })
 
-  it("honours the chosen reference and never repeats an image", () => {
-    expect(fillReferenceBudget([
-      { id: "e", name: "Ethan", type: "character", reference_images: ["a.png", "b.png"], primary_reference_image: "b.png" },
-      { id: "l", name: "Lena", type: "character", reference_images: ["a.png"] },
-    ], 8)).toEqual(["b.png", "a.png"])
+  it("spends the budget on subjects, cutting the last of a very large cast", () => {
+    const cast = Array.from({ length: 20 }, (_, index) => entity(`Extra ${index}`, [`extra-${index}.png`]))
+    expect(chosenReferences(cast, 16)).toHaveLength(16)
   })
 
-  it("skips entities with no art at all", () => {
-    expect(fillReferenceBudget([entity("Ghost", []), entity("Lena", ["lena.png"])], 8)).toEqual(["lena.png"])
+  it("skips entities with no art and never repeats a shared image", () => {
+    expect(chosenReferences([
+      entity("Ghost", []),
+      entity("Lena", ["shared.png"]),
+      entity("Twin", ["shared.png"]),
+    ], 8)).toEqual(["shared.png"])
   })
 })
