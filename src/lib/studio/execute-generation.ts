@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { generateOpenAIImage, type OpenAIImageModel } from "./openai"
 import { submitBytePlusVideo, generateBytePlusImage, createBytePlusAsset } from "./byteplus"
 import type { VideoGenerationModelId, ImageGenerationModelId } from "./generation-models"
-import { buildEntityMentionContext, entityPrimaryReference, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
+import { buildEntityMentionContext, entityPrimaryReference, fillReferenceBudget, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
 import { openAIImageQuality, projectImageQuality, projectVisualStyle, visualStyleDirective } from "./entity-image-workflow"
 import { stripIdentityDescriptions } from "./prompt-sanitizer"
 import type { AuthenticatedProjectContext } from "./server-context"
@@ -121,12 +121,14 @@ export async function executeGenerationJobsInBackground(
           const activeIds = pickedIds ? pickedIds : promptMentionIds.length ? promptMentionIds : declaredIds
           const mentionedEntities = (projectEntities || []).filter((entity) => activeIds.includes(entity.id))
 
-          // One image per entity — the chosen reference. Sending every image an
-          // entity owns burns the reference budget on two or three characters
-          // and drops the rest of the shot's cast entirely.
-          const mentionReferencePaths = mentionedEntities
-            .map((entity) => entityPrimaryReference(entity as MentionableEntity))
-            .filter((path): path is string => Boolean(path))
+          // GPT Image takes up to 16 references and treats them as material for
+          // one output, so a two-character shot can afford every view those two
+          // own. Seedance is held at the smaller budget it was tuned against.
+          const referenceBudget = job.type === "image" && job.provider === "openai" ? 16 : 8
+          // One image per entity first, in cast order, then the additional views
+          // round by round — the cast can never lose its place to a second angle
+          // of somebody already in frame.
+          const mentionReferencePaths = fillReferenceBudget(mentionedEntities as MentionableEntity[], referenceBudget)
           // Only a character's image needs registering with the provider to
           // clear its real-person check; the Asset Library holds 50 and props
           // and locations would fill it for nothing.
@@ -150,7 +152,7 @@ export async function executeGenerationJobsInBackground(
             job.type === "video"
               ? [...referencePaths, ...mentionReferencePaths]
               : [...mentionReferencePaths, ...referencePaths],
-          )).slice(0, 8)
+          )).slice(0, referenceBudget)
           const mentionContext = buildEntityMentionContext(mentionedEntities as MentionableEntity[])
 
           const signReference = async (ref: string) => {

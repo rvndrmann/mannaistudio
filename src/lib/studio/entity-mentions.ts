@@ -21,6 +21,40 @@ export function entityPrimaryReference(entity: { reference_images?: string[] | n
   return images[0]
 }
 
+/**
+ * Every reference image an entity owns, chosen one first.
+ *
+ * The primary is a multi-view character sheet, so one slot already carries
+ * several angles — but a cast of two leaves most of the reference budget unused,
+ * and the extra views an entity owns are better in that space than nothing.
+ */
+export function entityAllReferences(entity: { reference_images?: string[] | null; primary_reference_image?: string | null }) {
+  const images = (entity.reference_images || []).filter((path): path is string => typeof path === "string" && path.trim().length > 0)
+  const primary = entityPrimaryReference(entity)
+  return primary ? [primary, ...images.filter((path) => path !== primary)] : images
+}
+
+/**
+ * Fills the reference budget without ever costing a cast member its place: one
+ * image each first, in cast order, then the additional views round by round.
+ * Passing everything an entity owns up front spent the whole budget on the first
+ * two characters and dropped the rest of the shot's cast before the provider
+ * saw it.
+ */
+export function fillReferenceBudget(entities: Array<{ reference_images?: string[] | null; primary_reference_image?: string | null }>, budget: number) {
+  const byEntity = entities.map((entity) => entityAllReferences(entity)).filter((images) => images.length > 0)
+  const ordered: string[] = []
+  const deepest = byEntity.reduce((most, images) => Math.max(most, images.length), 0)
+  for (let round = 0; round < deepest; round += 1) {
+    for (const images of byEntity) {
+      const path = images[round]
+      if (path && !ordered.includes(path)) ordered.push(path)
+      if (ordered.length >= budget) return ordered
+    }
+  }
+  return ordered
+}
+
 export type ActiveEntityMention = {
   start: number
   end: number

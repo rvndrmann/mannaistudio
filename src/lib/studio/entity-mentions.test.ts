@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildEntityMentionContext, findActiveEntityMention, findMentionedEntityIds, insertEntityMention, type MentionableEntity, entityPrimaryReference, findShotCastEntityIds } from "./entity-mentions"
+import { buildEntityMentionContext, findActiveEntityMention, findMentionedEntityIds, insertEntityMention, type MentionableEntity, entityPrimaryReference, findShotCastEntityIds , fillReferenceBudget } from "./entity-mentions"
 
 const entities: MentionableEntity[] = [
   { id: "11111111-1111-4111-8111-111111111111", name: "Maya", type: "character", description: "Lead detective" },
@@ -89,5 +89,35 @@ describe("shot cast", () => {
 
   it("does not invent a cast from prose alone when nothing was declared", () => {
     expect(findShotCastEntityIds("a suitcase sits in the bedroom", cast)).toEqual([])
+  })
+})
+
+describe("reference budget", () => {
+  const entity = (name: string, images: string[]) => ({ id: name, name, type: "character" as const, reference_images: images })
+
+  it("gives every entity a slot before anyone gets a second view", () => {
+    expect(fillReferenceBudget([
+      entity("Ethan", ["ethan-sheet.png", "ethan-alt.png", "ethan-third.png"]),
+      entity("Lena", ["lena-sheet.png", "lena-alt.png"]),
+      entity("Bedroom", ["bedroom.png"]),
+    ], 4)).toEqual(["ethan-sheet.png", "lena-sheet.png", "bedroom.png", "ethan-alt.png"])
+  })
+
+  it("spends the leftover budget on the extra views a small cast owns", () => {
+    expect(fillReferenceBudget([
+      entity("Ethan", ["ethan-sheet.png", "ethan-alt.png"]),
+      entity("Lena", ["lena-sheet.png", "lena-alt.png"]),
+    ], 16)).toEqual(["ethan-sheet.png", "lena-sheet.png", "ethan-alt.png", "lena-alt.png"])
+  })
+
+  it("honours the chosen reference and never repeats an image", () => {
+    expect(fillReferenceBudget([
+      { id: "e", name: "Ethan", type: "character", reference_images: ["a.png", "b.png"], primary_reference_image: "b.png" },
+      { id: "l", name: "Lena", type: "character", reference_images: ["a.png"] },
+    ], 8)).toEqual(["b.png", "a.png"])
+  })
+
+  it("skips entities with no art at all", () => {
+    expect(fillReferenceBudget([entity("Ghost", []), entity("Lena", ["lena.png"])], 8)).toEqual(["lena.png"])
   })
 })

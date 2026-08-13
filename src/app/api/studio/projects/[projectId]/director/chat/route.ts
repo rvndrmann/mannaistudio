@@ -15,7 +15,7 @@ import { fetchDirectorWorkflows, selectedWorkflowId, workflowContinuesFromPrevio
 import { normalizeDirectorGlobalInstructions } from "@/lib/studio/instructions"
 import { runDirectorAgent } from "@/lib/studio/director-agent"
 import { fetchDirectorRuntimeSettings } from "@/lib/studio/director-runtime-settings"
-import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
+import { buildEntityMentionContext, entityPrimaryReference, fillReferenceBudget, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { collectDirectorVisionAttachments } from "@/lib/studio/director-vision"
 import { buildEntityReferenceImagePrompt, openAIImageQuality, parseBulkEntityImageIntent, projectImageQuality, projectVisualStyle, visualStyleDirective, type BulkEntityImageIntent } from "@/lib/studio/entity-image-workflow"
 import { createBytePlusAsset } from "@/lib/studio/byteplus"
@@ -455,11 +455,10 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
     const projectDefaultAspect = typeof input.context.project.default_aspect === "string" ? input.context.project.default_aspect : null
     const aspectRatio = targetShot?.aspect_ratio || projectDefaultAspect || "9:16"
     const resolvedPrompt = [stripIdentityDescriptions(prompt), `Required composition: ${aspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
-    // The chosen reference per entity, not every image it owns: eight slots
-    // should mean eight subjects, not three angles of the same character.
-    const referencePaths = Array.from(new Set(referencedEntities
-      .map((entity) => entityPrimaryReference(entity))
-      .filter((path): path is string => Boolean(path)))).slice(0, 8)
+    // One image per entity first so no cast member is dropped, then their other
+    // views into whatever budget is left. GPT Image takes 16 references and
+    // reads them as material for a single output.
+    const referencePaths = fillReferenceBudget(referencedEntities, 16)
     const referenceUrls = await signedMentionReferences(input.context, referencePaths)
     const quality = projectImageQuality(input.context.project)
     const creditCost = calculateCreditCost("gpt-image-2", "image", 5, { quality, aspectRatio })
