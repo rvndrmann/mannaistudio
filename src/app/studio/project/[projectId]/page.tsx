@@ -3722,30 +3722,36 @@ function ShotMediaWorkspace({
     let active = true;
     async function loadJobs() {
       try {
-        // Prefer the server-loaded job snapshot so history is available even
-        // when the browser Supabase client is briefly stale or its RLS refresh
-        // races with opening the viewer. Every completed generation remains a
-        // separate entry; keyframe_image/video_url is only the active pointer.
+        // The project snapshot is intentionally capped, so it can contain only
+        // the newest job for an older shot. Always fetch this shot's complete
+        // history and merge the snapshot as a fallback for brief RLS/session
+        // refresh races. keyframe_image/video_url remains only the active pointer.
         const serverJobs = (generationJobs || []).filter((job) => job.shot_id === media.shot.id && job.type === media.type);
-        const { data: dbJobs } = serverJobs.length ? { data: serverJobs } : await createClient()
+        const { data: freshJobs, error: historyError } = await createClient()
           .from("creator_generation_jobs")
           .select("*")
           .eq("shot_id", media.shot.id)
           .eq("type", media.type)
           .order("created_at", { ascending: false });
 
-        if (!active || !dbJobs) return;
+        if (historyError && serverJobs.length === 0) throw historyError;
+        if (!active) return;
+        const jobsById = new Map<string, (typeof serverJobs)[number]>();
+        for (const job of [...serverJobs, ...((freshJobs || []) as typeof serverJobs)]) jobsById.set(job.id, job);
+        const dbJobs = Array.from(jobsById.values()).sort((a, b) =>
+          new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+        );
 
         const entries: GenEntry[] = dbJobs.map((job) => ({
           id: job.id,
-          type: job.type,
+          type: job.type || media.type,
           status: (job.status === "completed" ? "completed" : job.status === "failed" || job.status === "cancelled" ? "failed" : "generating") as "generating" | "completed" | "failed",
           prompt: job.prompt || "",
           model: job.model || "",
           referenceImages: Array.isArray(job.input_images) ? (job.input_images as string[]) : [],
           videoUrl: job.result_url || null,
           error: job.error || null,
-          createdAt: new Date(job.created_at).getTime(),
+          createdAt: new Date(job.created_at || 0).getTime(),
           completedAt: job.completed_at || null,
         }));
 
@@ -4101,7 +4107,7 @@ function ShotMediaWorkspace({
             </label>
             <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600">Generations</p>
             <div className="flex flex-col gap-2">
-              {genHistory.map((gen) => {
+              {displayGenerations.map((gen) => {
                 const isActive = activeGenId === gen.id;
                 const isGenChosen = Boolean(gen.videoUrl && gen.videoUrl === currentActiveChosenSource);
                 return (

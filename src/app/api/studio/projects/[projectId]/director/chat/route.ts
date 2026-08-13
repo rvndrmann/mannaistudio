@@ -471,7 +471,7 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
       if (verifyError) throw verifyError
       const verificationResult = verifyGenerationTarget({ target: targetSnapshot, actual: { shotId: verifiedShot?.id || "", episodeId: verifiedShot?.episode_id || null, prompt, entityReferenceIds: verifiedShot?.referenced_entities || [], resultPath: verifiedShot?.keyframe_image || null }, expectedResultPath: path })
       if (!verificationResult.ok) throw new Error(`Generation verification failed: ${Object.entries(verificationResult.checks).filter(([, value]) => !value).map(([key]) => key).join(", ")}`)
-      await input.context.supabase.from("creator_generation_jobs").insert({
+      const { error: historyError } = await input.context.supabase.from("creator_generation_jobs").insert({
         user_id: input.context.user.id,
         project_id: input.projectId,
         episode_id: input.episodeId,
@@ -490,6 +490,7 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
         estimated_credits: creditCost,
         credits_used: creditCost,
       })
+      if (historyError) throw historyError
     }
     const { data: signed } = await input.context.supabase.storage.from("creator-studio-media").createSignedUrl(path, 60 * 60)
     return {

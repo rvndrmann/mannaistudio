@@ -216,11 +216,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (error) throw error
 
       // Record in creator_generation_jobs so history displays prompt and model
-      await context.supabase.from("creator_generation_jobs").insert({
+      const { error: historyError } = await context.supabase.from("creator_generation_jobs").insert({
         user_id: context.user.id,
         project_id: projectId,
         episode_id: typeof shotData?.episode_id === "string" ? shotData.episode_id : null,
         shot_id: input.targetId,
+        type: "image",
         provider,
         model: input.model,
         prompt: input.prompt,
@@ -230,6 +231,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         estimated_credits: creditCost,
         credits_used: creditCost,
       })
+      if (historyError) throw historyError
     }
     pendingRefund = null
     return NextResponse.json({
