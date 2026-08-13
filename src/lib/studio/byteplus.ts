@@ -356,3 +356,26 @@ export async function getBytePlusAsset(assetId: string) {
 
   return { id: assetId, status, assetUri }
 }
+
+/**
+ * Frees a slot in the account's 50-image Asset Library.
+ *
+ * The provider's own record is what counts against the quota, so removing our
+ * row without this would only hide the problem.
+ */
+export async function deleteBytePlusAsset(assetId: string) {
+  const ak = process.env.ARK_ACCESS_KEY
+  const sk = process.env.ARK_SECRET_KEY
+  if (!ak || !sk) throw new BytePlusProviderError("ARK_ACCESS_KEY and ARK_SECRET_KEY are required to delete an asset.")
+
+  const query = { Action: "DeleteAsset", Version: "2024-01-01" }
+  const body = JSON.stringify({ Id: assetId })
+  const headers = signBytePlusRequest("POST", query, body, ak, sk)
+
+  const res = await fetch(`https://${headers.Host}/?Action=DeleteAsset&Version=2024-01-01`, { method: "POST", headers, body })
+  const json = (await res.json().catch(() => ({}))) as { ResponseMetadata?: { Error?: { Message?: string } } }
+  if (!res.ok || json.ResponseMetadata?.Error) {
+    throw new BytePlusProviderError(`DeleteAsset failed: ${json.ResponseMetadata?.Error?.Message || res.statusText}`)
+  }
+  return { id: assetId, deleted: true }
+}

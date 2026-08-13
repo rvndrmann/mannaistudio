@@ -9,7 +9,8 @@ import {
     Tv, Settings, LogOut, Plus, Edit2, Trash2,
     Save, X, Download, FileText, Video, Trophy,
     Inbox, Mail, Clock, DollarSign, Loader2, Phone,
-    ChevronLeft, ChevronRight, Calendar, Pause, PauseCircle, PlayCircle
+    ChevronLeft, ChevronRight, Calendar, Pause, PauseCircle, PlayCircle,
+    Image as ImageIcon, RefreshCw
 } from "lucide-react"
 import { courses, adminShowcase, challenges } from "@/lib/data"
 import { useEffect, useState } from "react"
@@ -1315,6 +1316,15 @@ function AdminDashboardContent() {
                                 <Settings className="w-4 h-4" /> AI Models
                             </button>
                             <button
+                                onClick={() => setActiveTab("asset-library")}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    activeTab === "asset-library" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                )}
+                            >
+                                <ImageIcon className="w-4 h-4" /> Seedance Assets
+                            </button>
+                            <button
                                 onClick={() => setActiveTab("ai-workflows")}
                                 className={cn(
                                     "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
@@ -2471,6 +2481,18 @@ function AdminDashboardContent() {
                             </motion.div>
                         )}
 
+                        {activeTab === "asset-library" && (
+                            <motion.div
+                                key="asset-library"
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                className="space-y-8"
+                            >
+                                <BytePlusAssetLibrary />
+                            </motion.div>
+                        )}
+
                         {activeTab === "ai-models" && (
                             <motion.div
                                 key="ai-models"
@@ -3350,5 +3372,157 @@ function StatCard({ label, value, change, icon: Icon, color }: any) {
             <p className="text-white/40 text-xs font-medium mb-1 uppercase tracking-wider">{label}</p>
             <h4 className="text-2xl font-bold">{value}</h4>
         </div>
+    )
+}
+
+type RegisteredAssetRow = {
+    id: string
+    source_path: string
+    asset_id: string
+    name: string | null
+    created_at: string
+    last_used_at: string
+    use_count: number
+}
+
+/**
+ * The Seedance Asset Library, which holds 50 images for the whole account.
+ *
+ * Registration clears the provider's real-person check, and it used to happen
+ * on every generation, so the quota filled within hours with duplicates of the
+ * same character. Each image now registers once; this is where the ones that
+ * are no longer earning their slot get cleared out.
+ */
+function BytePlusAssetLibrary() {
+    const [assets, setAssets] = useState<RegisteredAssetRow[]>([])
+    const [limit, setLimit] = useState(50)
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+    const [deleting, setDeleting] = useState<string | null>(null)
+
+    const load = async () => {
+        setLoading(true)
+        setError(null)
+        try {
+            const response = await fetch("/api/admin/byteplus-assets", { cache: "no-store" })
+            const json = await response.json()
+            if (!response.ok) throw new Error(json.error || "Could not read the asset library")
+            setAssets(json.assets || [])
+            setLimit(json.limit || 50)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Could not read the asset library")
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    useEffect(() => { void load() }, [])
+
+    const remove = async (id: string) => {
+        setDeleting(id)
+        setError(null)
+        try {
+            const response = await fetch("/api/admin/byteplus-assets", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id }),
+            })
+            const json = await response.json()
+            if (!response.ok) throw new Error(json.error || "Could not delete the asset")
+            setAssets((current) => current.filter((asset) => asset.id !== id))
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Could not delete the asset")
+        } finally {
+            setDeleting(null)
+        }
+    }
+
+    const used = assets.length
+    const full = used >= limit
+    const staleAfterDays = 7
+    const isStale = (asset: RegisteredAssetRow) =>
+        Date.now() - new Date(asset.last_used_at).getTime() > staleAfterDays * 24 * 60 * 60 * 1000
+
+    return (
+        <>
+            <header className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight mb-2">Seedance Asset Library</h1>
+                    <p className="text-white/40 text-sm">
+                        BytePlus holds {limit} registered images for the whole account. Delete the ones no longer in use to free slots.
+                    </p>
+                </div>
+                <button
+                    onClick={() => void load()}
+                    className="flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-white/70 hover:bg-white/5"
+                >
+                    <RefreshCw className="w-4 h-4" /> Refresh
+                </button>
+            </header>
+
+            <div className="glass-card p-6 rounded-2xl border-white/10 max-w-4xl">
+                <div className="flex items-end justify-between gap-4">
+                    <div>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-white/40">Slots used</p>
+                        <p className={cn("mt-1 text-3xl font-bold", full ? "text-red-400" : used > limit * 0.7 ? "text-amber-300" : "text-lime-300")}>
+                            {used} <span className="text-white/30 text-xl">/ {limit}</span>
+                        </p>
+                    </div>
+                    <p className="text-xs text-white/40">
+                        {full
+                            ? "The library is full. Registration will fail until slots are freed."
+                            : `${limit - used} slot${limit - used === 1 ? "" : "s"} free.`}
+                    </p>
+                </div>
+                <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/10">
+                    <div className={cn("h-full rounded-full", full ? "bg-red-400" : "bg-lime-400")} style={{ width: `${Math.min(100, (used / limit) * 100)}%` }} />
+                </div>
+            </div>
+
+            {error && <p className="max-w-4xl rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
+
+            <div className="glass-card rounded-2xl border-white/10 max-w-4xl overflow-hidden">
+                {loading ? (
+                    <p className="p-6 text-sm text-white/40">Reading the asset library…</p>
+                ) : !assets.length ? (
+                    <p className="p-6 text-sm text-white/40">Nothing registered yet. Images register the first time a Seedance generation needs them.</p>
+                ) : (
+                    <table className="w-full text-left text-sm">
+                        <thead className="border-b border-white/10 text-[11px] uppercase tracking-wider text-white/40">
+                            <tr>
+                                <th className="p-4 font-bold">Image</th>
+                                <th className="p-4 font-bold">Used</th>
+                                <th className="p-4 font-bold">Last used</th>
+                                <th className="p-4" />
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {assets.map((asset) => (
+                                <tr key={asset.id} className="border-b border-white/5 last:border-0">
+                                    <td className="p-4">
+                                        <p className="font-medium">{asset.name || asset.source_path.split("/").pop()}</p>
+                                        <p className="mt-0.5 font-mono text-[10px] text-white/30">{asset.asset_id}</p>
+                                    </td>
+                                    <td className="p-4 text-white/60">{asset.use_count}×</td>
+                                    <td className={cn("p-4", isStale(asset) ? "text-amber-300" : "text-white/60")}>
+                                        {new Date(asset.last_used_at).toLocaleDateString()}
+                                        {isStale(asset) && <span className="ml-2 text-[10px] uppercase tracking-wider">unused {staleAfterDays}d+</span>}
+                                    </td>
+                                    <td className="p-4 text-right">
+                                        <button
+                                            onClick={() => void remove(asset.id)}
+                                            disabled={deleting === asset.id}
+                                            className="rounded-lg border border-red-500/30 px-3 py-1.5 text-xs font-bold text-red-300 hover:bg-red-500/10 disabled:opacity-50"
+                                        >
+                                            {deleting === asset.id ? "Deleting…" : "Delete"}
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+            </div>
+        </>
     )
 }

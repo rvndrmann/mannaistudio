@@ -5,6 +5,7 @@ import type { VideoGenerationModelId, ImageGenerationModelId } from "./generatio
 import { buildEntityMentionContext, chosenReferences, entityPrimaryReference, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
 import { openAIImageQuality, projectImageQuality, projectVisualStyle, visualStyleDirective } from "./entity-image-workflow"
 import { stripIdentityDescriptions } from "./prompt-sanitizer"
+import { resolveRegisteredAsset } from "./byteplus-assets"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { randomUUID } from "node:crypto"
 import { verifyGenerationTarget } from "./generation-target"
@@ -163,9 +164,31 @@ export async function executeGenerationJobsInBackground(
 
           const referenceUrls: string[] = []
           const faceReferenceUrls: string[] = []
+          const entityIdByPath = new Map(mentionedEntities
+            .map((entity) => [entityPrimaryReference(entity as MentionableEntity), entity.id] as const)
+            .filter((pair): pair is readonly [string, string] => Boolean(pair[0])))
           for (const ref of combinedReferencePaths) {
             const signed = await signReference(ref)
             if (!signed) continue
+            // An image that must clear the provider's real-person check is
+            // registered once and remembered. Registering per generation filled
+            // the account's 50-image library within hours, and re-registered the
+            // same character even for requests the provider had rejected.
+            if (facePaths.has(ref) && job.provider === "byteplus") {
+              const assetUri = await resolveRegisteredAsset({
+                supabase: context.supabase,
+                sourcePath: ref,
+                imageUrl: signed,
+                name: ref.split("/").pop() || undefined,
+                projectId: context.project.id,
+                entityId: entityIdByPath.get(ref) || null,
+                userId: context.user.id,
+              })
+              if (assetUri) {
+                referenceUrls.push(assetUri)
+                continue
+              }
+            }
             referenceUrls.push(signed)
             if (facePaths.has(ref)) faceReferenceUrls.push(signed)
           }
