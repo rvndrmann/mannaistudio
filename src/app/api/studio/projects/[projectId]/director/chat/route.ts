@@ -71,6 +71,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (historyError) throw historyError
     const { data: userMessage, error: userError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, workflow_run_id: workflowRun.id, role: "user", content: body.message, referenced_entity_ids: uniqueMentionIds }).select().single()
     if (userError) throw userError
+    // Replying instead of approving is an answer: the user wants to steer before
+    // anything is generated. The card it replaces must not sit there pending
+    // forever, or block the ones that come after it.
+    const withdrawn = await withdrawSupersededProposals(context, sessionId)
+
     // A fast path can spend a minute inside an image model. Running it inside
     // the stream is what lets the browser show the request moving while it does
     // — before this, nothing at all reached the client until the picture was
@@ -127,7 +132,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return {
         context,
         model,
-        instructions: await buildWorkflowInstructions(context, episode.id, sessionId, buildDirectorInstructions(project, globalInstructions)),
+        instructions: [
+          await buildWorkflowInstructions(context, episode.id, sessionId, buildDirectorInstructions(project, globalInstructions)),
+          // Otherwise the model keeps waiting on an approval the user has
+          // already answered with words, and asks them to press a card that is
+          // no longer there.
+          withdrawn.length
+            ? `The user replied instead of approving, so ${withdrawn.length === 1 ? "this proposal has" : "these proposals have"} been withdrawn: ${withdrawn.join("; ")}. Their message is the new instruction — work from it, and propose again only if it still calls for one.`
+            : "",
+        ].filter(Boolean).join("\n\n"),
         messages: selectConversationWindow([...(history || []).filter((item) => item.content).map((item) => ({ role: item.role as "user" | "assistant", content: item.content as string })), { role: "user", content: modelMessage }]),
         sessionId,
         idempotencyKey: body.idempotencyKey,
@@ -191,6 +204,45 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     console.error("DIRECTOR CHAT ERROR:", error)
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid chat request", issues: error.flatten() }, { status: 400 })
     return NextResponse.json({ error: describeError(error, "AI Director chat failed") }, { status: (error instanceof OpenAIProviderError || error instanceof GoogleProviderError) ? error.status : studioErrorStatus(error) })
+  }
+}
+
+/**
+ * Retires the approvals the user answered with words rather than a button.
+ *
+ * A pending proposal is a question. When the next thing that arrives is a new
+ * instruction, the question has been answered — the user is redirecting, not
+ * ignoring — so the card is withdrawn and the new message becomes the brief.
+ * Left pending it stayed on screen with no way to resolve it, and everything
+ * behind it queued up on an approval that was never coming.
+ */
+async function withdrawSupersededProposals(
+  context: Awaited<ReturnType<typeof requireAuthenticatedProject>>,
+  sessionId: string,
+) {
+  try {
+    const { data: pending } = await context.supabase
+      .from("creator_action_proposals")
+      .select("id,title,creator_tool_executions(session_id)")
+      .eq("project_id", context.project.id)
+      .eq("status", "pending")
+    // Only this conversation's approvals: another chat's open question is not
+    // answered by what was typed here.
+    const mine = (pending || []).filter((proposal) => {
+      const execution = proposal.creator_tool_executions as { session_id?: string | null } | null
+      return execution?.session_id === sessionId
+    })
+    if (!mine.length) return []
+    const { error } = await context.supabase
+      .from("creator_action_proposals")
+      .update({ status: "expired", decided_at: new Date().toISOString() })
+      .in("id", mine.map((proposal) => proposal.id))
+    if (error) throw error
+    return mine.map((proposal) => (typeof proposal.title === "string" ? proposal.title : "a pending approval"))
+  } catch (error) {
+    // A stuck card is better than a failed message.
+    console.warn("Could not withdraw superseded proposals:", error)
+    return []
   }
 }
 

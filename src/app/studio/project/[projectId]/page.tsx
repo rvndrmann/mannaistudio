@@ -5260,7 +5260,9 @@ function VideoGenerationProposalBlock({
   // reopens the controls locally and asks the Director for a fresh proposal
   // carrying the adjusted settings.
   const [reopened, setReopened] = useState(false);
-  const wasCancelled = proposal.status === "rejected" && !reopened;
+  // Withdrawn because the user answered it with a message instead of a button.
+  // It is not a rejection — they redirected — but it is just as finished.
+  const wasCancelled = (proposal.status === "rejected" || proposal.status === "expired") && !reopened;
   const canDecide = proposal.status === "pending" || reopened;
   // The badge used to read "Shot 1" for every single-shot proposal, which made
   // a request for shot 2 look like it had targeted the wrong shot.
@@ -5381,8 +5383,8 @@ function VideoGenerationProposalBlock({
             {shotLabelText}
           </span>
         </div>
-        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold capitalize ${proposal.status === "rejected" ? "border-white/15 text-zinc-400" : "border-[#fff878]/30 text-[#fff878]"}`}>
-          {proposal.status === "pending" ? "Pending confirmation" : proposal.status === "rejected" ? "Cancelled" : proposal.status}
+        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold capitalize ${proposal.status === "rejected" || proposal.status === "expired" ? "border-white/15 text-zinc-400" : "border-[#fff878]/30 text-[#fff878]"}`}>
+          {proposal.status === "pending" ? "Pending confirmation" : proposal.status === "rejected" ? "Cancelled" : proposal.status === "expired" ? "Withdrawn — you replied instead" : proposal.status}
         </span>
       </div>
 
@@ -5672,7 +5674,9 @@ function VideoGenerationProposalBlock({
         {wasCancelled && (
           <div className="space-y-2 border-t border-white/5 pt-3">
             <p className="text-[12px] text-zinc-300">
-              {shotNumbers ? `Shot ${shotNumbers.join(", ")}` : "This"} {isVideo ? "video" : "image"} generation was cancelled. What would you like to do next?
+              {proposal.status === "expired"
+                ? `${shotNumbers ? `Shot ${shotNumbers.join(", ")}` : "This"} ${isVideo ? "video" : "image"} generation was withdrawn when you replied instead of approving it. Nothing was generated and no credits were spent.`
+                : `${shotNumbers ? `Shot ${shotNumbers.join(", ")}` : "This"} ${isVideo ? "video" : "image"} generation was cancelled. What would you like to do next?`}
             </p>
             <button
               type="button"
