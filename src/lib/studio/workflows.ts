@@ -83,3 +83,32 @@ export async function fetchDirectorWorkflows(supabase: SupabaseClient): Promise<
   return normalizeDirectorWorkflows(data?.value)
 }
 
+
+/**
+ * The workflow chosen for this episode: the episode's own choice, else the
+ * project default, else whatever Basic Settings last saved. Returns "" when the
+ * project has never picked one.
+ */
+export function selectedWorkflowId(project: Record<string, unknown>, episodeId: string): string {
+  const metadata = (project.metadata as Record<string, unknown> | undefined) || {}
+  const episodeWorkflows = (metadata.episode_workflows as Record<string, unknown> | undefined) || {}
+  if (typeof episodeWorkflows[episodeId] === "string") return episodeWorkflows[episodeId] as string
+  if (typeof metadata.default_workflow_id === "string") return metadata.default_workflow_id
+  const basicSettings = metadata.basic_settings as Record<string, unknown> | undefined
+  if (typeof basicSettings?.workflow === "string") return basicSettings.workflow
+  return ""
+}
+
+/**
+ * Whether a plain "generate shot 3 video" should carry the previous shot's
+ * finished clip into the new one.
+ *
+ * Video Reference and Elements Sequential are both defined by clip-to-clip
+ * continuity, so under them continuity is the default rather than something the
+ * user has to ask for by naming the reference shot every time. Under the
+ * keyframe and parallel workflows a shot is rendered on its own, and inheriting
+ * a neighbour's motion would be the surprise.
+ */
+export function workflowContinuesFromPreviousClip(workflowId: string): boolean {
+  return workflowId === "video_reference" || workflowId === "elements_sequential"
+}

@@ -11,7 +11,7 @@ import { buildProjectContext } from "@/lib/studio/project-context"
 import { requireAuthenticatedProject, studioErrorStatus } from "@/lib/studio/server-context"
 import { requireProjectFromRequest } from "@/lib/studio/external-auth"
 import { requestDirectorTool } from "@/lib/studio/tool-service"
-import { fetchDirectorWorkflows } from "@/lib/studio/workflows"
+import { fetchDirectorWorkflows, selectedWorkflowId, workflowContinuesFromPreviousClip } from "@/lib/studio/workflows"
 import { normalizeDirectorGlobalInstructions } from "@/lib/studio/instructions"
 import { runDirectorAgent } from "@/lib/studio/director-agent"
 import { fetchDirectorRuntimeSettings } from "@/lib/studio/director-runtime-settings"
@@ -339,16 +339,28 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
     if (missingReferenceNumbers.length) {
       return textMessage(input.sessionId, `Shot ${missingReferenceNumbers.join(", ")} does not have a completed video yet, so I cannot use it as a continuity reference.`)
     }
-    const videoReferencePaths = referenceNumbers
+    // Under a continuity workflow, "generate shot 3 video" means continue from
+    // shot 2 — the user chose that workflow precisely so they would not have to
+    // name the reference on every shot. Without this the selected workflow only
+    // reached the model as advice, and a plain request rendered the shot cold.
+    const workflowId = selectedWorkflowId(input.context.project, input.episodeId)
+    const previousNumber = selectedNumbers.length === 1 ? selectedNumbers[0] - 1 : 0
+    const previousShot = previousNumber > 0 ? byNumber.get(previousNumber) : undefined
+    const previousClipReady = Boolean(previousShot?.video_url && previousShot.video_status === "completed")
+    const inheritsPreviousClip = !referenceNumbers.length
+      && workflowContinuesFromPreviousClip(workflowId)
+      && previousClipReady
+    const activeReferenceNumbers = inheritsPreviousClip ? [previousNumber] : referenceNumbers
+    const videoReferencePaths = activeReferenceNumbers
       .map((number) => byNumber.get(number)?.video_url)
       .filter((path): path is string => Boolean(path))
-    const explicitContinuation = referenceNumbers.length > 0
+    const explicitContinuation = activeReferenceNumbers.length > 0
     const style = projectVisualStyle(input.context.project)
     const prompts = Object.fromEntries(selectedNumbers.map((number) => {
       const shot = byNumber.get(number)!
       const basePrompt = shot.prompt || shot.title
       return [String(number), explicitContinuation
-        ? buildVideoContinuationPrompt({ targetShotNumber: number, referenceShotNumber: referenceNumbers[0], basePrompt, style })
+        ? buildVideoContinuationPrompt({ targetShotNumber: number, referenceShotNumber: activeReferenceNumbers[0], basePrompt, style })
         : basePrompt]
     }))
     // The target keyframe is a composition input only for this explicit
@@ -371,7 +383,7 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
           mentionedEntityIds: input.mentionedEntities.map((entity) => entity.id),
           preference: "balanced",
           durationSeconds: 4,
-          videoReferenceShotNumbers: referenceNumbers,
+          videoReferenceShotNumbers: activeReferenceNumbers,
           videoReferencePaths,
           referencePaths: targetKeyframes,
           useExistingFrame: explicitContinuation && targetKeyframes.length > 0,
@@ -385,7 +397,11 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
       idempotencyKey: `${input.idempotencyKey}:video-proposal`,
     })
     const skipped = unprompted.length ? ` Shot ${unprompted.join(", ")} has no prompt yet, so I left ${unprompted.length === 1 ? "it" : "them"} out.` : ""
-    const continuity = referenceNumbers.length ? ` using shot ${referenceNumbers.join(", ")}'s completed video as the continuity reference` : ""
+    const continuity = activeReferenceNumbers.length
+      ? ` using shot ${activeReferenceNumbers.join(", ")}'s completed video as the continuity reference${inheritsPreviousClip ? " (this project's workflow continues from the previous clip)" : ""}`
+      : previousNumber > 0 && workflowContinuesFromPreviousClip(workflowId)
+        ? ` from its reference images only, because shot ${previousNumber} has no completed video yet to continue from`
+        : ""
     return proposalMessage(input.sessionId, `Video generation is ready for shot ${selectedNumbers.join(", ")}${continuity}.${skipped} Review and approve before credits are reserved.`, result)
   }
   // "regenerate shot 1" names no medium, and left to the agent it resolved to a

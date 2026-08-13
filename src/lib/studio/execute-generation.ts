@@ -134,6 +134,15 @@ export async function executeGenerationJobsInBackground(
             .filter((entity) => entity.type === "character")
             .map((entity) => entityPrimaryReference(entity as MentionableEntity))
             .filter((path): path is string => Boolean(path)))
+          // A storyboard keyframe is a rendered frame of those same characters,
+          // so BytePlus rejects it as a real person exactly like a face photo —
+          // "input image content[1] may contain real person". A continuation
+          // shot always sends its keyframe as the composition reference, so
+          // without registering it too, continuity generation fails every time
+          // on a photoreal project.
+          for (const path of referencePaths) {
+            if (typeof path === "string" && path.trim()) facePaths.add(path)
+          }
 
           // Video continuation names its target storyboard frame as [Image 1],
           // so keep shot-owned composition images ahead of cast references.

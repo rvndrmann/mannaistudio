@@ -3807,6 +3807,14 @@ function ShotMediaWorkspace({
     error: string | null;
     createdAt: number;
     completedAt: string | null;
+    // How this generation was actually configured. Without it the panel opened
+    // on its own defaults — Key Frame, start frame = the shot's keyframe — and
+    // described a different setup from the one that produced what is on screen.
+    generationMode: "keyframe" | "multi_image" | null;
+    startFrame: string | null;
+    endFrame: string | null;
+    recordedFrames: boolean;
+    videoReferencePaths: string[];
   };
   const [genHistory, setGenHistory] = useState<GenEntry[]>(() => {
     const initial: GenEntry[] = [];
@@ -3822,6 +3830,11 @@ function ShotMediaWorkspace({
         error: null,
         createdAt: Date.now() - 1,
         completedAt: null,
+        generationMode: null,
+        startFrame: null,
+        endFrame: null,
+        recordedFrames: false,
+        videoReferencePaths: [],
       });
     }
     return initial;
@@ -3839,6 +3852,14 @@ function ShotMediaWorkspace({
     if (activeGen.prompt?.trim()) setPrompt(activeGen.prompt);
     if (activeGen.referenceImages?.length) setReferences(activeGen.referenceImages);
     if (activeGen.model?.trim()) setModel(activeGen.model);
+    // A chat-driven run stores its configuration on the job, not on the shot, so
+    // this is the only place the panel can learn that the clip was a multi-image
+    // continuation rather than the keyframe render it defaults to.
+    if (activeGen.generationMode) setVideoInputMode(activeGen.generationMode);
+    if (activeGen.generationMode === "keyframe" && activeGen.recordedFrames) {
+      setStartFrame(activeGen.startFrame ?? null);
+      setEndFrame(activeGen.endFrame ?? null);
+    }
     // Keyed on the selection alone: re-running when the entry's own fields
     // settle would fight the user's edits mid-typing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3908,6 +3929,7 @@ function ShotMediaWorkspace({
           error: job.error || null,
           createdAt: new Date(job.created_at || 0).getTime(),
           completedAt: job.completed_at || null,
+          ...readGenerationSettings(job.settings),
         }));
 
         if (source && !entries.some((e) => e.videoUrl === source)) {
@@ -3922,6 +3944,11 @@ function ShotMediaWorkspace({
             error: null,
             createdAt: 0,
             completedAt: null,
+            generationMode: null,
+            startFrame: null,
+            endFrame: null,
+            recordedFrames: false,
+            videoReferencePaths: [],
           });
         }
 
@@ -4012,6 +4039,11 @@ function ShotMediaWorkspace({
       prompt,
       model,
       referenceImages: [...videoReferenceImages],
+      generationMode: media.type === "video" ? videoInputMode : null,
+      startFrame,
+      endFrame,
+      recordedFrames: media.type === "video",
+      videoReferencePaths: [],
       videoUrl: null,
       error: null,
       createdAt: Date.now(),
@@ -4802,6 +4834,33 @@ function GenerationPreviewError({
       </div>
     </div>
   );
+}
+
+/**
+ * The generation settings a job was run with, in the shape the media panel uses.
+ *
+ * A job created from chat stores its request here — `generationMode`,
+ * `videoReferencePaths`, the composition frames — while the shot's own
+ * `metadata.video_generation` is only written by the direct panel. Reading the
+ * job is therefore the only way the panel can show what actually ran.
+ */
+function readGenerationSettings(value: unknown) {
+  const settings = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const mode = settings.generationMode;
+  const paths = Array.isArray(settings.videoReferencePaths)
+    ? (settings.videoReferencePaths as unknown[]).filter((item): item is string => typeof item === "string")
+    : [];
+  return {
+    generationMode: (mode === "multi_image" || mode === "keyframe" ? mode : null) as "keyframe" | "multi_image" | null,
+    startFrame: typeof settings.startFrame === "string" ? settings.startFrame : null,
+    endFrame: typeof settings.endFrame === "string" ? settings.endFrame : null,
+    // Whether this job recorded frame slots at all. A chat-submitted job passes
+    // composition references instead, and blanking the panel's start frame on
+    // the strength of a key it never wrote would arm the next render with less
+    // than the user is looking at.
+    recordedFrames: "startFrame" in settings || "endFrame" in settings,
+    videoReferencePaths: paths,
+  };
 }
 
 type ChatProposal = Workspace["actionProposals"][number];
