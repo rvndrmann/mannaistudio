@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { BytePlusProviderError, bytePlusVideoReferenceLimit, createBytePlusAsset, getBytePlusAsset, getBytePlusVideoTask, submitBytePlusVideo } from "@/lib/studio/byteplus"
+import { BytePlusProviderError, bytePlusVideoRatio, bytePlusVideoReferenceLimit, createBytePlusAsset, getBytePlusAsset, getBytePlusVideoTask, submitBytePlusVideo } from "@/lib/studio/byteplus"
 import { FalProviderError, getFalVideoTask, submitFalVideo } from "@/lib/studio/fal"
 import { getGoogleVideoTask, GoogleProviderError, submitGoogleVideo } from "@/lib/studio/google"
 import { generationProvider, isVideoGenerationModel } from "@/lib/studio/generation-models"
@@ -195,7 +195,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const mentionContext = buildEntityMentionContext((resolvedEntities || []) as MentionableEntity[])
     const style = projectVisualStyle(context.project)
     const resolvedPrompt = [stripIdentityDescriptions(input.prompt), `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
-    const providerRequest = { prompt: resolvedPrompt, originalPrompt: input.prompt, style, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceImages: combinedReferencePaths, characterEntityIds: input.characterEntityIds, mentionedEntityIds: input.mentionedEntityIds, resolvedEntityIds, generationMode: input.generationMode, startFrame: input.startFrame || null, endFrame: input.endFrame || null, audioEnabled: input.audioEnabled }
+    const displayRatio = input.aspectRatio || shot.aspect_ratio || "9:16"
+    const providerRatio = provider === "byteplus" ? bytePlusVideoRatio(displayRatio, videoReferences.length > 0) : displayRatio
+    const providerRequest = { prompt: resolvedPrompt, originalPrompt: input.prompt, style, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: providerRatio, displayRatio, referenceImages: combinedReferencePaths, characterEntityIds: input.characterEntityIds, mentionedEntityIds: input.mentionedEntityIds, resolvedEntityIds, generationMode: input.generationMode, startFrame: input.startFrame || null, endFrame: input.endFrame || null, audioEnabled: input.audioEnabled }
 
     const { data: job, error: jobError } = await context.supabase.from("creator_generation_jobs").insert({
       user_id: context.user.id,
@@ -229,7 +231,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const gRes = await submitGoogleVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 4), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references })
         task = { id: gRes.id, response: gRes.response }
       } else {
-        const bpRes = await submitBytePlusVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references, faceReferenceUrls: faceReferences, videoReferenceUrls: videoReferences, generationMode: input.generationMode, audioEnabled: input.audioEnabled })
+        const bpRes = await submitBytePlusVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: providerRatio, referenceUrls: references, faceReferenceUrls: faceReferences, videoReferenceUrls: videoReferences, generationMode: input.generationMode, audioEnabled: input.audioEnabled })
         task = { id: bpRes.id, response: bpRes.response }
       }
       await Promise.all([

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { formatBytePlusError, formatBytePlusMediaUrl, bytePlusVideoReferenceLimit, formatBytePlusReferencePrompt } from "./byteplus"
+import { formatBytePlusError, formatBytePlusMediaUrl, bytePlusVideoRatio, bytePlusVideoReferenceLimit, formatBytePlusReferencePrompt } from "./byteplus"
 
 describe("formatBytePlusError", () => {
   it("uses nested BytePlus error messages and redacts provider identifiers", () => {
@@ -54,5 +54,13 @@ describe("seedance video references", () => {
     const prompt = formatBytePlusReferencePrompt("Continue the scene.", { imageCount: 1, videoCount: 1 })
     expect(prompt).toContain("Use [Video 1]")
     expect(prompt).toContain("Use [Image 1]")
+  })
+
+  it("uses adaptive ratio when extending from a video reference", () => {
+    expect(bytePlusVideoRatio("9:16", true)).toBe("adaptive")
+  })
+
+  it("keeps the requested ratio when no video reference is present", () => {
+    expect(bytePlusVideoRatio("9:16", false)).toBe("9:16")
   })
 })

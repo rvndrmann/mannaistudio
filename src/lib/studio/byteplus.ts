@@ -138,6 +138,19 @@ export function formatBytePlusReferencePrompt(prompt: string, input: { imageCoun
   return formatted
 }
 
+const bytePlusVideoRatios = ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16", "adaptive"] as const
+
+/**
+ * BytePlus requires adaptive ratio whenever the request contains a video that
+ * the prompt asks Seedance to extend. Applying it to all video-reference tasks
+ * is safe and lets ModelArk choose from the referenced clip and prompt intent.
+ * The Studio keeps its requested ratio separately for layout/display.
+ */
+export function bytePlusVideoRatio(requestedRatio: string, hasVideoReference: boolean) {
+  if (hasVideoReference) return "adaptive"
+  return bytePlusVideoRatios.includes(requestedRatio as (typeof bytePlusVideoRatios)[number]) ? requestedRatio : "9:16"
+}
+
 export async function submitBytePlusVideo(input: { model: VideoGenerationModelId; prompt: string; duration: number; resolution: string; ratio: string; referenceUrls?: string[]; faceReferenceUrls?: string[]; videoReferenceUrls?: string[]; generationMode?: "keyframe" | "multi_image"; audioEnabled?: boolean }) {
   // Only a character's reference is registered; everything else is sent as-is.
   const faces = new Set(input.faceReferenceUrls || [])
@@ -167,7 +180,7 @@ export async function submitBytePlusVideo(input: { model: VideoGenerationModelId
       generate_audio: input.audioEnabled ?? true,
       duration: Math.min(maxDuration, Math.max(4, Math.round(input.duration))),
       resolution: input.resolution === "480p" ? "480p" : "720p",
-      ratio: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].includes(input.ratio) ? input.ratio : "9:16",
+      ratio: bytePlusVideoRatio(input.ratio, videoUrls.length > 0),
       watermark: false,
     }),
   })
