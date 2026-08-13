@@ -29,6 +29,14 @@ export type SnapshotShot = {
   hasPrompt: boolean
   hasKeyframe: boolean
   hasVideo: boolean
+  /**
+   * A generation already running for this shot. The card must not offer to
+   * generate what is being generated: the shot has no keyframe yet, so on state
+   * alone it reads as the obvious next step, and pressing it pays for the same
+   * frame twice.
+   */
+  imageInFlight?: boolean
+  videoInFlight?: boolean
 }
 
 export type ProductionSnapshot = {
@@ -108,14 +116,19 @@ export function missingEntityNames(snapshot: ProductionSnapshot): string[] {
   return Array.from(missing.values())
 }
 
-/** Shots with a prompt but no keyframe yet, in storyboard order. */
+/** Shots that need a keyframe and are not already having one made. */
 export function shotsAwaitingKeyframe(snapshot: ProductionSnapshot): SnapshotShot[] {
-  return snapshot.shots.filter((shot) => shot.hasPrompt && !shot.hasKeyframe)
+  return snapshot.shots.filter((shot) => shot.hasPrompt && !shot.hasKeyframe && !shot.imageInFlight)
 }
 
-/** Shots whose keyframe is ready but which have no clip yet, in storyboard order. */
+/** Shots whose keyframe is ready, with no clip and none being rendered. */
 export function shotsAwaitingVideo(snapshot: ProductionSnapshot): SnapshotShot[] {
-  return snapshot.shots.filter((shot) => shot.hasKeyframe && !shot.hasVideo)
+  return snapshot.shots.filter((shot) => shot.hasKeyframe && !shot.hasVideo && !shot.videoInFlight)
+}
+
+/** Shots with a generation running right now, for the "still rendering" line. */
+export function shotsInFlight(snapshot: ProductionSnapshot): SnapshotShot[] {
+  return snapshot.shots.filter((shot) => shot.imageInFlight || shot.videoInFlight)
 }
 
 /** What the production still owes, in one phrase for the summary line. */
@@ -132,7 +145,7 @@ export function entitiesWithoutArt(snapshot: ProductionSnapshot): string[] {
 
 /** The lowest-numbered shot still missing its keyframe, or null. */
 export function nextShotWithoutKeyframe(snapshot: ProductionSnapshot): SnapshotShot | null {
-  return snapshot.shots.find((shot) => shot.hasPrompt && !shot.hasKeyframe) || null
+  return shotsAwaitingKeyframe(snapshot)[0] || null
 }
 
 /**
@@ -141,7 +154,7 @@ export function nextShotWithoutKeyframe(snapshot: ProductionSnapshot): SnapshotS
  * the user already accepted.
  */
 export function nextShotWithoutVideo(snapshot: ProductionSnapshot): SnapshotShot | null {
-  return snapshot.shots.find((shot) => shot.hasKeyframe && !shot.hasVideo) || null
+  return shotsAwaitingVideo(snapshot)[0] || null
 }
 
 export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStage {
@@ -285,6 +298,21 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
           recommended: false,
         }]
         : [],
+    }
+  }
+
+  // Nothing left to offer, but the workspace is still working. Falling through
+  // to "Review" here would announce a finished episode over shots that are
+  // mid-render, and offering the shot being rendered would charge for it twice.
+  const inFlight = shotsInFlight(snapshot)
+  if (inFlight.length) {
+    const numbers = inFlight.map((shot) => shot.number)
+    return {
+      key: "keyframes",
+      title: "Generating",
+      summary: `Shot ${numbers.join(", ")} ${plural(numbers.length, "is", "are")} generating now. ${remainingWork(snapshot)} Nothing to start until ${plural(numbers.length, "it lands", "they land")}.`,
+      nextAction: null,
+      alternatives: [],
     }
   }
 

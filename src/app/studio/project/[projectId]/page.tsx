@@ -1166,7 +1166,7 @@ export default function WorkspacePage({
               >
                 {item.content}
                 {item.role === "assistant" && item.workflow_run_id && <ChatRunStatus run={(data.production?.workflowRuns || []).find((run) => run.id === item.workflow_run_id)} />}
-                <ChatTimeline blocks={item.timeline_blocks} proposals={data.actionProposals} onAction={sendDirectorMessage} disabled={chatSending} />
+                <ChatTimeline blocks={item.timeline_blocks} proposals={data.actionProposals} messageProposalIds={proposalIdsFromActions(item.suggested_actions)} onAction={sendDirectorMessage} disabled={chatSending} />
                 <ChatMedia media={item.media} />
                 <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} entities={data.entities} shots={data.shots} projectId={projectId} busyId={proposalBusy} onDecide={decideProposal} onAction={sendDirectorMessage} onOpenTab={setTab} />
               </div>
@@ -4941,17 +4941,21 @@ function ChatMedia({ media }: { media?: Array<Record<string, unknown>> | null })
   );
 }
 
-function ChatTimeline({ blocks, proposals, onAction, disabled }: { blocks: unknown; proposals: ChatProposal[]; onAction: (intent: string) => void; disabled: boolean }) {
+function ChatTimeline({ blocks, proposals, messageProposalIds, onAction, disabled }: { blocks: unknown; proposals: ChatProposal[]; messageProposalIds?: string[]; onAction: (intent: string) => void; disabled: boolean }) {
   const timeline = parseDirectorTimeline(blocks);
   if (!timeline.length) return null;
+  // "Waiting for your approval" is written when the run ends and never rewritten,
+  // so it sat over an approval the user had already given and a generation
+  // already under way. The live proposals say whether that is still true.
+  const stillPending = (messageProposalIds || []).some((id) => proposals.some((proposal) => proposal.id === id && proposal.status === "pending"));
   return (
     <div className="mt-3 space-y-2">
-      {timeline.map((block, index) => <ChatTimelineBlock key={`${block.type}-${index}`} block={block} proposals={proposals} onAction={onAction} disabled={disabled} />)}
+      {timeline.map((block, index) => <ChatTimelineBlock key={`${block.type}-${index}`} block={block} proposals={proposals} awaitingApproval={stillPending} onAction={onAction} disabled={disabled} />)}
     </div>
   );
 }
 
-function ChatTimelineBlock({ block, proposals, onAction, disabled }: { block: DirectorTimelineBlock; proposals: ChatProposal[]; onAction: (intent: string) => void; disabled: boolean }) {
+function ChatTimelineBlock({ block, proposals, awaitingApproval, onAction, disabled }: { block: DirectorTimelineBlock; proposals: ChatProposal[]; awaitingApproval?: boolean; onAction: (intent: string) => void; disabled: boolean }) {
   if (block.type === "tool_execution") {
     let failed = block.status === "failed";
     let waiting = block.status === "awaiting_approval";
@@ -4987,6 +4991,9 @@ function ChatTimelineBlock({ block, proposals, onAction, disabled }: { block: Di
   if (block.type === "warning") return <div className="rounded-lg border border-amber-400/25 bg-amber-400/[0.07] p-2.5 text-[11px] leading-5 text-amber-100"><strong>{block.code}</strong><p>{block.message}</p>{block.actions.map((action) => <button key={action.id} type="button" disabled={disabled} onClick={() => onAction(action.intent)} className="mt-2 mr-2 rounded-md border border-amber-300/25 px-2 py-1 font-semibold">{action.label}</button>)}</div>;
   if (block.type === "workflow_summary") {
     if (block.summary === "Workflow completed.") return null;
+    // The approval it was waiting for has since been given or rejected, so the
+    // note is stale — the proposal card below already shows what happened.
+    if (block.summary === "Workflow is waiting for your approval." && !awaitingApproval) return null;
     return <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] p-2.5 text-[11px] text-emerald-100"><strong>{block.title}</strong><p className="mt-1 text-emerald-100/75">{block.summary}</p></div>;
   }
   if (block.type === "media_result") return <ChatMedia media={block.media} />;

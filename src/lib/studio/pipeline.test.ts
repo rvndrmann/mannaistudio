@@ -199,6 +199,58 @@ describe("production pipeline stages", () => {
     expect(parseBulkEntityImageIntent(batch!.intent, [])).toBeNull()
   })
 
+  // A shot mid-render still has no keyframe, so on stored state alone it reads
+  // as the obvious next step — and pressing it pays for the same frame twice.
+  it("never offers a shot that is already generating", () => {
+    const stage = computePipelineStage(snapshot({
+      hasScript: true,
+      promptSheetCount: 4,
+      shots: [
+        shot(1, { hasKeyframe: true, hasVideo: true }),
+        { ...shot(2), imageInFlight: true },
+        shot(3),
+      ],
+    }))
+    expect(stage.nextAction?.label).toBe("Generate the image for shot 3")
+    expect(JSON.stringify(stage)).not.toContain("image for shot 2")
+  })
+
+  it("stops offering anything while every outstanding shot is rendering", () => {
+    const stage = computePipelineStage(snapshot({
+      hasScript: true,
+      promptSheetCount: 2,
+      shots: [
+        { ...shot(1), imageInFlight: true },
+        { ...shot(2), imageInFlight: true },
+      ],
+    }))
+    expect(stage.title).toBe("Generating")
+    expect(stage.nextAction).toBeNull()
+    expect(stage.alternatives).toEqual([])
+    expect(stage.summary).toContain("Shot 1, 2 are generating now")
+  })
+
+  it("does not call the episode finished while a clip is still rendering", () => {
+    const stage = computePipelineStage(snapshot({
+      hasScript: true,
+      promptSheetCount: 1,
+      shots: [{ ...shot(1, { hasKeyframe: true }), videoInFlight: true }],
+    }))
+    expect(stage.key).not.toBe("complete")
+    expect(stage.nextAction).toBeNull()
+  })
+
+  it("keeps the batch button to the shots that are not already running", () => {
+    const stage = computePipelineStage(snapshot({
+      hasScript: true,
+      promptSheetCount: 4,
+      shots: [{ ...shot(1), imageInFlight: true }, shot(2), shot(3), shot(4)],
+    }))
+    const batch = stage.alternatives.find((action) => action.id === "pipeline-keyframes-remaining")
+    expect(batch?.label).toBe("Generate the remaining 3 images")
+    expect(parseRequestedShotNumbers(batch!.intent)).toEqual([2, 3, 4])
+  })
+
   it("tells the Director which button the user is looking at", () => {
     const block = pipelineInstructionBlock(snapshot({ hasScript: true }))
     expect(block).toContain("Write the prompt sheet")

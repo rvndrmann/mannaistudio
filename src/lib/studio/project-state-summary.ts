@@ -11,7 +11,7 @@ export async function loadProductionSnapshot(
   projectId: string,
   episodeId?: string,
 ): Promise<ProductionSnapshot> {
-  const [episodesRes, entitiesRes, shotsRes, promptsRes] = await Promise.all([
+  const [episodesRes, entitiesRes, shotsRes, promptsRes, jobsRes] = await Promise.all([
     supabase
       .from("creator_episodes")
       .select("id, name, script_content, order_index")
@@ -42,12 +42,26 @@ export async function loadProductionSnapshot(
           .eq("episode_id", episodeId)
           .order("order_index", { ascending: true })
       : Promise.resolve({ data: [] as Array<{ order_index: number; entity_names: unknown }> }),
+    // Generations already running. A shot mid-render still has no keyframe, so
+    // on stored state alone it reads as the obvious next step — and offering it
+    // charges the user for the same frame twice.
+    supabase
+      .from("creator_generation_jobs")
+      .select("shot_id, type, status")
+      .eq("project_id", projectId)
+      .in("status", ["queued", "approved", "generating", "processing"]),
   ])
 
   const episodes = episodesRes.data || []
   const activeEpisode = episodes.find((episode) => episode.id === episodeId) || episodes[0]
   const scriptText = activeEpisode?.script_content ? JSON.stringify(activeEpisode.script_content) : ""
   const promptRows = promptsRes.data || []
+  const imageInFlight = new Set<string>()
+  const videoInFlight = new Set<string>()
+  for (const job of jobsRes.data || []) {
+    if (typeof job.shot_id !== "string") continue
+    ;(job.type === "video" ? videoInFlight : imageInFlight).add(job.shot_id)
+  }
 
   return {
     episodeName: activeEpisode?.name || "Episode 1",
@@ -64,6 +78,8 @@ export async function loadProductionSnapshot(
       hasPrompt: typeof shot.prompt === "string" && Boolean(shot.prompt.trim()),
       hasKeyframe: Boolean(shot.keyframe_image),
       hasVideo: Boolean(shot.video_url) || shot.video_status === "completed",
+      imageInFlight: imageInFlight.has(shot.id),
+      videoInFlight: videoInFlight.has(shot.id),
     })),
   }
 }
