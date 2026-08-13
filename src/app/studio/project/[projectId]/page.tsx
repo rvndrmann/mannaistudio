@@ -4891,6 +4891,7 @@ type GenerationProposalRequest = {
   generationMode?: "keyframe" | "multi_image";
   referencePaths?: string[];
   videoReferencePaths?: string[];
+  videoReferenceShotNumbers?: number[];
 };
 
 function generationProposalRequest(proposal: ChatProposal): GenerationProposalRequest | null {
@@ -4912,11 +4913,15 @@ function generationProposalPrompt(proposal: ChatProposal) {
 // rather than after the shot comes back without the character.
 function unresolvedMentions(prompt: string, entities: Entity[]) {
   const names = new Set(entities.map((entity) => entity.name.toLowerCase().replace(/\s+/g, "-")));
+  // Continuation prompts use these two media aliases to explain which inputs
+  // control motion and composition. They are not project entities and should
+  // not produce a false missing-character warning.
+  const mediaAliases = new Set(["previous", "storyboard"]);
   const found = prompt.match(/\[@([^\]]+)\]|@([A-Za-z0-9_-]{2,})/g) || [];
   return Array.from(new Set(
     found
       .map((token) => token.replace(/^\[?@/, "").replace(/\]$/, "").trim())
-      .filter((name) => name && !names.has(name.toLowerCase().replace(/\s+/g, "-"))),
+      .filter((name) => name && !mediaAliases.has(name.toLowerCase()) && !names.has(name.toLowerCase().replace(/\s+/g, "-"))),
   )).slice(0, 6);
 }
 
@@ -5005,6 +5010,20 @@ function VideoGenerationProposalBlock({
       .map((entity) => ({ entity, image: entityPrimaryReference(entity) }))
       .filter((item): item is { entity: Entity; image: string } => Boolean(item.image));
   }, [prompt, entities, shots, removedEntityIds, request.mentionedEntityIds, request.shotIds, request.shotNumbers]);
+
+  const referenceShotNumberByVideo = useMemo(() => {
+    const entries = (request.videoReferenceShotNumbers || []).map((number) => {
+      const shot = shots.find((item) => item.order_index + 1 === number);
+      return shot?.video_url ? [shot.video_url, number] as const : null;
+    }).filter((entry): entry is readonly [string, number] => Boolean(entry));
+    return new Map(entries);
+  }, [request.videoReferenceShotNumbers, shots]);
+
+  const targetShotNumberByImage = useMemo(() => new Map(
+    shots
+      .filter((shot) => shot.keyframe_image && resolvedShotNumbers.includes(shot.order_index + 1))
+      .map((shot) => [shot.keyframe_image as string, shot.order_index + 1]),
+  ), [shots, resolvedShotNumbers]);
 
 
   const uploadReference = async (file?: File) => {
@@ -5142,40 +5161,47 @@ function VideoGenerationProposalBlock({
               </span>
             </div>
           ))}
-          {videoReferences.map((path) => (
-            <div key={path} className="group relative h-14 w-14 overflow-hidden rounded-lg border border-[#c084fc]/50">
-              <AssetVideo src={path} />
-              <span className="absolute bottom-0 inset-x-0 bg-black/75 text-center text-[9px] font-bold text-[#c084fc]">VIDEO</span>
-              {canDecide && (
-                <button
-                  type="button"
-                  onClick={() => setVideoReferences((current) => current.filter((item) => item !== path))}
-                  className="absolute right-0.5 top-0.5 hidden rounded bg-black/70 px-1 text-[10px] text-white group-hover:block"
-                  aria-label="Remove video reference"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          ))}
+          {videoReferences.map((path) => {
+            const referenceShotNumber = referenceShotNumberByVideo.get(path);
+            return (
+              <div key={path} className="group relative h-14 w-14 overflow-hidden rounded-lg border border-[#c084fc]/50" title={referenceShotNumber ? `Shot ${referenceShotNumber} video — continuity reference` : "Video continuity reference"}>
+                <AssetVideo src={path} />
+                <span className="absolute bottom-0 inset-x-0 bg-black/75 text-center text-[9px] font-bold text-[#c084fc]">{referenceShotNumber ? `SHOT ${referenceShotNumber} VIDEO` : "VIDEO REF"}</span>
+                {canDecide && (
+                  <button
+                    type="button"
+                    onClick={() => setVideoReferences((current) => current.filter((item) => item !== path))}
+                    className="absolute right-0.5 top-0.5 hidden rounded bg-black/70 px-1 text-[10px] text-white group-hover:block"
+                    aria-label="Remove video reference"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            );
+          })}
           {/* An entity image the Director also listed explicitly is already
               shown above as an entity reference; showing it twice makes the
               card look like it will send the same picture twice. */}
-          {references.filter((path) => !entityReferences.some((item) => item.image === path)).map((path) => (
-            <div key={path} className="group relative h-14 w-14 overflow-hidden rounded-lg border border-white/10">
-              <AssetImage src={path} />
-              {canDecide && (
-                <button
-                  type="button"
-                  onClick={() => setReferences((current) => current.filter((item) => item !== path))}
-                  className="absolute right-0.5 top-0.5 hidden rounded bg-black/70 px-1 text-[10px] text-white group-hover:block"
-                  aria-label="Remove reference"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          ))}
+          {references.filter((path) => !entityReferences.some((item) => item.image === path)).map((path) => {
+            const targetShotNumber = targetShotNumberByImage.get(path);
+            return (
+              <div key={path} className="group relative h-14 w-14 overflow-hidden rounded-lg border border-white/10" title={targetShotNumber ? `Storyboard shot ${targetShotNumber} image — composition reference` : "Image reference"}>
+                <AssetImage src={path} />
+                {targetShotNumber && <span className="absolute bottom-0 inset-x-0 bg-black/75 text-center text-[8px] font-bold text-[#fff878]">SHOT {targetShotNumber} IMAGE</span>}
+                {canDecide && (
+                  <button
+                    type="button"
+                    onClick={() => setReferences((current) => current.filter((item) => item !== path))}
+                    className="absolute right-0.5 top-0.5 hidden rounded bg-black/70 px-1 text-[10px] text-white group-hover:block"
+                    aria-label="Remove reference"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            );
+          })}
           {canDecide && (
             <div className="relative">
               <button

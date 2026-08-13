@@ -44,6 +44,63 @@ export function parseRequestedShotNumbers(message: string): number[] {
   return Array.from(new Set(found)).sort((a, b) => a - b)
 }
 
+export type VideoShotReferenceIntent = {
+  targetShotNumbers: number[]
+  referenceShotNumbers: number[]
+}
+
+// A continuation request contains two different kinds of shot number:
+// "create shot 2" is the output, while "using shot 1 video as reference" is
+// an input. Keeping those roles separate prevents one continuation request
+// from becoming an accidental two-video batch.
+const VIDEO_REFERENCE_SHOT = /\b(?:using|use|with|from)\s+(?:the\s+)?(?:(?:existing|completed|previous)\s+)?(?:video|clip)\s+(?:from|of)\s+(?:the\s+)?shots?\s*(?:#\s*)?(\d{1,4})\b|\b(?:using|use|with|from)\s+(?:the\s+)?(?:(?:existing|completed|previous)\s+)?shots?\s*(?:#\s*)?(\d{1,4})(?:'s)?(?:\s+(?:existing|completed|previous))?\s*(?:video|clip)?(?:\s+as\s+(?:a\s+)?ref(?:erence|rence))?/gi
+
+export function parseVideoShotReferenceIntent(message: string): VideoShotReferenceIntent {
+  const referenceShotNumbers: number[] = []
+  const withoutReferences = message.replace(VIDEO_REFERENCE_SHOT, (match, videoFirst, shotFirst) => {
+    const number = Number(videoFirst || shotFirst)
+    if (Number.isInteger(number) && number > 0) referenceShotNumbers.push(number)
+    return " ".repeat(match.length)
+  })
+  const allNumbers = parseRequestedShotNumbers(message)
+  const references = Array.from(new Set(referenceShotNumbers)).sort((a, b) => a - b)
+  const referenceSet = new Set(references)
+  const explicitTargets = parseRequestedShotNumbers(withoutReferences).filter((number) => !referenceSet.has(number))
+  const inferredNextTarget = !explicitTargets.length && references.length === 1 && /\bnext\s+(?:shot|scene|video)\b|\binto\s+the\s+next\s+scene\b/i.test(message)
+    ? [references[0] + 1]
+    : []
+
+  return {
+    // If no reference clause was recognized, retain the existing parser's
+    // behavior. This keeps ordinary requests such as "generate shots 1, 2"
+    // untouched.
+    targetShotNumbers: references.length ? (explicitTargets.length ? explicitTargets : inferredNextTarget) : allNumbers,
+    referenceShotNumbers: references,
+  }
+}
+
+export function parseTargetShotNumbers(message: string) {
+  return parseVideoShotReferenceIntent(message).targetShotNumbers
+}
+
+export function buildVideoContinuationPrompt(input: {
+  targetShotNumber: number
+  referenceShotNumber?: number
+  basePrompt: string
+  style: string
+}) {
+  const style = input.style.trim()
+  const realistic = /photo\s*-?real|realistic/i.test(style)
+  const videoAlias = input.referenceShotNumber && input.referenceShotNumber !== input.targetShotNumber - 1
+    ? `@storyboard shot ${input.referenceShotNumber} video`
+    : "@previous shot video"
+  return [
+    `Extend from video ${videoAlias} into the next scene while following the composition and shot layout of @storyboard shot ${input.targetShotNumber} image.`,
+    realistic ? "Photorealistic, hyper realistic." : `Maintain the project's ${style || "cinematic"} visual style.`,
+    input.basePrompt.trim(),
+  ].filter(Boolean).join("\n\n")
+}
+
 export function actionMatchesRequestedShots(intent: string, requestedShotNumbers: number[]) {
   if (!requestedShotNumbers.length) return true
   const actionShotNumbers = Array.from(intent.matchAll(/\bshots?\s+(?:#\s*)?(\d+)\b/gi)).map((match) => Number(match[1]))

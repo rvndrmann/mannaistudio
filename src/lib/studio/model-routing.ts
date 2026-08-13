@@ -27,6 +27,10 @@ export const generationRequestSchema = z.object({
   // Clips referenced for motion and look continuity, kept apart from image
   // references because the provider treats the two differently.
   videoReferencePaths: z.array(z.string().trim().min(1).max(2_000)).max(10).default([]),
+  // Storyboard numbers for clips used as continuity inputs. Keeping these
+  // separate from shotNumbers makes the output target unambiguous and lets the
+  // approval card label the source clip before the job is submitted.
+  videoReferenceShotNumbers: z.array(z.number().int().positive().max(10_000)).max(10).default([]),
   // Feeding a shot's existing frame back in locks the new render to the old
   // composition. That is occasionally wanted and never the default, so it must
   // be asked for rather than assumed.
@@ -36,8 +40,8 @@ export const generationRequestSchema = z.object({
   // it — otherwise the derivation would put it straight back.
   entityReferenceIds: z.array(z.string().uuid()).max(20).optional(),
 }).strict().refine(
-  (request) => request.shotNumbers.length === 0 || Boolean(request.episodeId),
-  { message: "episodeId is required when shots are named by number", path: ["episodeId"] },
+  (request) => (request.shotNumbers.length === 0 && request.videoReferenceShotNumbers.length === 0) || Boolean(request.episodeId),
+  { message: "episodeId is required when target or reference shots are named by number", path: ["episodeId"] },
 )
 
 // Shot count before resolution: numbers stand in for ids until the tool looks

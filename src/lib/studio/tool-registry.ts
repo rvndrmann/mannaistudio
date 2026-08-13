@@ -405,20 +405,34 @@ export const submitGenerationTool = defineDirectorTool({
       throw new Error("Name the shots to generate, either as shot numbers from the storyboard or as shot ids from a tool result.")
     }
     let promptsByNumber = new Map<number, string>()
-    if (request.shotNumbers.length) {
+    if (request.shotNumbers.length || request.videoReferenceShotNumbers.length) {
       const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", request.episodeId!).eq("project_id", context.project.id).maybeSingle()
       if (!episode) throw new Error("Episode does not belong to this project")
-      const { data: numbered, error: numberedError } = await context.supabase.from("creator_shots").select("id,order_index").eq("episode_id", episode.id).order("order_index")
+      const { data: numbered, error: numberedError } = await context.supabase.from("creator_shots").select("id,order_index,video_url,video_status").eq("episode_id", episode.id).order("order_index")
       if (numberedError) throw numberedError
-      const byNumber = new Map((numbered || []).map((shot) => [shot.order_index + 1, shot.id]))
+      const byNumber = new Map((numbered || []).map((shot) => [shot.order_index + 1, shot]))
       const resolved: string[] = []
       for (const number of request.shotNumbers) {
-        const shotId = byNumber.get(number)
-        if (!shotId) throw new Error(`Shot ${number} does not exist in this episode. It has ${(numbered || []).length} shots.`)
-        resolved.push(shotId)
-        promptsByNumber.set(number, shotId)
+        const shot = byNumber.get(number)
+        if (!shot) throw new Error(`Shot ${number} does not exist in this episode. It has ${(numbered || []).length} shots.`)
+        resolved.push(shot.id)
+        promptsByNumber.set(number, shot.id)
       }
-      request = { ...request, shotIds: Array.from(new Set([...request.shotIds, ...resolved])) }
+      const targetNumbers = new Set(request.shotNumbers)
+      const referenceClips: string[] = []
+      for (const number of request.videoReferenceShotNumbers) {
+        if (targetNumbers.has(number)) throw new Error(`Shot ${number} cannot be both the generation target and its own video reference.`)
+        const shot = byNumber.get(number)
+        if (!shot) throw new Error(`Reference shot ${number} does not exist in this episode. It has ${(numbered || []).length} shots.`)
+        if (request.shotIds.includes(shot.id)) throw new Error(`Shot ${number} cannot be both the generation target and its own video reference.`)
+        if (!shot.video_url || shot.video_status !== "completed") throw new Error(`Reference shot ${number} does not have a completed video.`)
+        referenceClips.push(shot.video_url)
+      }
+      request = {
+        ...request,
+        shotIds: Array.from(new Set([...request.shotIds, ...resolved])),
+        videoReferencePaths: Array.from(new Set([...request.videoReferencePaths, ...referenceClips])).slice(0, 10),
+      }
     }
 
     const routing = routeGeneration(request)

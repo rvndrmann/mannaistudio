@@ -23,7 +23,7 @@ import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from 
 import { buildProjectStateSummary, loadProductionSnapshot } from "@/lib/studio/project-state-summary"
 import { computePipelineStage } from "@/lib/studio/pipeline"
 import type { DirectorTimelineBlock } from "@/lib/studio/timeline"
-import { actionMatchesRequestedShots, parseRequestedShotNumbers } from "@/lib/studio/shot-intent"
+import { actionMatchesRequestedShots, buildVideoContinuationPrompt, parseTargetShotNumbers, parseVideoShotReferenceIntent } from "@/lib/studio/shot-intent"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 import { addWorkflowStep, createWorkflowRun, finishWorkflowRun } from "@/lib/studio/workflow-runs"
 import { buildGenerationTargetSnapshot, verifyGenerationTarget } from "@/lib/studio/generation-target"
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const approvalRequired = Boolean(workflowRecord.approvalRequired || workflowRecord.proposal)
       await addWorkflowStep(context, { runId: workflowRun.id, sequence: 1, specialist: "orchestrator", label: approvalRequired ? "Prepare approval" : "Complete direct workflow", status: approvalRequired ? "awaiting_approval" : "completed", output: workflow.result })
       await finishWorkflowRun(context, workflowRun.id, approvalRequired ? "awaiting_approval" : "completed", { mode: "direct", approvalRequired })
-      const nextStep = await nextStepBlock(context, projectId, episode.id, parseRequestedShotNumbers(body.message))
+      const nextStep = await nextStepBlock(context, projectId, episode.id, parseTargetShotNumbers(body.message))
       const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({
         ...workflow.message,
         workflow_run_id: workflowRun.id,
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const persistAssistantMessage = async (response: Awaited<ReturnType<typeof runDirectorAgent>>) => {
       // Read after the run, so the button offers the step the workspace is on
       // once this run's writes have landed.
-      const nextStep = await nextStepBlock(context, projectId, episode.id, parseRequestedShotNumbers(body.message))
+      const nextStep = await nextStepBlock(context, projectId, episode.id, parseTargetShotNumbers(body.message))
       const timeline = nextStep ? [...response.timeline, nextStep] : response.timeline
       const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, workflow_run_id: workflowRun.id, role: "assistant", content: response.content, tool_calls: response.toolCalls, suggested_actions: response.suggestedActions, timeline_blocks: timeline, timeline_version: 1 }).select().single()
       if (assistantError) throw assistantError
@@ -311,12 +311,14 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
   const bulkEntityImageIntent = !forbidsAllMediaGeneration && !forbidsImageGenerationRequest ? parseBulkEntityImageIntent(input.message, input.mentionedEntities) : null
   if (bulkEntityImageIntent) return generateBulkEntityReferenceImages(input, bulkEntityImageIntent)
   if (!forbidsAllMediaGeneration && !forbidsVideoGenerationRequest && /\b(video|animate|motion)\b/.test(normalized) && /\b(generate|create|make|render|produce)\b/.test(normalized)) {
-    const { data: shots, error } = await input.context.supabase.from("creator_shots").select("id,prompt,title,order_index").eq("episode_id", input.episodeId).order("order_index")
+    const { data: shots, error } = await input.context.supabase.from("creator_shots").select("id,prompt,title,order_index,keyframe_image,video_url,video_status").eq("episode_id", input.episodeId).order("order_index")
     if (error) throw error
     // Same 1-based numbering submit_generation resolves against, so a number
     // reported back here is the number the tool will target.
     const byNumber = new Map((shots ?? []).map((shot) => [shot.order_index + 1, shot]))
-    const requestedNumbers = parseRequestedShotNumbers(input.message)
+    const videoIntent = parseVideoShotReferenceIntent(input.message)
+    const requestedNumbers = videoIntent.targetShotNumbers
+    const referenceNumbers = videoIntent.referenceShotNumbers
     const missing = requestedNumbers.filter((number) => !byNumber.has(number))
     if (requestedNumbers.length && missing.length === requestedNumbers.length) {
       return textMessage(input.sessionId, `This episode has ${(shots ?? []).length} shot${(shots ?? []).length === 1 ? "" : "s"}, so I could not find shot ${missing.join(", ")}.`)
@@ -330,6 +332,31 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
     }
     const selectedNumbers = named.length ? named : (shots ?? []).filter((shot) => shot.prompt).slice(0, 3).map((shot) => shot.order_index + 1)
     if (!selectedNumbers.length) return textMessage(input.sessionId, "I need at least one storyboard shot with a prompt before I can prepare video generation.")
+    const missingReferenceNumbers = referenceNumbers.filter((number) => {
+      const shot = byNumber.get(number)
+      return !shot?.video_url || shot.video_status !== "completed"
+    })
+    if (missingReferenceNumbers.length) {
+      return textMessage(input.sessionId, `Shot ${missingReferenceNumbers.join(", ")} does not have a completed video yet, so I cannot use it as a continuity reference.`)
+    }
+    const videoReferencePaths = referenceNumbers
+      .map((number) => byNumber.get(number)?.video_url)
+      .filter((path): path is string => Boolean(path))
+    const explicitContinuation = referenceNumbers.length > 0
+    const style = projectVisualStyle(input.context.project)
+    const prompts = Object.fromEntries(selectedNumbers.map((number) => {
+      const shot = byNumber.get(number)!
+      const basePrompt = shot.prompt || shot.title
+      return [String(number), explicitContinuation
+        ? buildVideoContinuationPrompt({ targetShotNumber: number, referenceShotNumber: referenceNumbers[0], basePrompt, style })
+        : basePrompt]
+    }))
+    // The target keyframe is a composition input only for this explicit
+    // continuation workflow. The previous clip supplies motion continuity;
+    // the target frame supplies the next shot's layout.
+    const targetKeyframes = explicitContinuation
+      ? selectedNumbers.map((number) => byNumber.get(number)?.keyframe_image).filter((path): path is string => Boolean(path))
+      : []
     input.onProgress?.(`Preparing video for shot ${selectedNumbers.join(", ")}`)
     const result = await requestDirectorTool(input.context, {
       tool: "submit_generation",
@@ -337,8 +364,19 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
         // Numbers rather than ids: the tool resolves them against the episode,
         // so the proposal card and the job target the same shot even if the
         // storyboard is reordered between proposing and approving.
-        request: { type: "video", shotNumbers: selectedNumbers, episodeId: input.episodeId, mentionedEntityIds: input.mentionedEntities.map((entity) => entity.id), preference: "balanced", durationSeconds: 4 },
-        prompts: Object.fromEntries(selectedNumbers.map((number) => [String(number), byNumber.get(number)!.prompt || byNumber.get(number)!.title])),
+        request: {
+          type: "video",
+          shotNumbers: selectedNumbers,
+          episodeId: input.episodeId,
+          mentionedEntityIds: input.mentionedEntities.map((entity) => entity.id),
+          preference: "balanced",
+          durationSeconds: 4,
+          videoReferenceShotNumbers: referenceNumbers,
+          videoReferencePaths,
+          referencePaths: targetKeyframes,
+          useExistingFrame: explicitContinuation && targetKeyframes.length > 0,
+        },
+        prompts,
         idempotencyKey: `${input.idempotencyKey}:video`,
       },
       sessionId: input.sessionId,
@@ -346,13 +384,14 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
       idempotencyKey: `${input.idempotencyKey}:video-proposal`,
     })
     const skipped = unprompted.length ? ` Shot ${unprompted.join(", ")} has no prompt yet, so I left ${unprompted.length === 1 ? "it" : "them"} out.` : ""
-    return proposalMessage(input.sessionId, `Video generation is ready for shot ${selectedNumbers.join(", ")}.${skipped} Review and approve before credits are reserved.`, result)
+    const continuity = referenceNumbers.length ? ` using shot ${referenceNumbers.join(", ")}'s completed video as the continuity reference` : ""
+    return proposalMessage(input.sessionId, `Video generation is ready for shot ${selectedNumbers.join(", ")}${continuity}.${skipped} Review and approve before credits are reserved.`, result)
   }
   // "regenerate shot 1" names no medium, and left to the agent it resolved to a
   // different shot entirely. A named shot with a redo verb is unambiguous enough
   // to answer here, and the keyframe is what a bare redo means — the reply says
   // so, so asking for the clip instead is one sentence away.
-  const wantsShotRedo = /\b(regenerate|re-generate|redo|remake|re-render|rerender)\b/.test(normalized) && parseRequestedShotNumbers(input.message).length > 0
+  const wantsShotRedo = /\b(regenerate|re-generate|redo|remake|re-render|rerender)\b/.test(normalized) && parseTargetShotNumbers(input.message).length > 0
   const namesImage = /\b(image|keyframe|poster|visual)\b/.test(normalized) && /\b(generate|create|make|draw)\b/.test(normalized)
   if (!forbidsAllMediaGeneration && !forbidsImageGenerationRequest && (namesImage || wantsShotRedo)) {
     const shotNumberMatch = normalized.match(/\b(?:storyboard\s+)?shots?\s*(?:#\s*)?(\d+)\b/)
@@ -662,7 +701,7 @@ async function maybeCleanSavedPrompts(input: WorkflowRequestInput, normalized: s
     .order("order_index")
   if (error) throw error
 
-  const requested = parseRequestedShotNumbers(input.message)
+  const requested = parseTargetShotNumbers(input.message)
   const targets = (shots || []).filter((shot) => !requested.length || requested.includes(shot.order_index + 1))
   const cleaned: number[] = []
   for (const shot of targets) {

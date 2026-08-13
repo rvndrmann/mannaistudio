@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { actionMatchesRequestedShots, parseRequestedShotNumbers } from "./shot-intent"
+import { actionMatchesRequestedShots, buildVideoContinuationPrompt, parseRequestedShotNumbers, parseTargetShotNumbers, parseVideoShotReferenceIntent } from "./shot-intent"
 
 describe("parseRequestedShotNumbers", () => {
   it("reads a single named shot", () => {
@@ -41,6 +41,53 @@ describe("parseRequestedShotNumbers", () => {
 
   it("ignores shot zero", () => {
     expect(parseRequestedShotNumbers("generate shot 0 video")).toEqual([])
+  })
+})
+
+describe("parseVideoShotReferenceIntent", () => {
+  it("separates a target shot from a referenced shot video", () => {
+    expect(parseVideoShotReferenceIntent("now create shot 2 video using shot 1 video as refrence")).toEqual({
+      targetShotNumbers: [2],
+      referenceShotNumbers: [1],
+    })
+    expect(parseTargetShotNumbers("now create shot 2 video using shot 1 video as refrence")).toEqual([2])
+  })
+
+  it("works in either direction and with video-first wording", () => {
+    expect(parseVideoShotReferenceIntent("create shot 1 using the video from shot 2")).toEqual({
+      targetShotNumbers: [1],
+      referenceShotNumbers: [2],
+    })
+  })
+
+  it("infers the following shot when the user says next scene", () => {
+    expect(parseVideoShotReferenceIntent("extend from shot 4 video into the next scene")).toEqual({
+      targetShotNumbers: [5],
+      referenceShotNumbers: [4],
+    })
+  })
+
+  it("does not change an ordinary video batch", () => {
+    expect(parseVideoShotReferenceIntent("generate videos for shots 1, 2")).toEqual({
+      targetShotNumbers: [1, 2],
+      referenceShotNumbers: [],
+    })
+  })
+})
+
+describe("buildVideoContinuationPrompt", () => {
+  it("adds the continuation, target composition, and realistic style instructions", () => {
+    const prompt = buildVideoContinuationPrompt({ targetShotNumber: 2, basePrompt: "Sophie calls.", style: "Realistic - Photorealistic" })
+    expect(prompt).toContain("Extend from video @previous shot video")
+    expect(prompt).toContain("@storyboard shot 2 image")
+    expect(prompt).toContain("Photorealistic, hyper realistic.")
+    expect(prompt).toContain("Sophie calls.")
+  })
+
+  it("names a non-previous reference explicitly for the reverse workflow", () => {
+    const prompt = buildVideoContinuationPrompt({ targetShotNumber: 1, referenceShotNumber: 2, basePrompt: "Wake up.", style: "Realistic" })
+    expect(prompt).toContain("video @storyboard shot 2 video")
+    expect(prompt).toContain("@storyboard shot 1 image")
   })
 })
 

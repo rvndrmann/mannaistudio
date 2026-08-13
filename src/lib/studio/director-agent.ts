@@ -9,7 +9,7 @@ import { defaultDirectorRuntimeSettings, runtimeInstructions, type DirectorRunti
 import { buildVisionUserContent, type DirectorVisionAttachment } from "./director-vision"
 import { agentForTool, fetchDirectorTeam, teamInstructions, type DirectorTeam } from "./director-team"
 import { addWorkflowStep, createWorkflowRun, finishWorkflowRun } from "./workflow-runs"
-import { parseRequestedShotNumbers } from "./shot-intent"
+import { parseTargetShotNumbers } from "./shot-intent"
 import { directorRecovery } from "./recovery"
 
 export type DirectorStreamEvent =
@@ -154,7 +154,7 @@ export async function runDirectorAgent(input: {
   // on every run, so behavior never depends on keywords in the user's message.
   const team = input.team || await fetchDirectorTeam(input.context.supabase)
   const teamBlock = teamInstructions(team)
-  const requestedShotNumbers = parseRequestedShotNumbers(input.objective)
+  const requestedShotNumbers = parseTargetShotNumbers(input.objective)
   const targetConstraint = requestedShotNumbers.length
     ? `This turn explicitly targets storyboard shot ${requestedShotNumbers.join(", ")}. Do not recommend, label, or describe a different shot as the next step in this reply. Keep every tool call and concluding sentence scoped to the requested shot unless the user explicitly asks for broader pipeline guidance.`
     : ""
