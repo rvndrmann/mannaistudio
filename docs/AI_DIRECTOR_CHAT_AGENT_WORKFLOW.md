@@ -63,13 +63,13 @@ The chat route handles several high-confidence requests directly before falling 
 - An approved generation proposal is charged through that same RPC when the user approves it. It no longer uses the separate legacy reservation account.
 - The direct image/video routes return `creditsCharged` and `creditBalance`; the chat route returns the same fields for direct chat workflows.
 - `credit-balance-events.ts` broadcasts the returned balance to the global `CreditBadge`. On any error, the badge immediately refreshes `/api/credits`, so a provider or storage failure cannot leave a stale visible balance.
-- Every charge is written to `credit_transactions`. A failed provider request does not automatically refund credits; refunds must be an explicit, auditable policy action.
+- Every charge is written to `credit_transactions`. Failed provider requests now call `refund_generation_credits` with a stable refund key, and when a generation job exists the refund is linked back to that job.
 
 ### 4. Saved results
 
 - Entity references are saved to `creator_entities.reference_images` and become available in **Characters & Assets**, mentions, and later image/video prompts.
 - Storyboard keyframes are saved to `creator_shots.keyframe_image`, with generation metadata recording the model, prompt, references, status, style, aspect ratio, and mention IDs.
-- Generation jobs capture provider/model/prompt/status details for the storyboard and job history.
+- Generation jobs capture provider/model/prompt/status details for the storyboard and job history. Image jobs are created before provider submission so queued/processing/failed attempts appear as visible blocks even when no output image was produced.
 - The chat timeline stores the assistant response and attached generated media for immediate review.
 
 ## Permission Model
@@ -206,16 +206,16 @@ Existing pieces already align with this design:
 Implemented components:
 
 1. Project ownership checks, model validation, project-scoped `@mentions`, contextual instructions, and conversation history.
-2. Direct image workflows, bulk entity-reference generation, media timeline cards, and entity/shot persistence.
+2. Direct image workflows, bulk entity-reference generation, media timeline cards, entity/shot persistence, durable failed-attempt blocks, and additive image history.
 3. Proposal cards for costly and write/destructive tools, with approval/rejection handling and tool/audit records.
-4. Image/video generation endpoints with server-side credit accounting and immediate badge synchronization.
+4. Image/video generation endpoints with server-side credit accounting, automatic failed-request refunds, and immediate badge synchronization.
 
 5. Realtime voice sessions declare the Director tool registry, relay function calls through the validated tools endpoint, and honor the same approval cards as text chat.
 
 Remaining increments:
 
 1. Execute approved proposal jobs through a durable provider worker/webhook path and complete their lifecycle in the timeline.
-2. Add regression tests for direct-chat credits, badge events, approval boundaries, provider failure/refund policy, and destructive operations.
+2. Add regression tests for direct-chat credits, badge events, approval boundaries, provider failure/refund UI, and destructive operations.
 3. Replace or formally retire the legacy `creator_credit_accounts` reservation subsystem after data migration/audit.
 
 ## Safety Rules
@@ -231,4 +231,4 @@ Remaining increments:
 
 1. Finish durable execution of approved generation jobs and status callbacks.
 2. Add regression tests for approval boundaries, credit use, badge updates, and destructive operations.
-3. Define and implement an explicit credit-refund policy for provider failures.
+3. Expand refund and failed-block coverage to any new provider route as it is added.

@@ -75,17 +75,17 @@ The AI Director does not write directly to tables. Requests pass through:
 8. Domain handler execution
 9. Tool and audit records
 
-Costly tools must declare `requiresApproval: true`. Approved Director generation and direct Studio generation both use the atomic `deduct_user_credits` RPC against `profiles.credits_balance`, the same balance displayed by the global credit badge. Provider requests are submitted only after that debit succeeds.
+Costly tools must declare `requiresApproval: true`. Approved Director generation and direct Studio generation both use the atomic `deduct_user_credits` RPC against `profiles.credits_balance`, the same balance displayed by the global credit badge. Provider requests are submitted only after that debit succeeds. If a provider request fails after a debit, the request path calls `refund_generation_credits` with the durable generation job ID so the credit ledger and failed attempt stay auditable.
 
 ## Generation lifecycle
 
-`creator_generation_jobs` stores provider-neutral requests, routing decisions, provider identifiers, estimates, actual use, results, errors, and lifecycle timestamps. `creator_generation_job_events` provides status history.
+`creator_generation_jobs` stores provider-neutral requests, routing decisions, provider identifiers, estimates, actual use, results, errors, and lifecycle timestamps. Direct Studio image requests and AI Director image requests create this row before provider submission, then update the same row to `processing`, `completed`, or `failed`. `creator_generation_job_events` provides status history for durable workflow jobs.
 
-The asset and storyboard image workspaces support `gpt-image-2` and `gpt-image-1.5` through an authenticated server route. Results are uploaded to the existing private `creator-studio-media` bucket and written back to the selected asset or shot. A missing `OPENAI_API_KEY` produces an explicit configuration error; no fake output is generated.
+The asset and storyboard image workspaces support `gpt-image-2` and `gpt-image-1.5` through an authenticated server route. Results are uploaded to the existing private `creator-studio-media` bucket and written back to the selected asset or shot. A missing `OPENAI_API_KEY` produces an explicit configuration error; no fake output is generated. Failed image attempts remain visible as failed generation blocks instead of disappearing from the gallery.
 
 The image workspaces also support BytePlus Seedream 5.0 Pro (`dola-seedream-5-0-pro-260628`), fal.ai Flux 3 (`fal-flux-3`), Flux Dev (`fal-flux-dev`), Flux Realism (`fal-flux-realism`), and Google AI Studio Nano Banana 2 (`google-nano-banana-2`).
 
-Every completed debit response includes `creditBalance`. The Studio broadcasts it to mounted credit badges immediately; failed generation requests force a fresh balance read so the UI stays correct even when a provider fails after charging.
+Every completed debit response includes `creditBalance`. The Studio broadcasts it to mounted credit badges immediately; failed generation requests refund charged credits and force a fresh balance read so the UI stays correct even when a provider fails after charging.
 
 ### Entity references, aspect ratio, and recovery
 
@@ -93,7 +93,8 @@ Every completed debit response includes `creditBalance`. The Studio broadcasts i
 - A request such as **“Create all missing character images”** is routed as one image request per entity, never as a contact sheet. Each completed image is appended to that entity's `reference_images` and appears in **Characters & Assets**.
 - The selected project visual style is appended at the provider boundary. `Realistic - Photorealistic` explicitly requests live-action photography and rejects anime, illustrations, cartoons, CG, collages, labels, and text overlays.
 - OpenAI image canvas selection follows the requested composition: landscape requests including `16:9` use `1536x1024`, portrait requests including `9:16` use `1024x1536`, and `1:1` uses `1024x1024`. GPT Image's native landscape canvas is 3:2, so 16:9 is composed as widescreen but is not pixel-exact at the provider level.
-- Asset-image requests persist `metadata.image_generation.status` as `generating`, `completed`, or `failed`. Returning to the asset tab therefore retains visible progress and polls until the generated reference image is saved.
+- Asset-image requests persist `metadata.image_generation.status` as `generating`, `completed`, or `failed`. Returning to the asset tab therefore retains visible progress and polls until the generated reference image is saved. The asset concept gallery also reads matching `creator_generation_jobs` by `settings.target` and `settings.entityId`, so in-flight and failed attempts are shown beside completed concept images.
+- Storyboard image galleries are additive. New generations append to `creator_generation_jobs`; the active `creator_shots.keyframe_image` points at the chosen image but does not replace prior generated images.
 
 ### Studio project gallery
 
@@ -112,6 +113,11 @@ Seedance 2.5 renders up to 30 seconds and is billed at 50 credits per second; 2.
 and its Fast and Mini variants stop at 15. `videoModelMaxDuration` is the single
 rule, applied by both providers and by the duration selectors, so a length that
 cannot be rendered is never offered or charged for.
+
+BytePlus Seedance video extension requests must send provider ratio `adaptive`.
+The Studio can still display the requested storyboard ratio, but the provider
+payload switches to `adaptive` whenever a video reference/start frame is present,
+matching BytePlus ModelArk's extension requirements.
 
 For complete AI Social Media + Advertising Agent architecture, see [`docs/MARKETING_AGENT_ARCHITECTURE.md`](file:///Users/apple/Downloads/upto%20june%20all%202026/june-%20next-2026/HOLD/all%20websites/mannaistudio/docs/MARKETING_AGENT_ARCHITECTURE.md).
 
@@ -195,6 +201,8 @@ Full lint currently exposes pre-existing errors outside the Studio work. Scoped 
 - Cross-user project, entity, shot, proposal, job, and revision IDs are rejected.
 - Insufficient credits produce no processable job.
 - Provider failures never appear as successful generations.
+- Provider failures after debit create a failed generation block and an auditable refund transaction.
+- Image regeneration does not erase older generated images.
 - Existing approved assets remain locked during unrelated revisions.
 - No permanent AI or provider key appears in browser source, responses, or logs.
 

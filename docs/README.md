@@ -6,6 +6,7 @@ Welcome to the documentation directory for **AI Director Hub** & **AI Social Med
 
 | Document | Description |
 | :--- | :--- |
+| [`SESSION_HANDOFF_2026-08-13.md`](SESSION_HANDOFF_2026-08-13.md) | Durable generation blocks for failed/in-progress image attempts, additive storyboard image history, failed-request credit refunds, and BytePlus Seedance adaptive-ratio video references. |
 | [`SESSION_HANDOFF_2026-08-10.md`](SESSION_HANDOFF_2026-08-10.md) | Unified credit deductions, Voice Director tool calling, Director vision, teams and enterprise, and the open items left behind. |
 | [`TEAMS_SHARING_AND_ENTERPRISE.md`](TEAMS_SHARING_AND_ENTERPRISE.md) | Teams and roles, the two-stage team credit model, per-project sharing and how row level security enforces it, enterprise engagements, and change attribution. |
 | [`VIDEO_TAIL_REFERENCE.md`](VIDEO_TAIL_REFERENCE.md) | **On hold.** Seedance video references and why trimming a reference clip to its closing seconds needs infrastructure Netlify cannot host, with the options and what to test first. |

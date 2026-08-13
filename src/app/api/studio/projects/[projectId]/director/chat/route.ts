@@ -446,7 +446,33 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
       input.context.supabase,
     )
     if (!deduction.success) throw new OpenAIProviderError(deduction.errorMessage || "Insufficient credits", 402)
-    const refundKey = `director-image:${input.idempotencyKey}`
+    const requestedAt = new Date().toISOString()
+    const targetSnapshot = targetShot
+      ? buildGenerationTargetSnapshot({ projectId: input.projectId, episodeId: input.episodeId, shotId: targetShot.id, shotNumber: requestedShotNumber, type: "image", prompt, entityReferenceIds: referencedEntities.map((entity) => entity.id), createdAt: requestedAt })
+      : null
+    const { data: generationJob, error: generationJobError } = await input.context.supabase.from("creator_generation_jobs").insert({
+      user_id: input.context.user.id,
+      project_id: input.projectId,
+      episode_id: targetShot ? input.episodeId : null,
+      workflow_run_id: input.workflowRunId,
+      session_id: input.sessionId,
+      shot_id: targetShot?.id || null,
+      type: "image",
+      status: "approved",
+      model: "gpt-image-2",
+      provider: "openai",
+      prompt,
+      input_images: referencePaths,
+      settings: { target: targetShot ? "shot" : "chat", shotId: targetShot?.id || null, style, aspectRatio, quality },
+      target_snapshot: targetSnapshot,
+      estimated_credits: creditCost,
+      credits_used: 0,
+      requires_approval: false,
+      approved_at: requestedAt,
+    }).select("id").single()
+    if (generationJobError) throw generationJobError
+    await input.context.supabase.from("creator_generation_jobs").update({ status: "processing", credits_used: creditCost, started_at: new Date().toISOString() }).eq("id", generationJob.id)
+    const refundKey = `generation-job:${generationJob.id}`
     try {
     input.onProgress?.(requestedShotNumber ? `Generating the keyframe for shot ${requestedShotNumber}` : "Generating the image")
     const image = await generateOpenAIImage({ userId: input.context.user.id, model: "gpt-image-2", prompt: resolvedPrompt, referenceUrls, aspectRatio, quality: openAIImageQuality(quality) })
@@ -457,7 +483,6 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
     if (targetShot) {
       const currentMetadata = targetShot.metadata && typeof targetShot.metadata === "object" ? targetShot.metadata as Record<string, unknown> : {}
       const completedAt = new Date().toISOString()
-      const targetSnapshot = buildGenerationTargetSnapshot({ projectId: input.projectId, episodeId: input.episodeId, shotId: targetShot.id, shotNumber: requestedShotNumber, type: "image", prompt, entityReferenceIds: referencedEntities.map((entity) => entity.id), createdAt: completedAt })
       const { error: shotUpdateError } = await input.context.supabase.from("creator_shots").update({
         keyframe_image: path,
         referenced_entities: Array.from(new Set([...(targetShot.referenced_entities || []), ...referencedEntities.map((entity) => entity.id)])),
@@ -469,27 +494,23 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
       if (shotUpdateError) throw shotUpdateError
       const { data: verifiedShot, error: verifyError } = await input.context.supabase.from("creator_shots").select("id,episode_id,keyframe_image,referenced_entities").eq("id", targetShot.id).maybeSingle()
       if (verifyError) throw verifyError
-      const verificationResult = verifyGenerationTarget({ target: targetSnapshot, actual: { shotId: verifiedShot?.id || "", episodeId: verifiedShot?.episode_id || null, prompt, entityReferenceIds: verifiedShot?.referenced_entities || [], resultPath: verifiedShot?.keyframe_image || null }, expectedResultPath: path })
+      const verificationResult = verifyGenerationTarget({ target: targetSnapshot!, actual: { shotId: verifiedShot?.id || "", episodeId: verifiedShot?.episode_id || null, prompt, entityReferenceIds: verifiedShot?.referenced_entities || [], resultPath: verifiedShot?.keyframe_image || null }, expectedResultPath: path })
       if (!verificationResult.ok) throw new Error(`Generation verification failed: ${Object.entries(verificationResult.checks).filter(([, value]) => !value).map(([key]) => key).join(", ")}`)
-      const { error: historyError } = await input.context.supabase.from("creator_generation_jobs").insert({
-        user_id: input.context.user.id,
-        project_id: input.projectId,
-        episode_id: input.episodeId,
-        workflow_run_id: input.workflowRunId,
-        shot_id: targetShot.id,
-        type: "image",
+      const { error: historyError } = await input.context.supabase.from("creator_generation_jobs").update({
         status: "completed",
-        model: "gpt-image-2",
-        provider: "openai",
-        prompt,
-        input_images: referencePaths,
         result_url: path,
-        target_snapshot: targetSnapshot,
         verification: { status: "verified", checkedAt: new Date().toISOString(), checks: verificationResult.checks, resultPath: path },
         completed_at: completedAt,
-        estimated_credits: creditCost,
         credits_used: creditCost,
-      })
+      }).eq("id", generationJob.id)
+      if (historyError) throw historyError
+    } else {
+      const { error: historyError } = await input.context.supabase.from("creator_generation_jobs").update({
+        status: "completed",
+        result_url: path,
+        completed_at: new Date().toISOString(),
+        credits_used: creditCost,
+      }).eq("id", generationJob.id)
       if (historyError) throw historyError
     }
     const { data: signed } = await input.context.supabase.storage.from("creator-studio-media").createSignedUrl(path, 60 * 60)
@@ -513,7 +534,12 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
       },
     }
     } catch (error) {
-      await refundGenerationCredits(input.context.user.id, creditCost, refundKey, "Refund: failed AI Director image generation", null, input.context.supabase)
+      await refundGenerationCredits(input.context.user.id, creditCost, refundKey, "Refund: failed AI Director image generation", generationJob.id, input.context.supabase)
+      await input.context.supabase.from("creator_generation_jobs").update({
+        status: "failed",
+        error: error instanceof Error ? error.message : "Image generation failed",
+        completed_at: new Date().toISOString(),
+      }).eq("id", generationJob.id)
       throw error
     }
   }
@@ -570,7 +596,26 @@ async function generateBulkEntityReferenceImages(
         input.context.supabase,
       )
       if (!deduction.success) throw new OpenAIProviderError(deduction.errorMessage || "Insufficient credits", 402)
-      const refundKey = `director-entity-image:${input.idempotencyKey}:${entity.id}`
+      const { data: generationJob, error: generationJobError } = await input.context.supabase.from("creator_generation_jobs").insert({
+        user_id: input.context.user.id,
+        project_id: input.projectId,
+        session_id: input.sessionId,
+        workflow_run_id: input.workflowRunId,
+        type: "image",
+        status: "approved",
+        model: "gpt-image-2",
+        provider: "openai",
+        prompt,
+        input_images: existingReferences,
+        settings: { target: "asset", entityId: entity.id, entityType: entity.type, style, aspectRatio: "2:3", quality },
+        requires_approval: false,
+        estimated_credits: creditCost,
+        credits_used: 0,
+        approved_at: new Date().toISOString(),
+      }).select("id").single()
+      if (generationJobError) throw generationJobError
+      await input.context.supabase.from("creator_generation_jobs").update({ status: "processing", credits_used: creditCost, started_at: new Date().toISOString() }).eq("id", generationJob.id)
+      const refundKey = `generation-job:${generationJob.id}`
       try {
       const image = await generateOpenAIImage({ userId: input.context.user.id, model: "gpt-image-2", prompt, referenceUrls, aspectRatio: "2:3", quality: openAIImageQuality(quality) })
       const path = `${input.context.user.id}/${input.projectId}/entities/${entity.id}/gpt-image-2-${crypto.randomUUID()}.png`
@@ -605,28 +650,22 @@ async function generateBulkEntityReferenceImages(
       const { error: updateError } = await input.context.supabase.from("creator_entities").update(updates).eq("id", entity.id).eq("project_id", input.projectId)
       if (updateError) throw updateError
 
-      await input.context.supabase.from("creator_generation_jobs").insert({
-        user_id: input.context.user.id,
-        project_id: input.projectId,
-        session_id: input.sessionId,
-        type: "image",
+      await input.context.supabase.from("creator_generation_jobs").update({
         status: "completed",
-        model: "gpt-image-2",
-        provider: "openai",
-        prompt,
-        input_images: existingReferences,
-        settings: { target: "entity", entityId: entity.id, entityType: entity.type, style },
-        requires_approval: false,
         result_url: path,
         completed_at: completedAt,
-        estimated_credits: creditCost,
         credits_used: creditCost,
-      })
+      }).eq("id", generationJob.id)
       creditsCharged += creditCost
       creditBalance = deduction.newBalance
       return { entityId: entity.id, entityName: entity.name, path, url: signedOutput?.signedUrl, prompt }
       } catch (error) {
-        await refundGenerationCredits(input.context.user.id, creditCost, refundKey, `Refund: failed reference image for ${entity.name}`, null, input.context.supabase)
+        await refundGenerationCredits(input.context.user.id, creditCost, refundKey, `Refund: failed reference image for ${entity.name}`, generationJob.id, input.context.supabase)
+        await input.context.supabase.from("creator_generation_jobs").update({
+          status: "failed",
+          error: error instanceof Error ? error.message : "Image generation failed",
+          completed_at: new Date().toISOString(),
+        }).eq("id", generationJob.id)
         throw error
       }
     }))

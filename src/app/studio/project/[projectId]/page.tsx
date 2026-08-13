@@ -164,7 +164,7 @@ type Workspace = {
     referenceAssets: Array<Record<string, unknown>>;
     continuityIssues: Array<Record<string, unknown>>;
     revisions: Array<Record<string, unknown>>;
-    generationJobs: Array<{ id: string; workflow_run_id?: string | null; shot_id?: string | null; type?: string; status: string; model?: string | null; prompt?: string | null; input_images?: string[] | null; result_url?: string | null; error?: string | null; target_snapshot?: Record<string, unknown>; verification?: Record<string, unknown>; created_at?: string; completed_at?: string | null }>;
+    generationJobs: Array<{ id: string; workflow_run_id?: string | null; shot_id?: string | null; type?: string; status: string; model?: string | null; prompt?: string | null; input_images?: string[] | null; result_url?: string | null; error?: string | null; settings?: Record<string, unknown> | null; target_snapshot?: Record<string, unknown>; verification?: Record<string, unknown>; created_at?: string; completed_at?: string | null }>;
     creditAccount: { balance: number; reserved: number } | null;
     workflowRuns?: Array<{ id: string; session_id?: string | null; status: string; completed_at?: string | null; started_at?: string | null; objective?: string | null; summary?: Record<string, unknown>; error?: Record<string, unknown> | null }>;
   };
@@ -1052,6 +1052,7 @@ export default function WorkspacePage({
               <Assets
                 entities={data.entities}
                 projectId={projectId}
+                generationJobs={data.production?.generationJobs || []}
                 save={save}
                 reload={load}
                 openAdd={setAssetType}
@@ -1705,12 +1706,14 @@ function Script({
 function Assets({
   entities,
   projectId,
+  generationJobs,
   save,
   reload,
   openAdd,
 }: {
   entities: Entity[];
   projectId: string;
+  generationJobs: NonNullable<Workspace["production"]>["generationJobs"];
   save: (b: unknown) => Promise<void>;
   reload: () => Promise<void>;
   openAdd: (t: Entity["type"]) => void;
@@ -1773,6 +1776,7 @@ function Assets({
           asset={activeAsset}
           entities={entities}
           projectId={projectId}
+          generationJobs={generationJobs}
           close={() => setSelectedAsset(null)}
           save={save}
           reload={reload}
@@ -2337,6 +2341,7 @@ function AssetWorkspace({
   asset,
   entities,
   projectId,
+  generationJobs,
   close,
   save,
   reload,
@@ -2344,11 +2349,22 @@ function AssetWorkspace({
   asset: Entity;
   entities: Entity[];
   projectId: string;
+  generationJobs: NonNullable<Workspace["production"]>["generationJobs"];
   close: () => void;
   save: (b: unknown) => Promise<void>;
   reload: (silent?: boolean) => Promise<void>;
 }) {
+  type AssetGenerationAttempt = {
+    id: string;
+    status: "generating" | "failed";
+    prompt: string;
+    model: string;
+    error: string | null;
+    referenceImages: string[];
+    createdAt: number;
+  };
   const [selected, setSelected] = useState(0);
+  const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState(asset.description || "");
   const [model, setModel] = useState<string>(imageGenerationModels[0].id);
   const [aspectRatio, setAspectRatio] = useState<string>("9:16");
@@ -2368,6 +2384,7 @@ function AssetWorkspace({
   const [picker, setPicker] = useState(false);
   const [referenceSourcePicker, setReferenceSourcePicker] = useState(false);
   const [libraryImages, setLibraryImages] = useState<string[]>(asset.reference_images || []);
+  const [assetAttempts, setAssetAttempts] = useState<AssetGenerationAttempt[]>([]);
   const [references, setReferences] = useState<string[]>(
     Array.isArray(asset.metadata?.generation_reference_images)
       ? asset.metadata.generation_reference_images.filter((value): value is string => typeof value === "string")
@@ -2380,12 +2397,41 @@ function AssetWorkspace({
   }, [asset, persistedGenerationStatus]);
 
   useEffect(() => {
+    const snapshotAttempts = (generationJobs || [])
+      .filter((job) => {
+        const settings = job.settings && typeof job.settings === "object" ? job.settings : null;
+        return job.type === "image"
+          && (settings?.target === "asset" || settings?.target === "entity")
+          && settings?.entityId === asset.id
+          && (job.status !== "completed" || !job.result_url);
+      })
+      .map((job): AssetGenerationAttempt => ({
+        id: job.id,
+        status: job.status === "failed" || job.status === "cancelled" ? "failed" : "generating",
+        prompt: job.prompt || asset.description || "",
+        model: job.model || imageGenerationModels[0].id,
+        error: job.error || (job.status === "cancelled" ? "Generation cancelled" : null),
+        referenceImages: Array.isArray(job.input_images) ? job.input_images : [],
+        createdAt: new Date(job.created_at || 0).getTime(),
+      }));
+    setAssetAttempts((current) => {
+      const merged = new Map<string, AssetGenerationAttempt>();
+      for (const attempt of current) merged.set(attempt.id, attempt);
+      for (const attempt of snapshotAttempts) merged.set(attempt.id, attempt);
+      return Array.from(merged.values())
+        .filter((attempt) => attempt.id.startsWith("asset-gen-") || snapshotAttempts.some((item) => item.id === attempt.id))
+        .sort((a, b) => b.createdAt - a.createdAt);
+    });
+  }, [asset.description, asset.id, generationJobs]);
+
+  useEffect(() => {
     if (persistedGenerationStatus !== "generating") return;
     const interval = window.setInterval(() => { void reload(true); }, 3_000);
     return () => window.clearInterval(interval);
   }, [persistedGenerationStatus, reload]);
 
-  const activeImage = libraryImages[selected] || null;
+  const activeAttempt = selectedAttemptId ? assetAttempts.find((attempt) => attempt.id === selectedAttemptId) || null : null;
+  const activeImage = activeAttempt ? null : libraryImages[selected] || null;
   const chosenImage = libraryImages[0] || null;
   const isCurrentlyChosen = Boolean(activeImage && (asset.primary_reference_image ? activeImage === asset.primary_reference_image : selected === 0));
 
@@ -2469,6 +2515,18 @@ function AssetWorkspace({
     setWorking(true);
     setGenerationError(null);
     setGenerationStatus("Submitting image generation request…");
+    const localAttemptId = `asset-gen-${Date.now()}`;
+    const localAttempt: AssetGenerationAttempt = {
+      id: localAttemptId,
+      status: "generating",
+      prompt,
+      model,
+      error: null,
+      referenceImages: [...references],
+      createdAt: Date.now(),
+    };
+    setAssetAttempts((current) => [localAttempt, ...current]);
+    setSelectedAttemptId(localAttemptId);
     try {
       const mentionedEntityIds = findMentionedEntityIds(prompt, entities);
       const response = await fetch(`/api/studio/projects/${projectId}/images`, {
@@ -2486,20 +2544,39 @@ function AssetWorkspace({
         }),
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "Image generation failed");
+      if (!response.ok) {
+        const savedJobId = typeof body.jobId === "string" ? body.jobId : null;
+        const errorMessage = body.error || "Image generation failed";
+        setAssetAttempts((current) => current.map((attempt) => attempt.id === localAttemptId ? {
+          ...attempt,
+          id: savedJobId || attempt.id,
+          status: "failed",
+          error: errorMessage,
+        } : attempt));
+        if (savedJobId) setSelectedAttemptId(savedJobId);
+        throw new Error(errorMessage);
+      }
       notifyCreditBalanceChanged(typeof body.creditBalance === "number" ? body.creditBalance : undefined);
       if (typeof body.creditBalance === "number") setCreditBalance(body.creditBalance);
       if (typeof body.path === "string") {
         const nextLibrary = [body.path, ...libraryImages.filter((img) => img !== body.path)];
         setLibraryImages(nextLibrary);
         setSelected(0);
+        setSelectedAttemptId(null);
       }
+      const savedJobId = typeof body.jobId === "string" ? body.jobId : null;
+      setAssetAttempts((current) => current.filter((attempt) => attempt.id !== localAttemptId && (!savedJobId || attempt.id !== savedJobId)));
       setGenerationStatus("Asset image generated ✓");
       await reload(true);
     } catch (error) {
       notifyCreditBalanceChanged();
       const errorMessage = error instanceof Error ? error.message : "Image generation failed";
       setGenerationError(errorMessage);
+      setAssetAttempts((current) => current.map((attempt) => attempt.id === localAttemptId ? {
+        ...attempt,
+        status: "failed",
+        error: errorMessage,
+      } : attempt));
       // The API normally records this itself. This client-side fallback covers
       // a dropped request where the server disappears after persisting the
       // generating flag but before its error handler can run.
@@ -2571,6 +2648,44 @@ function AssetWorkspace({
           </label>
           <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600">Asset Concept Gallery</p>
           <div className="space-y-2.5">
+            {assetAttempts.map((attempt) => {
+              const isSel = selectedAttemptId === attempt.id;
+              return (
+                <button
+                  key={attempt.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedAttemptId(attempt.id);
+                    setPrompt(attempt.prompt);
+                    if (attempt.model) setModel(attempt.model);
+                    if (attempt.referenceImages.length) setReferences(attempt.referenceImages);
+                    setGenerationError(attempt.status === "failed" ? attempt.error : null);
+                  }}
+                  className={`block w-full overflow-hidden rounded-xl border-2 transition text-left ${
+                    isSel ? "border-white/60" : "border-white/10 hover:border-white/25"
+                  }`}
+                >
+                  {attempt.status === "generating" ? (
+                    <div className="grid aspect-[3/4] place-items-center bg-black/40">
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="h-6 w-6 animate-spin text-[#b9f42e]" />
+                        <span className="text-[10px] text-zinc-400">Generating…</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid aspect-[3/4] place-items-center bg-red-950/30 p-2">
+                      <div className="flex flex-col items-center gap-1 text-center">
+                        <span className="text-lg">⚠</span>
+                        <span className="line-clamp-3 text-[10px] leading-tight text-red-300">{attempt.error || "Image generation failed"}</span>
+                      </div>
+                    </div>
+                  )}
+                  <span className="block truncate bg-black/80 px-2 py-1.5 text-[10px] text-zinc-300">
+                    {attempt.prompt || "Generation attempt"}
+                  </span>
+                </button>
+              );
+            })}
             {libraryImages.map((image, index) => {
               const isChosen = asset.primary_reference_image
                 ? image === asset.primary_reference_image
@@ -2580,7 +2695,11 @@ function AssetWorkspace({
                 <div key={`${image}-${index}`} className="relative group">
                   <button
                     type="button"
-                    onClick={() => setSelected(index)}
+                    onClick={() => {
+                      setSelectedAttemptId(null);
+                      setSelected(index);
+                      setGenerationError(null);
+                    }}
                     className={`block w-full overflow-hidden rounded-xl border-2 transition text-left ${
                       isChosen
                         ? "border-[#b9f42e] ring-2 ring-[#b9f42e]/40"
@@ -2674,7 +2793,7 @@ function AssetWorkspace({
           {/* Central Preview Viewport */}
           <div className="grid flex-1 place-items-center overflow-auto bg-black/40 p-4 sm:p-8">
             <div className="flex flex-col items-center overflow-hidden rounded-xl bg-[#151715] shadow-2xl transition-all max-w-4xl w-full">
-              {working ? (
+              {activeAttempt?.status === "generating" || (working && !activeImage) ? (
                 <div className={`grid place-items-center p-8 ${aspectRatio === "9:16" ? "aspect-[9/16] h-[55vh] max-h-[580px]" : "aspect-[16/9] w-full max-w-[640px]"}`}>
                   <div className="flex flex-col items-center gap-4">
                     <svg className="h-12 w-12 animate-spin text-[#b9f42e]" viewBox="0 0 24 24" fill="none">
@@ -2684,6 +2803,8 @@ function AssetWorkspace({
                     <p className="text-sm text-zinc-400">{generationStatus || "Generating asset image…"}</p>
                   </div>
                 </div>
+              ) : activeAttempt?.status === "failed" ? (
+                <GenerationPreviewError message={activeAttempt.error || "Image generation failed"} />
               ) : generationError ? (
                 <GenerationPreviewError message={generationError} />
               ) : activeImage ? (
@@ -2693,17 +2814,17 @@ function AssetWorkspace({
                   Upload a reference image or click &ldquo;Generate image&rdquo; below.
                 </div>
               )}
-              {activeImage && (
+              {(activeImage || activeAttempt) && (
                 <div className="w-full border-t border-white/10 bg-black/60 p-4 rounded-b-xl">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-[#b9f42e]">
                       PROMPT USED
                     </p>
                     <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-[11px] font-bold text-[#b9f42e]">
-                      Model: {getModelLabel(model)}
+                      Model: {getModelLabel(activeAttempt?.model || model)}
                     </span>
                   </div>
-                  <p className="mt-1.5 text-sm leading-relaxed text-zinc-200">{prompt || asset.description || "—"}</p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-zinc-200">{activeAttempt?.prompt || prompt || asset.description || "—"}</p>
                 </div>
               )}
             </div>

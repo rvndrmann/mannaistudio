@@ -25,7 +25,8 @@ const imageRequestSchema = z.object({
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   let pendingAssetGeneration: { context: Awaited<ReturnType<typeof requireAuthenticatedProject>>; projectId: string; entityId: string } | null = null
-  let pendingRefund: { context: Awaited<ReturnType<typeof requireAuthenticatedProject>>; amount: number; key: string } | null = null
+  let pendingRefund: { context: Awaited<ReturnType<typeof requireAuthenticatedProject>>; amount: number; key: string; jobId: string | null } | null = null
+  let pendingGenerationJobId: string | null = null
   try {
     const { projectId } = await params
     const context = await requireAuthenticatedProject(projectId)
@@ -33,9 +34,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const provider = generationProvider(input.model)
 
     let shotData: Record<string, unknown> | null = null
+    let assetData: Record<string, unknown> | null = null
     if (input.target === "asset") {
-      const { data } = await context.supabase.from("creator_entities").select("id, reference_images, metadata").eq("id", input.targetId).eq("project_id", projectId).maybeSingle()
+      const { data } = await context.supabase.from("creator_entities").select("id, type, reference_images, metadata").eq("id", input.targetId).eq("project_id", projectId).maybeSingle()
       if (!data) return NextResponse.json({ error: "Asset not found" }, { status: 404 })
+      assetData = data
     } else {
       const { data } = await context.supabase.from("creator_shots").select("id, episode_id, aspect_ratio, metadata, referenced_entities").eq("id", input.targetId).maybeSingle()
       if (!data) return NextResponse.json({ error: "Shot not found" }, { status: 404 })
@@ -65,7 +68,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!deduct.success) {
       return NextResponse.json({ error: deduct.errorMessage || "Insufficient credits" }, { status: 402 })
     }
-    pendingRefund = { context, amount: creditCost, key: `image-request:${randomUUID()}` }
+    pendingRefund = { context, amount: creditCost, key: `image-request:${randomUUID()}`, jobId: null }
 
     const mentionReferencePaths: string[] = []
     for (const entity of mentionedEntities || []) {
@@ -86,6 +89,43 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const projectDefaultAspect = typeof context.project.default_aspect === "string" ? context.project.default_aspect : null
     const effectiveAspectRatio = input.aspectRatio || (shotData && typeof shotData.aspect_ratio === "string" ? shotData.aspect_ratio : null) || projectDefaultAspect || "9:16"
     const resolvedPrompt = [stripIdentityDescriptions(input.prompt), `Required composition: ${effectiveAspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
+
+    const { data: generationJob, error: generationJobError } = await context.supabase
+      .from("creator_generation_jobs")
+      .insert({
+        user_id: context.user.id,
+        project_id: projectId,
+        episode_id: input.target === "shot" && typeof shotData?.episode_id === "string" ? shotData.episode_id : null,
+        shot_id: input.target === "shot" ? input.targetId : null,
+        type: "image",
+        status: "approved",
+        provider,
+        model: input.model,
+        prompt: input.prompt,
+        input_images: combinedReferencePaths,
+        settings: {
+          target: input.target,
+          ...(input.target === "asset" ? { entityId: input.targetId, entityType: assetData?.type || null } : { shotId: input.targetId }),
+          style,
+          aspectRatio: effectiveAspectRatio,
+          quality,
+        },
+        estimated_credits: creditCost,
+        credits_used: 0,
+        requires_approval: false,
+        approved_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single()
+    if (generationJobError) throw generationJobError
+    pendingGenerationJobId = generationJob.id
+    pendingRefund = { ...pendingRefund, key: `generation-job:${generationJob.id}`, jobId: generationJob.id }
+
+    const { error: processingError } = await context.supabase
+      .from("creator_generation_jobs")
+      .update({ status: "processing", credits_used: creditCost, started_at: new Date().toISOString() })
+      .eq("id", generationJob.id)
+    if (processingError) throw processingError
 
     // The provider request can take a while. Persist this state before it starts
     // so leaving/re-entering the tab never makes the request appear to vanish.
@@ -131,7 +171,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     let contentType = "image/png"
     let byteplusAssetId: string | null = null
     let byteplusAssetUri: string | null = null
-    let generationJobId: string | null = null
+    let generationJobId: string | null = pendingGenerationJobId
 
     if (provider === "openai") {
       image = await generateOpenAIImage({ userId: context.user.id, model: input.model as (typeof openAIImageModels)[number], prompt: resolvedPrompt, referenceUrls, aspectRatio: effectiveAspectRatio, quality: openAIImageQuality(quality === "Ultra" ? "High" : quality) })
@@ -216,29 +256,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }).eq("id", input.targetId)
       if (error) throw error
 
-      // Record in creator_generation_jobs so history displays prompt and model
       const { data: historyJob, error: historyError } = await context.supabase
         .from("creator_generation_jobs")
-        .insert({
-          user_id: context.user.id,
-          project_id: projectId,
-          episode_id: typeof shotData?.episode_id === "string" ? shotData.episode_id : null,
-          shot_id: input.targetId,
-          type: "image",
-          provider,
-          model: input.model,
-          prompt: input.prompt,
-          input_images: combinedReferencePaths,
+        .update({
           status: "completed",
           result_url: storagePath,
-          estimated_credits: creditCost,
           credits_used: creditCost,
           completed_at: new Date().toISOString(),
         })
+        .eq("id", pendingGenerationJobId)
         .select("id")
         .single()
       if (historyError) throw historyError
       generationJobId = historyJob.id
+    }
+    if (input.target === "asset" && pendingGenerationJobId) {
+      const { error: historyError } = await context.supabase
+        .from("creator_generation_jobs")
+        .update({
+          status: "completed",
+          result_url: storagePath,
+          credits_used: creditCost,
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", pendingGenerationJobId)
+      if (historyError) throw historyError
     }
     pendingRefund = null
     return NextResponse.json({
@@ -255,9 +297,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   } catch (error) {
     if (pendingRefund) {
       try {
-        await refundGenerationCredits(pendingRefund.context.user.id, pendingRefund.amount, pendingRefund.key, "Refund: failed image generation", null, pendingRefund.context.supabase)
+        await refundGenerationCredits(pendingRefund.context.user.id, pendingRefund.amount, pendingRefund.key, "Refund: failed image generation", pendingRefund.jobId, pendingRefund.context.supabase)
       } catch (refundError) {
         console.error("Could not refund failed image generation", refundError)
+      }
+    }
+    if (pendingGenerationJobId && pendingRefund) {
+      try {
+        await pendingRefund.context.supabase
+          .from("creator_generation_jobs")
+          .update({
+            status: "failed",
+            error: studioErrorMessage(error, "Image generation failed"),
+            completed_at: new Date().toISOString(),
+          })
+          .eq("id", pendingGenerationJobId)
+      } catch (historyError) {
+        console.error("Could not mark image generation failed", historyError)
       }
     }
     if (pendingAssetGeneration) {
@@ -285,6 +341,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid image request", issues: error.flatten() }, { status: 400 })
-    return NextResponse.json({ error: studioErrorMessage(error, "Image generation failed") }, { status: error instanceof OpenAIProviderError || error instanceof BytePlusProviderError ? error.status : studioErrorStatus(error) })
+    return NextResponse.json({ error: studioErrorMessage(error, "Image generation failed"), jobId: pendingGenerationJobId }, { status: error instanceof OpenAIProviderError || error instanceof BytePlusProviderError ? error.status : studioErrorStatus(error) })
   }
 }
