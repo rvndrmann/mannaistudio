@@ -54,6 +54,27 @@ export function visualStyleDirective(style: string) {
   return `${style.trim() || "cinematic"} production style with coherent art direction and consistent professional lighting. No collage, grid, typography, labels, captions, or UI.`
 }
 
+/**
+ * The project's image quality, chosen once in Basic Settings and obeyed by every
+ * image generation — chat keyframes, entity reference art, and the storyboard's
+ * own generate button — so one setting means one look and one price.
+ */
+export type ProjectImageQuality = "Low" | "Medium" | "High"
+
+export function projectImageQuality(project: Record<string, unknown>): ProjectImageQuality {
+  const metadata = project.metadata && typeof project.metadata === "object" ? project.metadata as Record<string, unknown> : {}
+  const basicSettings = metadata.basic_settings && typeof metadata.basic_settings === "object" ? metadata.basic_settings as Record<string, unknown> : {}
+  const value = typeof basicSettings.imageQuality === "string" ? basicSettings.imageQuality.trim().toLowerCase() : ""
+  if (value === "low") return "Low"
+  if (value === "high") return "High"
+  return "Medium"
+}
+
+/** The same choice in the casing the OpenAI image endpoints expect. */
+export function openAIImageQuality(quality: ProjectImageQuality) {
+  return quality.toLowerCase() as "low" | "medium" | "high"
+}
+
 export function projectVisualStyle(project: Record<string, unknown>) {
   const metadata = project.metadata && typeof project.metadata === "object" ? project.metadata as Record<string, unknown> : {}
   const basicSettings = metadata.basic_settings && typeof metadata.basic_settings === "object" ? metadata.basic_settings as Record<string, unknown> : {}

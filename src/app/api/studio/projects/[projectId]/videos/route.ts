@@ -9,6 +9,7 @@ import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
+import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 
 const submitSchema = z.object({
   shotId: z.string().uuid(),
@@ -185,7 +186,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     )
     const mentionContext = buildEntityMentionContext((resolvedEntities || []) as MentionableEntity[])
     const style = projectVisualStyle(context.project)
-    const resolvedPrompt = [input.prompt, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
+    const resolvedPrompt = [stripIdentityDescriptions(input.prompt), `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
     const providerRequest = { prompt: resolvedPrompt, originalPrompt: input.prompt, style, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceImages: combinedReferencePaths, characterEntityIds: input.characterEntityIds, mentionedEntityIds: input.mentionedEntityIds, resolvedEntityIds, generationMode: input.generationMode, startFrame: input.startFrame || null, endFrame: input.endFrame || null, audioEnabled: input.audioEnabled }
 
     const { data: job, error: jobError } = await context.supabase.from("creator_generation_jobs").insert({

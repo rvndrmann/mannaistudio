@@ -3,7 +3,8 @@ import { generateOpenAIImage, type OpenAIImageModel } from "./openai"
 import { submitBytePlusVideo, generateBytePlusImage, createBytePlusAsset } from "./byteplus"
 import type { VideoGenerationModelId, ImageGenerationModelId } from "./generation-models"
 import { buildEntityMentionContext, entityPrimaryReference, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
-import { projectVisualStyle, visualStyleDirective } from "./entity-image-workflow"
+import { openAIImageQuality, projectImageQuality, projectVisualStyle, visualStyleDirective } from "./entity-image-workflow"
+import { stripIdentityDescriptions } from "./prompt-sanitizer"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { randomUUID } from "node:crypto"
 
@@ -111,13 +112,14 @@ export async function executeGenerationJobsInBackground(
           }
 
           if (job.type === "image" && job.provider === "openai") {
-            const resolvedPrompt = [job.prompt, `Required composition: ${effectiveAspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
+            const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
             const imageBuffer = await generateOpenAIImage({
               userId: context.user.id,
               model: job.model as OpenAIImageModel,
               prompt: resolvedPrompt,
               referenceUrls,
               aspectRatio: effectiveAspectRatio,
+              quality: openAIImageQuality(projectImageQuality(context.project)),
             })
             
             const path = `${context.user.id}/${context.project.id}/shots/${job.shot_id}/${job.model}-${randomUUID()}.png`
@@ -134,7 +136,7 @@ export async function executeGenerationJobsInBackground(
             }).eq("id", job.shot_id)
 
           } else if (job.type === "image" && job.provider === "byteplus") {
-            const resolvedPrompt = [job.prompt, `Required composition: ${effectiveAspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
+            const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
             const generated = await generateBytePlusImage({
               model: job.model as ImageGenerationModelId,
               prompt: resolvedPrompt,

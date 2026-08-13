@@ -16,11 +16,19 @@ const project = projectContextSchema.parse({
 })
 
 describe("AI Director conversation context", () => {
-  it("identifies the director as AI and requires approval before generation", () => {
+  // The old assertion required the Director to announce itself as an AI, which
+  // rule 1 now forbids outright: the reply opens on the work, not on a preamble.
+  it("opens on directorial work and requires approval before generation", () => {
     const instructions = buildDirectorInstructions(project)
-    expect(instructions).toContain("identify yourself as an AI")
+    expect(instructions).toContain("NEVER give generic AI greetings")
     expect(instructions).toContain("explicit user approval")
     expect(instructions).toContain("Roommate skincare series")
+  })
+
+  it("ends a turn on one next step rather than on click-through directions", () => {
+    const instructions = buildDirectorInstructions(project)
+    expect(instructions).toContain("Never answer with instructions for the user to click through the workspace")
+    expect(instructions).toContain("what the single next step is")
   })
 
   it("uses the project brief instead of repeatedly asking confirmed details", () => {

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { Zap, Plus, X, Check, Loader2, CreditCard, AlertCircle } from "lucide-react"
 import { creditBalanceChangedEvent } from "@/lib/credit-balance-events"
+import { CREDIT_PACKAGES } from "@/lib/credits-packages"
 import CreditUsageTab from "@/components/credits/CreditUsageTab"
 import TeamTab from "@/components/credits/TeamTab"
 
@@ -194,12 +195,12 @@ export default function CreditBadge({ className }: { className?: string }) {
             )}
 
             <div className="mb-6 space-y-3">
-              {[
-                { id: "1000", credits: 1000, price: "₹800 INR", popular: false },
-                { id: "2500", credits: 2500, price: "₹2,000 INR", popular: true },
-                { id: "5000", credits: 5000, price: "₹4,000 INR", popular: false },
-                { id: "10000", credits: 10000, price: "₹8,000 INR", popular: false },
-              ].map((pkg) => (
+              {Object.entries(CREDIT_PACKAGES).map(([id, { credits, priceInr }]) => ({
+                id,
+                credits,
+                price: `₹${priceInr.toLocaleString("en-IN")} INR`,
+                popular: id === "2500",
+              })).map((pkg) => (
                 <div
                   key={pkg.id}
                   className={`flex items-center justify-between rounded-xl border p-4 transition ${

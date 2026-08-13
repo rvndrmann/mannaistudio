@@ -37,19 +37,19 @@ describe("director agent team", () => {
     const team = structuredClone(defaultDirectorTeam)
     team.prompt.name = "Nexus Prompt Writer"
     const block = teamInstructions(team)
-    expect(block).toContain("Script Agent → Nexus Prompt Writer → Character & Asset Agent → Storyboard Agent")
+    expect(block).toContain("Script Agent → Nexus Prompt Writer → Character & Asset Agent → Storyboard Agent → Video Prompt Agent")
     expect(block).toContain("## Nexus Prompt Writer")
   })
 
   it("drops a disabled agent from the pipeline chain", () => {
     const team = normalizeDirectorTeam({ ...defaultDirectorTeam, character_asset: { ...defaultDirectorTeam.character_asset, enabled: false } })
-    expect(teamInstructions(team)).toContain("Script Agent → Prompt Agent → Storyboard Agent")
+    expect(teamInstructions(team)).toContain("Script Agent → Prompt Agent → Storyboard Agent → Video Prompt Agent")
   })
 
   it("routes prompt sheet tools to the prompt agent", () => {
     expect(agentForTool("save_script_prompts")).toBe("prompt")
     expect(agentForTool("read_script_prompts")).toBe("prompt")
-    expect(directorPipeline).toEqual(["script", "prompt", "character_asset", "storyboard"])
+    expect(directorPipeline).toEqual(["script", "prompt", "character_asset", "storyboard", "video_prompt"])
   })
 
   it("fills in an agent that a saved team predates", () => {

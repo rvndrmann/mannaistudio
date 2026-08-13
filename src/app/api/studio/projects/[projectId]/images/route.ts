@@ -9,7 +9,8 @@ import { generationProvider, isImageGenerationModel, type ImageGenerationModelId
 import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
-import { projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
+import { openAIImageQuality, projectImageQuality, projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
+import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 
 const imageRequestSchema = z.object({
   target: z.enum(["asset", "shot"]),
@@ -54,8 +55,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "One or more mentioned entities do not belong to this project." }, { status: 400 })
     }
 
+    // The project's Basic Settings quality is the default for every image;
+    // a caller that names one explicitly still wins.
+    const quality = input.quality || projectImageQuality(context.project)
     // Validate the full request before reserving credits.
-    const creditCost = calculateCreditCost(input.model, "image", 5, { quality: input.quality, aspectRatio: input.aspectRatio })
+    const creditCost = calculateCreditCost(input.model, "image", 5, { quality, aspectRatio: input.aspectRatio })
     const deduct = await deductUserCredits(context.user.id, creditCost, input.model, `Image Generation (${input.model})`, context.supabase)
     if (!deduct.success) {
       return NextResponse.json({ error: deduct.errorMessage || "Insufficient credits" }, { status: 402 })
@@ -79,7 +83,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const style = projectVisualStyle(context.project)
     const projectDefaultAspect = typeof context.project.default_aspect === "string" ? context.project.default_aspect : null
     const effectiveAspectRatio = input.aspectRatio || (shotData && typeof shotData.aspect_ratio === "string" ? shotData.aspect_ratio : null) || projectDefaultAspect || "9:16"
-    const resolvedPrompt = [input.prompt, `Required composition: ${effectiveAspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
+    const resolvedPrompt = [stripIdentityDescriptions(input.prompt), `Required composition: ${effectiveAspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
 
     // The provider request can take a while. Persist this state before it starts
     // so leaving/re-entering the tab never makes the request appear to vanish.
@@ -127,7 +131,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     let byteplusAssetUri: string | null = null
 
     if (provider === "openai") {
-      image = await generateOpenAIImage({ userId: context.user.id, model: input.model as (typeof openAIImageModels)[number], prompt: resolvedPrompt, referenceUrls, aspectRatio: effectiveAspectRatio })
+      image = await generateOpenAIImage({ userId: context.user.id, model: input.model as (typeof openAIImageModels)[number], prompt: resolvedPrompt, referenceUrls, aspectRatio: effectiveAspectRatio, quality: openAIImageQuality(quality === "Ultra" ? "High" : quality) })
     } else if (provider === "fal") {
       const generated = await generateFalImage({ model: input.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls })
       const download = await fetch(generated.url)

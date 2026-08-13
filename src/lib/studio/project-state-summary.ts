@@ -1,4 +1,72 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { computePipelineStage, emptySnapshot, pipelineInstructionBlock, type ProductionSnapshot } from "./pipeline"
+
+/**
+ * What the workspace actually contains right now, read once and shared by
+ * everything that has to agree on where the production stands: the instructions
+ * the Director reads, and the next-step button the user presses.
+ */
+export async function loadProductionSnapshot(
+  supabase: SupabaseClient,
+  projectId: string,
+  episodeId?: string,
+): Promise<ProductionSnapshot> {
+  const [episodesRes, entitiesRes, shotsRes, promptsRes] = await Promise.all([
+    supabase
+      .from("creator_episodes")
+      .select("id, name, script_content, order_index")
+      .eq("project_id", projectId)
+      .order("order_index", { ascending: true }),
+    supabase
+      .from("creator_entities")
+      .select("id, name, type, reference_images")
+      .eq("project_id", projectId),
+    episodeId
+      ? supabase
+          .from("creator_shots")
+          .select("id, order_index, prompt, keyframe_image, video_url, video_status")
+          .eq("episode_id", episodeId)
+          .order("order_index", { ascending: true })
+      : supabase
+          .from("creator_shots")
+          .select("id, order_index, prompt, keyframe_image, video_url, video_status")
+          .eq("project_id", projectId)
+          .order("order_index", { ascending: true }),
+    // The prompt sheet is per episode; without one selected there is no sheet
+    // to measure the rest of the pipeline against.
+    episodeId
+      ? supabase
+          .from("creator_script_prompts")
+          .select("order_index, entity_names")
+          .eq("project_id", projectId)
+          .eq("episode_id", episodeId)
+          .order("order_index", { ascending: true })
+      : Promise.resolve({ data: [] as Array<{ order_index: number; entity_names: unknown }> }),
+  ])
+
+  const episodes = episodesRes.data || []
+  const activeEpisode = episodes.find((episode) => episode.id === episodeId) || episodes[0]
+  const scriptText = activeEpisode?.script_content ? JSON.stringify(activeEpisode.script_content) : ""
+  const promptRows = promptsRes.data || []
+
+  return {
+    episodeName: activeEpisode?.name || "Episode 1",
+    hasScript: Boolean(scriptText && scriptText.length > 30),
+    promptSheetCount: promptRows.length,
+    promptSheetEntityNames: promptRows.flatMap((row) => Array.isArray(row.entity_names) ? row.entity_names.filter((name: unknown): name is string => typeof name === "string" && Boolean(name.trim())) : []),
+    entities: (entitiesRes.data || []).map((entity) => ({
+      name: entity.name,
+      type: entity.type,
+      hasReferenceImage: Array.isArray(entity.reference_images) && entity.reference_images.length > 0,
+    })),
+    shots: (shotsRes.data || []).map((shot) => ({
+      number: shot.order_index + 1,
+      hasPrompt: typeof shot.prompt === "string" && Boolean(shot.prompt.trim()),
+      hasKeyframe: Boolean(shot.keyframe_image),
+      hasVideo: Boolean(shot.video_url) || shot.video_status === "completed",
+    })),
+  }
+}
 
 export async function buildProjectStateSummary(
   supabase: SupabaseClient,
@@ -6,85 +74,29 @@ export async function buildProjectStateSummary(
   episodeId?: string,
 ): Promise<string> {
   try {
-    const [episodesRes, entitiesRes, shotsRes] = await Promise.all([
-      supabase
-        .from("creator_episodes")
-        .select("id, name, description, script_content, order_index")
-        .eq("project_id", projectId)
-        .order("order_index", { ascending: true }),
-      supabase
-        .from("creator_entities")
-        .select("id, name, type, reference_images")
-        .eq("project_id", projectId),
-      episodeId
-        ? supabase
-            .from("creator_shots")
-            .select("id, title, prompt, keyframe_image, video_url, video_status")
-            .eq("episode_id", episodeId)
-            .order("order_index", { ascending: true })
-        : supabase
-            .from("creator_shots")
-            .select("id, title, prompt, keyframe_image, video_url, video_status")
-            .eq("project_id", projectId)
-            .order("order_index", { ascending: true }),
-    ])
-
-    const episodes = episodesRes.data || []
-    const entities = entitiesRes.data || []
-    const shots = shotsRes.data || []
-
-    const activeEpisode = episodes.find((e) => e.id === episodeId) || episodes[0]
-    const scriptText = activeEpisode?.script_content ? JSON.stringify(activeEpisode.script_content) : ""
-    const hasScript = Boolean(scriptText && scriptText.length > 30)
-
-    const characterEntities = entities.filter((e) => e.type === "character")
-    const sceneEntities = entities.filter((e) => e.type === "scene")
-    const propEntities = entities.filter((e) => e.type === "prop")
-    const charactersWithImages = characterEntities.filter(
-      (e) => Array.isArray(e.reference_images) && e.reference_images.length > 0
-    )
-
-    const keyframedShots = shots.filter((s) => Boolean(s.keyframe_image))
-    const videoShots = shots.filter((s) => Boolean(s.video_url) || s.video_status === "completed")
-
-    // Calculate production phase and next recommended step
-    let currentPhase = "Phase 1: Concept & Scripting"
-    let recommendedNextStep = "Write or refine the production script with scene breakdown."
-
-    if (hasScript) {
-      if (characterEntities.length === 0) {
-        currentPhase = "Phase 2: Character & Asset Creation"
-        recommendedNextStep = "Extract and define character/scene assets from the script."
-      } else if (charactersWithImages.length < characterEntities.length) {
-        currentPhase = "Phase 2: Character Turnaround & Image Generation"
-        recommendedNextStep = `Generate reference turnaround images for character assets (${charactersWithImages.length}/${characterEntities.length} complete).`
-      } else if (shots.length === 0) {
-        currentPhase = "Phase 3: Storyboard & Shot Breakdown"
-        recommendedNextStep = "Break down the script into visual shots and keyframe prompts."
-      } else if (keyframedShots.length < shots.length) {
-        currentPhase = "Phase 4: Keyframe Image Generation"
-        recommendedNextStep = `Generate keyframe images for shots (${keyframedShots.length}/${shots.length} keyframed).`
-      } else if (videoShots.length < shots.length) {
-        currentPhase = "Phase 5: AI Video Generation"
-        recommendedNextStep = `Render video clips for storyboard shots (${videoShots.length}/${shots.length} rendered).`
-      } else {
-        currentPhase = "Phase 6: Review & Final Polish"
-        recommendedNextStep = "Review continuity across all rendered video clips and export the final film."
-      }
-    }
-
-    return [
-      "=== LIVE PROJECT PRODUCTION STATE ===",
-      `Active Episode: ${activeEpisode ? activeEpisode.name : "Episode 1"}`,
-      `Script Status: ${hasScript ? "Script written and saved" : "No script saved yet"}`,
-      `Assets: ${entities.length} total (${characterEntities.length} characters [${charactersWithImages.length} with turnaround images], ${sceneEntities.length} scenes, ${propEntities.length} props)`,
-      `Storyboard Shots: ${shots.length} total shots (${keyframedShots.length} keyframed, ${videoShots.length} video rendered)`,
-      `Current Production Phase: ${currentPhase}`,
-      `Recommended Director Action: ${recommendedNextStep}`,
-      "========================================",
-    ].join("\n")
+    const snapshot = await loadProductionSnapshot(supabase, projectId, episodeId)
+    return buildProjectStateSummaryFrom(snapshot)
   } catch (err) {
     console.warn("Could not build project state summary:", err)
     return "=== LIVE PROJECT PRODUCTION STATE: Unavailable ==="
   }
+}
+
+export function buildProjectStateSummaryFrom(snapshot: ProductionSnapshot = emptySnapshot): string {
+  const stage = computePipelineStage(snapshot)
+  const characters = snapshot.entities.filter((entity) => entity.type === "character")
+  const scenes = snapshot.entities.filter((entity) => entity.type === "scene")
+  const props = snapshot.entities.filter((entity) => entity.type === "prop")
+  return [
+    "=== LIVE PROJECT PRODUCTION STATE ===",
+    `Active Episode: ${snapshot.episodeName}`,
+    `Script Status: ${snapshot.hasScript ? "Script written and saved" : "No script saved yet"}`,
+    `Prompt Sheet: ${snapshot.promptSheetCount} saved shot prompt${snapshot.promptSheetCount === 1 ? "" : "s"}`,
+    `Assets: ${snapshot.entities.length} total (${characters.length} characters [${characters.filter((entity) => entity.hasReferenceImage).length} with reference art], ${scenes.length} scenes, ${props.length} props)`,
+    `Storyboard Shots: ${snapshot.shots.length} total shots (${snapshot.shots.filter((shot) => shot.hasKeyframe).length} keyframed, ${snapshot.shots.filter((shot) => shot.hasVideo).length} video rendered)`,
+    `Current Production Stage: ${stage.title}`,
+    `Recommended Director Action: ${stage.nextAction?.intent || "Review the finished cut with the user."}`,
+    "========================================",
+    pipelineInstructionBlock(snapshot),
+  ].join("\n")
 }

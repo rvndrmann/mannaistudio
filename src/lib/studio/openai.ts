@@ -226,18 +226,22 @@ export function openAIImageSizeForAspectRatio(aspectRatio?: string): "1024x1024"
   }
 }
 
-export async function generateOpenAIImage(input: { userId: string; model: OpenAIImageModel; prompt: string; referenceUrls?: string[]; aspectRatio?: string }) {
+/** What the image endpoints accept, which is not what the UI calls it. */
+export type OpenAIImageQuality = "low" | "medium" | "high"
+
+export async function generateOpenAIImage(input: { userId: string; model: OpenAIImageModel; prompt: string; referenceUrls?: string[]; aspectRatio?: string; quality?: OpenAIImageQuality }) {
   const referenceUrls = input.referenceUrls || []
   const size = openAIImageSizeForAspectRatio(input.aspectRatio)
+  const quality = input.quality || "medium"
   const response = referenceUrls.length
     ? await openAIRequest("/v1/images/edits", {
       method: "POST",
-      body: await openAIImageEditForm(input.model, input.prompt, referenceUrls, size),
+      body: await openAIImageEditForm(input.model, input.prompt, referenceUrls, size, quality),
     }, input.userId)
     : await openAIRequest("/v1/images/generations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: input.model, prompt: input.prompt, size, quality: "medium", output_format: "png" }),
+      body: JSON.stringify({ model: input.model, prompt: input.prompt, size, quality, output_format: "png" }),
     }, input.userId)
   const data = await response.json() as { data?: Array<{ b64_json?: string }> }
   const base64 = data.data?.[0]?.b64_json
@@ -245,12 +249,12 @@ export async function generateOpenAIImage(input: { userId: string; model: OpenAI
   return Buffer.from(base64, "base64")
 }
 
-async function openAIImageEditForm(model: OpenAIImageModel, prompt: string, referenceUrls: string[], size: ReturnType<typeof openAIImageSizeForAspectRatio>) {
+async function openAIImageEditForm(model: OpenAIImageModel, prompt: string, referenceUrls: string[], size: ReturnType<typeof openAIImageSizeForAspectRatio>, quality: OpenAIImageQuality) {
   const form = new FormData()
   form.append("model", model)
   form.append("prompt", prompt)
   form.append("size", size)
-  form.append("quality", "medium")
+  form.append("quality", quality)
   form.append("output_format", "png")
   if (model === "gpt-image-1.5") {
     form.append("input_fidelity", "high")

@@ -17,10 +17,14 @@ import { runDirectorAgent } from "@/lib/studio/director-agent"
 import { fetchDirectorRuntimeSettings } from "@/lib/studio/director-runtime-settings"
 import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { collectDirectorVisionAttachments } from "@/lib/studio/director-vision"
-import { buildEntityReferenceImagePrompt, parseBulkEntityImageIntent, projectVisualStyle, visualStyleDirective, type BulkEntityImageIntent } from "@/lib/studio/entity-image-workflow"
+import { buildEntityReferenceImagePrompt, openAIImageQuality, parseBulkEntityImageIntent, projectImageQuality, projectVisualStyle, visualStyleDirective, type BulkEntityImageIntent } from "@/lib/studio/entity-image-workflow"
 import { createBytePlusAsset } from "@/lib/studio/byteplus"
 import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
-import { buildProjectStateSummary } from "@/lib/studio/project-state-summary"
+import { buildProjectStateSummary, loadProductionSnapshot } from "@/lib/studio/project-state-summary"
+import { computePipelineStage } from "@/lib/studio/pipeline"
+import type { DirectorTimelineBlock } from "@/lib/studio/timeline"
+import { parseRequestedShotNumbers } from "@/lib/studio/shot-intent"
+import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 
 // A Director run can take minutes, and it must finish even when the browser
 // that started it goes away: the reply and the workflow run are persisted
@@ -63,14 +67,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (historyError) throw historyError
     const { data: userMessage, error: userError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, role: "user", content: body.message, referenced_entity_ids: uniqueMentionIds }).select().single()
     if (userError) throw userError
-    const workflow = await maybeHandleWorkflowRequest({ context, projectId, episodeId: episode.id, sessionId, message: body.message, history: history || [], idempotencyKey: body.idempotencyKey, mentionedEntities: (mentionedEntities || []) as ResolvedMention[] })
-    if (workflow) {
-      const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert(workflow.message).select().single()
+    // A fast path can spend a minute inside an image model. Running it inside
+    // the stream is what lets the browser show the request moving while it does
+    // — before this, nothing at all reached the client until the picture was
+    // finished, so the chat looked frozen on the message the user just sent.
+    const runWorkflow = (onProgress?: (label: string) => void) => maybeHandleWorkflowRequest({ context, projectId, episodeId: episode.id, sessionId, message: body.message, history: history || [], idempotencyKey: body.idempotencyKey, mentionedEntities: (mentionedEntities || []) as ResolvedMention[], onProgress })
+    const persistWorkflowMessage = async (workflow: NonNullable<Awaited<ReturnType<typeof runWorkflow>>>) => {
+      const nextStep = await nextStepBlock(context, projectId, episode.id)
+      const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({
+        ...workflow.message,
+        ...(nextStep ? { timeline_blocks: [nextStep], timeline_version: 1 } : {}),
+      }).select().single()
       if (assistantError) throw assistantError
       const workflowCredits = workflow.result && typeof workflow.result === "object"
         ? workflow.result as Record<string, unknown>
         : {}
-      return NextResponse.json({
+      return {
         sessionId,
         userMessage,
         assistantMessage,
@@ -79,39 +91,52 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         model,
         creditsCharged: typeof workflowCredits.creditsCharged === "number" ? workflowCredits.creditsCharged : 0,
         creditBalance: typeof workflowCredits.creditBalance === "number" ? workflowCredits.creditBalance : undefined,
-      })
+      }
     }
-    const project = await buildProjectContext(context.supabase, context.project)
-    const { data: instructionSettings } = await context.supabase.from("site_settings").select("value").eq("key", "ai_director_global_instructions").maybeSingle()
-    const globalInstructions = normalizeDirectorGlobalInstructions(instructionSettings?.value)
-    const runtimeSettings = await fetchDirectorRuntimeSettings(context.supabase)
-    const visionAttachments = await collectDirectorVisionAttachments({
-      supabase: context.supabase,
-      projectId,
-      sessionId,
-      episodeId: episode.id,
-      mentionedEntities: (mentionedEntities || []) as MentionableEntity[],
-    })
-    const agentInput = {
-      context,
-      model,
-      instructions: await buildWorkflowInstructions(context, episode.id, sessionId, buildDirectorInstructions(project, globalInstructions)),
-      messages: selectConversationWindow([...(history || []).filter((item) => item.content).map((item) => ({ role: item.role as "user" | "assistant", content: item.content as string })), { role: "user", content: modelMessage }]),
-      sessionId,
-      idempotencyKey: body.idempotencyKey,
-      runtimeSettings,
-      episodeId: episode.id,
-      objective: modelMessage,
-      visionAttachments,
+    // Built only when the agent is actually going to run: the fast paths need
+    // none of it, and reading the brief, settings, and vision attachments first
+    // is dead time the user spends watching a spinner.
+    const buildAgentInput = async () => {
+      const project = await buildProjectContext(context.supabase, context.project)
+      const { data: instructionSettings } = await context.supabase.from("site_settings").select("value").eq("key", "ai_director_global_instructions").maybeSingle()
+      const globalInstructions = normalizeDirectorGlobalInstructions(instructionSettings?.value)
+      const runtimeSettings = await fetchDirectorRuntimeSettings(context.supabase)
+      const visionAttachments = await collectDirectorVisionAttachments({
+        supabase: context.supabase,
+        projectId,
+        sessionId,
+        episodeId: episode.id,
+        mentionedEntities: (mentionedEntities || []) as MentionableEntity[],
+      })
+      return {
+        context,
+        model,
+        instructions: await buildWorkflowInstructions(context, episode.id, sessionId, buildDirectorInstructions(project, globalInstructions)),
+        messages: selectConversationWindow([...(history || []).filter((item) => item.content).map((item) => ({ role: item.role as "user" | "assistant", content: item.content as string })), { role: "user", content: modelMessage }]),
+        sessionId,
+        idempotencyKey: body.idempotencyKey,
+        runtimeSettings,
+        episodeId: episode.id,
+        objective: modelMessage,
+        visionAttachments,
+      }
     }
     const persistAssistantMessage = async (response: Awaited<ReturnType<typeof runDirectorAgent>>) => {
-      const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, role: "assistant", content: response.content, tool_calls: response.toolCalls, suggested_actions: response.suggestedActions, timeline_blocks: response.timeline, timeline_version: 1 }).select().single()
+      // Read after the run, so the button offers the step the workspace is on
+      // once this run's writes have landed.
+      const nextStep = await nextStepBlock(context, projectId, episode.id)
+      const timeline = nextStep ? [...response.timeline, nextStep] : response.timeline
+      const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, role: "assistant", content: response.content, tool_calls: response.toolCalls, suggested_actions: response.suggestedActions, timeline_blocks: timeline, timeline_version: 1 }).select().single()
       if (assistantError) throw assistantError
       return { sessionId, userMessage, assistantMessage, provider: model.startsWith("gemini") ? "google" : "openai", model, usage: response.usage }
     }
 
     // A non-streaming client still gets the single JSON body it expects.
-    if (!body.stream) return NextResponse.json(await persistAssistantMessage(await runDirectorAgent(agentInput)))
+    if (!body.stream) {
+      const workflow = await runWorkflow()
+      if (workflow) return NextResponse.json(await persistWorkflowMessage(workflow))
+      return NextResponse.json(await persistAssistantMessage(await runDirectorAgent(await buildAgentInput())))
+    }
 
     const encoder = new TextEncoder()
     const stream = new ReadableStream<Uint8Array>({
@@ -121,7 +146,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         }
         try {
           send({ type: "start", sessionId })
-          const response = await runDirectorAgent({ ...agentInput, onEvent: send })
+          const workflow = await runWorkflow((label) => send({ type: "tool", tool: "workflow", label, status: "running" }))
+          if (workflow) {
+            send({ type: "done", ...(await persistWorkflowMessage(workflow)) })
+            return
+          }
+          const response = await runDirectorAgent({ ...(await buildAgentInput()), onEvent: send })
           send({ type: "done", ...(await persistAssistantMessage(response)) })
         } catch (error) {
           console.error("DIRECTOR CHAT STREAM ERROR:", error)
@@ -144,6 +174,32 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     console.error("DIRECTOR CHAT ERROR:", error)
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid chat request", issues: error.flatten() }, { status: 400 })
     return NextResponse.json({ error: describeError(error, "AI Director chat failed") }, { status: (error instanceof OpenAIProviderError || error instanceof GoogleProviderError) ? error.status : studioErrorStatus(error) })
+  }
+}
+
+/**
+ * The one step the production is waiting on, as a timeline block the chat
+ * renders as a button. Every reply carries it so a turn ends with something the
+ * user can press — the user stays in the loop by pressing it, and the pipeline
+ * only moves when they do.
+ */
+async function nextStepBlock(
+  context: Awaited<ReturnType<typeof requireAuthenticatedProject>>,
+  projectId: string,
+  episodeId: string,
+): Promise<DirectorTimelineBlock | null> {
+  try {
+    const stage = computePipelineStage(await loadProductionSnapshot(context.supabase, projectId, episodeId))
+    if (!stage.nextAction) return null
+    return {
+      type: "suggested_actions",
+      actions: [{ ...stage.nextAction, payload: { stage: stage.key, summary: stage.summary } }],
+    }
+  } catch (error) {
+    // A reply that lost its next-step button is still a reply. Failing the whole
+    // run over the button would lose the work the run just did.
+    console.warn("Could not build the pipeline next step:", error)
+    return null
   }
 }
 
@@ -196,7 +252,20 @@ async function recentUploadContext(context: Awaited<ReturnType<typeof requireAut
 
 type ResolvedMention = MentionableEntity & { metadata?: Record<string, unknown> }
 
-async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<typeof requireAuthenticatedProject>>; projectId: string; episodeId: string; sessionId: string; message: string; history: { role: string; content: string | null }[]; idempotencyKey: string; mentionedEntities: ResolvedMention[] }) {
+type WorkflowRequestInput = {
+  context: Awaited<ReturnType<typeof requireAuthenticatedProject>>
+  projectId: string
+  episodeId: string
+  sessionId: string
+  message: string
+  history: { role: string; content: string | null }[]
+  idempotencyKey: string
+  mentionedEntities: ResolvedMention[]
+  /** Reports what the fast path is doing while it does it, so the chat can say so. */
+  onProgress?: (label: string) => void
+}
+
+async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
   const normalized = input.message.toLowerCase()
   const forbidsAllMediaGeneration = /\b(?:do not|don't|never)\s+(?:yet\s+)?(?:generate|create|make|draw)\s+(?:any\s+)?media\b/.test(normalized)
     || /\bno\s+media\b/.test(normalized)
@@ -206,6 +275,8 @@ async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<t
     || /\bno\s+(?:videos?|animation)\b/.test(normalized)
   const scriptIntent = await maybeHandleScriptWrite(input, normalized)
   if (scriptIntent) return scriptIntent
+  const cleanup = await maybeCleanSavedPrompts(input, normalized)
+  if (cleanup) return cleanup
   if (/\b(full auto|full-auto|autopilot)\b/.test(normalized) && /\b(enable|turn on|start|activate)\b/.test(normalized)) {
     const result = await requestDirectorTool(input.context, {
       tool: "update_full_auto_mode",
@@ -218,21 +289,41 @@ async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<t
   const bulkEntityImageIntent = !forbidsAllMediaGeneration && !forbidsImageGeneration ? parseBulkEntityImageIntent(input.message, input.mentionedEntities) : null
   if (bulkEntityImageIntent) return generateBulkEntityReferenceImages(input, bulkEntityImageIntent)
   if (!forbidsAllMediaGeneration && !forbidsVideoGeneration && /\b(video|animate|motion)\b/.test(normalized) && /\b(generate|create|make|render|produce)\b/.test(normalized)) {
-    const { data: shots, error } = await input.context.supabase.from("creator_shots").select("id,prompt,title").eq("episode_id", input.episodeId).order("order_index").limit(6)
+    const { data: shots, error } = await input.context.supabase.from("creator_shots").select("id,prompt,title,order_index").eq("episode_id", input.episodeId).order("order_index")
     if (error) throw error
-    const selectedShots = (shots ?? []).filter((shot) => shot.prompt).slice(0, 3)
-    if (!selectedShots.length) return textMessage(input.sessionId, "I need at least one storyboard shot with a prompt before I can prepare video generation.")
+    // Same 1-based numbering submit_generation resolves against, so a number
+    // reported back here is the number the tool will target.
+    const byNumber = new Map((shots ?? []).map((shot) => [shot.order_index + 1, shot]))
+    const requestedNumbers = parseRequestedShotNumbers(input.message)
+    const missing = requestedNumbers.filter((number) => !byNumber.has(number))
+    if (requestedNumbers.length && missing.length === requestedNumbers.length) {
+      return textMessage(input.sessionId, `This episode has ${(shots ?? []).length} shot${(shots ?? []).length === 1 ? "" : "s"}, so I could not find shot ${missing.join(", ")}.`)
+    }
+    // A named shot without a prompt is the user's to fix: generating from a
+    // neighbouring shot's prompt would silently render something else.
+    const named = requestedNumbers.filter((number) => byNumber.get(number)?.prompt)
+    const unprompted = requestedNumbers.filter((number) => byNumber.has(number) && !byNumber.get(number)?.prompt)
+    if (requestedNumbers.length && !named.length) {
+      return textMessage(input.sessionId, `Shot ${unprompted.join(", ")} has no prompt yet. Add one to the storyboard and I will prepare the video.`)
+    }
+    const selectedNumbers = named.length ? named : (shots ?? []).filter((shot) => shot.prompt).slice(0, 3).map((shot) => shot.order_index + 1)
+    if (!selectedNumbers.length) return textMessage(input.sessionId, "I need at least one storyboard shot with a prompt before I can prepare video generation.")
+    input.onProgress?.(`Preparing video for shot ${selectedNumbers.join(", ")}`)
     const result = await requestDirectorTool(input.context, {
       tool: "submit_generation",
       input: {
-        request: { type: "video", shotIds: selectedShots.map((shot) => shot.id), mentionedEntityIds: input.mentionedEntities.map((entity) => entity.id), preference: "balanced", durationSeconds: 4 },
-        prompts: Object.fromEntries(selectedShots.map((shot) => [shot.id, shot.prompt || shot.title])),
+        // Numbers rather than ids: the tool resolves them against the episode,
+        // so the proposal card and the job target the same shot even if the
+        // storyboard is reordered between proposing and approving.
+        request: { type: "video", shotNumbers: selectedNumbers, episodeId: input.episodeId, mentionedEntityIds: input.mentionedEntities.map((entity) => entity.id), preference: "balanced", durationSeconds: 4 },
+        prompts: Object.fromEntries(selectedNumbers.map((number) => [String(number), byNumber.get(number)!.prompt || byNumber.get(number)!.title])),
         idempotencyKey: `${input.idempotencyKey}:video`,
       },
       sessionId: input.sessionId,
       idempotencyKey: `${input.idempotencyKey}:video-proposal`,
     })
-    return proposalMessage(input.sessionId, `I prepared video generation for ${selectedShots.length} shot${selectedShots.length === 1 ? "" : "s"}. Review and approve before credits are reserved.`, result)
+    const skipped = unprompted.length ? ` Shot ${unprompted.join(", ")} has no prompt yet, so I left ${unprompted.length === 1 ? "it" : "them"} out.` : ""
+    return proposalMessage(input.sessionId, `Video generation is ready for shot ${selectedNumbers.join(", ")}.${skipped} Review and approve before credits are reserved.`, result)
   }
   if (!forbidsAllMediaGeneration && !forbidsImageGeneration && /\b(image|keyframe|poster|visual)\b/.test(normalized) && /\b(generate|create|make|draw)\b/.test(normalized)) {
     const shotNumberMatch = normalized.match(/\b(?:storyboard\s+)?shot\s*(?:#\s*)?(\d+)\b/)
@@ -253,14 +344,15 @@ async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<t
     const style = projectVisualStyle(input.context.project)
     const projectDefaultAspect = typeof input.context.project.default_aspect === "string" ? input.context.project.default_aspect : null
     const aspectRatio = targetShot?.aspect_ratio || projectDefaultAspect || "9:16"
-    const resolvedPrompt = [prompt, `Required composition: ${aspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
+    const resolvedPrompt = [stripIdentityDescriptions(prompt), `Required composition: ${aspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
     // The chosen reference per entity, not every image it owns: eight slots
     // should mean eight subjects, not three angles of the same character.
     const referencePaths = Array.from(new Set(input.mentionedEntities
       .map((entity) => entityPrimaryReference(entity))
       .filter((path): path is string => Boolean(path)))).slice(0, 8)
     const referenceUrls = await signedMentionReferences(input.context, referencePaths)
-    const creditCost = calculateCreditCost("gpt-image-2", "image", 5, { quality: "Medium", aspectRatio })
+    const quality = projectImageQuality(input.context.project)
+    const creditCost = calculateCreditCost("gpt-image-2", "image", 5, { quality, aspectRatio })
     const deduction = await deductUserCredits(
       input.context.user.id,
       creditCost,
@@ -269,7 +361,9 @@ async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<t
       input.context.supabase,
     )
     if (!deduction.success) throw new OpenAIProviderError(deduction.errorMessage || "Insufficient credits", 402)
-    const image = await generateOpenAIImage({ userId: input.context.user.id, model: "gpt-image-2", prompt: resolvedPrompt, referenceUrls, aspectRatio })
+    input.onProgress?.(requestedShotNumber ? `Generating the keyframe for shot ${requestedShotNumber}` : "Generating the image")
+    const image = await generateOpenAIImage({ userId: input.context.user.id, model: "gpt-image-2", prompt: resolvedPrompt, referenceUrls, aspectRatio, quality: openAIImageQuality(quality) })
+    input.onProgress?.(requestedShotNumber ? `Saving the keyframe to shot ${requestedShotNumber}` : "Saving the image")
     const path = `${input.context.user.id}/${input.projectId}/chat/${crypto.randomUUID()}.png`
     const { error: uploadError } = await input.context.supabase.storage.from("creator-studio-media").upload(path, image, { contentType: "image/png", upsert: false })
     if (uploadError) throw uploadError
@@ -325,7 +419,7 @@ async function maybeHandleWorkflowRequest(input: { context: Awaited<ReturnType<t
 }
 
 async function generateBulkEntityReferenceImages(
-  input: { context: Awaited<ReturnType<typeof requireAuthenticatedProject>>; projectId: string; episodeId: string; sessionId: string; message: string; history: { role: string; content: string | null }[]; idempotencyKey: string; mentionedEntities: ResolvedMention[] },
+  input: WorkflowRequestInput,
   intent: BulkEntityImageIntent,
 ) {
   const { data: entities, error } = await input.context.supabase
@@ -351,6 +445,7 @@ async function generateBulkEntityReferenceImages(
   }
 
   const style = projectVisualStyle(input.context.project)
+  const quality = projectImageQuality(input.context.project)
   const completed: Array<{ entityId: string; entityName: string; path: string; url?: string; prompt: string }> = []
   const failed: Array<{ entityName: string; error: string }> = []
   let creditsCharged = 0
@@ -359,11 +454,12 @@ async function generateBulkEntityReferenceImages(
 
   for (let offset = 0; offset < requested.length; offset += batchSize) {
     const batch = requested.slice(offset, offset + batchSize)
+    input.onProgress?.(`Generating reference art: ${batch.map((entity) => entity.name).join(", ")} (${offset + 1}–${Math.min(offset + batch.length, requested.length)} of ${requested.length})`)
     const results = await Promise.allSettled(batch.map(async (entity) => {
       const prompt = buildEntityReferenceImagePrompt(entity as MentionableEntity, style)
       const existingReferences = Array.isArray(entity.reference_images) ? entity.reference_images.slice(0, 3) : []
       const referenceUrls = await signedMentionReferences(input.context, existingReferences)
-      const creditCost = calculateCreditCost("gpt-image-2", "image", 5, { quality: "Medium", aspectRatio: "2:3" })
+      const creditCost = calculateCreditCost("gpt-image-2", "image", 5, { quality, aspectRatio: "2:3" })
       const deduction = await deductUserCredits(
         input.context.user.id,
         creditCost,
@@ -374,7 +470,7 @@ async function generateBulkEntityReferenceImages(
       if (!deduction.success) throw new OpenAIProviderError(deduction.errorMessage || "Insufficient credits", 402)
       creditsCharged += creditCost
       creditBalance = deduction.newBalance
-      const image = await generateOpenAIImage({ userId: input.context.user.id, model: "gpt-image-2", prompt, referenceUrls, aspectRatio: "2:3" })
+      const image = await generateOpenAIImage({ userId: input.context.user.id, model: "gpt-image-2", prompt, referenceUrls, aspectRatio: "2:3", quality: openAIImageQuality(quality) })
       const path = `${input.context.user.id}/${input.projectId}/entities/${entity.id}/gpt-image-2-${crypto.randomUUID()}.png`
       const { error: uploadError } = await input.context.supabase.storage.from("creator-studio-media").upload(path, image, { contentType: "image/png", upsert: false })
       if (uploadError) throw uploadError
@@ -470,6 +566,49 @@ async function signedMentionReferences(context: Awaited<ReturnType<typeof requir
     urls.push(data.signedUrl)
   }
   return urls
+}
+
+/**
+ * Rewrites the saved storyboard prompts through the identity stripper on
+ * request. Generation already strips descriptions on the way to the provider,
+ * but the saved prompt is what the user reads and edits, so "fix the prompts"
+ * has to change what is stored, not only what is sent.
+ */
+async function maybeCleanSavedPrompts(input: WorkflowRequestInput, normalized: string) {
+  const wantsFix = /\b(fix|clean|clean up|strip|remove|rewrite)\b/.test(normalized)
+  const namesPrompts = /\b(prompts?|storyboard|shots?)\b/.test(normalized)
+  const namesDescriptions = /\b(character description|character descriptions|descriptions?|character lock|asset lock|identity)\b/.test(normalized)
+  if (!wantsFix || !namesPrompts || !namesDescriptions) return null
+
+  const { data: shots, error } = await input.context.supabase
+    .from("creator_shots")
+    .select("id,order_index,prompt")
+    .eq("episode_id", input.episodeId)
+    .order("order_index")
+  if (error) throw error
+
+  const requested = parseRequestedShotNumbers(input.message)
+  const targets = (shots || []).filter((shot) => !requested.length || requested.includes(shot.order_index + 1))
+  const cleaned: number[] = []
+  for (const shot of targets) {
+    const current = typeof shot.prompt === "string" ? shot.prompt : ""
+    const next = stripIdentityDescriptions(current)
+    if (!current.trim() || next === current) continue
+    const { error: updateError } = await input.context.supabase.from("creator_shots").update({ prompt: next }).eq("id", shot.id)
+    if (updateError) throw updateError
+    cleaned.push(shot.order_index + 1)
+  }
+
+  if (!cleaned.length) {
+    return textMessage(input.sessionId, requested.length
+      ? `Shot ${requested.join(", ")} carries no written character description, so there was nothing to strip.`
+      : "None of the saved shot prompts carry a written character description, so there was nothing to strip.")
+  }
+  return textMessage(
+    input.sessionId,
+    `Stripped the written character descriptions from ${cleaned.length} shot prompt${cleaned.length === 1 ? "" : "s"} (shot ${cleaned.join(", ")}). Each shot keeps its @mentions, so the cast still resolves and every character is now locked by its reference art instead of by words.`,
+    { type: "prompts_cleaned", shots: cleaned },
+  )
 }
 
 async function maybeHandleScriptWrite(input: { context: Awaited<ReturnType<typeof requireAuthenticatedProject>>; episodeId: string; sessionId: string; message: string; history: { role: string; content: string | null }[] }, normalized: string) {

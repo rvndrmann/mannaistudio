@@ -131,7 +131,7 @@ type Workspace = {
     summary: string;
     status: string;
   }[];
-  chatMessages: { id: string; role: string; content: string | null; media?: Array<Record<string, unknown>> | null; suggested_actions?: Array<Record<string, unknown>> | null; timeline_blocks?: unknown; referenced_entity_ids?: string[] | null }[];
+  chatMessages: { id: string; role: string; content: string | null; created_at?: string | null; media?: Array<Record<string, unknown>> | null; suggested_actions?: Array<Record<string, unknown>> | null; timeline_blocks?: unknown; referenced_entity_ids?: string[] | null }[];
   activeSessionId?: string | null;
   chatSessions: { id: string; title: string; model?: string | null; created_at: string; updated_at?: string | null }[];
   actionProposals: {
@@ -224,6 +224,34 @@ export default function WorkspacePage({
     }
   }, [projectId]);
 
+  // Restored before the first fetch, so the workspace loads the episode the user
+  // left open rather than loading the first one and swapping it out underneath
+  // them. The URL wins over the stored value: a shared link names its episode.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const fromUrl = url.searchParams.get("episode");
+    const saved = fromUrl || localStorage.getItem(`studio_episode_${projectId}`);
+    if (saved) {
+      setEpisodeId(saved);
+      if (!fromUrl) {
+        url.searchParams.set("episode", saved);
+        window.history.replaceState(null, "", url.toString());
+      }
+    }
+    setEpisodeRestored(true);
+  }, [projectId]);
+
+  const selectEpisode = (nextEpisodeId: string) => {
+    setEpisodeId(nextEpisodeId);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(`studio_episode_${projectId}`, nextEpisodeId);
+      const url = new URL(window.location.href);
+      url.searchParams.set("episode", nextEpisodeId);
+      window.history.replaceState(null, "", url.toString());
+    }
+  };
+
   const setTab = (nextTab: string) => {
     setTabState(nextTab);
     if (typeof window !== "undefined") {
@@ -254,9 +282,14 @@ export default function WorkspacePage({
   const voiceConnectionRef = useRef<RTCPeerConnection | null>(null);
   const voiceStreamRef = useRef<MediaStream | null>(null);
   const hasLoadedRef = useRef(false);
+  // Always the current render's loader, so a long-lived poll reloads the
+  // episode that is open now rather than the one open when it started.
+  const loadRef = useRef<(silent?: boolean) => Promise<void>>(async () => {});
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [data?.chatMessages.length, chatSending, chatError, voiceState]);
+    // Progress counts as movement: a long generation reports what it is doing,
+    // and the view should follow that rather than sit above it.
+  }, [data?.chatMessages.length, chatSending, chatError, voiceState, streamingReply?.status, streamingReply?.content.length]);
   useEffect(() => () => {
     voiceConnectionRef.current?.close();
     voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -288,6 +321,10 @@ export default function WorkspacePage({
   }, []);
   const [assetType, setAssetType] = useState<Entity["type"] | null>(null);
   const [episodeId, setEpisodeId] = useState<string | null>(null);
+  // The open episode outlives a reload, the same way the open tab does. Without
+  // this the workspace came back on whichever episode the server lists first,
+  // which is never the one the user was working in.
+  const [episodeRestored, setEpisodeRestored] = useState(false);
   const [chatSessionId, setChatSessionId] = useState<string | null>(null);
   const [episodeMenu, setEpisodeMenu] = useState(false);
   const [chatSessionMenu, setChatSessionMenu] = useState(false);
@@ -337,7 +374,7 @@ export default function WorkspacePage({
       await Promise.all(jobsInFlight
         .filter((job) => job.type === "video")
         .map((job) => fetch(`/api/studio/projects/${projectId}/videos?jobId=${encodeURIComponent(job.id)}`, { cache: "no-store" }).catch(() => null)));
-      if (!cancelled) await load(true);
+      if (!cancelled) await loadRef.current(true);
     };
     const timer = setInterval(() => { void tick(); }, 5000);
     return () => { cancelled = true; clearInterval(timer); };
@@ -365,11 +402,24 @@ export default function WorkspacePage({
       return;
     }
     setResumedRun(true);
-    const timer = setInterval(() => { void load(true); }, 3000);
+    const timer = setInterval(() => { void loadRef.current(true); }, 3000);
     return () => clearInterval(timer);
-    // load is stable enough for this poll; the run id is what should restart it.
+    // the run id is what should restart this poll; loadRef keeps it current.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRun?.id, chatSending]);
+
+  // The run persists its reply before it is marked complete, so a poll shows
+  // the Director's answer while the run still reads as in flight. Past that
+  // point the placeholder is stale: it sat under the finished text still
+  // bouncing, as though nothing had arrived.
+  const resumedRunAwaitingReply = useMemo(() => {
+    if (!resumedRun || !activeRun) return false;
+    if (!activeRun.started_at) return true;
+    const startedAt = new Date(activeRun.started_at).getTime();
+    return !(data?.chatMessages || []).some((item) => item.role === "assistant"
+      && item.created_at
+      && new Date(item.created_at).getTime() >= startedAt);
+  }, [resumedRun, activeRun, data?.chatMessages]);
 
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -386,13 +436,22 @@ export default function WorkspacePage({
       if (!silent) setLoading(false);
     }
   };
+  // The background polls below outlive the render that started them, and their
+  // effects deliberately do not restart when the episode changes. Calling the
+  // captured `load` meant a poll kept fetching the episode that was open when
+  // the interval was created — creating an episode switched to it, then the
+  // next tick pulled the previous one back over the top of it.
+  loadRef.current = load;
   useEffect(() => {
+    // Waiting on the restore keeps the first fetch from asking for the wrong
+    // episode and then immediately asking again for the right one.
+    if (!episodeRestored) return;
     // Only the first load may blank the workspace. Switching chat session or
     // episode swaps data in place, so the full-screen loader would read as an
     // unexpected page reload.
     load(hasLoadedRef.current);
     hasLoadedRef.current = true;
-  }, [projectId, episodeId, chatSessionId]);
+  }, [projectId, episodeId, chatSessionId, episodeRestored]);
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase.channel(`director-workflow-${projectId}`)
@@ -445,7 +504,7 @@ export default function WorkspacePage({
   const createEpisode = async () => {
     const created = await save({ action: "createEpisode" });
     setEpisodeMenu(false);
-    setEpisodeId(created.id);
+    selectEpisode(created.id);
     setTab("script");
   };
   const createChatSession = async () => {
@@ -748,7 +807,7 @@ export default function WorkspacePage({
                   <button
                     key={item.id}
                     onClick={() => {
-                      setEpisodeId(item.id);
+                      selectEpisode(item.id);
                       setEpisodeMenu(false);
                     }}
                     className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-[12px] ${item.id === episode.id ? "bg-white/[0.06] font-bold text-white" : "text-zinc-300 hover:bg-white/[0.04]"}`}
@@ -1090,7 +1149,7 @@ export default function WorkspacePage({
                 <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} entities={data.entities} shots={data.shots} projectId={projectId} busyId={proposalBusy} onDecide={decideProposal} onAction={sendDirectorMessage} onOpenTab={setTab} />
               </div>
             ))}
-            {(chatSending || resumedRun) && <ThinkingBubble reply={chatSending ? streamingReply : { content: "", status: "Picking up where the Director left off" }} />}
+            {(chatSending || resumedRunAwaitingReply) && <ThinkingBubble reply={chatSending ? streamingReply : { content: "", status: "Picking up where the Director left off" }} />}
             <PendingProposalCards
               proposals={data.actionProposals}
               excludeIds={data.chatMessages.flatMap((item) => proposalIdsFromActions(item.suggested_actions))}
@@ -1102,6 +1161,16 @@ export default function WorkspacePage({
               onDecide={decideProposal}
               onAction={sendDirectorMessage}
               onOpenTab={setTab}
+            />
+            {/* Last thing in the stream, under the media and the approval cards
+                the run produced: a step only reads as the next step once the
+                user can see everything it follows. */}
+            <ChatNextStep
+              messages={data.chatMessages}
+              proposals={data.actionProposals}
+              sessionId={data.activeSessionId}
+              busy={chatSending || resumedRunAwaitingReply}
+              onAction={sendDirectorMessage}
             />
             {chatError && <p role="alert" className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-[12px] text-red-200">{chatError}</p>}
             {voiceState !== "idle" && <p className={`mt-3 rounded-lg border p-2.5 text-[12px] ${voiceState === "connected" ? "border-[#b9f42e]/30 bg-[#b9f42e]/10 text-[#d9ff84]" : "border-white/[0.06] bg-white/[0.03] text-zinc-300"}`}>{voiceState === "connecting" ? "Connecting your AI Voice Director…" : voiceState === "connected" ? "AI Voice Director is listening. You can speak naturally." : voiceError}</p>}
@@ -1973,6 +2042,9 @@ function BasicSettingsModal({
   const [resolution, setResolution] = useState<string>((metaSettings?.resolution as string) || "720p");
   const [storyboardImageModel, setStoryboardImageModel] = useState<string>((metaSettings?.storyboardImageModel as string) || imageGenerationModels[0].id);
   const [characterImageModel, setCharacterImageModel] = useState<string>((metaSettings?.characterImageModel as string) || imageGenerationModels[0].id);
+  // One quality for the whole project: chat keyframes, character and asset art,
+  // and the storyboard's own generate button all read this.
+  const [imageQuality, setImageQuality] = useState<string>((metaSettings?.imageQuality as string) || "Medium");
   const [videoModel, setVideoModel] = useState<string>((metaSettings?.videoModel as string) || videoGenerationModels[0].id);
   const [generateAudio, setGenerateAudio] = useState<boolean>(metaSettings?.generateAudio !== false);
   const [workflow, setWorkflow] = useState<string>(selectedEpisodeWorkflow || (projectMeta.default_workflow_id as string) || (metaSettings?.workflow as string) || "keyframe_images_to_video");
@@ -1991,6 +2063,7 @@ function BasicSettingsModal({
           resolution,
           storyboardImageModel,
           characterImageModel,
+          imageQuality,
           videoModel,
           generateAudio,
           workflow,
@@ -2107,6 +2180,20 @@ function BasicSettingsModal({
                 {imageGenerationModels.map((m) => (
                   <option key={m.id} value={m.id}>{m.label}</option>
                 ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Image Quality</label>
+              <p className="text-[11px] text-zinc-500 mb-2">Applies to every image this project generates</p>
+              <select
+                value={imageQuality}
+                onChange={(e) => setImageQuality(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-[#b9f42e]"
+              >
+                <option value="Low">Low (⚡ fastest, cheapest)</option>
+                <option value="Medium">Medium (balanced)</option>
+                <option value="High">High (⚡ slowest, most credits)</option>
               </select>
             </div>
           </div>
@@ -4519,6 +4606,8 @@ function ChatTimelineBlock({ block, proposals, onAction, disabled }: { block: Di
     );
   }
   if (block.type === "plan") return <div className="rounded-lg border border-white/[0.08] bg-black/20 p-2.5"><p className="text-[12px] font-semibold">{block.title}</p><div className="mt-2 space-y-1.5">{block.steps.map((step) => <div key={step.id} className="flex gap-2 text-[11px] text-zinc-400"><span>{step.status === "completed" ? "✓" : step.status === "failed" ? "×" : "○"}</span><span>{step.label}</span></div>)}</div></div>;
+  // The next step is not part of the run's timeline; ChatNextStep renders it at
+  // the end of the whole conversation instead.
   if (block.type === "suggested_actions") return null;
   if (block.type === "warning") return <div className="rounded-lg border border-amber-400/25 bg-amber-400/[0.07] p-2.5 text-[11px] leading-5 text-amber-100"><strong>{block.code}</strong><p>{block.message}</p>{block.actions.map((action) => <button key={action.id} type="button" disabled={disabled} onClick={() => onAction(action.intent)} className="mt-2 mr-2 rounded-md border border-amber-300/25 px-2 py-1 font-semibold">{action.label}</button>)}</div>;
   if (block.type === "workflow_summary") {
@@ -4527,6 +4616,47 @@ function ChatTimelineBlock({ block, proposals, onAction, disabled }: { block: Di
   }
   if (block.type === "media_result") return <ChatMedia media={block.media} />;
   return null;
+}
+
+/**
+ * The one step the production is waiting on, pinned to the end of the chat.
+ *
+ * It belongs to the newest reply, not to the message it was stored on: an older
+ * message's step was already answered by everything below it. It stays hidden
+ * while a run is in flight, and while an approval card is pending — the card is
+ * itself the next step, and two competing calls to action read as a fork.
+ */
+function ChatNextStep({ messages, proposals, sessionId, busy, onAction }: {
+  messages: Workspace["chatMessages"];
+  proposals: ChatProposal[];
+  sessionId?: string | null;
+  busy: boolean;
+  onAction: (intent: string) => void;
+}) {
+  if (busy) return null;
+  if (proposals.some((proposal) => proposal.status === "pending" && proposal.session_id === sessionId)) return null;
+  const latest = messages.filter((item) => item.role === "assistant").at(-1);
+  if (!latest) return null;
+  const block = parseDirectorTimeline(latest.timeline_blocks).filter((item) => item.type === "suggested_actions").at(-1);
+  if (!block || block.type !== "suggested_actions") return null;
+  return (
+    <div className="mt-3 rounded-xl border border-[#b9f42e]/25 bg-[#b9f42e]/[0.06] p-3">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-[#b9f42e]">Next step</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {block.actions.map((action) => (
+          <button
+            key={action.id}
+            type="button"
+            onClick={() => onAction(action.intent)}
+            className={`rounded-lg px-3 py-1.5 text-[12px] font-bold transition ${action.recommended ? "bg-[#b9f42e] text-black hover:bg-[#a8e526]" : "border border-white/[0.12] text-zinc-200 hover:border-[#b9f42e]/40"}`}
+          >
+            {action.label}
+            {action.risk === "costly" && <span className="ml-1.5 font-medium opacity-70">· uses credits</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function ChatSuggestedActions({

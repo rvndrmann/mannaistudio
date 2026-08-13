@@ -129,7 +129,14 @@ Assignment rules:
 - If a character has a vehicle, they are separate references: @hero rides @bike
 - A location @mention sets the environment for the beat it appears in; there is no separate setting block
 
-When the user provides NO images: skip <<<image_N>>> syntax entirely. Instead, write **rich text descriptions** in the Character/Asset Lock section that serve as the visual anchor. Use camera/lens language and specific physical details to compensate for the missing visual reference.
+In this workspace every @mentioned entity already carries its reference art, attached by the workspace at generation time — so the <<<image_N>>> syntax and any written "visual anchor" are both unnecessary, and a written one is actively harmful: the model reads the words before it looks at the picture, and the character comes back looking like the sentence instead of the reference.
+
+So the Character/Asset Lock section is a **cast list, never a description**. One line per entity: the @tag and what that entity is doing in this scene — their state, mood, or role in the beat. No face, no hair, no build, no wardrobe, no age, no skin, no eyes.
+
+Right: @Lena — sits still beside the bed, calm and unnervingly patient.
+Wrong: @Lena — young woman mid-20s, fair freckled skin, blue-green eyes, oversized taupe knit sweater.
+
+If an entity has no reference art yet, do not paper over it with a description. Say which entity is missing art and hand back so the Character & Asset Agent can build it first.
 
 ## 5 — SCENE TYPE TEMPLATES
 
@@ -178,7 +185,7 @@ If the user's script exceeds **20 seconds** or contains **distinct location chan
 
 Rules:
 - Each scene prompt is self-contained with its own full structure (Image References, Character Lock, Setting, Timeline, etc.)
-- Character Lock blocks are **copy-pasted verbatim** across scenes to maintain identity
+- Character Lock cast lines carry across scenes unchanged, but they stay cast lines: identity comes from the reference art, never from repeated description
 - Label scenes sequentially: SCENE 1 of 3, SCENE 2 of 3, etc.
 - Note continuity bridges between scenes: "Scene 2 picks up from Scene 1 final frame — @hero standing in destroyed intersection"
 - Maximum recommended runtime per scene prompt: **strictly under 15 seconds (e.g. 5–14 seconds)**
@@ -213,7 +220,7 @@ Motivated movement rule: Every camera move must be caused by character action, s
 
 1. **Vague action**: "They fight" → FIX: Specific choreography with named moves, body mechanics, and impact consequences
 2. **Unmotivated camera**: Random orbits and zooms → FIX: Every move follows action or reveals information
-3. **Character drift**: Outfit/features change between beats → FIX: Character Lock block + Consistency Rules
+3. **Character drift**: Outfit/features change between beats → FIX: the entity's reference art is the identity — @tag it in every beat that contains it and delete any written description of how it looks, which is what causes the drift in the first place
 4. **Physics violations**: Heavy creature moves like a lightweight → FIX: Respect mass, momentum, gravity
 5. **Overloaded beats**: Too much happening in 1.5 seconds → FIX: One primary action per beat, secondary elements support
 6. **Missing environment reaction**: Impacts with no dust, no shaking, no consequence → FIX: Every impact affects the world
@@ -250,12 +257,12 @@ Optimal prompt specs:
 Before delivering any scene prompt, verify:
 
 - Image references assigned with <<<image_N>>> + @tag (if images provided)
-- Character/Asset Lock block is detailed and specific
+- Character/Asset Lock block names the cast by @tag and what they are doing — and contains no physical description of anyone
 - Setting establishes location, time, lighting, atmosphere, color grade
 - Timeline uses ⏱️ timestamps with titled beats
 - Every beat has: camera framing + character action + environmental reaction
 - Characters referenced by @tag consistently throughout
-- Consistency Rules lock wardrobe, scale, style, environment
+- Consistency Rules lock scale, style, and environment by pointing at the references — they never restate wardrobe or features in words
 - Negative Rules block included with standard + scene-specific avoidances
 - Production Notes specify runtime, aspect ratio, resolution, FPS, audio
 - No vague action descriptions ("they fight") — all choreography is specific

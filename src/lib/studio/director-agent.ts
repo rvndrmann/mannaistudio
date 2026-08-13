@@ -257,9 +257,10 @@ export async function runDirectorAgent(input: {
   const finalStatus = failedSteps || reachedStepLimit ? (completedSteps || awaitingApproval ? "partially_completed" : "failed") : awaitingApproval ? "awaiting_approval" : "completed"
   await finishWorkflowRun(input.context, workflowRun.id, finalStatus, { completedSteps, failedSteps, awaitingApproval, toolCalls: toolCalls.length })
   timeline.unshift({ type: "workflow_summary", title: "Director workflow", summary: finalStatus === "completed" ? "Workflow completed." : finalStatus === "awaiting_approval" ? "Workflow is waiting for your approval." : "Workflow completed with items that need attention.", completed: completedSteps, failed: failedSteps })
-  const nextActions = buildNextActions({ finalStatus, toolCalls, limit: runtimeSettings.nextActionLimit })
   if (reachedStepLimit) timeline.push({ type: "warning", code: "step_limit", message: `This workflow reached the configured limit of ${runtimeSettings.maxToolSteps} tool turns. Continue it in a new message if more work remains.`, recoverable: true, actions: [{ id: "continue-workflow", label: "Continue workflow", intent: "Continue the previous workflow from its latest checkpoint", payload: { workflowRunId: workflowRun.id }, risk: "read", recommended: true }] })
-  if (nextActions.length) timeline.push({ type: "suggested_actions", actions: nextActions })
+  // The next step is appended by the caller from the pipeline state left behind
+  // by this run, so the button offers the stage the workspace is actually on
+  // rather than a guess made from which tools happened to be called.
   return { content, timeline, suggestedActions, toolCalls, usage, workflowRunId: workflowRun.id }
 }
 
@@ -273,17 +274,6 @@ export function selectSpecialists(objective: string): SpecialistInstructionKey[]
   if (/continuity|consistent|match|validate|review/.test(value)) selected.add("continuity")
   selected.add("recovery")
   return Array.from(selected)
-}
-
-function buildNextActions(input: { finalStatus: string; toolCalls: Array<Record<string, unknown>>; limit: number }) {
-  const called = new Set(input.toolCalls.map((call) => call.tool))
-  const actions: Array<{ id: string; label: string; intent: string; payload: Record<string, unknown>; risk: "read" | "write" | "costly" | "destructive"; recommended: boolean }> = []
-  if (input.finalStatus === "awaiting_approval") actions.push({ id: "review-approvals", label: "Review and approve proposed changes", intent: "Show me the pending proposals and explain what each will change", payload: {}, risk: "read", recommended: true })
-  if (called.has("read_episode_script") && !called.has("list_production_entities")) actions.push({ id: "inspect-entities", label: "Check existing characters, locations, and props", intent: "Inspect existing production entities and compare them with the saved script", payload: {}, risk: "read", recommended: actions.length === 0 })
-  if (called.has("create_production_entities_batch")) actions.push({ id: "build-storyboard", label: "Create storyboard from the saved script", intent: "Validate the approved entities and propose an ordered storyboard from the saved script", payload: {}, risk: "write", recommended: actions.length === 0 })
-  if (called.has("create_storyboard_batch") || called.has("list_storyboard_shots")) actions.push({ id: "validate-production", label: "Validate storyboard and references", intent: "Validate the current storyboard prompts and entity references before generation", payload: {}, risk: "read", recommended: actions.length === 0 })
-  if (called.has("validate_production")) actions.push({ id: "generate-keyframes", label: "Prepare storyboard keyframes", intent: "Prepare image generation for the validated storyboard shots and show the approval and credit estimate", payload: {}, risk: "costly", recommended: actions.length === 0 })
-  return actions.slice(0, input.limit)
 }
 
 function specialistForTool(name: string) {
