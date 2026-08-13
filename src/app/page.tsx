@@ -441,45 +441,6 @@ export default function LandingPage() {
                         ))}
                     </div>
 
-                    {/* Visual Stage Container Slot for Full Film Showcase Video */}
-                    <div className="mt-8 overflow-hidden rounded-2xl border border-white/15 bg-[#121513] p-4 md:p-6">
-                        <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-[#090b0a]">
-                            {/* Showcase film video or clean reserved container */}
-                            {heroFeatured?.videoUrl && youtubeEmbedUrl(heroFeatured.videoUrl) ? (
-                                <iframe
-                                    key={heroFeatured.videoUrl}
-                                    src={youtubeEmbedUrl(heroFeatured.videoUrl) || ""}
-                                    title={heroFeatured.title}
-                                    allow="encrypted-media; picture-in-picture; fullscreen"
-                                    allowFullScreen
-                                    className="h-full w-full"
-                                />
-                            ) : heroFeatured?.videoUrl ? (
-                                <video
-                                    key={pipelineSteps[activePipelineStep].id}
-                                    src={`${heroFeatured.videoUrl}#t=0.1`}
-                                    controls
-                                    playsInline
-                                    className="h-full w-full object-cover"
-                                />
-                            ) : (
-                                <div className="relative flex h-full w-full flex-col items-center justify-center bg-[radial-gradient(circle_at_50%_50%,rgba(185,244,46,0.15),transparent_65%),linear-gradient(135deg,#131f16,#08090a)] p-8 text-center">
-                                    <div className="grid h-16 w-16 place-items-center rounded-2xl bg-primary/20 border border-primary/30 text-primary mb-4">
-                                        <Play className="h-8 w-8 fill-primary" />
-                                    </div>
-                                    <span className="text-xs font-black uppercase tracking-[.2em] text-primary">
-                                        {pipelineSteps[activePipelineStep].label} Showcase Video
-                                    </span>
-                                    <h3 className="mt-2 text-2xl font-black text-white">
-                                        Reserved Player Container ({pipelineSteps[activePipelineStep].title})
-                                    </h3>
-                                    <p className="mt-2 max-w-md text-xs text-white/50">
-                                        Space reserved for your 3-minute fully automated short film or stage demo video.
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
                 </div>
             </section>
 
