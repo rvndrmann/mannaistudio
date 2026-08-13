@@ -73,7 +73,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // finished, so the chat looked frozen on the message the user just sent.
     const runWorkflow = (onProgress?: (label: string) => void) => maybeHandleWorkflowRequest({ context, projectId, episodeId: episode.id, sessionId, message: body.message, history: history || [], idempotencyKey: body.idempotencyKey, mentionedEntities: (mentionedEntities || []) as ResolvedMention[], onProgress })
     const persistWorkflowMessage = async (workflow: NonNullable<Awaited<ReturnType<typeof runWorkflow>>>) => {
-      const nextStep = await nextStepBlock(context, projectId, episode.id)
+      const nextStep = await nextStepBlock(context, projectId, episode.id, parseRequestedShotNumbers(body.message))
       const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({
         ...workflow.message,
         ...(nextStep ? { timeline_blocks: [nextStep], timeline_version: 1 } : {}),
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const persistAssistantMessage = async (response: Awaited<ReturnType<typeof runDirectorAgent>>) => {
       // Read after the run, so the button offers the step the workspace is on
       // once this run's writes have landed.
-      const nextStep = await nextStepBlock(context, projectId, episode.id)
+      const nextStep = await nextStepBlock(context, projectId, episode.id, parseRequestedShotNumbers(body.message))
       const timeline = nextStep ? [...response.timeline, nextStep] : response.timeline
       const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, role: "assistant", content: response.content, tool_calls: response.toolCalls, suggested_actions: response.suggestedActions, timeline_blocks: timeline, timeline_version: 1 }).select().single()
       if (assistantError) throw assistantError
@@ -187,10 +187,19 @@ async function nextStepBlock(
   context: Awaited<ReturnType<typeof requireAuthenticatedProject>>,
   projectId: string,
   episodeId: string,
+  requestedShotNumbers: number[] = [],
 ): Promise<DirectorTimelineBlock | null> {
   try {
     const stage = computePipelineStage(await loadProductionSnapshot(context.supabase, projectId, episodeId))
     if (!stage.nextAction) return null
+    // A pipeline-wide next action is only relevant when it belongs to the
+    // current turn. Otherwise a request for Shot 1 could finish by displaying
+    // a stale-looking action for Shot 4 simply because Shot 4 is incomplete.
+    // The agent or the proposal created during this turn remains authoritative.
+    if (requestedShotNumbers.length) {
+      const actionShotNumbers = Array.from(stage.nextAction.intent.matchAll(/\bshots?\s+(?:#\s*)?(\d+)\b/gi)).map((match) => Number(match[1]))
+      if (actionShotNumbers.length && !actionShotNumbers.some((number) => requestedShotNumbers.includes(number))) return null
+    }
     return {
       type: "suggested_actions",
       actions: [{ ...stage.nextAction, payload: { stage: stage.key, summary: stage.summary } }],
