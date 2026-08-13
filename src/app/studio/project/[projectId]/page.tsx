@@ -154,7 +154,7 @@ type Workspace = {
     referenceAssets: Array<Record<string, unknown>>;
     continuityIssues: Array<Record<string, unknown>>;
     revisions: Array<Record<string, unknown>>;
-    generationJobs: Array<{ id: string; shot_id?: string | null; type?: string; status: string; result_url?: string | null; error?: string | null }>;
+    generationJobs: Array<{ id: string; shot_id?: string | null; type?: string; status: string; model?: string | null; prompt?: string | null; input_images?: string[] | null; result_url?: string | null; error?: string | null; created_at?: string; completed_at?: string | null }>;
     creditAccount: { balance: number; reserved: number } | null;
     workflowRuns?: Array<{ id: string; session_id?: string | null; status: string; completed_at?: string | null; started_at?: string | null; objective?: string | null }>;
   };
@@ -1054,6 +1054,7 @@ export default function WorkspacePage({
                 save={save}
                 reload={load}
                 pendingJobs={pendingShotJobs}
+                generationJobs={data.production?.generationJobs || []}
               />
             )}
             {tab === "timeline" && (
@@ -3162,6 +3163,7 @@ function Storyboard({
   save,
   reload,
   pendingJobs,
+  generationJobs,
 }: {
   shots: Shot[];
   entities: Entity[];
@@ -3172,6 +3174,7 @@ function Storyboard({
   // Shots with generation still running, so a cell can say so instead of
   // showing the same empty placeholder it shows when nothing was ever asked for.
   pendingJobs?: { image: Set<string>; video: Set<string> };
+  generationJobs: NonNullable<Workspace["production"]>["generationJobs"];
 }) {
   const [adding, setAdding] = useState(false);
   const [media, setMedia] = useState<{
@@ -3535,6 +3538,7 @@ function Storyboard({
           media={activeMedia}
           entities={entities}
           shots={shots}
+          generationJobs={generationJobs}
           projectId={projectId}
           close={() => setMedia(null)}
           save={save}
@@ -3548,6 +3552,7 @@ function ShotMediaWorkspace({
   media,
   entities,
   shots,
+  generationJobs,
   projectId,
   close,
   save,
@@ -3556,6 +3561,7 @@ function ShotMediaWorkspace({
   media: { shot: Shot; type: "image" | "video" };
   entities: Entity[];
   shots?: Shot[];
+  generationJobs: NonNullable<Workspace["production"]>["generationJobs"];
   projectId: string;
   close: () => void;
   save: (b: unknown) => Promise<void>;
@@ -3708,7 +3714,12 @@ function ShotMediaWorkspace({
     let active = true;
     async function loadJobs() {
       try {
-        const { data: dbJobs } = await createClient()
+        // Prefer the server-loaded job snapshot so history is available even
+        // when the browser Supabase client is briefly stale or its RLS refresh
+        // races with opening the viewer. Every completed generation remains a
+        // separate entry; keyframe_image/video_url is only the active pointer.
+        const serverJobs = (generationJobs || []).filter((job) => job.shot_id === media.shot.id && job.type === media.type);
+        const { data: dbJobs } = serverJobs.length ? { data: serverJobs } : await createClient()
           .from("creator_generation_jobs")
           .select("*")
           .eq("shot_id", media.shot.id)
@@ -3765,7 +3776,7 @@ function ShotMediaWorkspace({
 
     loadJobs();
     return () => { active = false; };
-  }, [media.shot.id]);
+  }, [media.shot.id, media.type, generationJobs]);
 
   const [registeringAsset, setRegisteringAsset] = useState(false);
   const registerCurrentAsBytePlusAsset = async () => {
