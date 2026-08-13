@@ -131,6 +131,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     let contentType = "image/png"
     let byteplusAssetId: string | null = null
     let byteplusAssetUri: string | null = null
+    let generationJobId: string | null = null
 
     if (provider === "openai") {
       image = await generateOpenAIImage({ userId: context.user.id, model: input.model as (typeof openAIImageModels)[number], prompt: resolvedPrompt, referenceUrls, aspectRatio: effectiveAspectRatio, quality: openAIImageQuality(quality === "Ultra" ? "High" : quality) })
@@ -216,26 +217,34 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (error) throw error
 
       // Record in creator_generation_jobs so history displays prompt and model
-      const { error: historyError } = await context.supabase.from("creator_generation_jobs").insert({
-        user_id: context.user.id,
-        project_id: projectId,
-        episode_id: typeof shotData?.episode_id === "string" ? shotData.episode_id : null,
-        shot_id: input.targetId,
-        type: "image",
-        provider,
-        model: input.model,
-        prompt: input.prompt,
-        input_images: combinedReferencePaths,
-        status: "completed",
-        result_url: storagePath,
-        estimated_credits: creditCost,
-        credits_used: creditCost,
-      })
+      const { data: historyJob, error: historyError } = await context.supabase
+        .from("creator_generation_jobs")
+        .insert({
+          user_id: context.user.id,
+          project_id: projectId,
+          episode_id: typeof shotData?.episode_id === "string" ? shotData.episode_id : null,
+          shot_id: input.targetId,
+          type: "image",
+          provider,
+          model: input.model,
+          prompt: input.prompt,
+          input_images: combinedReferencePaths,
+          status: "completed",
+          result_url: storagePath,
+          estimated_credits: creditCost,
+          credits_used: creditCost,
+          completed_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single()
       if (historyError) throw historyError
+      generationJobId = historyJob.id
     }
     pendingRefund = null
     return NextResponse.json({
       path: storagePath,
+      imageUrl: storagePath,
+      jobId: generationJobId,
       provider,
       model: input.model,
       byteplusAssetId,

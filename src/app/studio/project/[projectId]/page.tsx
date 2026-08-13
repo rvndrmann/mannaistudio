@@ -85,7 +85,15 @@ type Entity = {
 function entityImageGenerationStatus(entity: Entity): "generating" | "completed" | "failed" | null {
   const generation = entity.metadata?.image_generation
   if (!generation || typeof generation !== "object") return null
-  const status = (generation as Record<string, unknown>).status
+  const record = generation as Record<string, unknown>
+  const status = record.status
+  // A synchronous image request can be interrupted by a deployment, browser
+  // disconnect, or server timeout before its catch block persists "failed".
+  // Never leave the entity card polling and spinning forever in that case.
+  if (status === "generating") {
+    const requestedAt = typeof record.requested_at === "string" ? Date.parse(record.requested_at) : Number.NaN
+    if (!Number.isFinite(requestedAt) || Date.now() - requestedAt > 15 * 60 * 1_000) return "failed"
+  }
   return status === "generating" || status === "completed" || status === "failed" ? status : null
 }
 type Shot = {
@@ -2490,7 +2498,33 @@ function AssetWorkspace({
       await reload(true);
     } catch (error) {
       notifyCreditBalanceChanged();
-      setGenerationError(error instanceof Error ? error.message : "Image generation failed");
+      const errorMessage = error instanceof Error ? error.message : "Image generation failed";
+      setGenerationError(errorMessage);
+      // The API normally records this itself. This client-side fallback covers
+      // a dropped request where the server disappears after persisting the
+      // generating flag but before its error handler can run.
+      try {
+        await save({
+          action: "saveAsset",
+          asset: {
+            ...asset,
+            reference_images: libraryImages,
+            metadata: {
+              ...asset.metadata,
+              image_generation: {
+                ...(asset.metadata?.image_generation && typeof asset.metadata.image_generation === "object" ? asset.metadata.image_generation : {}),
+                status: "failed",
+                error: errorMessage,
+                completed_at: new Date().toISOString(),
+              },
+            },
+          },
+        });
+        await reload(true);
+      } catch {
+        // Preserve the original generation error in the UI even if recovery
+        // persistence is temporarily unavailable.
+      }
     } finally {
       setWorking(false);
     }
@@ -3877,7 +3911,20 @@ function ShotMediaWorkspace({
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || "Image generation failed");
         notifyCreditBalanceChanged(typeof body.creditBalance === "number" ? body.creditBalance : undefined);
-        setGenHistory((prev) => prev.map((g) => g.id === genId ? { ...g, status: "completed" as const, videoUrl: body.imageUrl || source } : g));
+        const outputPath = typeof body.path === "string" ? body.path : typeof body.imageUrl === "string" ? body.imageUrl : null;
+        if (!outputPath) throw new Error("Image generation completed without a saved output path");
+        const savedJobId = typeof body.jobId === "string" ? body.jobId : genId;
+        setGenHistory((prev) => prev.map((g) => g.id === genId ? {
+          ...g,
+          id: savedJobId,
+          status: "completed" as const,
+          videoUrl: outputPath,
+          completedAt: new Date().toISOString(),
+        } : g));
+        setActiveGenId(savedJobId);
+        media.shot.keyframe_image = outputPath;
+        setGenerationStatus("Image ready ✓");
+        await reload(true);
       } else {
         setGenerationStatus("Submitting generation job…");
         const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, characterEntityIds, mentionedEntityIds, generationMode: videoInputMode, startFrame, endFrame, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
