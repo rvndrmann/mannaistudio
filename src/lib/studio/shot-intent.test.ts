@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { parseRequestedShotNumbers } from "./shot-intent"
+import { actionMatchesRequestedShots, parseRequestedShotNumbers } from "./shot-intent"
 
 describe("parseRequestedShotNumbers", () => {
   it("reads a single named shot", () => {
@@ -41,5 +41,17 @@ describe("parseRequestedShotNumbers", () => {
 
   it("ignores shot zero", () => {
     expect(parseRequestedShotNumbers("generate shot 0 video")).toEqual([])
+  })
+})
+
+describe("actionMatchesRequestedShots", () => {
+  it("blocks an unrelated pipeline action from a targeted turn", () => {
+    expect(actionMatchesRequestedShots("Generate the image for shot 4", [1])).toBe(false)
+    expect(actionMatchesRequestedShots("Generate the image for shot 1", [1])).toBe(true)
+  })
+
+  it("keeps non-shot pipeline actions and untargeted turns", () => {
+    expect(actionMatchesRequestedShots("Review the cut for continuity", [1])).toBe(true)
+    expect(actionMatchesRequestedShots("Generate the image for shot 4", [])).toBe(true)
   })
 })

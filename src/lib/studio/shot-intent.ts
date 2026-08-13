@@ -43,3 +43,9 @@ export function parseRequestedShotNumbers(message: string): number[] {
 
   return Array.from(new Set(found)).sort((a, b) => a - b)
 }
+
+export function actionMatchesRequestedShots(intent: string, requestedShotNumbers: number[]) {
+  if (!requestedShotNumbers.length) return true
+  const actionShotNumbers = Array.from(intent.matchAll(/\bshots?\s+(?:#\s*)?(\d+)\b/gi)).map((match) => Number(match[1]))
+  return !actionShotNumbers.length || actionShotNumbers.some((number) => requestedShotNumbers.includes(number))
+}

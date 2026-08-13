@@ -12,12 +12,16 @@ export const toolRequestSchema = z.object({
   input: z.unknown(),
   idempotencyKey: z.string().trim().min(8).max(200),
   sessionId: z.string().uuid().optional(),
+  workflowRunId: z.string().uuid().optional(),
 }).strict()
 
 export async function requestDirectorTool(context: AuthenticatedProjectContext, raw: unknown) {
   const request = toolRequestSchema.parse(raw)
   const tool = directorTools[request.tool]
-  const input = tool.input.parse(request.input)
+  const rawInput = request.tool === "submit_generation" && request.workflowRunId && request.input && typeof request.input === "object"
+    ? { ...(request.input as Record<string, unknown>), workflowRunId: request.workflowRunId }
+    : request.input
+  const input = tool.input.parse(rawInput)
 
   const { data: existing } = await context.supabase
     .from("creator_tool_executions")
@@ -39,6 +43,7 @@ export async function requestDirectorTool(context: AuthenticatedProjectContext, 
     risk: tool.risk,
     status,
     idempotency_key: request.idempotencyKey,
+    workflow_run_id: request.workflowRunId ?? null,
     input,
   })
   if (executionError) throw executionError
@@ -55,6 +60,7 @@ export async function requestDirectorTool(context: AuthenticatedProjectContext, 
       payload: input,
       estimated_credits: proposalCopy.estimatedCredits,
       affected_entities: proposalCopy.affectedEntities,
+      workflow_run_id: request.workflowRunId ?? null,
       expires_at: new Date(Date.now() + 86_400_000).toISOString(),
     }).select("*").single()
     if (error) throw error
@@ -180,6 +186,7 @@ export async function decideDirectorProposal(context: AuthenticatedProjectContex
   }
   if (proposal.project_id !== context.project.id || proposal.user_id !== context.user.id) throw new Error("Proposal does not belong to this project")
   if (decision === "rejected") {
+    if (proposal.workflow_run_id) await context.supabase.from("creator_workflow_runs").update({ status: "cancelled", completed_at: new Date().toISOString(), summary: { decision: "rejected", proposalId } }).eq("id", proposal.workflow_run_id)
     await audit(context, "tool.proposal_rejected", "creator_action_proposals", proposalId, { tool: proposal.action_type })
     return { proposal, executed: false, creditBalance: await getUserCredits(context.user.id, context.supabase) }
   }
@@ -199,10 +206,19 @@ export async function decideDirectorProposal(context: AuthenticatedProjectContex
     await context.supabase.rpc("creator_finish_action_proposal", { p_proposal_id: proposalId, p_status: "executed" })
     if (proposal.tool_execution_id) await context.supabase.rpc("creator_finish_tool_execution", { p_execution_id: proposal.tool_execution_id, p_status: "completed", p_output: data, p_error: null })
     await audit(context, "tool.proposal_executed", "creator_action_proposals", proposalId, { tool: tool.name })
+    if (proposal.workflow_run_id) {
+      const generationContinues = proposal.action_type === "submit_generation"
+      await context.supabase.from("creator_workflow_runs").update({
+        status: generationContinues ? "running" : "completed",
+        summary: { decision: "approved", proposalId, tool: tool.name, generationContinues },
+        completed_at: generationContinues ? null : new Date().toISOString(),
+      }).eq("id", proposal.workflow_run_id)
+    }
     return { proposal, executed: true, data, creditBalance: await getUserCredits(context.user.id, context.supabase) }
   } catch (cause) {
     await context.supabase.rpc("creator_finish_action_proposal", { p_proposal_id: proposalId, p_status: "failed" })
     if (proposal.tool_execution_id) await context.supabase.rpc("creator_finish_tool_execution", { p_execution_id: proposal.tool_execution_id, p_status: "failed", p_output: null, p_error: { message: cause instanceof Error ? cause.message : "Tool failed" } })
+    if (proposal.workflow_run_id) await context.supabase.from("creator_workflow_runs").update({ status: "failed", error: { message: cause instanceof Error ? cause.message : "Tool failed" }, completed_at: new Date().toISOString() }).eq("id", proposal.workflow_run_id)
     throw cause
   }
 }

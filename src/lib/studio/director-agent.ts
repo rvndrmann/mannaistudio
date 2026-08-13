@@ -9,6 +9,7 @@ import { defaultDirectorRuntimeSettings, runtimeInstructions, type DirectorRunti
 import { buildVisionUserContent, type DirectorVisionAttachment } from "./director-vision"
 import { agentForTool, fetchDirectorTeam, teamInstructions, type DirectorTeam } from "./director-team"
 import { addWorkflowStep, createWorkflowRun, finishWorkflowRun } from "./workflow-runs"
+import { parseRequestedShotNumbers } from "./shot-intent"
 import { directorRecovery } from "./recovery"
 
 export type DirectorStreamEvent =
@@ -116,6 +117,7 @@ export async function runDirectorAgent(input: {
   objective: string
   visionAttachments?: DirectorVisionAttachment[]
   team?: DirectorTeam
+  workflowRunId?: string
   // Reports progress while the run is still in flight so the chat can show text
   // and tool activity as they happen instead of after the whole loop finishes.
   onEvent?: (event: DirectorStreamEvent) => void
@@ -140,7 +142,9 @@ export async function runDirectorAgent(input: {
   const toolCalls: Array<Record<string, unknown>> = []
   let content = ""
   let usage: Record<string, unknown> = {}
-  const workflowRun = await createWorkflowRun(input.context, { episodeId: input.episodeId, sessionId: input.sessionId, objective: input.objective, maxSteps: runtimeSettings.maxToolSteps })
+  const workflowRun = input.workflowRunId
+    ? { id: input.workflowRunId }
+    : await createWorkflowRun(input.context, { episodeId: input.episodeId, sessionId: input.sessionId, objective: input.objective, maxSteps: runtimeSettings.maxToolSteps })
   let completedSteps = 0
   let failedSteps = 0
   let awaitingApproval = 0
@@ -152,11 +156,15 @@ export async function runDirectorAgent(input: {
   // agent guidance no longer depends on which words the user happened to use.
   const team = input.team || await fetchDirectorTeam(input.context.supabase)
   const teamBlock = teamInstructions(team)
+  const requestedShotNumbers = parseRequestedShotNumbers(input.objective)
+  const targetConstraint = requestedShotNumbers.length
+    ? `This turn explicitly targets storyboard shot ${requestedShotNumbers.join(", ")}. Do not recommend, label, or describe a different shot as the next step in this reply. Keep every tool call and concluding sentence scoped to the requested shot unless the user explicitly asks for broader pipeline guidance.`
+    : ""
 
   for (let step = 0; step < runtimeSettings.maxToolSteps; step += 1) {
     let turn: Awaited<ReturnType<typeof createDirectorToolTurn>>
     try {
-      const fullInstructions = `${input.instructions}\nCurrent episode ID: ${input.episodeId || "No episode selected"}\nCurrent project ID: ${input.context.project.id}\nExecutable workspace proposals must be created by calling the appropriate tool; never represent an executable proposal only as assistant text. Tool calls that require approval create the UI approval card and do not apply the change until the user approves it.\n\n${teamBlock}\n\n${runtimeInstructions(runtimeSettings, activeSpecialists)}`
+      const fullInstructions = `${input.instructions}\nCurrent episode ID: ${input.episodeId || "No episode selected"}\nCurrent project ID: ${input.context.project.id}\n${targetConstraint}\nExecutable workspace proposals must be created by calling the appropriate tool; never represent an executable proposal only as assistant text. Tool calls that require approval create the UI approval card and do not apply the change until the user approves it.\n\n${teamBlock}\n\n${runtimeInstructions(runtimeSettings, activeSpecialists)}`
       const toolDefs = directorFunctionDefinitions()
 
       turn = input.model.startsWith("gemini")
@@ -221,6 +229,7 @@ export async function runDirectorAgent(input: {
           tool: call.name,
           input: call.arguments,
           sessionId: input.sessionId,
+          workflowRunId: workflowRun.id,
           idempotencyKey: `${input.idempotencyKey}:${step}:${call.callId}`,
         })
         block.status = result.approvalRequired ? "awaiting_approval" : "completed"

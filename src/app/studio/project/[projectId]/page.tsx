@@ -131,7 +131,7 @@ type Workspace = {
     summary: string;
     status: string;
   }[];
-  chatMessages: { id: string; role: string; content: string | null; created_at?: string | null; media?: Array<Record<string, unknown>> | null; suggested_actions?: Array<Record<string, unknown>> | null; timeline_blocks?: unknown; referenced_entity_ids?: string[] | null }[];
+  chatMessages: { id: string; workflow_run_id?: string | null; role: string; content: string | null; created_at?: string | null; media?: Array<Record<string, unknown>> | null; suggested_actions?: Array<Record<string, unknown>> | null; timeline_blocks?: unknown; referenced_entity_ids?: string[] | null }[];
   activeSessionId?: string | null;
   chatSessions: { id: string; title: string; model?: string | null; created_at: string; updated_at?: string | null }[];
   actionProposals: {
@@ -144,6 +144,7 @@ type Workspace = {
     payload: Record<string, unknown>;
     created_at: string;
     session_id?: string | null;
+    workflow_run_id?: string | null;
     tool_execution_id?: string | null;
   }[];
   directorWorkflows?: DirectorWorkflowConfig[];
@@ -154,9 +155,9 @@ type Workspace = {
     referenceAssets: Array<Record<string, unknown>>;
     continuityIssues: Array<Record<string, unknown>>;
     revisions: Array<Record<string, unknown>>;
-    generationJobs: Array<{ id: string; shot_id?: string | null; type?: string; status: string; model?: string | null; prompt?: string | null; input_images?: string[] | null; result_url?: string | null; error?: string | null; created_at?: string; completed_at?: string | null }>;
+    generationJobs: Array<{ id: string; workflow_run_id?: string | null; shot_id?: string | null; type?: string; status: string; model?: string | null; prompt?: string | null; input_images?: string[] | null; result_url?: string | null; error?: string | null; target_snapshot?: Record<string, unknown>; verification?: Record<string, unknown>; created_at?: string; completed_at?: string | null }>;
     creditAccount: { balance: number; reserved: number } | null;
-    workflowRuns?: Array<{ id: string; session_id?: string | null; status: string; completed_at?: string | null; started_at?: string | null; objective?: string | null }>;
+    workflowRuns?: Array<{ id: string; session_id?: string | null; status: string; completed_at?: string | null; started_at?: string | null; objective?: string | null; summary?: Record<string, unknown>; error?: Record<string, unknown> | null }>;
   };
 };
 const tabs = [
@@ -387,14 +388,16 @@ export default function WorkspacePage({
   // rejoin it by polling until it finishes instead of pretending it stopped.
   const activeRun = useMemo(() => {
     const runs = data?.production?.workflowRuns || [];
+    const repliedRunIds = new Set((data?.chatMessages || []).filter((message) => message.role === "assistant" && message.workflow_run_id).map((message) => message.workflow_run_id as string));
     // A run whose server died never gets completed_at, so anything older than
     // the longest plausible run is treated as gone rather than polled forever.
     const cutoff = Date.now() - 15 * 60 * 1000;
-    return runs.find((run) => run.session_id === data?.activeSessionId
-      && !run.completed_at
-      && (run.status === "planning" || run.status === "running")
-      && (!run.started_at || new Date(run.started_at).getTime() > cutoff)) || null;
-  }, [data?.production?.workflowRuns, data?.activeSessionId]);
+    const latest = runs.find((run) => run.session_id === data?.activeSessionId) || null;
+    if (!latest || repliedRunIds.has(latest.id)) return null;
+    return !latest.completed_at
+      && (latest.status === "planning" || latest.status === "running")
+      && (!latest.started_at || new Date(latest.started_at).getTime() > cutoff) ? latest : null;
+  }, [data?.production?.workflowRuns, data?.chatMessages, data?.activeSessionId]);
 
   useEffect(() => {
     if (!activeRun || chatSending) {
@@ -1145,6 +1148,7 @@ export default function WorkspacePage({
                 className={`mt-3 max-w-[90%] rounded-xl p-3 text-[13px] ${item.role === "user" ? "ml-auto bg-[#b9f42e] text-black" : "bg-[#1a1a1a] text-zinc-200"}`}
               >
                 {item.content}
+                {item.role === "assistant" && item.workflow_run_id && <ChatRunStatus run={(data.production?.workflowRuns || []).find((run) => run.id === item.workflow_run_id)} />}
                 <ChatTimeline blocks={item.timeline_blocks} proposals={data.actionProposals} onAction={sendDirectorMessage} disabled={chatSending} />
                 <ChatMedia media={item.media} />
                 <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} entities={data.entities} shots={data.shots} projectId={projectId} busyId={proposalBusy} onDecide={decideProposal} onAction={sendDirectorMessage} onOpenTab={setTab} />
@@ -1155,6 +1159,7 @@ export default function WorkspacePage({
               proposals={data.actionProposals}
               excludeIds={data.chatMessages.flatMap((item) => proposalIdsFromActions(item.suggested_actions))}
               sessionId={data.activeSessionId}
+              latestRunId={(data.production?.workflowRuns || []).find((run) => run.session_id === data.activeSessionId)?.id || null}
               entities={data.entities}
               shots={data.shots}
               projectId={projectId}
@@ -3326,7 +3331,7 @@ function Storyboard({
                           placeholder="Describe the shot. Type @ to reference a character, scene, or prop."
                           className="min-h-[140px] w-full rounded-lg border border-white/10 bg-black/30 p-2.5 text-sm leading-6 text-zinc-200 outline-none focus:border-[#b9f42e]/40"
                         />
-                        <p className="text-[11px] text-zinc-500">Mentioned assets become this shot's references.</p>
+                        <p className="text-[11px] text-zinc-500">Mentioned assets become this shot&apos;s references.</p>
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -4526,6 +4531,25 @@ function GenerationPreviewError({ message }: { message: string }) {
 }
 
 type ChatProposal = Workspace["actionProposals"][number];
+type ChatWorkflowRun = NonNullable<NonNullable<Workspace["production"]>["workflowRuns"]>[number];
+
+function ChatRunStatus({ run }: { run?: ChatWorkflowRun }) {
+  if (!run) return null;
+  const verified = typeof run.summary?.verified === "number" ? run.summary.verified : 0;
+  const labels: Record<string, string> = {
+    planning: "Planning",
+    running: "Working",
+    awaiting_approval: "Waiting for approval",
+    retrying: "Retrying",
+    blocked: "Needs attention",
+    completed: verified ? `Completed · ${verified} output${verified === 1 ? "" : "s"} verified` : "Completed",
+    partially_completed: "Partially completed",
+    cancelled: "Cancelled",
+    failed: "Failed",
+  };
+  const alert = run.status === "failed" || run.status === "partially_completed" || run.status === "blocked";
+  return <p className={`mt-2 text-[10px] font-semibold uppercase tracking-wider ${alert ? "text-amber-300" : "text-emerald-300/80"}`}>{labels[run.status] || run.status.replaceAll("_", " ")}</p>;
+}
 
 function ThinkingBubble({ reply }: { reply?: { content: string; status: string | null } | null }) {
   // Once text starts arriving the bubble becomes the reply itself, so the
@@ -4705,6 +4729,7 @@ function PendingProposalCards({
   proposals,
   excludeIds,
   sessionId,
+  latestRunId,
   entities,
   shots,
   projectId,
@@ -4716,6 +4741,7 @@ function PendingProposalCards({
   proposals: ChatProposal[];
   excludeIds: string[];
   sessionId?: string | null;
+  latestRunId?: string | null;
   entities: Entity[];
   shots: Shot[];
   projectId: string;
@@ -4728,7 +4754,10 @@ function PendingProposalCards({
   // Only the current conversation's approvals belong in this timeline. Without
   // the session check, opening a new chat inherits every unresolved card from
   // earlier chats in the same project.
-  const pending = proposals.filter((proposal) => proposal.status === "pending" && !excluded.has(proposal.id) && proposal.session_id === sessionId).slice(0, 3);
+  const pending = proposals.filter((proposal) => proposal.status === "pending"
+    && !excluded.has(proposal.id)
+    && proposal.session_id === sessionId
+    && (!latestRunId || proposal.workflow_run_id === latestRunId)).slice(0, 3);
   if (!pending.length) return null;
   return (
     <div className="mt-4 flex flex-col">

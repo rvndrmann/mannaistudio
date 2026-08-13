@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { BytePlusProviderError, bytePlusVideoReferenceLimit, createBytePlusAsset, getBytePlusAsset, getBytePlusVideoTask, submitBytePlusVideo } from "@/lib/studio/byteplus"
@@ -282,6 +282,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         context.supabase.from("creator_generation_jobs").update({ status: task.status === "cancelled" ? "cancelled" : "failed", provider_response: task, error, completed_at: new Date().toISOString() }).eq("id", job.id),
         job.shot_id ? context.supabase.from("creator_shots").update({ video_status: task.status === "cancelled" ? "cancelled" : "failed" }).eq("id", job.shot_id) : Promise.resolve(),
       ])
+      if (job.workflow_run_id) await context.supabase.from("creator_workflow_runs").update({ status: task.status === "cancelled" ? "cancelled" : "failed", error: { message: error }, completed_at: new Date().toISOString() }).eq("id", job.workflow_run_id)
       return NextResponse.json({ ...job, status: task.status === "cancelled" ? "cancelled" : "failed", error })
     }
     if (task.status !== "succeeded" || !task.content?.video_url) return NextResponse.json({ ...job, status: "processing", providerStatus: task.status })
@@ -292,11 +293,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { error: uploadError } = await context.supabase.storage.from("creator-studio-media").upload(storagePath, Buffer.from(await output.arrayBuffer()), { contentType: "video/mp4", upsert: false })
     if (uploadError) throw uploadError
     const completedAt = new Date().toISOString()
-    await Promise.all([
-      context.supabase.from("creator_generation_jobs").update({ status: "completed", provider_response: task, result_url: storagePath, completed_at: completedAt }).eq("id", job.id),
-      job.shot_id ? context.supabase.from("creator_shots").update({ video_url: storagePath, video_status: "completed" }).eq("id", job.shot_id) : Promise.resolve(),
-    ])
-    return NextResponse.json({ ...job, status: "completed", result_url: storagePath, completed_at: completedAt })
+    if (!job.shot_id) throw new Error("Generation completed without a target shot")
+    const { error: attachError } = await context.supabase.from("creator_shots").update({ video_url: storagePath, video_status: "completed" }).eq("id", job.shot_id)
+    if (attachError) throw attachError
+    const { data: verifiedShot, error: verifyError } = await context.supabase.from("creator_shots").select("id,episode_id,video_url,referenced_entities").eq("id", job.shot_id).maybeSingle()
+    if (verifyError) throw verifyError
+    const target = job.target_snapshot && typeof job.target_snapshot === "object" ? job.target_snapshot as Record<string, unknown> : {}
+    const expectedReferences = Array.isArray(target.entityReferenceIds) ? target.entityReferenceIds.filter((id): id is string => typeof id === "string") : []
+    const checks = {
+      shot: verifiedShot?.id === target.shotId || !target.shotId,
+      episode: verifiedShot?.episode_id === target.episodeId || !target.episodeId,
+      prompt: createHash("sha256").update(job.prompt || "").digest("hex") === target.promptHash || !target.promptHash,
+      references: expectedReferences.every((id) => (verifiedShot?.referenced_entities || []).includes(id)),
+      attachment: verifiedShot?.video_url === storagePath,
+    }
+    if (Object.values(checks).some((value) => !value)) throw new Error(`Generation verification failed: ${Object.entries(checks).filter(([, value]) => !value).map(([key]) => key).join(", ")}`)
+    const verification = { status: "verified", checkedAt: new Date().toISOString(), checks, resultPath: storagePath }
+    await context.supabase.from("creator_generation_jobs").update({ status: "completed", provider_response: task, result_url: storagePath, verification, completed_at: completedAt }).eq("id", job.id)
+    if (job.workflow_run_id) await context.supabase.from("creator_workflow_runs").update({ status: "completed", summary: { generationJobs: 1, completed: 1, failed: 0, verified: 1 }, completed_at: completedAt }).eq("id", job.workflow_run_id)
+    return NextResponse.json({ ...job, status: "completed", result_url: storagePath, verification, completed_at: completedAt })
   } catch (error) {
     return NextResponse.json({ error: studioErrorMessage(error, "Could not check video status") }, { status: error instanceof BytePlusProviderError || error instanceof FalProviderError ? error.status : studioErrorStatus(error) })
   }

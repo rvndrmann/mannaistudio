@@ -10,6 +10,7 @@ import { deductUserCredits } from "./credits"
 import { executeGenerationJobsInBackground } from "./execute-generation"
 import { findMentionedEntityIds, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
 import { stripIdentityDescriptions } from "./prompt-sanitizer"
+import { buildGenerationTargetSnapshot } from "./generation-target"
 
 export type ToolRisk = "read" | "write" | "costly" | "destructive"
 
@@ -391,7 +392,7 @@ export const submitGenerationTool = defineDirectorTool({
   version: 1,
   risk: "costly",
   requiresApproval: true,
-  input: z.object({ request: generationRequestSchema, prompts: z.record(z.string(), z.string().trim().min(1).max(20_000)), idempotencyKey: z.string().min(8).max(200) }).strict(),
+  input: z.object({ request: generationRequestSchema, prompts: z.record(z.string(), z.string().trim().min(1).max(20_000)), idempotencyKey: z.string().min(8).max(200), workflowRunId: z.string().uuid().optional() }).strict(),
   async execute(context, input) {
     // Storyboard numbers are resolved here, against the episode, so a model
     // that only knows "shot 2" cannot target the wrong shot. order_index is
@@ -511,7 +512,14 @@ export const submitGenerationTool = defineDirectorTool({
       }
       return savedPrompts.get(shotId) || ""
     }
-    const jobs = request.shotIds.map((shotId, index) => ({ user_id: context.user.id, project_id: context.project.id, shot_id: shotId, type: request.type, status: "approved", model: routing.selected.model, provider: routing.selected.provider, prompt: promptFor(shotId), settings: request, ...((): Record<string, unknown> => { const images = inputImagesFor(shotId); return images ? { input_images: images } : {} })(), estimated_credits: routing.creditsPerShot, requires_approval: true, approved_at: new Date().toISOString(), operation: request.type === "video" ? "submit_video_generation" : "submit_image_generation", idempotency_key: `${input.idempotencyKey}:${index}`, routing_decision: routing, cost_estimate: { credits: routing.creditsPerShot } }))
+    const shotNumberById = new Map(Array.from(promptsByNumber.entries()).map(([number, id]) => [id, number]))
+    const jobs = request.shotIds.map((shotId, index) => {
+      const prompt = promptFor(shotId)
+      const shot = (generationShots || []).find((item) => item.id === shotId)
+      const entityReferenceIds = Array.from(new Set([...(shot?.referenced_entities || []), ...request.mentionedEntityIds]))
+      const targetSnapshot = buildGenerationTargetSnapshot({ projectId: context.project.id, episodeId: request.episodeId || null, shotId, shotNumber: shotNumberById.get(shotId) || null, type: request.type, prompt, entityReferenceIds })
+      return { user_id: context.user.id, project_id: context.project.id, workflow_run_id: input.workflowRunId || null, shot_id: shotId, type: request.type, status: "approved", model: routing.selected.model, provider: routing.selected.provider, prompt, settings: request, target_snapshot: targetSnapshot, ...((): Record<string, unknown> => { const images = inputImagesFor(shotId); return images ? { input_images: images } : {} })(), estimated_credits: routing.creditsPerShot, requires_approval: true, approved_at: new Date().toISOString(), operation: request.type === "video" ? "submit_video_generation" : "submit_image_generation", idempotency_key: `${input.idempotencyKey}:${index}`, routing_decision: routing, cost_estimate: { credits: routing.creditsPerShot } }
+    })
     const unprompted = jobs.filter((job) => !job.prompt).map((job) => job.shot_id)
     if (unprompted.length) throw new Error(`No prompt available for ${unprompted.length} shot(s). Add a prompt to the storyboard shot, or pass one in prompts.`)
     const { data, error } = await context.supabase.from("creator_generation_jobs").insert(jobs).select("*")

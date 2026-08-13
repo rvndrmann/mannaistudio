@@ -23,8 +23,11 @@ import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
 import { buildProjectStateSummary, loadProductionSnapshot } from "@/lib/studio/project-state-summary"
 import { computePipelineStage } from "@/lib/studio/pipeline"
 import type { DirectorTimelineBlock } from "@/lib/studio/timeline"
-import { parseRequestedShotNumbers } from "@/lib/studio/shot-intent"
+import { actionMatchesRequestedShots, parseRequestedShotNumbers } from "@/lib/studio/shot-intent"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
+import { addWorkflowStep, createWorkflowRun, finishWorkflowRun } from "@/lib/studio/workflow-runs"
+import { buildGenerationTargetSnapshot, verifyGenerationTarget } from "@/lib/studio/generation-target"
+import { forbidsImageGeneration, forbidsMediaGeneration, forbidsVideoGeneration } from "@/lib/studio/media-intent"
 
 // A Director run can take minutes, and it must finish even when the browser
 // that started it goes away: the reply and the workflow run are persisted
@@ -63,19 +66,32 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const sessionId = body.sessionId || existingSession?.id || (await context.supabase.from("creator_chat_sessions").insert({ episode_id: episode.id, user_id: context.user.id, title: "AI Director", model }).select("id").single()).data?.id
     if (!sessionId) throw new Error("Could not create an AI Director chat session")
     await context.supabase.from("creator_chat_sessions").update({ model }).eq("id", sessionId).eq("user_id", context.user.id)
+    const workflowRun = await createWorkflowRun(context, { episodeId: episode.id, sessionId, objective: body.message, maxSteps: 10 })
     const { data: history, error: historyError } = await context.supabase.from("creator_chat_messages").select("role, content").eq("session_id", sessionId).order("created_at", { ascending: true }).limit(40)
     if (historyError) throw historyError
-    const { data: userMessage, error: userError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, role: "user", content: body.message, referenced_entity_ids: uniqueMentionIds }).select().single()
+    const { data: userMessage, error: userError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, workflow_run_id: workflowRun.id, role: "user", content: body.message, referenced_entity_ids: uniqueMentionIds }).select().single()
     if (userError) throw userError
     // A fast path can spend a minute inside an image model. Running it inside
     // the stream is what lets the browser show the request moving while it does
     // — before this, nothing at all reached the client until the picture was
     // finished, so the chat looked frozen on the message the user just sent.
-    const runWorkflow = (onProgress?: (label: string) => void) => maybeHandleWorkflowRequest({ context, projectId, episodeId: episode.id, sessionId, message: body.message, history: history || [], idempotencyKey: body.idempotencyKey, mentionedEntities: (mentionedEntities || []) as ResolvedMention[], onProgress })
+    const runWorkflow = async (onProgress?: (label: string) => void) => {
+      try {
+        return await maybeHandleWorkflowRequest({ context, projectId, episodeId: episode.id, sessionId, workflowRunId: workflowRun.id, message: body.message, history: history || [], idempotencyKey: body.idempotencyKey, mentionedEntities: (mentionedEntities || []) as ResolvedMention[], onProgress })
+      } catch (error) {
+        await finishWorkflowRun(context, workflowRun.id, "failed", { mode: "direct" }, { message: describeError(error, "Direct workflow failed") })
+        throw error
+      }
+    }
     const persistWorkflowMessage = async (workflow: NonNullable<Awaited<ReturnType<typeof runWorkflow>>>) => {
+      const workflowRecord = workflow.result && typeof workflow.result === "object" ? workflow.result as Record<string, unknown> : {}
+      const approvalRequired = Boolean(workflowRecord.approvalRequired || workflowRecord.proposal)
+      await addWorkflowStep(context, { runId: workflowRun.id, sequence: 1, specialist: "orchestrator", label: approvalRequired ? "Prepare approval" : "Complete direct workflow", status: approvalRequired ? "awaiting_approval" : "completed", output: workflow.result })
+      await finishWorkflowRun(context, workflowRun.id, approvalRequired ? "awaiting_approval" : "completed", { mode: "direct", approvalRequired })
       const nextStep = await nextStepBlock(context, projectId, episode.id, parseRequestedShotNumbers(body.message))
       const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({
         ...workflow.message,
+        workflow_run_id: workflowRun.id,
         ...(nextStep ? { timeline_blocks: [nextStep], timeline_version: 1 } : {}),
       }).select().single()
       if (assistantError) throw assistantError
@@ -119,6 +135,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         episodeId: episode.id,
         objective: modelMessage,
         visionAttachments,
+        workflowRunId: workflowRun.id,
       }
     }
     const persistAssistantMessage = async (response: Awaited<ReturnType<typeof runDirectorAgent>>) => {
@@ -126,7 +143,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       // once this run's writes have landed.
       const nextStep = await nextStepBlock(context, projectId, episode.id, parseRequestedShotNumbers(body.message))
       const timeline = nextStep ? [...response.timeline, nextStep] : response.timeline
-      const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, role: "assistant", content: response.content, tool_calls: response.toolCalls, suggested_actions: response.suggestedActions, timeline_blocks: timeline, timeline_version: 1 }).select().single()
+      const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, workflow_run_id: workflowRun.id, role: "assistant", content: response.content, tool_calls: response.toolCalls, suggested_actions: response.suggestedActions, timeline_blocks: timeline, timeline_version: 1 }).select().single()
       if (assistantError) throw assistantError
       return { sessionId, userMessage, assistantMessage, provider: model.startsWith("gemini") ? "google" : "openai", model, usage: response.usage }
     }
@@ -196,10 +213,7 @@ async function nextStepBlock(
     // current turn. Otherwise a request for Shot 1 could finish by displaying
     // a stale-looking action for Shot 4 simply because Shot 4 is incomplete.
     // The agent or the proposal created during this turn remains authoritative.
-    if (requestedShotNumbers.length) {
-      const actionShotNumbers = Array.from(stage.nextAction.intent.matchAll(/\bshots?\s+(?:#\s*)?(\d+)\b/gi)).map((match) => Number(match[1]))
-      if (actionShotNumbers.length && !actionShotNumbers.some((number) => requestedShotNumbers.includes(number))) return null
-    }
+    if (!actionMatchesRequestedShots(stage.nextAction.intent, requestedShotNumbers)) return null
     return {
       type: "suggested_actions",
       actions: [{ ...stage.nextAction, payload: { stage: stage.key, summary: stage.summary } }],
@@ -266,6 +280,7 @@ type WorkflowRequestInput = {
   projectId: string
   episodeId: string
   sessionId: string
+  workflowRunId: string
   message: string
   history: { role: string; content: string | null }[]
   idempotencyKey: string
@@ -276,12 +291,9 @@ type WorkflowRequestInput = {
 
 async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
   const normalized = input.message.toLowerCase()
-  const forbidsAllMediaGeneration = /\b(?:do not|don't|never)\s+(?:yet\s+)?(?:generate|create|make|draw)\s+(?:any\s+)?media\b/.test(normalized)
-    || /\bno\s+media\b/.test(normalized)
-  const forbidsImageGeneration = /\b(?:do not|don't|never)\s+(?:yet\s+)?(?:generate|create|make|draw)\s+(?!(?:any\s+)?other\b)(?:any\s+)?(?:images?|keyframes?|posters?|visuals?)\b/.test(normalized)
-    || /\bno\s+(?:images?|keyframes?)\b/.test(normalized)
-  const forbidsVideoGeneration = /\b(?:do not|don't|never)\s+(?:yet\s+)?(?:generate|create|make|render|produce)\s+(?:any\s+)?(?:videos?|motion|animation)\b/.test(normalized)
-    || /\bno\s+(?:videos?|animation)\b/.test(normalized)
+  const forbidsAllMediaGeneration = forbidsMediaGeneration(input.message)
+  const forbidsImageGenerationRequest = forbidsImageGeneration(input.message)
+  const forbidsVideoGenerationRequest = forbidsVideoGeneration(input.message)
   const scriptIntent = await maybeHandleScriptWrite(input, normalized)
   if (scriptIntent) return scriptIntent
   const cleanup = await maybeCleanSavedPrompts(input, normalized)
@@ -291,13 +303,14 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
       tool: "update_full_auto_mode",
       input: { enabled: true, creditCap: 500, maxJobsPerRun: 10, allowDestructiveActions: false },
       sessionId: input.sessionId,
+      workflowRunId: input.workflowRunId,
       idempotencyKey: `${input.idempotencyKey}:full-auto`,
     })
     return proposalMessage(input.sessionId, "I prepared a full-auto mode proposal with credit and job guardrails. Approve it here before I can run the workflow automatically.", result)
   }
-  const bulkEntityImageIntent = !forbidsAllMediaGeneration && !forbidsImageGeneration ? parseBulkEntityImageIntent(input.message, input.mentionedEntities) : null
+  const bulkEntityImageIntent = !forbidsAllMediaGeneration && !forbidsImageGenerationRequest ? parseBulkEntityImageIntent(input.message, input.mentionedEntities) : null
   if (bulkEntityImageIntent) return generateBulkEntityReferenceImages(input, bulkEntityImageIntent)
-  if (!forbidsAllMediaGeneration && !forbidsVideoGeneration && /\b(video|animate|motion)\b/.test(normalized) && /\b(generate|create|make|render|produce)\b/.test(normalized)) {
+  if (!forbidsAllMediaGeneration && !forbidsVideoGenerationRequest && /\b(video|animate|motion)\b/.test(normalized) && /\b(generate|create|make|render|produce)\b/.test(normalized)) {
     const { data: shots, error } = await input.context.supabase.from("creator_shots").select("id,prompt,title,order_index").eq("episode_id", input.episodeId).order("order_index")
     if (error) throw error
     // Same 1-based numbering submit_generation resolves against, so a number
@@ -329,6 +342,7 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
         idempotencyKey: `${input.idempotencyKey}:video`,
       },
       sessionId: input.sessionId,
+      workflowRunId: input.workflowRunId,
       idempotencyKey: `${input.idempotencyKey}:video-proposal`,
     })
     const skipped = unprompted.length ? ` Shot ${unprompted.join(", ")} has no prompt yet, so I left ${unprompted.length === 1 ? "it" : "them"} out.` : ""
@@ -340,7 +354,7 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
   // so, so asking for the clip instead is one sentence away.
   const wantsShotRedo = /\b(regenerate|re-generate|redo|remake|re-render|rerender)\b/.test(normalized) && parseRequestedShotNumbers(input.message).length > 0
   const namesImage = /\b(image|keyframe|poster|visual)\b/.test(normalized) && /\b(generate|create|make|draw)\b/.test(normalized)
-  if (!forbidsAllMediaGeneration && !forbidsImageGeneration && (namesImage || wantsShotRedo)) {
+  if (!forbidsAllMediaGeneration && !forbidsImageGenerationRequest && (namesImage || wantsShotRedo)) {
     const shotNumberMatch = normalized.match(/\b(?:storyboard\s+)?shots?\s*(?:#\s*)?(\d+)\b/)
     const requestedShotNumber = shotNumberMatch ? Number(shotNumberMatch[1]) : /\bfirst\s+(?:storyboard\s+)?shot\b/.test(normalized) ? 1 : null
     // A message that says "shot" without saying which one needs the
@@ -401,19 +415,25 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
     if (targetShot) {
       const currentMetadata = targetShot.metadata && typeof targetShot.metadata === "object" ? targetShot.metadata as Record<string, unknown> : {}
       const completedAt = new Date().toISOString()
+      const targetSnapshot = buildGenerationTargetSnapshot({ projectId: input.projectId, episodeId: input.episodeId, shotId: targetShot.id, shotNumber: requestedShotNumber, type: "image", prompt, entityReferenceIds: referencedEntities.map((entity) => entity.id), createdAt: completedAt })
       const { error: shotUpdateError } = await input.context.supabase.from("creator_shots").update({
         keyframe_image: path,
-        referenced_entities: Array.from(new Set([...(targetShot.referenced_entities || []), ...input.mentionedEntities.map((entity) => entity.id)])),
+        referenced_entities: Array.from(new Set([...(targetShot.referenced_entities || []), ...referencedEntities.map((entity) => entity.id)])),
         metadata: {
           ...currentMetadata,
           image_generation: { provider: "openai", model: "gpt-image-2", prompt, resolved_prompt: resolvedPrompt, reference_images: referencePaths, mentioned_entity_ids: input.mentionedEntities.map((entity) => entity.id), status: "completed", completed_at: completedAt },
         },
       }).eq("id", targetShot.id)
       if (shotUpdateError) throw shotUpdateError
+      const { data: verifiedShot, error: verifyError } = await input.context.supabase.from("creator_shots").select("id,episode_id,keyframe_image,referenced_entities").eq("id", targetShot.id).maybeSingle()
+      if (verifyError) throw verifyError
+      const verificationResult = verifyGenerationTarget({ target: targetSnapshot, actual: { shotId: verifiedShot?.id || "", episodeId: verifiedShot?.episode_id || null, prompt, entityReferenceIds: verifiedShot?.referenced_entities || [], resultPath: verifiedShot?.keyframe_image || null }, expectedResultPath: path })
+      if (!verificationResult.ok) throw new Error(`Generation verification failed: ${Object.entries(verificationResult.checks).filter(([, value]) => !value).map(([key]) => key).join(", ")}`)
       await input.context.supabase.from("creator_generation_jobs").insert({
         user_id: input.context.user.id,
         project_id: input.projectId,
         episode_id: input.episodeId,
+        workflow_run_id: input.workflowRunId,
         shot_id: targetShot.id,
         type: "image",
         status: "completed",
@@ -422,6 +442,8 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
         prompt,
         input_images: referencePaths,
         result_url: path,
+        target_snapshot: targetSnapshot,
+        verification: { status: "verified", checkedAt: new Date().toISOString(), checks: verificationResult.checks, resultPath: path },
         completed_at: completedAt,
       })
     }
@@ -441,8 +463,8 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
         content: targetShot
           ? `Generated one GPT Image 2 keyframe and attached it to storyboard shot ${requestedShotNumber}.`
           : "Generated the image and attached it here for review.",
-        referenced_entity_ids: input.mentionedEntities.map((entity) => entity.id),
-        media: [{ type: "image", path, url: signed?.signedUrl, prompt, referencedEntityIds: input.mentionedEntities.map((entity) => entity.id), provider: "openai", model: "gpt-image-2" }],
+        referenced_entity_ids: referencedEntities.map((entity) => entity.id),
+        media: [{ type: "image", path, url: signed?.signedUrl, prompt, referencedEntityIds: referencedEntities.map((entity) => entity.id), provider: "openai", model: "gpt-image-2" }],
       },
     }
   }

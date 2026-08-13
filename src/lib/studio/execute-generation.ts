@@ -7,6 +7,56 @@ import { openAIImageQuality, projectImageQuality, projectVisualStyle, visualStyl
 import { stripIdentityDescriptions } from "./prompt-sanitizer"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { randomUUID } from "node:crypto"
+import { verifyGenerationTarget } from "./generation-target"
+
+async function verifyAttachedOutput(context: AuthenticatedProjectContext, job: Record<string, unknown>, resultPath: string) {
+  if (typeof job.shot_id !== "string") throw new Error("Generation completed without a target shot")
+  const { data: shot, error } = await context.supabase
+    .from("creator_shots")
+    .select("id,episode_id,prompt,referenced_entities,keyframe_image,video_url")
+    .eq("id", job.shot_id)
+    .maybeSingle()
+  if (error) throw error
+  if (!shot) throw new Error("Generation target shot no longer exists")
+  const target = job.target_snapshot && typeof job.target_snapshot === "object" ? job.target_snapshot as Record<string, unknown> : {}
+  const mediaField = job.type === "video" ? "video_url" : "keyframe_image"
+  const result = verifyGenerationTarget({ target, actual: { shotId: shot.id, episodeId: shot.episode_id, prompt: typeof job.prompt === "string" ? job.prompt : "", entityReferenceIds: Array.isArray(shot.referenced_entities) ? shot.referenced_entities : [], resultPath: shot[mediaField] }, expectedResultPath: resultPath })
+  if (!result.ok) throw new Error(`Generation verification failed: ${Object.entries(result.checks).filter(([, value]) => !value).map(([key]) => key).join(", ")}`)
+  return { status: "verified", checkedAt: new Date().toISOString(), checks: result.checks, resultPath }
+}
+
+async function settleWorkflowRun(context: AuthenticatedProjectContext, workflowRunId: unknown) {
+  if (typeof workflowRunId !== "string") return
+  const { data: jobs } = await context.supabase.from("creator_generation_jobs").select("status,error").eq("workflow_run_id", workflowRunId)
+  if (!jobs?.length) return
+  const active = jobs.some((job) => ["queued", "approved", "generating", "processing"].includes(job.status))
+  if (active) return
+  const failed = jobs.filter((job) => job.status === "failed")
+  const completed = jobs.filter((job) => job.status === "completed")
+  const status = failed.length ? (completed.length ? "partially_completed" : "failed") : "completed"
+  await context.supabase.from("creator_workflow_runs").update({
+    status,
+    completed_at: new Date().toISOString(),
+    summary: { generationJobs: jobs.length, completed: completed.length, failed: failed.length, verified: completed.length },
+    error: failed.length ? { jobs: failed.map((job) => job.error).filter(Boolean) } : null,
+  }).eq("id", workflowRunId)
+}
+
+async function withGenerationRetry<T>(context: AuthenticatedProjectContext, job: Record<string, unknown>, operation: () => Promise<T>) {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await operation()
+    } catch (error) {
+      lastError = error
+      if (attempt === 3) break
+      await context.supabase.from("creator_generation_job_events").insert({ job_id: job.id, status: "processing", details: { phase: "retrying", attempt: attempt + 1, message: error instanceof Error ? error.message : "Provider request failed" } })
+      if (typeof job.workflow_run_id === "string") await context.supabase.from("creator_workflow_runs").update({ status: "retrying", summary: { jobId: job.id, nextAttempt: attempt + 1 } }).eq("id", job.workflow_run_id)
+      await new Promise((resolve) => setTimeout(resolve, attempt * 750))
+    }
+  }
+  throw lastError
+}
 
 export async function executeGenerationJobsInBackground(
   context: AuthenticatedProjectContext,
@@ -113,35 +163,38 @@ export async function executeGenerationJobsInBackground(
 
           if (job.type === "image" && job.provider === "openai") {
             const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
-            const imageBuffer = await generateOpenAIImage({
+            const imageBuffer = await withGenerationRetry(context, job, () => generateOpenAIImage({
               userId: context.user.id,
               model: job.model as OpenAIImageModel,
               prompt: resolvedPrompt,
               referenceUrls,
               aspectRatio: effectiveAspectRatio,
               quality: openAIImageQuality(projectImageQuality(context.project)),
-            })
+            }))
             
             const path = `${context.user.id}/${context.project.id}/shots/${job.shot_id}/${job.model}-${randomUUID()}.png`
             await context.supabase.storage.from("creator-studio-media").upload(path, imageBuffer, { contentType: "image/png" })
             
-            await context.supabase.from("creator_generation_jobs").update({
-              status: "completed",
-              result_url: path,
-              completed_at: new Date().toISOString(),
-            }).eq("id", job.id)
-
             await context.supabase.from("creator_shots").update({
               keyframe_image: path,
             }).eq("id", job.shot_id)
 
+            const verification = await verifyAttachedOutput(context, job, path)
+            await context.supabase.from("creator_generation_jobs").update({
+              status: "completed",
+              result_url: path,
+              verification,
+              completed_at: new Date().toISOString(),
+            }).eq("id", job.id)
+            await settleWorkflowRun(context, job.workflow_run_id)
+
           } else if (job.type === "image" && job.provider === "byteplus") {
             const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
-            const generated = await generateBytePlusImage({
+            const generated = await withGenerationRetry(context, job, () => generateBytePlusImage({
               model: job.model as ImageGenerationModelId,
               prompt: resolvedPrompt,
               referenceUrls,
-            })
+            }))
             
             let byteplusAssetId: string | null = null
             let byteplusAssetUri: string | null = null
@@ -160,17 +213,20 @@ export async function executeGenerationJobsInBackground(
             const path = `${context.user.id}/${context.project.id}/shots/${job.shot_id}/${job.model}-${randomUUID()}.png`
             await context.supabase.storage.from("creator-studio-media").upload(path, imageBuffer, { contentType: generated.contentType })
             
-            await context.supabase.from("creator_generation_jobs").update({
-              status: "completed",
-              result_url: path,
-              completed_at: new Date().toISOString(),
-            }).eq("id", job.id)
-
             await context.supabase.from("creator_shots").update({
               keyframe_image: path,
               is_trusted_provider_asset: Boolean(byteplusAssetUri),
               provider_asset_uri: byteplusAssetUri || null,
             }).eq("id", job.shot_id)
+
+            const verification = await verifyAttachedOutput(context, job, path)
+            await context.supabase.from("creator_generation_jobs").update({
+              status: "completed",
+              result_url: path,
+              verification,
+              completed_at: new Date().toISOString(),
+            }).eq("id", job.id)
+            await settleWorkflowRun(context, job.workflow_run_id)
 
           } else if (job.type === "video" && job.provider === "byteplus") {
             const task = await submitBytePlusVideo({
@@ -201,6 +257,7 @@ export async function executeGenerationJobsInBackground(
             status: "failed",
             error: err instanceof Error ? err.message : "Unknown error",
           }).eq("id", job.id)
+          await settleWorkflowRun(context, job.workflow_run_id)
         }
       }
     } catch (err) {
