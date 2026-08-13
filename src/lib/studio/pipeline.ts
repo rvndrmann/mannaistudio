@@ -37,6 +37,8 @@ export type SnapshotShot = {
    */
   imageInFlight?: boolean
   videoInFlight?: boolean
+  /** Passed over at the user's request; not work the pipeline should offer. */
+  skipped?: boolean
 }
 
 export type ProductionSnapshot = {
@@ -118,12 +120,12 @@ export function missingEntityNames(snapshot: ProductionSnapshot): string[] {
 
 /** Shots that need a keyframe and are not already having one made. */
 export function shotsAwaitingKeyframe(snapshot: ProductionSnapshot): SnapshotShot[] {
-  return snapshot.shots.filter((shot) => shot.hasPrompt && !shot.hasKeyframe && !shot.imageInFlight)
+  return snapshot.shots.filter((shot) => shot.hasPrompt && !shot.hasKeyframe && !shot.imageInFlight && !shot.skipped)
 }
 
 /** Shots whose keyframe is ready, with no clip and none being rendered. */
 export function shotsAwaitingVideo(snapshot: ProductionSnapshot): SnapshotShot[] {
-  return snapshot.shots.filter((shot) => shot.hasKeyframe && !shot.hasVideo && !shot.videoInFlight)
+  return snapshot.shots.filter((shot) => shot.hasKeyframe && !shot.hasVideo && !shot.videoInFlight && !shot.skipped)
 }
 
 /** Shots with a generation running right now, for the "still rendering" line. */
@@ -155,6 +157,19 @@ export function nextShotWithoutKeyframe(snapshot: ProductionSnapshot): SnapshotS
  */
 export function nextShotWithoutVideo(snapshot: ProductionSnapshot): SnapshotShot | null {
   return shotsAwaitingVideo(snapshot)[0] || null
+}
+
+/**
+ * The same snapshot with certain shots passed over.
+ *
+ * "Skip shot 6 and continue" names a shot in order to exclude it, which is the
+ * opposite of naming one to work on. Marking it here keeps the decision in the
+ * state rather than in the phrasing of whatever comes next.
+ */
+export function withSkippedShots(snapshot: ProductionSnapshot, numbers: number[]): ProductionSnapshot {
+  if (!numbers.length) return snapshot
+  const skip = new Set(numbers)
+  return { ...snapshot, shots: snapshot.shots.map((shot) => skip.has(shot.number) ? { ...shot, skipped: true } : shot) }
 }
 
 export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStage {

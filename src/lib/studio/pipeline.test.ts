@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { computePipelineStage, emptySnapshot, missingEntityNames, pipelineInstructionBlock, type ProductionSnapshot } from "./pipeline"
+import { computePipelineStage, emptySnapshot, missingEntityNames, pipelineInstructionBlock, withSkippedShots, type ProductionSnapshot } from "./pipeline"
 import { parseBulkEntityImageIntent } from "./entity-image-workflow"
 import { parseRequestedShotNumbers } from "./shot-intent"
 
@@ -249,6 +249,29 @@ describe("production pipeline stages", () => {
     const batch = stage.alternatives.find((action) => action.id === "pipeline-keyframes-remaining")
     expect(batch?.label).toBe("Generate the remaining 3 images")
     expect(parseRequestedShotNumbers(batch!.intent)).toEqual([2, 3, 4])
+  })
+
+  // "Skip shot 6 and continue" names a shot in order to exclude it. Left to the
+  // agent it came back as an inspection report on an unrelated shot.
+  it("moves past a shot the user skipped", () => {
+    const base = snapshot({
+      hasScript: true,
+      promptSheetCount: 3,
+      shots: [shot(1, { hasKeyframe: true, hasVideo: true }), shot(2, { hasKeyframe: true }), shot(3, { hasKeyframe: true })],
+    })
+    expect(computePipelineStage(base).nextAction?.label).toBe("Generate the video for shot 2")
+    const stage = computePipelineStage(withSkippedShots(base, [2]))
+    expect(stage.nextAction?.label).toBe("Generate the video for shot 3")
+    expect(JSON.stringify(stage.alternatives)).not.toContain("shot 2")
+  })
+
+  it("has nothing left to offer when the only outstanding shot is skipped", () => {
+    const stage = computePipelineStage(withSkippedShots(snapshot({
+      hasScript: true,
+      promptSheetCount: 2,
+      shots: [shot(1, { hasKeyframe: true, hasVideo: true }), shot(2, { hasKeyframe: true })],
+    }), [2]))
+    expect(stage.nextAction?.risk).toBe("read")
   })
 
   it("tells the Director which button the user is looking at", () => {

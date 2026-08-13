@@ -21,7 +21,7 @@ import { buildEntityReferenceImagePrompt, openAIImageQuality, parseBulkEntityIma
 import { createBytePlusAsset } from "@/lib/studio/byteplus"
 import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
 import { buildProjectStateSummary, loadProductionSnapshot } from "@/lib/studio/project-state-summary"
-import { computePipelineStage } from "@/lib/studio/pipeline"
+import { computePipelineStage, withSkippedShots } from "@/lib/studio/pipeline"
 import type { DirectorTimelineBlock } from "@/lib/studio/timeline"
 import { actionMatchesRequestedShots, buildVideoContinuationPrompt, parseTargetShotNumbers, parseVideoShotReferenceIntent, wantsRedo } from "@/lib/studio/shot-intent"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
@@ -94,10 +94,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       await addWorkflowStep(context, { runId: workflowRun.id, sequence: 1, specialist: "orchestrator", label: approvalRequired ? "Prepare approval" : "Complete direct workflow", status: approvalRequired ? "awaiting_approval" : "completed", output: workflow.result })
       await finishWorkflowRun(context, workflowRun.id, approvalRequired ? "awaiting_approval" : "completed", { mode: "direct", approvalRequired })
       const nextStep = await nextStepBlock(context, projectId, episode.id, parseTargetShotNumbers(body.message))
+      // A handler that already worked out its own next step keeps it: it knows
+      // things the shared block cannot, such as which shot was being skipped.
+      const carriesOwnTimeline = Array.isArray((workflow.message as Record<string, unknown>).timeline_blocks)
       const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({
         ...workflow.message,
         workflow_run_id: workflowRun.id,
-        ...(nextStep ? { timeline_blocks: [nextStep], timeline_version: 1 } : {}),
+        ...(!carriesOwnTimeline && nextStep ? { timeline_blocks: [nextStep], timeline_version: 1 } : {}),
       }).select().single()
       if (assistantError) throw assistantError
       const workflowCredits = workflow.result && typeof workflow.result === "object"
@@ -204,6 +207,53 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     console.error("DIRECTOR CHAT ERROR:", error)
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid chat request", issues: error.flatten() }, { status: 400 })
     return NextResponse.json({ error: describeError(error, "AI Director chat failed") }, { status: (error instanceof OpenAIProviderError || error instanceof GoogleProviderError) ? error.status : studioErrorStatus(error) })
+  }
+}
+
+
+/**
+ * "Skip shot 6 and continue with the rest of the production."
+ *
+ * Answered here because the pipeline already knows what comes next, and because
+ * left to the agent it came back as a read-only inspection report on an
+ * unrelated shot. Skipping changes nothing in the workspace — it only says which
+ * shot not to offer — so there is nothing to propose and nothing to approve.
+ */
+async function maybeHandleSkipShot(input: WorkflowRequestInput, normalized: string) {
+  if (!/\bskip\b/.test(normalized)) return null
+  const numbers = parseTargetShotNumbers(input.message)
+  if (!numbers.length) return null
+
+  const snapshot = withSkippedShots(
+    await loadProductionSnapshot(input.context.supabase, input.projectId, input.episodeId),
+    numbers,
+  )
+  const stage = computePipelineStage(snapshot)
+  const skippedLabel = `shot ${numbers.join(", ")}`
+  const content = stage.nextAction
+    ? `Leaving ${skippedLabel} as ${numbers.length === 1 ? "it is" : "they are"}. ${stage.summary} ${stage.nextAction.label} is the next step — nothing has been generated and no credits were spent on the skip.`
+    : `Leaving ${skippedLabel} as ${numbers.length === 1 ? "it is" : "they are"}. ${stage.summary}`
+
+  return {
+    provider: "workflow",
+    result: { type: "skipped_shots", shots: numbers, stage: stage.key },
+    message: {
+      session_id: input.sessionId,
+      role: "assistant",
+      content,
+      // Carried on the message because the shared next-step block filters itself
+      // against the shots the message names, and here those are the ones being
+      // passed over rather than the ones to act on.
+      ...(stage.nextAction ? {
+        timeline_blocks: [{
+          type: "suggested_actions",
+          actions: [stage.nextAction, ...stage.alternatives]
+            .slice(0, 5)
+            .map((action) => ({ ...action, payload: { stage: stage.key, summary: stage.summary } })),
+        }],
+        timeline_version: 1,
+      } : {}),
+    },
   }
 }
 
@@ -355,6 +405,8 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
   if (scriptIntent) return scriptIntent
   const cleanup = await maybeCleanSavedPrompts(input, normalized)
   if (cleanup) return cleanup
+  const skipped = await maybeHandleSkipShot(input, normalized)
+  if (skipped) return skipped
   if (/\b(full auto|full-auto|autopilot)\b/.test(normalized) && /\b(enable|turn on|start|activate)\b/.test(normalized)) {
     const result = await requestDirectorTool(input.context, {
       tool: "update_full_auto_mode",
