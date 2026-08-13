@@ -108,6 +108,22 @@ const adFormats = [
     },
 ]
 
+/**
+ * Turns a YouTube link into an embeddable one.
+ *
+ * A showcase entry may hold a YouTube page URL rather than an uploaded file.
+ * `<video>` can only play actual media, so such an entry rendered as an empty
+ * black box. Returns null for anything that is a real media URL, which keeps the
+ * normal video element in use for uploads.
+ */
+function youtubeEmbedUrl(url: string): string | null {
+    if (!url) return null
+    const watch = url.match(/(?:youtube\.com\/watch\?(?:.*&)?v=|youtu\.be\/|youtube\.com\/(?:embed|shorts|live)\/)([A-Za-z0-9_-]{6,})/)
+    if (!watch) return null
+    const start = url.match(/[?&](?:t|start)=(\d+)/)
+    return `https://www.youtube-nocookie.com/embed/${watch[1]}?rel=0&modestbranding=1${start ? `&start=${start[1]}` : ""}`
+}
+
 export default function LandingPage() {
     const { user, signInWithGoogle } = useAuth()
     const [adminShowcase, setAdminShowcase] = useState<any[]>(mockShowcase)
@@ -225,7 +241,14 @@ export default function LandingPage() {
                         {/* HERO FEATURED VIDEO / MEDIA CONTAINER SLOT (USER CAN EMBED VIDEO HERE LATER) */}
                         <div className="relative group overflow-hidden rounded-[26px] border border-white/15 bg-[#141715] shadow-2xl transition duration-500 hover:border-primary/50">
                             <div className="relative aspect-video w-full bg-[#0a0c0b]">
-                                {heroFeatured?.videoUrl ? (
+                                {heroFeatured?.videoUrl && youtubeEmbedUrl(heroFeatured.videoUrl) ? (
+                                    <iframe
+                                        src={`${youtubeEmbedUrl(heroFeatured.videoUrl)}&autoplay=1&mute=1&controls=0&playsinline=1`}
+                                        title={heroFeatured.title}
+                                        allow="autoplay; encrypted-media; picture-in-picture"
+                                        className="pointer-events-none h-full w-full scale-[1.35]"
+                                    />
+                                ) : heroFeatured?.videoUrl ? (
                                     <video
                                         src={`${heroFeatured.videoUrl}#t=0.1`}
                                         muted
@@ -399,7 +422,16 @@ export default function LandingPage() {
                     <div className="mt-8 overflow-hidden rounded-2xl border border-white/15 bg-[#121513] p-4 md:p-6">
                         <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-[#090b0a]">
                             {/* Showcase film video or clean reserved container */}
-                            {heroFeatured?.videoUrl ? (
+                            {heroFeatured?.videoUrl && youtubeEmbedUrl(heroFeatured.videoUrl) ? (
+                                <iframe
+                                    key={heroFeatured.videoUrl}
+                                    src={youtubeEmbedUrl(heroFeatured.videoUrl) || ""}
+                                    title={heroFeatured.title}
+                                    allow="encrypted-media; picture-in-picture; fullscreen"
+                                    allowFullScreen
+                                    className="h-full w-full"
+                                />
+                            ) : heroFeatured?.videoUrl ? (
                                 <video
                                     key={pipelineSteps[activePipelineStep].id}
                                     src={`${heroFeatured.videoUrl}#t=0.1`}
@@ -459,7 +491,14 @@ export default function LandingPage() {
                                 className="group relative overflow-hidden rounded-[26px] border border-white/10 bg-[#121413] transition duration-500 hover:border-primary/50"
                             >
                                 <div className={cn("relative w-full overflow-hidden", ad.aspect, ad.gradient)}>
-                                    {showcaseItem?.videoUrl ? (
+                                    {showcaseItem?.videoUrl && youtubeEmbedUrl(showcaseItem.videoUrl) ? (
+                                        <iframe
+                                            src={`${youtubeEmbedUrl(showcaseItem.videoUrl)}&autoplay=1&mute=1&loop=1&controls=0&playsinline=1&playlist=${youtubeEmbedUrl(showcaseItem.videoUrl)?.split("/embed/")[1]?.split("?")[0]}`}
+                                            title={ad.title}
+                                            allow="autoplay; encrypted-media; picture-in-picture"
+                                            className="pointer-events-none h-full w-full scale-[1.35] object-cover"
+                                        />
+                                    ) : showcaseItem?.videoUrl ? (
                                         <video
                                             src={`${showcaseItem.videoUrl}#t=0.1`}
                                             muted
@@ -579,18 +618,29 @@ export default function LandingPage() {
                                 </button>
                             </div>
                             <div className="aspect-video bg-black">
-                                <video
-                                    key={playingVideo.url}
-                                    src={playingVideo.url}
-                                    controls
-                                    autoPlay
-                                    playsInline
-                                    preload="auto"
-                                    className="h-full w-full"
-                                    onCanPlay={(event) => {
-                                        ;(event.target as HTMLVideoElement).play().catch(() => {})
-                                    }}
-                                />
+                                {youtubeEmbedUrl(playingVideo.url) ? (
+                                    <iframe
+                                        key={playingVideo.url}
+                                        src={`${youtubeEmbedUrl(playingVideo.url)}&autoplay=1`}
+                                        title={playingVideo.title}
+                                        allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                                        allowFullScreen
+                                        className="h-full w-full"
+                                    />
+                                ) : (
+                                    <video
+                                        key={playingVideo.url}
+                                        src={playingVideo.url}
+                                        controls
+                                        autoPlay
+                                        playsInline
+                                        preload="auto"
+                                        className="h-full w-full"
+                                        onCanPlay={(event) => {
+                                            ;(event.target as HTMLVideoElement).play().catch(() => {})
+                                        }}
+                                    />
+                                )}
                             </div>
                         </motion.div>
                     </motion.div>
