@@ -655,7 +655,14 @@ export default function WorkspacePage({
     if (decision === "approved") {
       const proposal = data?.actionProposals.find((item) => item.id === proposalId);
       const request = (overrides?.request || (proposal?.payload as { request?: GenerationProposalRequest } | undefined)?.request) as GenerationProposalRequest | undefined;
-      const shotIds = request?.shotIds || [];
+      // A proposal built from shot numbers carries no ids, which is the usual
+      // shape for "generate shot 8, 9, 10". Without resolving them, none of the
+      // batch showed as generating until a poll caught up with the real jobs.
+      const shotIds = request?.shotIds?.length
+        ? request.shotIds
+        : (request?.shotNumbers || [])
+          .map((number) => (data?.shots || []).find((shot) => shot.order_index + 1 === number)?.id)
+          .filter((id): id is string => Boolean(id));
       if (shotIds.length) {
         setJustSubmitted((current) => request?.type === "video"
           ? { ...current, video: Array.from(new Set([...current.video, ...shotIds])) }
@@ -5134,11 +5141,25 @@ function generationProposalRequest(proposal: ChatProposal): GenerationProposalRe
   return request && typeof request === "object" ? request : null;
 }
 
-function generationProposalPrompt(proposal: ChatProposal) {
+/** "Shot 8" for a prompt key, whether the payload keyed it by number or by id. */
+function promptKeyLabel(key: string, shots: Shot[]) {
+  if (/^\d+$/.test(key)) return `Shot ${key}`;
+  const shot = shots.find((item) => item.id === key);
+  return shot ? `Shot ${shot.order_index + 1}` : "Shot";
+}
+
+/**
+ * Every prompt in the proposal, keyed the way the payload keys them — by shot
+ * number from the fast paths, by shot id from the agent.
+ *
+ * A batch carries one prompt per shot. Reading only the first and sending it
+ * back for all of them rendered shot 8's scene three times over.
+ */
+function generationProposalPrompts(proposal: ChatProposal): Record<string, string> {
   const payload = proposal.payload as { prompts?: Record<string, string> } | null;
   const prompts = payload?.prompts;
-  if (!prompts || typeof prompts !== "object") return "";
-  return Object.values(prompts)[0] || "";
+  if (!prompts || typeof prompts !== "object") return {};
+  return Object.fromEntries(Object.entries(prompts).filter(([, value]) => typeof value === "string"));
 }
 
 // The prompt carries @mentions as [@Name]. Any that no longer match a project
@@ -5183,7 +5204,12 @@ function VideoGenerationProposalBlock({
   // them here allowed an approval card to overwrite a valid BytePlus request
   // with an unsupported fal model.
   const proposalVideoModels = useMemo(() => videoGenerationModels.filter((option) => option.provider === "byteplus"), []);
-  const [prompt, setPrompt] = useState(() => generationProposalPrompt(proposal));
+  const [prompts, setPrompts] = useState(() => generationProposalPrompts(proposal));
+  const promptKeys = useMemo(() => Object.keys(prompts), [prompts]);
+  const [activePromptKey, setActivePromptKey] = useState(() => Object.keys(generationProposalPrompts(proposal))[0] || "");
+  const activeKey = promptKeys.includes(activePromptKey) ? activePromptKey : promptKeys[0] || "";
+  const prompt = prompts[activeKey] || "";
+  const setPrompt = (value: string) => setPrompts((current) => ({ ...current, [activeKey]: value }));
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [model, setModel] = useState(() => {
     if (!isVideo) return request.model || imageGenerationModels[0].id;
@@ -5311,9 +5337,12 @@ function VideoGenerationProposalBlock({
         ...(removedEntityIds.length ? { entityReferenceIds: entityReferences.map((item) => item.entity.id) } : {}),
         videoReferencePaths: videoReferences,
       },
-      // Every shot in the batch takes the edited prompt, matching what the card
-      // shows the user before they confirm.
-      ...(prompt.trim() && shotIds.length ? { prompts: Object.fromEntries(shotIds.map((id) => [id, prompt.trim()])) } : {}),
+      // Each shot keeps its own prompt, under the key the proposal used. Sending
+      // the visible one for every shot in the batch generated the first shot's
+      // scene under all of their numbers.
+      ...(promptKeys.length
+        ? { prompts: Object.fromEntries(promptKeys.map((key) => [key, (prompts[key] || "").trim()]).filter(([, value]) => value)) }
+        : {}),
     });
   };
 
@@ -5523,6 +5552,23 @@ function VideoGenerationProposalBlock({
         )}
         {uploadError && <p className="text-[11px] text-red-300">{uploadError}</p>}
 
+        {promptKeys.length > 1 && (
+          <div className="flex flex-wrap gap-1.5">
+            {promptKeys.map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActivePromptKey(key)}
+                className={`rounded-md px-2 py-1 text-[11px] font-bold transition ${key === activeKey ? "bg-[#b9f42e] text-black" : "border border-white/10 text-zinc-400 hover:text-zinc-200"}`}
+              >
+                {promptKeyLabel(key, shots)}
+              </button>
+            ))}
+            <span className="self-center text-[11px] text-zinc-500">
+              {promptKeys.length} prompts, one per shot
+            </span>
+          </div>
+        )}
         {canDecide ? (
           <textarea
             value={prompt}
