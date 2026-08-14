@@ -71,6 +71,8 @@ Assistant message + one "Next step" button at the end of the chat
 
 The Studio sends the selected episode, session, message, and `@mentioned` entity IDs to `POST /api/studio/projects/:projectId/director/chat`. The server verifies that the user owns the project and every mentioned character, scene, or prop belongs to it. It then supplies the entity descriptions and selected reference images to the relevant prompt.
 
+Up to six workspace images travel with the run so the Director can look at what it is reasoning about. They are **read here and sent inline as data URLs**, not as storage URLs for the provider to fetch: a keyframe is a multi-megabyte PNG, and OpenAI gives up on a slow download with *"Unable to download content from the provided URL before the timeout"*, which failed the whole request for reasons no user could act on. Caps are eight seconds per image, 4MB each and 12MB total; anything that cannot be read in time is dropped rather than handed over as a URL that would fail the same way.
+
 ### 2. Deterministic workflow routing before model chat
 
 The chat route handles several high-confidence requests directly before falling back to the text agent:
@@ -79,8 +81,11 @@ The chat route handles several high-confidence requests directly before falling 
 - **“Create all missing character images”** and related bulk requests generate one reference image per matching entity, then save it to that entity’s `reference_images`. A message that names a shot, storyboard, or keyframe is never routed here: it is storyboard work, and answering it with entity art reported on reference images the user had not asked about.
 - Direct image/keyframe requests generate a GPT Image 2 output, save it to Studio storage, and attach it to the named storyboard shot when one was requested. A bare **“regenerate shot 3”** is handled here too — a named shot with a redo verb means its keyframe — because leaving it to the agent resolved it to a different shot. A message that says “shot” without saying which one falls through to the agent, which has the conversation context to resolve it.
 - **“Fix the character descriptions in the prompts”** rewrites the saved shot prompts, and the prompt sheet behind them, through the identity stripper described below.
-- Video requests create an approval proposal; they do not submit a video until the user approves.
+- **“Skip shot 6 and continue”** is answered from the pipeline. Skipping changes nothing in the workspace — it only says which shot not to offer — so there is nothing to propose and nothing to approve, and the reply names what comes next instead. Left to the agent this came back as a read-only inspection report on an unrelated shot.
+- Video requests create an approval proposal; they do not submit a video until the user approves. Under a continuity workflow a bare request continues from the previous shot's clip; see below.
 - All other production questions pass to `runDirectorAgent`, which receives the selected workflow, project context, session history, global admin instructions, and current runtime settings.
+
+Redo phrasing is shared between the media paths (`wantsRedo`): `recreate`, `re-create`, `regenerate`, `redo`, `remake`, `rerender`, `rerun`, and a trailing “again”. `\bcreate\b` does not fire inside “recreate”, so “recreate the shot 6 video” previously matched nothing and fell through to the agent — which answered it with an inspection report on a different shot. A request naming several shots goes to the agent deliberately: the single-shot number match would keep the first and drop the rest.
 
 These paths run **inside** the SSE stream and report progress as they work (`Generating the keyframe for shot 2`, `Generating reference art: Bathroom, Bathroom Mirror (1–2 of 3)`). Before this they ran before the stream was opened, so a request that spent a minute inside an image model sent nothing at all to the browser and the chat appeared frozen on the message the user had just sent.
 
@@ -120,6 +125,11 @@ Rules that fall out of this design:
 - **One stage per turn.** The Director does the stage it is on and hands back. Keyframes and clips go one shot at a time, lowest-numbered first, so the user sees each shot before the next is paid for.
 - **Nothing is re-created.** The missing-entity set is a diff of the prompt sheet's names against the entity library, compared on handles, so "Detective Rao" and "detective rao" are one character. Entities that already have art are never regenerated unless the user asks by name.
 - **The user stays in the loop by pressing the button.** Full-auto, when it lands, is the same chain with the pressing done for it.
+- **Nothing already running is offered.** A shot mid-render still has no keyframe, so on stored state alone it reads as the obvious next step — and pressing it pays for the same frame twice. Generations in flight are excluded from the step and from the batch. When everything outstanding is rendering there is no button, only what is rendering, which also stops the stage falling through to *Review* over shots that are not finished.
+- **A dead job is not work in progress.** A generation that never reaches a terminal status stays `processing` for good, and treating that as in flight removed its shot from the pipeline permanently. Jobs older than twenty minutes are read as abandoned.
+- **A skipped shot is passed over, not acted on.** `withSkippedShots` marks it so the decision lives in the state rather than in the phrasing of the next message.
+
+The stage carries **alternatives** beside the primary step, so a finished shot does not end the turn on a single option: finish the remaining images in one batch, or film a shot whose keyframe is already approved without waiting for every frame. The summary states what is outstanding — "6 images and 10 videos still to generate" — and that line goes into the Director's instructions too, so the reply closes on what it finished, what is left, and what the button will do.
 
 The stage is computed twice per turn: once into the instructions the model reads (`pipelineInstructionBlock`, so the reply names the same step the button offers) and once *after* the run, from the state the run left behind, as a `suggested_actions` timeline block on the assistant message.
 
@@ -142,6 +152,32 @@ It is applied in three places:
 The Prompt Agent and Storyboard Agent instructions match: the Character/Asset Lock section is a cast list — the @tag and what that entity is doing — never a description. An entity with no reference art is handed back to the Character & Asset Agent to build, not papered over with a sentence.
 
 A keyframe request also attaches **the shot's own cast**, not only the entities the user retyped with `@`. A bare "regenerate shot 1" names nobody, and sending no reference art at all was what returned a different face — the exact failure the reference library exists to prevent.
+
+## Approvals are questions, and a reply answers them
+
+A pending proposal used to stay pending for good: nothing generated, no way to resolve it, and every later reply queued behind an approval that was never coming.
+
+Sending a message now withdraws that session's pending proposals. Replying instead of approving is an answer — the user is redirecting, not ignoring — so the card is retired, reads **“Withdrawn — you replied instead”**, states that nothing was generated and no credits were spent, and keeps its modify-and-regenerate route. The Director is told which proposals were withdrawn and that the message is the new brief. Only the conversation the message was typed in is affected.
+
+Two related rules keep the next step visible:
+
+- The next-step card is suppressed only by **the newest reply's own** approval. Suppressing on any pending proposal in the session meant one card left unanswered removed the next step from every reply after it.
+- The **“Workflow is waiting for your approval”** note is written when a run ends and never rewritten, so it checks the live proposals and disappears once they are resolved.
+
+## Continuity comes from the selected workflow
+
+The Generation Workflow picker used to reach the model as advice and nothing more, so a plain “generate shot 3 video” rendered the shot cold even under **Video Reference**; continuity only happened when the user named the reference shot by hand.
+
+Under **Video Reference** or **Elements Sequential** (`workflowContinuesFromPreviousClip`), a single-shot video request now continues from the previous shot's finished clip: the clip attached, `multi_image` mode, the target keyframe as the composition reference, and the prompt opened with the extend-from sentence — attaching a clip without that sentence gives the model a reference it does not know what to do with. Shot 1 never inherits, and a previous shot with no completed video falls back to reference images with the reply saying so. Under the keyframe and parallel workflows a shot renders on its own.
+
+The storyboard's own video panel carries the same clip as a visible **motion reference**: a thumbnail of what the shot continues from, removable for a hard cut, and offered back as “Continue from shot N” when the previous shot has a finished video. Selecting an earlier generation restores the clip it used.
+
+## What a generation actually sends
+
+- **One image per entity — the chosen one.** An entity's other reference images are the attempts the user rejected, which is what the Choose button in Characters & Assets settles. The image and video models blend every reference into a single output, so sending the rejects averages the face the user picked with the ones they threw away.
+- **The budget is spent on subjects, not on second opinions.** GPT Image takes 16 references; Seedance stays on 8. A large cast no longer loses its last members to a limit inherited from the video path.
+- **A keyframe request attaches the shot's own cast**, not only the entities retyped with `@`. A bare “regenerate shot 1” names nobody, and sending no reference art at all returned a different face.
+- **The job records what was sent.** `input_images` is written at creation with only the composition frames the request named; execution resolves the cast from the prompt and writes the real list back, so the shot's panel shows the same references the chat card promised and a failed job leaves a true record.
 
 ## Permission Model
 
@@ -256,6 +292,7 @@ The chat panel should render more than plain text.
 - generation status cards for queued, processing, completed, failed, and cancelled jobs
 - audit chips for applied edits, deleted content, credit deductions, and full-auto actions
 - a single **Next step** card pinned to the end of the conversation, labelled with what it will do and marked when it spends credits
+- a generation card that carries **one prompt per shot**, with a shot tab each when a batch covers several. Reading only the first prompt and sending it back for every shot rendered the first shot's scene under all of their numbers, and the card showed nothing that would reveal it
 
 The user should never have to leave chat to understand what the agent is about to change or generate.
 

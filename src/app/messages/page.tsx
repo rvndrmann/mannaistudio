@@ -4,8 +4,8 @@ import Navbar from "@/components/Navbar"
 import { useAuth } from "@/components/auth/auth-provider"
 import { fetchChatThreads, fetchJobMessages, getJobChatClient, sendJobMessage, type ChatThread, type JobMessage } from "@/lib/job-chat"
 import { cn } from "@/lib/utils"
-import { Loader2, MessageSquare, Send, Search, ArrowLeft } from "lucide-react"
-import { FormEvent, useEffect, useRef, useState } from "react"
+import { Loader2, MessageSquare, Send, Search, ArrowLeft, ArrowDown } from "lucide-react"
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react"
 
 export default function MessagesPage() {
     const { user, loading, signInWithGoogle } = useAuth()
@@ -17,7 +17,40 @@ export default function MessagesPage() {
     const [isLoadingThreads, setIsLoadingThreads] = useState(true)
     const [searchQuery, setSearchQuery] = useState("")
     const chatEndRef = useRef<HTMLDivElement>(null)
+    const chatContainerRef = useRef<HTMLDivElement>(null)
+    const [showScrollToBottom, setShowScrollToBottom] = useState(false)
+    const isUserScrolledUpRef = useRef(false)
     const pendingJobRef = useRef<string | null>(null)
+
+    const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+        if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTo({
+                top: chatContainerRef.current.scrollHeight,
+                behavior,
+            })
+        } else {
+            chatEndRef.current?.scrollIntoView({ behavior })
+        }
+        isUserScrolledUpRef.current = false
+        setShowScrollToBottom(false)
+    }, [])
+
+    const handleChatScroll = useCallback(() => {
+        const el = chatContainerRef.current
+        if (!el) return
+        const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+        const scrolledUp = distanceToBottom > 80
+        isUserScrolledUpRef.current = scrolledUp
+        setShowScrollToBottom(scrolledUp)
+    }, [])
+
+    useEffect(() => {
+        if (isUserScrolledUpRef.current) return
+        scrollToBottom("auto")
+        const t1 = setTimeout(() => scrollToBottom("auto"), 50)
+        const t2 = setTimeout(() => scrollToBottom("smooth"), 200)
+        return () => { clearTimeout(t1); clearTimeout(t2) }
+    }, [messages, activeThread?.jobId, scrollToBottom])
 
     // Handle ?job=xxx query param
     useEffect(() => {
@@ -244,7 +277,7 @@ export default function MessagesPage() {
                                 </div>
 
                                 {/* Messages */}
-                                <div className="flex-1 overflow-y-auto px-5 py-5 space-y-3">
+                                <div className="relative flex-1 overflow-y-auto px-5 py-5 space-y-3" ref={chatContainerRef} onScroll={handleChatScroll}>
                                     {messages.length === 0 ? (
                                         <p className="text-center text-sm text-white/25 mt-16">No messages yet. Say hello and discuss the project.</p>
                                     ) : (
@@ -271,6 +304,19 @@ export default function MessagesPage() {
                                         })
                                     )}
                                     <div ref={chatEndRef} />
+
+                                    {/* Floating button with down arrow when user is scrolled up */}
+                                    {showScrollToBottom && (
+                                        <button
+                                            type="button"
+                                            onClick={() => scrollToBottom("smooth")}
+                                            className="sticky bottom-3 float-right z-30 flex items-center gap-1.5 rounded-full border border-primary/50 bg-black/95 px-3.5 py-1.5 text-xs font-extrabold text-primary shadow-2xl backdrop-blur-md transition hover:bg-primary hover:text-black hover:scale-105"
+                                            aria-label="Scroll to bottom of chat"
+                                        >
+                                            <ArrowDown className="w-3.5 h-3.5" />
+                                            <span>Scroll to bottom</span>
+                                        </button>
+                                    )}
                                 </div>
 
                                 {/* Input */}

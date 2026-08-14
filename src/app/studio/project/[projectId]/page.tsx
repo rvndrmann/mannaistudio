@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, use, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowDown,
   ArrowLeft,
   ArrowRight,
   BadgeCheck,
@@ -35,6 +36,21 @@ import {
   WandSparkles,
   X,
   Zap,
+  Play,
+  Pause,
+  Scissors,
+  SkipBack,
+  SkipForward,
+  RotateCcw,
+  Volume2,
+  VolumeX,
+  Layers,
+  Maximize2,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models";
 import { getModelLabel, imageGenerationModels, videoDurationOptions, videoGenerationModels, videoModelMaxDuration } from "@/lib/studio/generation-models";
@@ -288,18 +304,56 @@ export default function WorkspacePage({
   const [voiceState, setVoiceState] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const chatContainerRef = useRef<HTMLDivElement | null>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const isUserScrolledUpRef = useRef(false);
   const chatFileInputRef = useRef<HTMLInputElement | null>(null);
   const voiceConnectionRef = useRef<RTCPeerConnection | null>(null);
   const voiceStreamRef = useRef<MediaStream | null>(null);
   const hasLoadedRef = useRef(false);
-  // Always the current render's loader, so a long-lived poll reloads the
-  // episode that is open now rather than the one open when it started.
   const loadRef = useRef<(silent?: boolean) => Promise<void>>(async () => {});
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior,
+      });
+    } else {
+      chatEndRef.current?.scrollIntoView({ behavior, block: "end" });
+    }
+    isUserScrolledUpRef.current = false;
+    setShowScrollToBottom(false);
+  }, []);
+
+  const handleChatScroll = useCallback(() => {
+    const el = chatContainerRef.current;
+    if (!el) return;
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const scrolledUp = distanceToBottom > 80;
+    isUserScrolledUpRef.current = scrolledUp;
+    setShowScrollToBottom(scrolledUp);
+  }, []);
+
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    // Progress counts as movement: a long generation reports what it is doing,
-    // and the view should follow that rather than sit above it.
-  }, [data?.chatMessages.length, chatSending, chatError, voiceState, streamingReply?.status, streamingReply?.content.length]);
+    if (isUserScrolledUpRef.current) return;
+    scrollToBottom("auto");
+    const t1 = setTimeout(() => scrollToBottom("auto"), 50);
+    const t2 = setTimeout(() => scrollToBottom("smooth"), 250);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [
+    data?.chatMessages.length,
+    data?.activeSessionId,
+    chatSending,
+    chatError,
+    voiceState,
+    streamingReply?.status,
+    streamingReply?.content.length,
+    scrollToBottom,
+  ]);
   useEffect(() => () => {
     voiceConnectionRef.current?.close();
     voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -1153,7 +1207,7 @@ export default function WorkspacePage({
               <span className="rounded-full border border-white/[0.06] bg-[#141414] px-2 py-0.5 text-[10px] font-medium text-zinc-400">6 sec</span>
             </div>
           </div>
-          <div className="flex-1 overflow-auto p-4">
+          <div className="relative flex-1 overflow-auto p-4" ref={chatContainerRef} onScroll={handleChatScroll}>
             {!data.chatMessages.length && (
               <div className="flex h-full items-end pb-3 text-[13px] leading-6 text-zinc-600">
                 Tell the AI Director what you want to create, revise, or plan.
@@ -1198,6 +1252,19 @@ export default function WorkspacePage({
             {chatError && <p role="alert" className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-[12px] text-red-200">{chatError}</p>}
             {voiceState !== "idle" && <p className={`mt-3 rounded-lg border p-2.5 text-[12px] ${voiceState === "connected" ? "border-[#b9f42e]/30 bg-[#b9f42e]/10 text-[#d9ff84]" : "border-white/[0.06] bg-white/[0.03] text-zinc-300"}`}>{voiceState === "connecting" ? "Connecting your AI Voice Director…" : voiceState === "connected" ? "AI Voice Director is listening. You can speak naturally." : voiceError}</p>}
             <div ref={chatEndRef} />
+
+            {/* Floating button with down arrow when user is scrolled up */}
+            {showScrollToBottom && (
+              <button
+                type="button"
+                onClick={() => scrollToBottom("smooth")}
+                className="sticky bottom-3 float-right z-30 flex items-center gap-1.5 rounded-full border border-[#b9f42e]/50 bg-[#141514]/95 px-3 py-1.5 text-xs font-extrabold text-[#b9f42e] shadow-2xl backdrop-blur-md transition hover:bg-[#b9f42e] hover:text-black hover:scale-105"
+                aria-label="Scroll to bottom of chat"
+              >
+                <ArrowDown className="h-3.5 w-3.5" />
+                <span>Scroll to bottom</span>
+              </button>
+            )}
           </div>
           <form
             onSubmit={sendChat}
@@ -3983,19 +4050,46 @@ function ShotMediaWorkspace({
           new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         );
 
-        const entries: GenEntry[] = dbJobs.map((job) => ({
-          id: job.id,
-          type: job.type || media.type,
-          status: (job.status === "completed" ? "completed" : job.status === "failed" || job.status === "cancelled" ? "failed" : "generating") as "generating" | "completed" | "failed",
-          prompt: job.prompt || "",
-          model: job.model || "",
-          referenceImages: Array.isArray(job.input_images) ? (job.input_images as string[]) : [],
-          videoUrl: job.result_url || null,
-          error: job.error || null,
-          createdAt: new Date(job.created_at || 0).getTime(),
-          completedAt: job.completed_at || null,
-          ...readGenerationSettings(job.settings),
-        }));
+        const entityAssetMap = new Map<string, string>();
+        for (const entity of entities) {
+          const meta = entity.metadata && typeof entity.metadata === "object" ? entity.metadata as Record<string, unknown> : {};
+          const assetId = typeof meta.byteplus_asset_id === "string" ? meta.byteplus_asset_id.trim() : null;
+          const primaryRef = entityPrimaryReference(entity);
+          if (assetId && primaryRef) {
+            const clean = assetId.replace(/^asset:\/\//i, "").trim();
+            entityAssetMap.set(clean, primaryRef);
+            entityAssetMap.set(`asset://${clean}`, primaryRef);
+          }
+        }
+
+        const entries: GenEntry[] = dbJobs.map((job) => {
+          const settingsObj = job.settings && typeof job.settings === "object" ? job.settings as Record<string, unknown> : {};
+          const rawRefs = Array.isArray(settingsObj.resolvedReferencePaths) && (settingsObj.resolvedReferencePaths as string[]).length
+            ? (settingsObj.resolvedReferencePaths as string[])
+            : Array.isArray(settingsObj.referenceImages) && (settingsObj.referenceImages as string[]).length
+              ? (settingsObj.referenceImages as string[])
+              : Array.isArray(job.input_images) ? (job.input_images as string[]) : [];
+
+          const resolvedRefs = rawRefs.map((ref) => {
+            if (!ref) return ref;
+            const clean = ref.replace(/^asset:\/\//i, "").trim();
+            return entityAssetMap.get(clean) || entityAssetMap.get(ref) || ref;
+          }).filter((ref) => !/^asset:\/\//i.test(ref) && !/^asset-[a-z0-9-]+$/i.test(ref));
+
+          return {
+            id: job.id,
+            type: job.type || media.type,
+            status: (job.status === "completed" ? "completed" : job.status === "failed" || job.status === "cancelled" ? "failed" : "generating") as "generating" | "completed" | "failed",
+            prompt: job.prompt || "",
+            model: job.model || "",
+            referenceImages: resolvedRefs,
+            videoUrl: job.result_url || null,
+            error: job.error || null,
+            createdAt: new Date(job.created_at || 0).getTime(),
+            completedAt: job.completed_at || null,
+            ...readGenerationSettings(job.settings),
+          };
+        });
 
         if (source && !entries.some((e) => e.videoUrl === source)) {
           entries.push({
@@ -4019,8 +4113,20 @@ function ShotMediaWorkspace({
 
         setGenHistory(entries);
         if (entries.length > 0) {
-          setActiveGenId(entries[0].id);
-          if (entries[0].status === "failed") setGenerationError(entries[0].error);
+          const chosenEntry = entries.find((g) => g.videoUrl && g.videoUrl === currentActiveChosenSource);
+          const firstCompleted = entries.find((g) => g.status === "completed");
+          const defaultTarget = chosenEntry || firstCompleted || entries[0];
+
+          setActiveGenId((current) => {
+            if (current && entries.some((g) => g.id === current)) return current;
+            return defaultTarget.id;
+          });
+
+          if (defaultTarget.status === "failed" && !chosenEntry) {
+            setGenerationError(defaultTarget.error);
+          } else {
+            setGenerationError(null);
+          }
         }
 
         // Resume polling for any in-progress job
@@ -4092,11 +4198,10 @@ function ShotMediaWorkspace({
   };
 
   const generate = async () => {
-    setBusy(true);
     setGenerationError(null);
     setGenerationStatus(null);
 
-    const genId = `gen-${Date.now()}`;
+    const genId = `gen-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const newEntry: GenEntry = {
       id: genId,
       type: media.type,
@@ -4125,6 +4230,7 @@ function ShotMediaWorkspace({
       // Explicit @mentions take priority if the provider's character-reference limit is reached.
       const characterEntityIds = Array.from(new Set([...mentionedCharacterIds, ...selectedCharacterIds])).slice(0, 10);
       if (isImage) {
+        setGenerationStatus("Submitting image generation job…");
         const response = await fetch(`/api/studio/projects/${projectId}/images`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, mentionedEntityIds, aspectRatio, quality }) });
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || "Image generation failed");
@@ -4144,7 +4250,7 @@ function ShotMediaWorkspace({
         setGenerationStatus("Image ready ✓");
         await reload(true);
       } else {
-        setGenerationStatus("Submitting generation job…");
+        setGenerationStatus("Submitting video generation job…");
         const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, referenceVideos: videoReferencePaths, characterEntityIds, mentionedEntityIds, generationMode: videoInputMode, startFrame, endFrame, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
         const body = await response.json();
         if (!response.ok) {
@@ -4160,6 +4266,7 @@ function ShotMediaWorkspace({
         notifyCreditBalanceChanged(typeof body.creditBalance === "number" ? body.creditBalance : undefined);
         const dbJobId = body.jobId;
         setGenHistory((prev) => prev.map((g) => g.id === genId ? { ...g, id: dbJobId } : g));
+        setActiveGenId((current) => current === genId ? dbJobId : current);
         await pollJobStatus(dbJobId);
       }
     } catch (error) {
@@ -4167,8 +4274,6 @@ function ShotMediaWorkspace({
       const errorMsg = error instanceof Error ? error.message : "Generation failed";
       setGenerationError(errorMsg);
       setGenHistory((prev) => prev.map((g) => g.id === genId ? { ...g, status: "failed" as const, error: errorMsg } : g));
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -4516,11 +4621,11 @@ function ShotMediaWorkspace({
             </button>
             <span className="h-6 border-l border-white/10" />
             <button
+              type="button"
               onClick={generate}
-              disabled={busy}
-              className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3.5 py-2 text-xs font-bold text-[#b9f42e] hover:bg-white/10 disabled:opacity-40"
+              className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3.5 py-2 text-xs font-bold text-[#b9f42e] hover:bg-white/10 transition shadow-sm hover:scale-[1.02] active:scale-[0.98]"
             >
-              ↻ {busy ? "Generating…" : `Regenerate (⚡ ${currentCreditCost} Credits)`}
+              ↻ Regenerate (⚡ {currentCreditCost} Credits)
             </button>
             <span className="ml-auto text-xs text-zinc-500">
               {genHistory.length > 1 ? `${genHistory.length} generations` : "Private asset"}
@@ -6188,6 +6293,423 @@ function ShotForm({
     </form>
   );
 }
+
+function getShotTrimStart(shot: Shot): number {
+  const trim = (shot.metadata?.trim as { start?: number; end?: number } | undefined);
+  return typeof trim?.start === "number" && Number.isFinite(trim.start) && trim.start >= 0 ? trim.start : 0;
+}
+
+function getShotTrimEnd(shot: Shot): number {
+  const trim = (shot.metadata?.trim as { start?: number; end?: number } | undefined);
+  const duration = Number(shot.duration_seconds || 5);
+  if (typeof trim?.end === "number" && Number.isFinite(trim.end) && trim.end > 0) {
+    return Math.min(trim.end, duration > 0 ? duration : trim.end);
+  }
+  return duration > 0 ? duration : 5;
+}
+
+function getShotCutDuration(shot: Shot): number {
+  const start = getShotTrimStart(shot);
+  const end = getShotTrimEnd(shot);
+  return Math.max(0.1, end - start);
+}
+
+function formatTimecode(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "00:00.00";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  const ms = Math.floor((seconds % 1) * 100);
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}.${String(ms).padStart(2, "0")}`;
+}
+
+function RenderExportModal({
+  shots,
+  close,
+}: {
+  shots: Shot[];
+  close: () => void;
+}) {
+  const [tab, setTab] = useState<"all" | "parts">("all");
+  const [resolution, setResolution] = useState<"1080p" | "720p" | "480p">("720p");
+  const [format, setFormat] = useState<"mp4" | "webm">("mp4");
+  const [rendering, setRendering] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [statusMsg, setStatusMsg] = useState("");
+  const [downloadingPartId, setDownloadingPartId] = useState<string | null>(null);
+
+  const startFullRender = async () => {
+    if (!shots.length) return;
+    setRendering(true);
+    setProgress(0);
+    setStatusMsg("Preparing video & audio assets...");
+
+    try {
+      const dimensions = resolution === "1080p" ? { w: 1080, h: 1920 } : resolution === "720p" ? { w: 720, h: 1280 } : { w: 480, h: 854 };
+      const canvas = document.createElement("canvas");
+      canvas.width = dimensions.w;
+      canvas.height = dimensions.h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Could not create canvas context");
+
+      // Resolve signed URLs for all shots with video
+      const resolvedShots: Array<{ shot: Shot; videoUrl: string; trimStart: number; trimEnd: number; duration: number }> = [];
+      for (let i = 0; i < shots.length; i++) {
+        const s = shots[i];
+        setStatusMsg(`Signing video asset ${i + 1}/${shots.length}...`);
+        setProgress(Math.round(((i + 1) / (shots.length * 2)) * 100));
+        let url = s.video_url || "";
+        if (url && !url.startsWith("http")) {
+          const signed = await getSignedMediaUrl(url);
+          if (signed) url = signed;
+        }
+        resolvedShots.push({
+          shot: s,
+          videoUrl: url,
+          trimStart: getShotTrimStart(s),
+          trimEnd: getShotTrimEnd(s),
+          duration: getShotCutDuration(s),
+        });
+      }
+
+      // Reusable video element with Web Audio API binding
+      const video = document.createElement("video");
+      video.crossOrigin = "anonymous";
+      video.muted = false; // Unmuted to capture audio track
+      video.playsInline = true;
+
+      // Setup Web Audio Context for audio mixing
+      const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const audioCtx = new AudioCtxClass();
+      const audioDest = audioCtx.createMediaStreamDestination();
+      let audioConnected = false;
+
+      try {
+        const audioSource = audioCtx.createMediaElementSource(video);
+        audioSource.connect(audioDest);
+        audioConnected = true;
+      } catch (e) {
+        console.warn("WebAudio connection notice:", e);
+      }
+
+      const canvasStream = canvas.captureStream(30);
+      const combinedTracks: MediaStreamTrack[] = [...canvasStream.getVideoTracks()];
+
+      if (audioConnected && audioDest.stream.getAudioTracks().length > 0) {
+        combinedTracks.push(...audioDest.stream.getAudioTracks());
+      }
+
+      const combinedStream = new MediaStream(combinedTracks);
+
+      const mimeType = format === "mp4"
+        ? (MediaRecorder.isTypeSupported("video/mp4;codecs=avc1,mp4a.40.2")
+            ? "video/mp4;codecs=avc1,mp4a.40.2"
+            : MediaRecorder.isTypeSupported("video/mp4")
+            ? "video/mp4"
+            : "video/webm")
+        : (MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+            ? "video/webm;codecs=vp9,opus"
+            : "video/webm");
+
+      const recorder = new MediaRecorder(combinedStream, { mimeType });
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+      const renderPromise = new Promise<Blob>((resolve) => {
+        recorder.onstop = () => resolve(new Blob(chunks, { type: format === "mp4" ? "video/mp4" : "video/webm" }));
+      });
+
+      recorder.start();
+
+      const totalCutTime = resolvedShots.reduce((acc, item) => acc + item.duration, 0);
+      let renderedTime = 0;
+
+      for (let i = 0; i < resolvedShots.length; i++) {
+        const item = resolvedShots[i];
+        setStatusMsg(`Rendering Shot ${i + 1} of ${resolvedShots.length}: ${item.shot.title}...`);
+
+        if (item.videoUrl) {
+          video.src = item.videoUrl;
+          await new Promise<void>((res) => {
+            video.onloadeddata = () => res();
+            video.onerror = () => res();
+          });
+          video.currentTime = item.trimStart;
+          try { await video.play(); } catch { /* ignore autoplay restrictions */ }
+
+          const shotEndTime = item.trimEnd;
+          while (!video.paused && !video.ended && video.currentTime < shotEndTime) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            renderedTime += 0.033;
+            const pct = Math.min(99, Math.round(50 + (renderedTime / totalCutTime) * 50));
+            setProgress(pct);
+            await new Promise((res) => setTimeout(res, 33));
+          }
+          video.pause();
+        } else {
+          // Fallback image / title card frame rendering
+          ctx.fillStyle = "#121413";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = "#b9f42e";
+          ctx.font = "bold 24px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(`Scene ${i + 1}: ${item.shot.title}`, canvas.width / 2, canvas.height / 2);
+          const steps = Math.round(item.duration * 30);
+          for (let step = 0; step < steps; step++) {
+            renderedTime += 0.033;
+            const pct = Math.min(99, Math.round(50 + (renderedTime / totalCutTime) * 50));
+            setProgress(pct);
+            await new Promise((res) => setTimeout(res, 33));
+          }
+        }
+      }
+
+      recorder.stop();
+      setStatusMsg("Finalizing MP4 video file...");
+      const finalBlob = await renderPromise;
+      setProgress(100);
+
+      // Trigger automatic MP4 download
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(finalBlob);
+      a.download = `project_final_render_${resolution}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      setStatusMsg(`Export complete! Downloaded ${format.toUpperCase()} video file.`);
+    } catch (err) {
+      console.error(err);
+      setStatusMsg("Export error. Please check browser permissions.");
+    } finally {
+      setRendering(false);
+    }
+  };
+
+  const downloadPart = async (shot: Shot, index: number) => {
+    if (!shot.video_url) return;
+    setDownloadingPartId(shot.id);
+    try {
+      let url = shot.video_url;
+      if (!url.startsWith("http")) {
+        const signed = await getSignedMediaUrl(url);
+        if (signed) url = signed;
+      }
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `Scene_${index + 1}_${shot.title.replaceAll(" ", "_")}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error("Part download failed", err);
+    } finally {
+      setDownloadingPartId(null);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/80 p-6 backdrop-blur-md">
+      <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-white/10 bg-[#161817] shadow-2xl">
+        <header className="flex items-center justify-between border-b border-white/10 p-5">
+          <div className="flex items-center gap-2">
+            <Film className="h-5 w-5 text-[#b9f42e]" />
+            <h3 className="text-lg font-black text-white">Export Video Timeline</h3>
+          </div>
+          <button type="button" onClick={close} className="rounded-lg p-1 text-zinc-400 hover:bg-white/10 hover:text-white">
+            <X className="h-5 w-5" />
+          </button>
+        </header>
+
+        <div className="border-b border-white/10 bg-black/30 p-2">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setTab("all")}
+              className={`flex-1 rounded-lg py-2.5 text-xs font-bold transition ${tab === "all" ? "bg-[#b9f42e] text-black" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
+            >
+              Export Combined Video (All Shots)
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("parts")}
+              className={`flex-1 rounded-lg py-2.5 text-xs font-bold transition ${tab === "parts" ? "bg-[#b9f42e] text-black" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
+            >
+              Export Clips in Parts ({shots.length})
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6">
+          {tab === "all" ? (
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Quality</label>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    {(["1080p", "720p", "480p"] as const).map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setResolution(r)}
+                        className={`rounded-xl border p-2.5 text-center text-xs font-bold transition ${resolution === r ? "border-[#b9f42e] bg-[#b9f42e]/10 text-[#b9f42e]" : "border-white/10 bg-white/5 text-zinc-300 hover:border-white/20"}`}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Format</label>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    {(["mp4", "webm"] as const).map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => setFormat(f)}
+                        className={`rounded-xl border p-2.5 text-center text-xs font-bold uppercase transition ${format === f ? "border-[#b9f42e] bg-[#b9f42e]/10 text-[#b9f42e]" : "border-white/10 bg-white/5 text-zinc-300 hover:border-white/20"}`}
+                      >
+                        .{f}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {rendering && (
+                <div className="space-y-2 rounded-xl border border-white/10 bg-black/40 p-4">
+                  <div className="flex justify-between text-xs font-bold">
+                    <span className="text-[#b9f42e]">{statusMsg}</span>
+                    <span className="text-white">{progress}%</span>
+                  </div>
+                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-white/10">
+                    <div className="h-full bg-gradient-to-r from-[#b9f42e] to-[#60a5fa] transition-all duration-300" style={{ width: `${progress}%` }} />
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                disabled={rendering}
+                onClick={startFullRender}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] py-3.5 text-sm font-bold text-black shadow-lg shadow-[#b9f42e]/10 transition hover:bg-[#a4dc24] disabled:opacity-50"
+              >
+                {rendering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {rendering ? "Rendering MP4 video..." : `Render & Download .${format.toUpperCase()} Video`}
+              </button>
+            </div>
+          ) : (
+            <div className="max-h-[350px] space-y-3 overflow-y-auto pr-1">
+              {shots.map((s, idx) => {
+                const start = getShotTrimStart(s);
+                const end = getShotTrimEnd(s);
+                const dur = getShotCutDuration(s);
+                return (
+                  <div key={s.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs">
+                    <div className="min-w-0 flex-1 pr-3">
+                      <p className="truncate font-bold text-white">Scene {idx + 1}: {s.title}</p>
+                      <p className="mt-1 text-[11px] text-zinc-400">
+                        Trim: {formatTimecode(start)} - {formatTimecode(end)} ({dur.toFixed(1)}s)
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!s.video_url || downloadingPartId === s.id}
+                      onClick={() => downloadPart(s, idx)}
+                      className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-2 font-bold text-zinc-200 transition hover:bg-[#b9f42e] hover:text-black disabled:opacity-40"
+                    >
+                      {downloadingPartId === s.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                      Download Part
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TimelineVideoPlayer({
+  src,
+  isPlaying,
+  isMuted = false,
+  inShotTime,
+  className,
+}: {
+  src: string;
+  isPlaying: boolean;
+  isMuted?: boolean;
+  inShotTime: number;
+  className?: string;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [signedUrl, setSignedUrl] = useState<string>("");
+
+  useEffect(() => {
+    let active = true;
+    if (src.startsWith("http")) {
+      setSignedUrl(src);
+      return;
+    }
+    getSignedMediaUrl(src).then((url) => {
+      if (active && url) setSignedUrl(url);
+    });
+    return () => {
+      active = false;
+    };
+  }, [src]);
+
+  // Handle play / pause programmatically
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (isPlaying) {
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => console.log("Autoplay playback:", err));
+      }
+    } else {
+      video.pause();
+    }
+  }, [isPlaying, signedUrl]);
+
+  // Sync mute state
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = isMuted;
+  }, [isMuted]);
+
+  // Sync seek position
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (Math.abs(video.currentTime - inShotTime) > 0.25) {
+      video.currentTime = inShotTime;
+    }
+  }, [inShotTime]);
+
+  if (!signedUrl) {
+    return <div className={`grid place-items-center bg-black/60 text-xs text-zinc-400 ${className || ""}`}>Loading clip…</div>;
+  }
+
+  return (
+    <video
+      ref={videoRef}
+      src={signedUrl}
+      muted={isMuted}
+      playsInline
+      preload="auto"
+      className={className}
+    />
+  );
+}
+
 function Timeline({
   shots,
   entities,
@@ -6200,8 +6722,107 @@ function Timeline({
   reload: () => Promise<void>;
 }) {
   const [selected, setSelected] = useState(0);
-  const shot = shots[selected];
-  const move = async (i: number, delta: number) => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isLooping, setIsLooping] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [globalTime, setGlobalTime] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [splitting, setSplitting] = useState(false);
+  const [showMorePrompt, setShowMorePrompt] = useState(false);
+
+  const lastAnimTimeRef = useRef<number | null>(null);
+
+  const currentShot = shots[selected] || null;
+
+  // Trim map state to reflect immediate edits before reload
+  const [localTrims, setLocalTrims] = useState<Record<string, { start: number; end: number }>>({});
+
+  const getShotStart = useCallback((s: Shot) => {
+    if (localTrims[s.id]?.start !== undefined) return localTrims[s.id].start;
+    return getShotTrimStart(s);
+  }, [localTrims]);
+
+  const getShotEnd = useCallback((s: Shot) => {
+    if (localTrims[s.id]?.end !== undefined) return localTrims[s.id].end;
+    return getShotTrimEnd(s);
+  }, [localTrims]);
+
+  const getShotDuration = useCallback((s: Shot) => {
+    const start = getShotStart(s);
+    const end = getShotEnd(s);
+    return Math.max(0.1, end - start);
+  }, [getShotStart, getShotEnd]);
+
+  const shotDurations = useMemo(() => shots.map(getShotDuration), [shots, getShotDuration]);
+
+  const totalProjectDuration = useMemo(() => {
+    return shotDurations.reduce((acc, d) => acc + d, 0);
+  }, [shotDurations]);
+
+  const cumulativeOffsets = useMemo(() => {
+    const offsets: number[] = [];
+    let current = 0;
+    for (let i = 0; i < shots.length; i++) {
+      offsets.push(current);
+      current += shotDurations[i];
+    }
+    return offsets;
+  }, [shots, shotDurations]);
+
+  // Determine active shot based on global playhead time
+  const activeShotIndex = useMemo(() => {
+    if (!shots.length) return 0;
+    for (let i = shots.length - 1; i >= 0; i--) {
+      if (globalTime >= cumulativeOffsets[i] - 0.05) {
+        return i;
+      }
+    }
+    return 0;
+  }, [globalTime, cumulativeOffsets, shots.length]);
+
+  const activeShot = shots[activeShotIndex] || currentShot;
+  const activeOffset = cumulativeOffsets[activeShotIndex] || 0;
+  const inShotTime = getShotStart(activeShot) + Math.max(0, globalTime - activeOffset);
+
+  // Synchronize player selection with active playhead index during playback
+  useEffect(() => {
+    if (isPlaying && activeShotIndex !== selected) {
+      setSelected(activeShotIndex);
+    }
+  }, [activeShotIndex, isPlaying, selected]);
+
+  // Animation frame loop for continuous multi-clip playback
+  useEffect(() => {
+    if (!isPlaying) {
+      lastAnimTimeRef.current = null;
+      return;
+    }
+
+    let animationFrameId: number;
+
+    const tick = (timestamp: number) => {
+      if (lastAnimTimeRef.current !== null) {
+        const delta = (timestamp - lastAnimTimeRef.current) / 1000;
+        setGlobalTime((prev) => {
+          const next = prev + delta;
+          if (next >= totalProjectDuration && totalProjectDuration > 0) {
+            if (isLooping) return 0;
+            setIsPlaying(false);
+            return totalProjectDuration;
+          }
+          return next;
+        });
+      }
+      lastAnimTimeRef.current = timestamp;
+      animationFrameId = requestAnimationFrame(tick);
+    };
+
+    animationFrameId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [isPlaying, totalProjectDuration, isLooping]);
+
+  const moveShot = async (i: number, delta: number) => {
     const next = [...shots];
     const target = i + delta;
     if (target < 0 || target >= next.length) return;
@@ -6209,138 +6830,419 @@ function Timeline({
     await save({ action: "reorderShots", ids: next.map((s) => s.id) });
     reload();
   };
+
+  const handleUpdateTrim = async (s: Shot, newStart: number, newEnd: number) => {
+    const duration = s.duration_seconds || 5;
+    const clampedStart = Math.max(0, Math.min(newStart, duration - 0.1));
+    const clampedEnd = Math.max(clampedStart + 0.1, Math.min(newEnd, duration));
+
+    setLocalTrims((prev) => ({ ...prev, [s.id]: { start: clampedStart, end: clampedEnd } }));
+
+    await save({
+      action: "saveShot",
+      shot: {
+        id: s.id,
+        title: s.title,
+        prompt: s.prompt,
+        duration_seconds: s.duration_seconds,
+        aspect_ratio: s.aspect_ratio,
+        resolution: s.resolution,
+        entityIds: s.referenced_entities || [],
+        metadata: { ...(s.metadata || {}), trim: { start: clampedStart, end: clampedEnd } },
+      },
+    });
+  };
+
+  const handleSplitClip = async () => {
+    if (!currentShot) return;
+    const trimStart = getShotStart(currentShot);
+    const trimEnd = getShotEnd(currentShot);
+    const splitPoint = inShotTime;
+
+    if (splitPoint <= trimStart + 0.3 || splitPoint >= trimEnd - 0.3) {
+      alert("Please position the playhead inside the clip to cut/split it.");
+      return;
+    }
+
+    setSplitting(true);
+    try {
+      // 1. Update original shot trim end to split point
+      await save({
+        action: "saveShot",
+        shot: {
+          id: currentShot.id,
+          title: currentShot.title,
+          prompt: currentShot.prompt,
+          duration_seconds: currentShot.duration_seconds,
+          aspect_ratio: currentShot.aspect_ratio,
+          resolution: currentShot.resolution,
+          entityIds: currentShot.referenced_entities || [],
+          metadata: { ...(currentShot.metadata || {}), trim: { start: trimStart, end: splitPoint } },
+        },
+      });
+
+      // 2. Create second part as new shot
+      await save({
+        action: "saveShot",
+        orderIndex: currentShot.order_index + 1,
+        shot: {
+          title: `${currentShot.title} (Part 2)`,
+          prompt: currentShot.prompt,
+          duration_seconds: currentShot.duration_seconds,
+          aspect_ratio: currentShot.aspect_ratio,
+          resolution: currentShot.resolution,
+          entityIds: currentShot.referenced_entities || [],
+          video_url: currentShot.video_url,
+          keyframe_image: currentShot.keyframe_image,
+          metadata: { ...(currentShot.metadata || {}), trim: { start: splitPoint, end: trimEnd } },
+        },
+      });
+
+      await reload();
+    } finally {
+      setSplitting(false);
+    }
+  };
+
   return (
-    <div className="min-h-[calc(100vh-74px)] bg-[#080908]">
-      <div className="flex h-20 items-center justify-end border-b border-white/10 px-6">
-        <button className="rounded-xl bg-[#b9f42e] px-6 py-3 font-bold text-black">
-          ⇩ Render video
-        </button>
-      </div>
-      {shot ? (
-        <div className="grid min-h-[calc(100vh-250px)] grid-cols-[minmax(190px,28%)_1fr] border-b border-white/10">
-          <aside className="border-r border-white/10 p-5">
-            <div className="rounded-xl bg-[#1d1f1e] p-4 font-bold">
-              Scene {selected + 1}
-            </div>
-            <p className="mt-6 text-xs font-bold uppercase tracking-wide text-zinc-500">
-              Scene description
-            </p>
-            <p className="mt-3 text-sm leading-6 text-zinc-300">
-              {shot.prompt ||
-                "Add camera direction and visual details to this shot."}
-            </p>
-            <p className="mt-6 text-xs font-bold uppercase tracking-wide text-zinc-500">
-              Subject reference
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {entities
-                .filter((e) => shot.referenced_entities?.includes(e.id))
-                .map((entity) => (
-                  <div key={entity.id} className="w-14">
-                    <AssetImage src={entity.reference_images?.[0]} />
-                    <p className="mt-1 truncate text-[10px] text-zinc-500">
-                      {entity.name}
-                    </p>
-                  </div>
-                ))}
-              {!shot.referenced_entities?.length && (
-                <span className="text-xs text-zinc-600">No linked assets</span>
-              )}
-            </div>
-          </aside>
-          <section className="grid place-items-center p-6">
-            <div className="relative aspect-[9/14] max-h-[520px] w-full max-w-[350px] overflow-hidden bg-[#182d3b] shadow-2xl shadow-black/50">
-              {shot.video_url ? (
-                <ResolvedMedia src={shot.video_url} type="video" className="h-full w-full object-cover" />
-              ) : shot.keyframe_image ? (
-                <ResolvedMedia src={shot.keyframe_image} type="image" className="h-full w-full object-cover" />
-              ) : (
-                <div className="grid h-full place-items-center bg-[radial-gradient(circle_at_50%_30%,#315b70,transparent_40%),linear-gradient(#0a1820,#223d46)] text-center text-sm text-zinc-400">
-                  Scene preview
-                  <br />
-                  will appear here
-                </div>
-              )}
-              <span className="absolute bottom-3 left-3 rounded bg-black/50 px-2 py-1 text-xs">
-                {shot.duration_seconds}s
-              </span>
-            </div>
-          </section>
-        </div>
-      ) : (
-        <div className="grid h-[420px] place-items-center text-zinc-500">
-          Add storyboard shots to build a timeline.
-        </div>
-      )}
-      <div className="border-t border-white/10 bg-[#111211] p-4">
-        <div className="mx-auto mb-3 flex max-w-3xl items-center justify-between text-sm">
-          <span className="font-mono text-[#b9f42e]">00:00.00</span>
-          <div className="flex items-center gap-5 text-zinc-400">
-            <button>◁</button>
-            <button className="grid h-10 w-10 place-items-center rounded bg-[#252725] text-white">
-              ▷
-            </button>
-            <button>▷</button>
+    <div className="flex flex-col min-h-[calc(100vh-74px)] bg-[#0c0d0c] text-white">
+      {/* Editor Header Toolbar */}
+      <header className="flex h-16 items-center justify-between border-b border-white/10 bg-[#111211] px-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#b9f42e]/10 border border-[#b9f42e]/30">
+            <Film className="h-5 w-5 text-[#b9f42e]" />
           </div>
-          <span className="font-mono text-zinc-400">
-            00:
-            {String(
-              Math.round(
-                shots.reduce(
-                  (sum, item) => sum + Number(item.duration_seconds || 0),
-                  0,
-                ),
-              ),
-            ).padStart(2, "0")}
-            .00
-          </span>
+          <div>
+            <h2 className="text-sm font-black tracking-wide text-zinc-100">VIDEO TIMELINE STUDIO</h2>
+            <p className="text-[11px] font-mono text-zinc-400">
+              {shots.length} Shot Clips • Sequence Total: <span className="text-[#b9f42e] font-bold">{formatTimecode(totalProjectDuration)}</span>
+            </p>
+          </div>
         </div>
-        <div className="relative flex h-24 gap-1 overflow-x-auto border-t border-white/10 pt-3">
-          {shots.map((item, i) => (
-            <div
-              key={item.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => setSelected(i)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  setSelected(i);
-                }
-              }}
-              className={`relative h-16 min-w-32 flex-1 overflow-hidden rounded border p-2 text-left text-xs ${i === selected ? "border-[#b9f42e] ring-1 ring-[#b9f42e]" : "border-white/10 bg-[#1b1d1c]"}`}
-            >
-              <span className="absolute inset-0 bg-gradient-to-br from-[#35576a] to-[#182428] opacity-70" />
-              <span className="relative block truncate font-bold">
-                {item.title}
-              </span>
-              <span className="relative mt-1 block text-zinc-300">
-                {item.duration_seconds}s
-              </span>
-              <span className="absolute right-1 top-1 z-10 flex gap-1">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    move(i, -1);
-                  }}
-                  className="rounded bg-black/40 px-1"
-                >
-                  ↑
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    move(i, 1);
-                  }}
-                  className="rounded bg-black/40 px-1"
-                >
-                  ↓
-                </button>
-              </span>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleSplitClip}
+            disabled={splitting || !currentShot}
+            className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-200 transition hover:bg-white/10 disabled:opacity-50"
+          >
+            {splitting ? <Loader2 className="h-4 w-4 animate-spin text-[#b9f42e]" /> : <Scissors className="h-4 w-4 text-[#b9f42e]" />}
+            Split Clip at Playhead
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setExportModalOpen(true)}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#b9f42e] to-[#a4dc24] px-5 py-2.5 text-xs font-black text-black shadow-lg shadow-[#b9f42e]/20 transition hover:opacity-90"
+          >
+            <Download className="h-4 w-4" />
+            Render & Export Video
+          </button>
+        </div>
+      </header>
+
+      {/* Main Studio Editor Workspace */}
+      <div className="grid flex-1 grid-cols-1 lg:grid-cols-[1fr_340px] border-b border-white/10 overflow-hidden">
+        {/* Preview Player Area */}
+        <main className="flex flex-col items-center justify-center bg-[#070807] p-6 relative">
+          <div className="relative aspect-[9/16] max-h-[480px] w-full max-w-[320px] overflow-hidden rounded-2xl border border-white/15 bg-black shadow-2xl shadow-black/80">
+            {activeShot?.video_url ? (
+              <TimelineVideoPlayer
+                src={activeShot.video_url}
+                isPlaying={isPlaying}
+                isMuted={isMuted}
+                inShotTime={inShotTime}
+                className="h-full w-full object-cover"
+              />
+            ) : activeShot?.keyframe_image ? (
+              <ResolvedMedia src={activeShot.keyframe_image} type="image" className="h-full w-full object-cover" />
+            ) : (
+              <div className="grid h-full place-items-center bg-gradient-to-b from-[#182a35] to-[#0a1218] p-6 text-center text-xs text-zinc-400">
+                <Film className="h-10 w-10 text-zinc-600 mb-2" />
+                Select or generate shots in Storyboard to preview timeline.
+              </div>
+            )}
+
+            {/* Timecode Badge Overlay */}
+            <div className="absolute top-3 left-3 flex items-center gap-1.5 rounded-lg border border-black/50 bg-black/70 px-2.5 py-1 text-[11px] font-mono text-[#b9f42e] backdrop-blur-md">
+              <span className="h-2 w-2 rounded-full bg-[#b9f42e] animate-pulse" />
+              {formatTimecode(globalTime)}
             </div>
-          ))}
+
+            {/* Active Shot Badge Overlay */}
+            {activeShot && (
+              <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between rounded-lg border border-white/10 bg-black/75 px-3 py-1.5 text-[11px] backdrop-blur-md">
+                <span className="truncate font-bold text-zinc-200">Scene {activeShotIndex + 1}: {activeShot.title}</span>
+                <span className="font-mono text-zinc-400">{getShotDuration(activeShot).toFixed(1)}s</span>
+              </div>
+            )}
+          </div>
+
+          {/* Transport Controls Bar */}
+          <div className="mt-6 flex items-center gap-6 rounded-2xl border border-white/10 bg-[#141615] px-6 py-3 shadow-xl">
+            <button
+              type="button"
+              onClick={() => setGlobalTime(0)}
+              className="text-zinc-400 transition hover:text-white"
+              title="Jump to Start"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setGlobalTime((t) => Math.max(0, t - 3))}
+              className="text-zinc-400 transition hover:text-white"
+              title="Skip Back 3s"
+            >
+              <SkipBack className="h-5 w-5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!isPlaying && globalTime >= totalProjectDuration && totalProjectDuration > 0) {
+                  setGlobalTime(0);
+                }
+                setIsPlaying((p) => !p);
+              }}
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-[#b9f42e] text-black shadow-lg shadow-[#b9f42e]/20 transition hover:scale-105"
+            >
+              {isPlaying ? <Pause className="h-6 w-6 fill-current" /> : <Play className="h-6 w-6 fill-current translate-x-0.5" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setGlobalTime((t) => Math.min(totalProjectDuration, t + 3))}
+              className="text-zinc-400 transition hover:text-white"
+              title="Skip Forward 3s"
+            >
+              <SkipForward className="h-5 w-5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsLooping((l) => !l)}
+              className={`rounded-lg p-1.5 transition ${isLooping ? "bg-[#b9f42e]/20 text-[#b9f42e]" : "text-zinc-400 hover:text-white"}`}
+              title="Toggle Loop"
+            >
+              <Layers className="h-4 w-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsMuted((m) => !m)}
+              className={`rounded-lg p-1.5 transition ${isMuted ? "bg-red-500/20 text-red-400" : "text-zinc-400 hover:text-white"}`}
+              title={isMuted ? "Unmute Audio" : "Mute Audio"}
+            >
+              {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4 text-[#b9f42e]" />}
+            </button>
+          </div>
+        </main>
+
+        {/* Selected Clip Inspector Sidebar */}
+        <aside className="border-l border-white/10 bg-[#121312] p-5 overflow-y-auto">
+          {currentShot ? (
+            <div className="space-y-6">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-[10px] font-bold text-[#b9f42e]">
+                    Scene {selected + 1}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      disabled={selected === 0}
+                      onClick={() => moveShot(selected, -1)}
+                      className="rounded border border-white/10 p-1 text-zinc-400 hover:bg-white/5 hover:text-white disabled:opacity-30"
+                      title="Move Left"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={selected === shots.length - 1}
+                      onClick={() => moveShot(selected, 1)}
+                      className="rounded border border-white/10 p-1 text-zinc-400 hover:bg-white/5 hover:text-white disabled:opacity-30"
+                      title="Move Right"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+                <h3 className="mt-2 text-base font-bold text-white">{currentShot.title}</h3>
+              </div>
+
+              {/* Clip Trimming Editor Controls */}
+              <div className="space-y-4 rounded-xl border border-white/10 bg-black/30 p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Clip Trimming (Cut Range)</p>
+                  <Scissors className="h-4 w-4 text-[#b9f42e]" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] text-zinc-400">Trim Start (s)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max={getShotEnd(currentShot) - 0.1}
+                      value={getShotStart(currentShot)}
+                      onChange={(e) => handleUpdateTrim(currentShot, parseFloat(e.target.value) || 0, getShotEnd(currentShot))}
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs font-mono font-bold text-[#b9f42e] outline-none focus:border-[#b9f42e]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-zinc-400">Trim End (s)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min={getShotStart(currentShot) + 0.1}
+                      max={currentShot.duration_seconds || 60}
+                      value={getShotEnd(currentShot)}
+                      onChange={(e) => handleUpdateTrim(currentShot, getShotStart(currentShot), parseFloat(e.target.value) || 1)}
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs font-mono font-bold text-[#b9f42e] outline-none focus:border-[#b9f42e]"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1 text-xs">
+                  <span className="text-zinc-400">Active Cut Duration:</span>
+                  <span className="font-mono font-bold text-white">{getShotDuration(currentShot).toFixed(1)}s</span>
+                </div>
+              </div>
+
+              {/* Prompt Description */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Prompt / Visual Details</p>
+                  {currentShot.prompt && currentShot.prompt.length > 80 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowMorePrompt((open) => !open)}
+                      className="text-[11px] font-semibold text-[#b9f42e] hover:underline"
+                    >
+                      {showMorePrompt ? "Show less" : "Show more"}
+                    </button>
+                  )}
+                </div>
+                <p className={`mt-2 text-xs leading-relaxed text-zinc-300 ${!showMorePrompt ? "line-clamp-3" : ""}`}>
+                  {currentShot.prompt || "No prompt details provided for this scene."}
+                </p>
+              </div>
+
+              {/* Subject References */}
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Linked Assets</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {entities
+                    .filter((e) => currentShot.referenced_entities?.includes(e.id))
+                    .map((entity) => (
+                      <div key={entity.id} className="w-16">
+                        <AssetImage src={entity.reference_images?.[0]} />
+                        <p className="mt-1 truncate text-[10px] text-zinc-400">{entity.name}</p>
+                      </div>
+                    ))}
+                  {!entities.some((e) => currentShot.referenced_entities?.includes(e.id)) && (
+                    <span className="text-xs text-zinc-500">No linked character assets</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="py-12 text-center text-xs text-zinc-500">No scene selected.</div>
+          )}
+        </aside>
+      </div>
+
+      {/* Multi-Track Timeline & Playhead Scrubber */}
+      <div className="border-t border-white/10 bg-[#0f100f] p-4">
+        {/* Scrubber Time Bar & Zoom Controls */}
+        <div className="mb-3 flex items-center justify-between text-xs font-mono">
+          <span className="text-[#b9f42e] font-bold">{formatTimecode(globalTime)}</span>
+
+          <div className="flex items-center gap-3 text-zinc-400">
+            <ZoomOut className="h-4 w-4 cursor-pointer hover:text-white" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} />
+            <input
+              type="range"
+              min="0.5"
+              max="3"
+              step="0.25"
+              value={zoom}
+              onChange={(e) => setZoom(parseFloat(e.target.value))}
+              className="w-24 accent-[#b9f42e]"
+            />
+            <ZoomIn className="h-4 w-4 cursor-pointer hover:text-white" onClick={() => setZoom((z) => Math.min(3, z + 0.25))} />
+          </div>
+
+          <span className="text-zinc-400">{formatTimecode(totalProjectDuration)}</span>
+        </div>
+
+        {/* Timeline Tracks Box */}
+        <div
+          className="relative min-h-[96px] overflow-x-auto rounded-xl border border-white/10 bg-[#141514] p-3 cursor-pointer"
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const pct = Math.max(0, Math.min(1, clickX / rect.width));
+            setGlobalTime(pct * totalProjectDuration);
+          }}
+        >
+          {/* Draggable Playhead Scrubber Red Line */}
+          <div
+            className="absolute top-0 bottom-0 z-30 w-0.5 bg-red-500 shadow-[0_0_8px_#ef4444] pointer-events-none transition-all duration-75"
+            style={{ left: `${totalProjectDuration > 0 ? (globalTime / totalProjectDuration) * 100 : 0}%` }}
+          >
+            <div className="h-3 w-3 -translate-x-[5px] -translate-y-1.5 rotate-45 bg-red-500" />
+          </div>
+
+          {/* Shot Sequence Clips Track */}
+          <div className="flex gap-2" style={{ transform: `scaleX(${zoom})`, transformOrigin: "left center" }}>
+            {shots.map((s, idx) => {
+              const dur = getShotDuration(s);
+              const isSel = idx === selected;
+              const isAct = idx === activeShotIndex;
+
+              return (
+                <div
+                  key={s.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelected(idx);
+                    setGlobalTime(cumulativeOffsets[idx] || 0);
+                  }}
+                  className={`group relative flex h-20 min-w-[120px] flex-col justify-between overflow-hidden rounded-xl border p-2 text-left transition ${isSel ? "border-[#b9f42e] bg-[#b9f42e]/10 ring-2 ring-[#b9f42e]/30" : isAct ? "border-white/30 bg-white/10" : "border-white/10 bg-[#1b1c1b] hover:border-white/20"}`}
+                  style={{ flex: dur }}
+                >
+                  <div className="flex items-center justify-between text-[11px] font-bold">
+                    <span className="truncate text-zinc-200">Scene {idx + 1}</span>
+                    <span className="font-mono text-[10px] text-[#b9f42e]">{dur.toFixed(1)}s</span>
+                  </div>
+
+                  <p className="truncate text-[10px] text-zinc-400">{s.title}</p>
+
+                  {/* Cut Handle Trim Indicators */}
+                  <div className="flex justify-between border-t border-white/5 pt-1 text-[9px] font-mono text-zinc-500">
+                    <span>{formatTimecode(getShotStart(s))}</span>
+                    <span>{formatTimecode(getShotEnd(s))}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
+
+      {/* Video Export Dialog Modal */}
+      {exportModalOpen && (
+        <RenderExportModal
+          shots={shots}
+          close={() => setExportModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

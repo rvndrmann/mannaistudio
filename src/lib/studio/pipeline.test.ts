@@ -152,7 +152,7 @@ describe("production pipeline stages", () => {
 
   // After one shot finishes, the reply should say what is still outstanding and
   // offer the ways forward, rather than stopping and waiting to be asked again.
-  it("reports what is left and offers the batch and the ready video", () => {
+  it("reports what is left and offers the next shot image and ready video", () => {
     const stage = computePipelineStage(snapshot({
       hasScript: true,
       promptSheetCount: 4,
@@ -162,12 +162,12 @@ describe("production pipeline stages", () => {
     expect(stage.nextAction?.label).toBe("Generate the image for shot 3")
     expect(stage.summary).toContain("2 images and 3 videos still to generate.")
     expect(stage.alternatives.map((action) => action.label)).toEqual([
-      "Generate the remaining 2 images",
       "Generate the video for shot 2",
+      "Regenerate the image for shot 2",
     ])
   })
 
-  it("offers the rest of the videos once every frame is approved", () => {
+  it("offers next video as primary action and regenerate previous video as alternative", () => {
     const stage = computePipelineStage(snapshot({
       hasScript: true,
       promptSheetCount: 3,
@@ -175,80 +175,33 @@ describe("production pipeline stages", () => {
     }))
     expect(stage.key).toBe("videos")
     expect(stage.nextAction?.label).toBe("Generate the video for shot 2")
-    expect(stage.alternatives.map((action) => action.label)).toEqual(["Generate the remaining 2 videos"])
+    expect(stage.alternatives.map((action) => action.label)).toEqual(["Regenerate the video for shot 1"])
   })
 
-  it("offers no batch when a single shot is left", () => {
+  it("offers review as primary action and regenerate last shot as alternative when complete", () => {
     const stage = computePipelineStage(snapshot({
       hasScript: true,
-      promptSheetCount: 2,
-      shots: [shot(1, { hasKeyframe: true, hasVideo: true }), shot(2)],
+      promptSheetCount: 3,
+      shots: [
+        shot(1, { hasKeyframe: true, hasVideo: true }),
+        shot(2, { hasKeyframe: true, hasVideo: true }),
+        shot(3, { hasKeyframe: true, hasVideo: true }),
+      ],
     }))
-    expect(stage.nextAction?.label).toBe("Generate the image for shot 2")
-    expect(stage.alternatives).toEqual([])
+    expect(stage.key).toBe("complete")
+    expect(stage.nextAction?.label).toBe("Review the cut for continuity")
+    expect(stage.alternatives.map((action) => action.label)).toEqual(["Regenerate the video for shot 3"])
   })
 
-  it("keeps a batch image intent off the single-shot fast path", () => {
+  it("keeps a single shot image intent on the shot path", () => {
     const stage = computePipelineStage(snapshot({
       hasScript: true,
       promptSheetCount: 3,
       shots: [shot(1), shot(2), shot(3)],
     }))
-    const batch = stage.alternatives.find((action) => action.id === "pipeline-keyframes-remaining")
-    expect(parseRequestedShotNumbers(batch!.intent)).toEqual([1, 2, 3])
-    expect(parseBulkEntityImageIntent(batch!.intent, [])).toBeNull()
-  })
-
-  // A shot mid-render still has no keyframe, so on stored state alone it reads
-  // as the obvious next step — and pressing it pays for the same frame twice.
-  it("never offers a shot that is already generating", () => {
-    const stage = computePipelineStage(snapshot({
-      hasScript: true,
-      promptSheetCount: 4,
-      shots: [
-        shot(1, { hasKeyframe: true, hasVideo: true }),
-        { ...shot(2), imageInFlight: true },
-        shot(3),
-      ],
-    }))
-    expect(stage.nextAction?.label).toBe("Generate the image for shot 3")
-    expect(JSON.stringify(stage)).not.toContain("image for shot 2")
-  })
-
-  it("stops offering anything while every outstanding shot is rendering", () => {
-    const stage = computePipelineStage(snapshot({
-      hasScript: true,
-      promptSheetCount: 2,
-      shots: [
-        { ...shot(1), imageInFlight: true },
-        { ...shot(2), imageInFlight: true },
-      ],
-    }))
-    expect(stage.title).toBe("Generating")
-    expect(stage.nextAction).toBeNull()
-    expect(stage.alternatives).toEqual([])
-    expect(stage.summary).toContain("Shot 1, 2 are generating now")
-  })
-
-  it("does not call the episode finished while a clip is still rendering", () => {
-    const stage = computePipelineStage(snapshot({
-      hasScript: true,
-      promptSheetCount: 1,
-      shots: [{ ...shot(1, { hasKeyframe: true }), videoInFlight: true }],
-    }))
-    expect(stage.key).not.toBe("complete")
-    expect(stage.nextAction).toBeNull()
-  })
-
-  it("keeps the batch button to the shots that are not already running", () => {
-    const stage = computePipelineStage(snapshot({
-      hasScript: true,
-      promptSheetCount: 4,
-      shots: [{ ...shot(1), imageInFlight: true }, shot(2), shot(3), shot(4)],
-    }))
-    const batch = stage.alternatives.find((action) => action.id === "pipeline-keyframes-remaining")
-    expect(batch?.label).toBe("Generate the remaining 3 images")
-    expect(parseRequestedShotNumbers(batch!.intent)).toEqual([2, 3, 4])
+    const alt = stage.alternatives.find((action) => action.id === "pipeline-keyframe-2")
+    expect(parseRequestedShotNumbers(alt!.intent)).toEqual([2])
+    expect(parseBulkEntityImageIntent(alt!.intent, [])).toBeNull()
   })
 
   // "Skip shot 6 and continue" names a shot in order to exclude it. Left to the

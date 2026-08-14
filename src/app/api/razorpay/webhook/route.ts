@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createClient } from '@/lib/supabase/server'
 import { billingTiers, isBillingTierId, tierForPlanId, type BillingTierId } from '@/lib/billing-plans'
+import { sendCapiEvent } from '@/lib/meta-capi'
 
 // Razorpay subscription webhook.
 // Configure https://www.aidirectorhub.com/api/razorpay/webhook in the Razorpay
@@ -49,6 +50,15 @@ export async function POST(req: Request) {
                         p_status: 'success',
                         p_profile_id: notes.profile_id,
                     })
+                    await sendCapiEvent({
+                        eventName: 'Purchase',
+                        eventId: orderPaymentId,
+                        email: notes.email || paymentEntity?.email,
+                        externalId: notes.profile_id,
+                        value: orderEntity?.amount ? orderEntity.amount / 100 : undefined,
+                        currency: orderEntity?.currency || 'INR',
+                        customData: { content_name: `Bids: ${bidsToAdd}`, content_type: 'bids' },
+                    })
                 }
             } else if (notes.type === 'credits' && notes.profile_id) {
                 const creditsToAdd = Number(notes.credits)
@@ -63,6 +73,15 @@ export async function POST(req: Request) {
                         p_product_info: `Credits: ${creditsToAdd.toLocaleString()}`,
                         p_status: 'success',
                         p_profile_id: notes.profile_id,
+                    })
+                    await sendCapiEvent({
+                        eventName: 'Purchase',
+                        eventId: orderPaymentId,
+                        email: notes.email || paymentEntity?.email,
+                        externalId: notes.profile_id,
+                        value: orderEntity?.amount ? orderEntity.amount / 100 : undefined,
+                        currency: orderEntity?.currency || 'INR',
+                        customData: { content_name: `Credits: ${creditsToAdd}`, content_type: 'credits' },
                     })
                 }
             }
@@ -120,6 +139,23 @@ export async function POST(req: Request) {
                         p_description: `${chargedTier.name} membership — monthly credits`,
                     })
                 }
+
+                // The conversion Meta optimises against. Renewals count too — they
+                // are real revenue — and each charge has its own payment ID, so a
+                // webhook retry deduplicates on event_id instead of double-counting.
+                await sendCapiEvent({
+                    eventName: 'Purchase',
+                    eventId: paymentId,
+                    email,
+                    externalId: profileId,
+                    value: paymentEntity?.amount ? paymentEntity.amount / 100 : chargedTier?.priceInr,
+                    currency: paymentEntity?.currency || 'INR',
+                    customData: {
+                        content_name: `Membership: AI Director Hub ${chargedTier?.name || 'Pro'}`,
+                        content_type: 'subscription',
+                        ...(chargedTier?.id ? { content_ids: [chargedTier.id] } : {}),
+                    },
+                })
                 break
             }
 

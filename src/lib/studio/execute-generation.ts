@@ -10,6 +10,7 @@ import type { AuthenticatedProjectContext } from "./server-context"
 import { randomUUID } from "node:crypto"
 import { verifyGenerationTarget } from "./generation-target"
 import { refundGenerationCredits } from "./credits"
+import { parseSeedanceMissingAssetError, purgeStaleBytePlusAsset } from "./seedance-reference-error"
 
 async function verifyAttachedOutput(context: AuthenticatedProjectContext, job: Record<string, unknown>, resultPath: string) {
   if (typeof job.shot_id !== "string") throw new Error("Generation completed without a target shot")
@@ -281,18 +282,64 @@ export async function executeGenerationJobsInBackground(
             await settleWorkflowRun(context, job.workflow_run_id)
 
           } else if (job.type === "video" && job.provider === "byteplus") {
-            const task = await submitBytePlusVideo({
-              model: job.model as VideoGenerationModelId,
-              prompt: job.prompt || "",
-              duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 4,
-              resolution: typeof settings.resolution === "string" ? settings.resolution : "720p",
-              ratio: effectiveAspectRatio,
-              referenceUrls,
-              faceReferenceUrls,
-              videoReferenceUrls,
-              generationMode: settings.generationMode === "multi_image" ? "multi_image" : "keyframe",
-              audioEnabled: typeof settings.audioEnabled === "boolean" ? settings.audioEnabled : true,
-            })
+            let task: { id: string; response?: unknown }
+            try {
+              task = await submitBytePlusVideo({
+                model: job.model as VideoGenerationModelId,
+                prompt: job.prompt || "",
+                duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 4,
+                resolution: typeof settings.resolution === "string" ? settings.resolution : "720p",
+                ratio: effectiveAspectRatio,
+                referenceUrls,
+                faceReferenceUrls,
+                videoReferenceUrls,
+                generationMode: settings.generationMode === "multi_image" ? "multi_image" : "keyframe",
+                audioEnabled: typeof settings.audioEnabled === "boolean" ? settings.audioEnabled : true,
+              })
+            } catch (videoErr) {
+              const errMsg = videoErr instanceof Error ? videoErr.message : "Video submission failed"
+              const missingAsset = parseSeedanceMissingAssetError(errMsg)
+              if (missingAsset?.assetId) {
+                await purgeStaleBytePlusAsset(context.supabase, missingAsset.assetId, context.project.id)
+                // Re-resolve reference URLs with fresh active registration
+                const freshRefUrls: string[] = []
+                const freshFaceRefUrls: string[] = []
+                for (const ref of combinedReferencePaths) {
+                  const signed = await signReference(ref)
+                  if (!signed) continue
+                  if (facePaths.has(ref)) {
+                    const assetUri = await resolveRegisteredAsset({
+                      supabase: context.supabase,
+                      sourcePath: ref,
+                      imageUrl: signed,
+                      name: ref.split("/").pop() || undefined,
+                      projectId: context.project.id,
+                      userId: context.user.id,
+                    })
+                    if (assetUri) {
+                      freshRefUrls.push(assetUri)
+                      continue
+                    }
+                  }
+                  freshRefUrls.push(signed)
+                  if (facePaths.has(ref)) freshFaceRefUrls.push(signed)
+                }
+                task = await submitBytePlusVideo({
+                  model: job.model as VideoGenerationModelId,
+                  prompt: job.prompt || "",
+                  duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 4,
+                  resolution: typeof settings.resolution === "string" ? settings.resolution : "720p",
+                  ratio: effectiveAspectRatio,
+                  referenceUrls: freshRefUrls,
+                  faceReferenceUrls: freshFaceRefUrls,
+                  videoReferenceUrls,
+                  generationMode: settings.generationMode === "multi_image" ? "multi_image" : "keyframe",
+                  audioEnabled: typeof settings.audioEnabled === "boolean" ? settings.audioEnabled : true,
+                })
+              } else {
+                throw videoErr
+              }
+            }
             
             await context.supabase.from("creator_generation_jobs").update({
               status: "processing",

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { BytePlusProviderError, bytePlusVideoRatio, bytePlusVideoReferenceLimit, createBytePlusAsset, getBytePlusAsset, getBytePlusVideoTask, submitBytePlusVideo } from "@/lib/studio/byteplus"
+import { BytePlusProviderError, bytePlusVideoRatio, bytePlusVideoReferenceLimit, createBytePlusAsset, getBytePlusAsset, getBytePlusVideoTask, resolveBytePlusReferenceUrl, submitBytePlusVideo } from "@/lib/studio/byteplus"
 import { FalProviderError, getFalVideoTask, submitFalVideo } from "@/lib/studio/fal"
 import { getGoogleVideoTask, GoogleProviderError, submitGoogleVideo } from "@/lib/studio/google"
 import { generationProvider, isVideoGenerationModel } from "@/lib/studio/generation-models"
@@ -12,7 +12,7 @@ import { buildEntityMentionContext, entityPrimaryReference, type MentionableEnti
 import { projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 import { recordExistingAsset, resolveRegisteredAsset } from "@/lib/studio/byteplus-assets"
-import { parseSeedanceRejectedReference, seedanceReferenceAssetUri } from "@/lib/studio/seedance-reference-error"
+import { parseSeedanceMissingAssetError, parseSeedanceRejectedReference, purgeStaleBytePlusAsset, seedanceReferenceAssetUri } from "@/lib/studio/seedance-reference-error"
 
 const submitSchema = z.object({
   shotId: z.string().uuid(),
@@ -105,52 +105,68 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       : {}
 
     if (provider === "byteplus" && shotBytePlusAssetId) {
-      combinedReferencePaths.push(shotBytePlusAssetId)
-      if (shot.keyframe_image) { rawImagesToOmit.add(shot.keyframe_image); displayReferencePaths.push(shot.keyframe_image) }
+      const info = await getBytePlusAsset(shotBytePlusAssetId).catch(() => null)
+      if (info && (info.status === "Active" || info.status === "active")) {
+        combinedReferencePaths.push(shotBytePlusAssetId)
+        if (shot.keyframe_image) { rawImagesToOmit.add(shot.keyframe_image); displayReferencePaths.push(shot.keyframe_image) }
+      } else {
+        const cleanMeta = { ...shotMeta }
+        delete cleanMeta.byteplus_asset_id
+        delete cleanMeta.byteplus_asset_uri
+        await context.supabase.from("creator_shots").update({ metadata: cleanMeta }).eq("id", shot.id)
+        if (shot.keyframe_image) combinedReferencePaths.push(shot.keyframe_image)
+      }
     } else if (shot.keyframe_image && !input.startFrame) {
       combinedReferencePaths.push(shot.keyframe_image)
     }
 
     if (resolvedEntities && resolvedEntities.length > 0) {
       for (const entity of resolvedEntities) {
-        const byteplusAssetId = typeof entity.metadata === "object" && entity.metadata !== null ? (entity.metadata as Record<string, unknown>).byteplus_asset_id : null
+        const rawEntityAssetId = typeof entity.metadata === "object" && entity.metadata !== null ? (entity.metadata as Record<string, unknown>).byteplus_asset_id : null
+        const byteplusAssetId = typeof rawEntityAssetId === "string" && rawEntityAssetId.trim() ? rawEntityAssetId.trim() : typeof entity.byteplus_asset_id === "string" && entity.byteplus_asset_id.trim() ? entity.byteplus_asset_id.trim() : null
 
-        if (provider === "byteplus" && typeof byteplusAssetId === "string" && byteplusAssetId.trim()) {
-          combinedReferencePaths.push(byteplusAssetId.trim())
-          const viewable = entityPrimaryReference(entity as MentionableEntity)
-          if (viewable) displayReferencePaths.push(viewable)
-          // Registered before this registry existed, or on an earlier run. It
-          // occupies a slot either way, so it is adopted here rather than left
-          // invisible to the admin view that has to free those slots.
-          if (viewable) {
-            await recordExistingAsset({
-              supabase: context.supabase,
-              sourcePath: viewable,
-              assetId: byteplusAssetId.trim(),
-              name: entity.name,
-              projectId,
-              entityId: entity.id,
-              userId: context.user.id,
-            })
-          }
-          // Omit raw duplicates when BytePlus can use its canonical provider asset.
-          if (Array.isArray(entity.reference_images)) {
-            for (const img of entity.reference_images) {
-              if (typeof img === "string" && img.trim()) {
-                rawImagesToOmit.add(img.trim())
+        let isValidAsset = false
+        if (provider === "byteplus" && byteplusAssetId) {
+          const info = await getBytePlusAsset(byteplusAssetId).catch(() => null)
+          if (info && (info.status === "Active" || info.status === "active")) {
+            isValidAsset = true
+            combinedReferencePaths.push(byteplusAssetId)
+            const viewable = entityPrimaryReference(entity as MentionableEntity)
+            if (viewable) displayReferencePaths.push(viewable)
+            if (viewable) {
+              await recordExistingAsset({
+                supabase: context.supabase,
+                sourcePath: viewable,
+                assetId: byteplusAssetId,
+                name: entity.name,
+                projectId,
+                entityId: entity.id,
+                userId: context.user.id,
+              })
+            }
+            if (Array.isArray(entity.reference_images)) {
+              for (const img of entity.reference_images) {
+                if (typeof img === "string" && img.trim()) {
+                  rawImagesToOmit.add(img.trim())
+                }
               }
             }
+          } else {
+            const entityMeta = typeof entity.metadata === "object" && entity.metadata !== null ? { ...(entity.metadata as Record<string, unknown>) } : {}
+            delete entityMeta.byteplus_asset_id
+            delete entityMeta.byteplus_asset_uri
+            await context.supabase.from("creator_entities").update({
+              byteplus_asset_id: null,
+              byteplus_asset_uri: null,
+              metadata: entityMeta,
+            }).eq("id", entity.id)
           }
-        } else {
-          // One image per entity: its chosen reference. Pushing every image an
-          // entity owns fills the reference budget with a few subjects and
-          // drops the rest of the cast before the provider sees it.
+        }
+
+        if (!isValidAsset) {
           const chosen = entityPrimaryReference(entity as MentionableEntity)
           if (chosen) {
             combinedReferencePaths.push(chosen.trim())
-            // Registration clears the real-person check and only faces need it.
-            // The Asset Library holds 50 images, so props and locations must
-            // not be spending that quota.
             if (entity.type === "character") facePaths.add(chosen.trim())
           }
         }
@@ -254,7 +270,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       idempotency_key: randomUUID(),
       operation: "submit_video_generation",
       estimated_credits: creditCost,
-      credits_used: creditCost,
+      credits_used: 0,
     }).select("*").single()
     if (jobError) throw jobError
     pendingRefund.key = `generation-job:${job.id}`
@@ -272,7 +288,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         task = { id: bpRes.id, response: bpRes.response }
       }
       await Promise.all([
-        context.supabase.from("creator_generation_jobs").update({ status: "processing", provider_job_id: task.id, provider_response: task.response }).eq("id", job.id),
+        context.supabase.from("creator_generation_jobs").update({ status: "processing", credits_used: creditCost, provider_job_id: task.id, provider_response: task.response }).eq("id", job.id),
         context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...resolvedEntityIds])), metadata: { ...(shot.metadata || {}), video_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, style, reference_images: viewableReferencePaths, character_entity_ids: input.characterEntityIds, mentioned_entity_ids: input.mentionedEntityIds, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
       ])
       return NextResponse.json({
@@ -286,6 +302,45 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }, { status: 202 })
     } catch (error) {
       const errorMessage = studioErrorMessage(error, "Submission failed")
+      const missingAsset = parseSeedanceMissingAssetError(errorMessage)
+      if (missingAsset?.assetId && provider === "byteplus") {
+        await purgeStaleBytePlusAsset(context.supabase, missingAsset.assetId, projectId)
+        try {
+          const freshSignedUrls = await signedReferenceUrls(context, viewableReferencePaths)
+          const freshReferences = await Promise.all(freshSignedUrls.map((url: string, idx: number) => resolveBytePlusReferenceUrl(url, facePaths.has(viewableReferencePaths[idx]))))
+          const freshFaceReferences = freshReferences.filter((_: string, idx: number) => facePaths.has(viewableReferencePaths[idx]))
+
+          const bpRes = await submitBytePlusVideo({
+            model: input.model,
+            prompt: resolvedPrompt,
+            duration: input.durationSeconds || Number(shot.duration_seconds || 5),
+            resolution: input.resolution || shot.resolution || "720p",
+            ratio: providerRatio,
+            referenceUrls: freshReferences,
+            faceReferenceUrls: freshFaceReferences,
+            videoReferenceUrls: videoReferences,
+            generationMode: input.generationMode,
+            audioEnabled: input.audioEnabled,
+          })
+          const task = { id: bpRes.id, response: bpRes.response }
+          await Promise.all([
+            context.supabase.from("creator_generation_jobs").update({ status: "processing", credits_used: creditCost, provider_job_id: task.id, provider_response: task.response }).eq("id", job.id),
+            context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...resolvedEntityIds])), metadata: { ...(shot.metadata || {}), video_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, style, reference_images: viewableReferencePaths, character_entity_ids: input.characterEntityIds, mentioned_entity_ids: input.mentionedEntityIds, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
+          ])
+          return NextResponse.json({
+            jobId: job.id,
+            providerJobId: task.id,
+            status: "processing",
+            provider,
+            model: input.model,
+            creditsCharged: creditCost,
+            creditBalance: deduct.newBalance,
+          }, { status: 202 })
+        } catch (retryError) {
+          console.warn("Auto-retry after clearing stale BytePlus asset failed:", retryError)
+        }
+      }
+
       await Promise.all([
         context.supabase.from("creator_generation_jobs").update({ status: "failed", error: errorMessage, completed_at: new Date().toISOString() }).eq("id", job.id),
         context.supabase.from("creator_shots").update({ video_status: "failed" }).eq("id", shot.id),
@@ -294,7 +349,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       pendingRefund = null
       const rejected = parseSeedanceRejectedReference(errorMessage)
       return NextResponse.json({
-        error: errorMessage,
+        error: missingAsset
+          ? `Stale reference asset (${missingAsset.assetId}) was missing from BytePlus. Stale asset cache has been cleaned up. Please try generating again.`
+          : errorMessage,
         inputImages: combinedReferencePaths,
         rejectedReference: rejected ? {
           ...rejected,

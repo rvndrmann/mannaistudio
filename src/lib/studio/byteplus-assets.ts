@@ -51,13 +51,17 @@ export async function resolveRegisteredAsset(input: {
       .maybeSingle()
 
     if (existing?.asset_uri) {
-      // Touched rather than re-registered: last_used_at is what tells an admin
-      // which assets are dead weight when the quota needs freeing.
-      await supabase
-        .from("creator_byteplus_assets")
-        .update({ last_used_at: new Date().toISOString(), use_count: (existing.use_count || 0) + 1 })
-        .eq("id", existing.id)
-      return existing.asset_uri
+      // Verify that the cached asset still exists and is active on BytePlus.
+      const info = await getBytePlusAsset(existing.asset_id).catch(() => null)
+      if (info && (info.status === "Active" || info.status === "active")) {
+        await supabase
+          .from("creator_byteplus_assets")
+          .update({ last_used_at: new Date().toISOString(), use_count: (existing.use_count || 0) + 1 })
+          .eq("id", existing.id)
+        return info.assetUri || existing.asset_uri
+      }
+      // Asset is deleted or missing from BytePlus — remove stale registry record so it re-registers freshly.
+      await supabase.from("creator_byteplus_assets").delete().eq("id", existing.id)
     }
 
     const created = await createBytePlusAsset({ imageUrl: input.imageUrl, name: input.name })

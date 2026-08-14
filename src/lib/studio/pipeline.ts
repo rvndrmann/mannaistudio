@@ -262,9 +262,11 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
   const nextKeyframe = awaitingKeyframe[0] || null
   const nextVideo = awaitingVideo[0] || null
 
-  // A shot whose frame is already approved can be filmed now. Offering that
-  // beside the images means a user who wants one shot finished end to end does
-  // not have to wait for every keyframe first, or ask for it by hand.
+  const completedOrInFlightVideos = snapshot.shots.filter((shot) => shot.hasVideo || shot.videoInFlight)
+  const lastVideoShot = completedOrInFlightVideos.at(-1) || null
+  const completedOrInFlightKeyframes = snapshot.shots.filter((shot) => shot.hasKeyframe || shot.imageInFlight)
+  const lastKeyframeShot = completedOrInFlightKeyframes.at(-1) || null
+
   const videoAction = (shot: SnapshotShot): PipelineAction => ({
     id: `pipeline-video-${shot.number}`,
     label: `Generate the video for shot ${shot.number}`,
@@ -273,7 +275,24 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
     recommended: false,
   })
 
+  const videoRedoAction = (shot: SnapshotShot): PipelineAction => ({
+    id: `pipeline-video-redo-${shot.number}`,
+    label: `Regenerate the video for shot ${shot.number}`,
+    intent: `Regenerate the video for shot ${shot.number} from its approved keyframe and saved prompt.`,
+    risk: "costly",
+    recommended: false,
+  })
+
+  const keyframeRedoAction = (shot: SnapshotShot): PipelineAction => ({
+    id: `pipeline-keyframe-redo-${shot.number}`,
+    label: `Regenerate the image for shot ${shot.number}`,
+    intent: `Regenerate the storyboard keyframe image for shot ${shot.number} from its saved prompt.`,
+    risk: "costly",
+    recommended: false,
+  })
+
   if (nextKeyframe) {
+    const nextKeyframeSubsequent = awaitingKeyframe[1] || null
     return {
       key: "keyframes",
       title: "Storyboard images",
@@ -286,14 +305,14 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
         recommended: true,
       },
       alternatives: [
-        ...(awaitingKeyframe.length > 1 ? [{
-          id: "pipeline-keyframes-remaining",
-          label: `Generate the remaining ${awaitingKeyframe.length} images`,
-          intent: `Generate the storyboard keyframe images for shot ${awaitingKeyframe.map((shot) => shot.number).join(", ")} from their saved prompts, each using the reference art its own shot links to.`,
+        ...(nextVideo ? [videoAction(nextVideo)] : []),
+        ...(lastKeyframeShot ? [keyframeRedoAction(lastKeyframeShot)] : nextKeyframeSubsequent ? [{
+          id: `pipeline-keyframe-${nextKeyframeSubsequent.number}`,
+          label: `Generate the image for shot ${nextKeyframeSubsequent.number}`,
+          intent: `Generate the storyboard keyframe image for shot ${nextKeyframeSubsequent.number} from its saved prompt, using the reference art that shot already links to.`,
           risk: "costly" as const,
           recommended: false,
         }] : []),
-        ...(nextVideo ? [videoAction(nextVideo)] : []),
       ],
     }
   }
@@ -304,14 +323,10 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
       title: "Shot video",
       summary: `Every shot has a keyframe. ${rendered} of ${snapshot.shots.length} ${plural(snapshot.shots.length, "shot")} ${plural(rendered, "is", "are")} rendered. ${remainingWork(snapshot)} Shot ${nextVideo.number} is next.`,
       nextAction: { ...videoAction(nextVideo), recommended: true },
-      alternatives: awaitingVideo.length > 1
-        ? [{
-          id: "pipeline-videos-remaining",
-          label: `Generate the remaining ${awaitingVideo.length} videos`,
-          intent: `Generate the videos for shot ${awaitingVideo.map((shot) => shot.number).join(", ")} from their approved keyframes and saved prompts.`,
-          risk: "costly" as const,
-          recommended: false,
-        }]
+      alternatives: lastVideoShot
+        ? [videoRedoAction(lastVideoShot)]
+        : awaitingVideo[1]
+        ? [videoAction(awaitingVideo[1])]
         : [],
     }
   }
@@ -327,10 +342,11 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
       title: "Generating",
       summary: `Shot ${numbers.join(", ")} ${plural(numbers.length, "is", "are")} generating now. ${remainingWork(snapshot)} Nothing to start until ${plural(numbers.length, "it lands", "they land")}.`,
       nextAction: null,
-      alternatives: [],
+      alternatives: lastVideoShot ? [videoRedoAction(lastVideoShot)] : [],
     }
   }
 
+  const lastEpisodeShot = snapshot.shots.at(-1) || null
   return {
     key: "complete",
     title: "Review",
@@ -342,7 +358,7 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
       risk: "read",
       recommended: true,
     },
-    alternatives: [],
+    alternatives: lastEpisodeShot ? [videoRedoAction(lastEpisodeShot)] : [],
   }
 }
 

@@ -12,6 +12,41 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+// Supabase fires SIGNED_IN on every session restore — each page load, each tab
+// focus, each token refresh — not just on a new account. Firing
+// CompleteRegistration on it reported more registrations than page views and
+// taught Meta's ad delivery to chase people who reload the site. Two guards fix
+// it: the account must be newly created, and we only ever fire once per user.
+
+/** A brand-new account signs in within seconds of being created. */
+const NEW_ACCOUNT_WINDOW_MS = 5 * 60 * 1000
+
+const TRACKED_KEY = 'adh:registration-tracked'
+
+function isFreshlyCreated(createdAt: string | undefined): boolean {
+    if (!createdAt) return false
+    const created = new Date(createdAt).getTime()
+    if (!Number.isFinite(created)) return false
+    return Date.now() - created < NEW_ACCOUNT_WINDOW_MS
+}
+
+/**
+ * Records that this user's registration has been reported, returning false if it
+ * already had been. Returns false when storage is unavailable too: this event
+ * was over-firing badly, so losing the odd private-window signup is much
+ * cheaper than feeding the optimiser duplicates again.
+ */
+function claimRegistration(userId: string): boolean {
+    try {
+        const seen: string[] = JSON.parse(window.localStorage.getItem(TRACKED_KEY) || '[]')
+        if (seen.includes(userId)) return false
+        window.localStorage.setItem(TRACKED_KEY, JSON.stringify([...seen.slice(-19), userId]))
+        return true
+    } catch {
+        return false
+    }
+}
+
 function isSupabaseConfigured() {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -35,9 +70,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
                 setUser(session?.user ?? null)
                 setLoading(false)
-                // Fire a registration/login conversion when a fresh sign-in completes.
-                if (event === 'SIGNED_IN') {
-                    import('@/lib/fbpixel').then(({ fbTrack }) => fbTrack('CompleteRegistration')).catch(() => {})
+                // Report a registration only for an account that was just created,
+                // and only the first time we see it.
+                const signedInUser = session?.user
+                if (
+                    event === 'SIGNED_IN' &&
+                    signedInUser &&
+                    isFreshlyCreated(signedInUser.created_at) &&
+                    claimRegistration(signedInUser.id)
+                ) {
+                    import('@/lib/fbpixel')
+                        .then(({ fbTrack }) => fbTrack('CompleteRegistration'))
+                        .catch(() => {})
                 }
             })
 
