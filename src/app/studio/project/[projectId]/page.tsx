@@ -2437,8 +2437,48 @@ function AssetWorkspace({
     return () => window.clearInterval(interval);
   }, [persistedGenerationStatus, reload]);
 
+  // What produced each saved concept, so selecting one brings back the prompt
+  // and references that made it. Without this the panel offered a description
+  // and an empty reference strip, and every regeneration started from scratch.
+  const recipeByImage = useMemo(() => {
+    const recipes = new Map<string, { prompt: string; model: string; references: string[] }>();
+    for (const job of generationJobs || []) {
+      const settings = job.settings && typeof job.settings === "object" ? job.settings as Record<string, unknown> : null;
+      if (job.type !== "image" || settings?.entityId !== asset.id) continue;
+      if (typeof job.result_url !== "string" || !job.result_url) continue;
+      if (recipes.has(job.result_url)) continue;
+      recipes.set(job.result_url, {
+        prompt: job.prompt || "",
+        model: job.model || imageGenerationModels[0].id,
+        references: Array.isArray(job.input_images) ? job.input_images as string[] : [],
+      });
+    }
+    return recipes;
+  }, [generationJobs, asset.id]);
+
+  // Selecting a concept loads what made it, ready to run again or to edit.
+  const activeImagePath = libraryImages[selected] || null;
+  useEffect(() => {
+    if (!activeImagePath) return;
+    const recipe = recipeByImage.get(activeImagePath);
+    if (!recipe) return;
+    if (recipe.prompt.trim()) setPrompt(recipe.prompt);
+    if (recipe.model) setModel(recipe.model);
+    if (recipe.references.length) setReferences(recipe.references);
+    // Keyed on the selection alone: reacting to the recipe map would overwrite
+    // an edit in progress every time the workspace refreshed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeImagePath]);
+
   const activeAttempt = selectedAttemptId ? assetAttempts.find((attempt) => attempt.id === selectedAttemptId) || null : null;
   const activeImage = activeAttempt ? null : libraryImages[selected] || null;
+  useEffect(() => {
+    if (!activeAttempt) return;
+    if (activeAttempt.prompt.trim()) setPrompt(activeAttempt.prompt);
+    if (activeAttempt.model) setModel(activeAttempt.model);
+    if (activeAttempt.referenceImages.length) setReferences(activeAttempt.referenceImages);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAttemptId]);
   const chosenImage = libraryImages[0] || null;
   const isCurrentlyChosen = Boolean(activeImage && (asset.primary_reference_image ? activeImage === asset.primary_reference_image : selected === 0));
 
