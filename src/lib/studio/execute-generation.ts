@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto"
 import { verifyGenerationTarget } from "./generation-target"
 import { refundGenerationCredits } from "./credits"
 import { parseSeedanceMissingAssetError, purgeStaleBytePlusAsset } from "./seedance-reference-error"
+import { isVideoReferencePath } from "./media-reference"
 
 async function verifyAttachedOutput(context: AuthenticatedProjectContext, job: Record<string, unknown>, resultPath: string) {
   if (typeof job.shot_id !== "string") throw new Error("Generation completed without a target shot")
@@ -59,16 +60,6 @@ async function withGenerationRetry<T>(context: AuthenticatedProjectContext, job:
     }
   }
   throw lastError
-}
-
-/**
- * A stored path that holds a clip rather than a frame.
- *
- * Kept deliberately simple: it reads the extension, because these are paths in
- * this project's own bucket, written by this project's own uploads and renders.
- */
-export function isVideoReferencePath(path: string) {
-  return /\.(mp4|mov|webm|m4v|avi|mkv)(\?|#|$)/i.test(path)
 }
 
 export async function executeGenerationJobsInBackground(

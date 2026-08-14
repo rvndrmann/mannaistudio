@@ -9,10 +9,11 @@ import { revisionRequestSchema } from "./revisions"
 import { deductUserCredits } from "./credits"
 import { executeGenerationJobsInBackground } from "./execute-generation"
 import { findMentionedEntityIds, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
-import { stripIdentityDescriptions } from "./prompt-sanitizer"
+import { sceneNotFrameReason, stripIdentityDescriptions } from "./prompt-sanitizer"
 import { inheritedShotLocations } from "./shot-location"
 import { estimateShotSeconds } from "./shot-duration"
 import { beatRuntimeSeconds, describeBeatProblems, readShotVideoPrompt, writeShotVideoPrompt } from "./shot-video-prompt"
+import { aspectMismatch, restateAspect } from "./shot-aspect"
 import { buildGenerationTargetSnapshot } from "./generation-target"
 
 export type ToolRisk = "read" | "write" | "costly" | "destructive"
@@ -329,6 +330,14 @@ export const createStoryboardBatchTool = defineDirectorTool({
   async execute(context, input) {
     const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
     if (!episode) throw new Error("Episode does not belong to this project")
+    // A shot's image prompt is one frame; the master prompt it may have been
+    // extracted from is a whole scene in named sections. The two are easy to
+    // conflate when writing many shots at once, and the result is not a messy
+    // prompt but the wrong document sitting in the field.
+    const sceneShots = input.shots
+      .map((shot, index) => ({ index, reason: sceneNotFrameReason(shot.prompt) }))
+      .filter((entry): entry is { index: number; reason: string } => Boolean(entry.reason))
+    if (sceneShots.length) throw new Error(sceneShots.slice(0, 4).map((entry) => `Shot "${input.shots[entry.index].title}": ${entry.reason}`).join(" "))
     const referencedIds = Array.from(new Set(input.shots.flatMap((shot) => shot.referencedEntityIds)))
     if (referencedIds.length) {
       const { data: entities, error: entityError } = await context.supabase.from("creator_entities").select("id").eq("project_id", context.project.id).in("id", referencedIds)
@@ -704,8 +713,14 @@ export const updateShotTool = defineDirectorTool({
     const { data: episodes, error: episodeError } = await context.supabase.from("creator_episodes").select("id").eq("project_id", context.project.id)
     if (episodeError) throw episodeError
     const episodeIds = (episodes ?? []).map((episode) => episode.id)
-    // Same rule as create_storyboard_batch: a patched prompt is stored without
-    // its written identity block.
+    // Same rule as create_storyboard_batch: this shot's image prompt is one
+    // frame, and the master prompt it may have been extracted from is a whole
+    // scene in named sections. The two are not to be confused.
+    if (typeof input.patch.prompt === "string") {
+      const reason = sceneNotFrameReason(input.patch.prompt)
+      if (reason) throw new Error(reason)
+    }
+    // A patched prompt is stored without its written identity block.
     const patch = typeof input.patch.prompt === "string"
       ? { ...input.patch, prompt: stripIdentityDescriptions(input.patch.prompt) }
       : input.patch
@@ -797,6 +812,43 @@ export const writeShotVideoPromptsTool = defineDirectorTool({
       return { shotNumber: entry.shotNumber, seconds: runtime ?? shot.duration_seconds }
     }))
     return { episodeId: input.episodeId, written: written.length, shots: written }
+  },
+})
+
+/**
+ * Corrects the aspect a shot's prompt states in words, to match the aspect the
+ * shot is actually set to.
+ *
+ * A prompt opens by stating its framing — "16:9 cinematic medium shot" — and
+ * the shot carries the same framing as a setting. Change the project's aspect
+ * mid-production and the setting moves while the sentence does not, so every
+ * shot then tells two different stories about its own composition.
+ *
+ * One card for the whole episode, not one per shot: this is a single decision
+ * — bring every prompt back in line with what the shot is already set to —
+ * not fifteen separate ones. The stored prompt is what changes, so the
+ * storyboard shows the corrected text without waiting for a render.
+ */
+export const fixShotAspectMismatchTool = defineDirectorTool({
+  name: "fix_shot_aspect_mismatch",
+  version: 1,
+  risk: "write",
+  requiresApproval: true,
+  input: z.object({ episodeId: z.string().uuid() }).strict(),
+  async execute(context, input) {
+    const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
+    if (!episode) throw new Error("Episode does not belong to this project")
+    const { data: shots, error } = await context.supabase.from("creator_shots").select("id,order_index,prompt,aspect_ratio").eq("episode_id", input.episodeId).order("order_index")
+    if (error) throw error
+    const mismatched = (shots || []).filter(aspectMismatch)
+    if (!mismatched.length) return { episodeId: input.episodeId, corrected: 0, shots: [] }
+    const corrected = await Promise.all(mismatched.map(async (shot) => {
+      const prompt = restateAspect(shot.prompt as string, shot.aspect_ratio as string)
+      const { error: updateError } = await context.supabase.from("creator_shots").update({ prompt }).eq("id", shot.id)
+      if (updateError) throw updateError
+      return { shotNumber: shot.order_index + 1, aspectRatio: shot.aspect_ratio }
+    }))
+    return { episodeId: input.episodeId, corrected: corrected.length, shots: corrected }
   },
 })
 
@@ -986,6 +1038,7 @@ export const directorTools = {
   update_script: updateScriptTool,
   update_shot: updateShotTool,
   write_shot_video_prompts: writeShotVideoPromptsTool,
+  fix_shot_aspect_mismatch: fixShotAspectMismatchTool,
   delete_shot: deleteShotTool,
   update_asset: updateAssetTool,
   attach_media_to_asset: attachMediaToAssetTool,

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowDown,
   ArrowLeft,
@@ -57,6 +58,7 @@ import { getModelLabel, imageGenerationModels, videoDurationOptions, videoGenera
 import { defaultDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows";
 import { abandonedRunSilentAfterMs } from "@/lib/studio/workflow-runs";
 import { videoPromptFor } from "@/lib/studio/shot-video-prompt";
+import { isVideoReferencePath } from "@/lib/studio/media-reference";
 import { calculateCreditCost, getUserCredits } from "@/lib/studio/credits";
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
 import { parseVoiceToolCall, type VoiceToolCall } from "@/lib/studio/voice";
@@ -1183,6 +1185,7 @@ export default function WorkspacePage({
                 reload={load}
                 pendingJobs={pendingShotJobs}
                 generationJobs={data.production?.generationJobs || []}
+                onGenerationStarted={(shotId, type) => setJustSubmitted((current) => ({ ...current, [type]: Array.from(new Set([...current[type], shotId])) }))}
               />
             )}
             {tab === "timeline" && (
@@ -1313,6 +1316,7 @@ export default function WorkspacePage({
             <ChatNextStep
               messages={data.chatMessages}
               proposals={data.actionProposals}
+              shots={data.shots}
               sessionId={data.activeSessionId}
               busy={chatSending || resumedRunAwaitingReply}
               onAction={sendDirectorMessage}
@@ -3507,6 +3511,7 @@ function Storyboard({
   reload,
   pendingJobs,
   generationJobs,
+  onGenerationStarted,
 }: {
   shots: Shot[];
   entities: Entity[];
@@ -3518,6 +3523,12 @@ function Storyboard({
   // showing the same empty placeholder it shows when nothing was ever asked for.
   pendingJobs?: { image: Set<string>; video: Set<string> };
   generationJobs: NonNullable<Workspace["production"]>["generationJobs"];
+  // A generation started from inside the shot panel — the "Generate" button, not
+  // an approved chat proposal — has no proposal to mark pending from. Without
+  // this the row only picked up the shimmer once a background poll happened to
+  // notice the new job, which for a fast image call could be after it had
+  // already finished.
+  onGenerationStarted?: (shotId: string, type: "image" | "video") => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [media, setMedia] = useState<{
@@ -3908,6 +3919,7 @@ function Storyboard({
           close={() => setMedia(null)}
           save={save}
           reload={reload}
+          onGenerationStarted={onGenerationStarted}
         />
       )}
     </div>
@@ -3922,6 +3934,7 @@ function ShotMediaWorkspace({
   close,
   save,
   reload,
+  onGenerationStarted,
 }: {
   media: { shot: Shot; type: "image" | "video" };
   entities: Entity[];
@@ -3931,6 +3944,7 @@ function ShotMediaWorkspace({
   close: () => void;
   save: (b: unknown) => Promise<void>;
   reload: (silent?: boolean) => Promise<void>;
+  onGenerationStarted?: (shotId: string, type: "image" | "video") => void;
 }) {
   const shotIndex = (shots || []).findIndex((s) => s.id === media.shot.id);
   const shotNumber = shotIndex >= 0 ? shotIndex + 1 : 1;
@@ -3994,7 +4008,7 @@ function ShotMediaWorkspace({
   }, []);
   const [picker, setPicker] = useState(false);
   const [referenceSourcePicker, setReferenceSourcePicker] = useState(false);
-  const [referenceTarget, setReferenceTarget] = useState<"references" | "start" | "end">("references");
+  const [referenceTarget, setReferenceTarget] = useState<"references" | "start" | "end" | "motion">("references");
   const [references, setReferences] = useState<string[]>(() => {
     if (media.shot.referenced_entities && media.shot.referenced_entities.length > 0) {
       // One image per entity — its chosen reference. Seeding every image an
@@ -4008,6 +4022,14 @@ function ShotMediaWorkspace({
     return [];
   });
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>(media.shot.referenced_entities || []);
+  // "Reference 2" says nothing; "@Lena" is what the user actually needs to
+  // tell one square thumbnail from the next. The @mention hover preview in the
+  // prompt text already resolves a reference this way — this labels the
+  // strip's own thumbnails the same way instead of a generic ordinal.
+  const referenceLabel = (path: string) => {
+    const entity = entities.find((item) => entityPrimaryReference(item) === path);
+    return entity ? `@${entity.name}` : "Reference image";
+  };
   const videoReferenceImages = videoInputMode === "keyframe" ? [startFrame, endFrame].filter((item): item is string => Boolean(item)) : references;
   const selectedCharacterEntities = entities.filter((e) => e.type === "character" && selectedCharacterIds.includes(e.id));
   const selectedCharacterImagesCount = selectedCharacterEntities.reduce((acc, char) => {
@@ -4296,6 +4318,12 @@ function ShotMediaWorkspace({
   const generate = async () => {
     setGenerationError(null);
     setGenerationStatus(null);
+    // Marks the storyboard row busy the moment the button is pressed rather
+    // than after the request round-trips — an approved chat proposal gets this
+    // for free from the proposal handler, and a manual generate had no
+    // equivalent until now, so the shimmer only ever caught up after the fact,
+    // sometimes after a fast image call had already finished.
+    onGenerationStarted?.(media.shot.id, media.type);
 
     const genId = `gen-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const newEntry: GenEntry = {
@@ -4431,9 +4459,18 @@ function ShotMediaWorkspace({
       setEndFrame(path);
       return;
     }
+    if (referenceTarget === "motion") {
+      setVideoReferencePaths((current) => current.includes(path) ? current : [...current, path]);
+      return;
+    }
     setReferences((current) => current.includes(path) ? current : [...current, path]);
   };
-  const uploadReference = async (file?: File) => {
+  // A clip dropped where images go was sent for image registration and failed
+  // on "Unsupported media format" — the same mistake the render path could make
+  // with an agent-attached clip, just made by hand here instead. The file's own
+  // extension decides which strip it belongs in, so the upload can never end up
+  // in the wrong one regardless of which "+" the user clicked to add it.
+  const uploadReference = async (file?: File, target: "reference" | "motion" = "reference") => {
     if (!file) return;
     setBusy(true);
     setGenerationError(null);
@@ -4446,7 +4483,11 @@ function ShotMediaWorkspace({
         .storage.from("creator-studio-media")
         .upload(path, file);
       if (error) throw error;
-      addReferencePath(path);
+      if (target === "motion" || isVideoReferencePath(path)) {
+        setVideoReferencePaths((current) => current.includes(path) ? current : [...current, path]);
+      } else {
+        addReferencePath(path);
+      }
     } catch (error) {
       setGenerationError(error instanceof Error ? error.message : "Reference upload failed");
     } finally {
@@ -4794,9 +4835,11 @@ function ShotMediaWorkspace({
                       <p className="mt-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Reference images</p>
                       <div className="mt-1.5 flex gap-2">
                         {activeGen.referenceImages.map((img, i) => (
-                          <div key={`${img}-${i}`} className="h-10 w-10 overflow-hidden rounded-lg border border-white/10">
-                            <AssetImage src={img} />
-                          </div>
+                          <HoverPreviewTile key={`${img}-${i}`} className="group relative h-10 w-10 shrink-0" src={img} kind={isVideoReferencePath(img) ? "video" : "image"} label={referenceLabel(img)}>
+                            <div className="h-full w-full overflow-hidden rounded-lg border border-white/10">
+                              {isVideoReferencePath(img) ? <AssetVideo src={img} /> : <AssetImage src={img} />}
+                            </div>
+                          </HoverPreviewTile>
                         ))}
                       </div>
                     </>
@@ -4833,17 +4876,24 @@ function ShotMediaWorkspace({
                     +
                   </button>
                   {references.map((image, index) => (
-                    <div key={`${image}-${index}`} className="group relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-2xl bg-black">
-                      <AssetImage src={image} className="h-full w-full object-cover opacity-90 transition group-hover:opacity-100" />
-                      <button
-                        type="button"
-                        aria-label={`Remove reference image ${index + 1}`}
-                        onClick={() => setReferences(references.filter((_, i) => i !== index))}
-                        className="absolute inset-0 grid place-items-center bg-black/60 opacity-0 transition group-hover:opacity-100"
-                      >
-                        <Trash2 className="h-4 w-4 text-white" />
-                      </button>
-                    </div>
+                    // overflow-hidden moved to an inner wrapper: it rounds the
+                    // thumbnail's corners, but left on this outer tile it also
+                    // clipped the hover popup silently, since the popup renders
+                    // as an absolutely positioned child of the very box that
+                    // clips it.
+                    <HoverPreviewTile key={`${image}-${index}`} className="group relative h-[72px] w-[72px] shrink-0" src={image} kind="image" label={referenceLabel(image)}>
+                      <div className="h-full w-full overflow-hidden rounded-2xl bg-black">
+                        <AssetImage src={image} className="h-full w-full object-cover opacity-90 transition group-hover:opacity-100" />
+                        <button
+                          type="button"
+                          aria-label={`Remove reference image ${index + 1}`}
+                          onClick={() => setReferences(references.filter((_, i) => i !== index))}
+                          className="absolute inset-0 grid place-items-center bg-black/60 opacity-0 transition group-hover:opacity-100"
+                        >
+                          <Trash2 className="h-4 w-4 text-white" />
+                        </button>
+                      </div>
+                    </HoverPreviewTile>
                   ))}
                 </div>
               ) : (
@@ -4872,48 +4922,81 @@ function ShotMediaWorkspace({
                         +
                       </button>
                       {references.map((image, index) => (
-                        <div key={`${image}-${index}`} className="group relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-2xl bg-black">
-                          <AssetImage src={image} className="h-full w-full object-cover opacity-90 transition group-hover:opacity-100" />
-                          <button
-                            type="button"
-                            aria-label={`Remove reference image ${index + 1}`}
-                            onClick={() => setReferences(items => items.filter((_, i) => i !== index))}
-                            className="absolute inset-0 grid place-items-center bg-black/60 opacity-0 transition group-hover:opacity-100"
-                          >
-                            <Trash2 className="h-4 w-4 text-white" />
-                          </button>
-                        </div>
+                        <HoverPreviewTile key={`${image}-${index}`} className="group relative h-[72px] w-[72px] shrink-0" src={image} kind="image" label={referenceLabel(image)}>
+                          <div className="h-full w-full overflow-hidden rounded-2xl bg-black">
+                            <AssetImage src={image} className="h-full w-full object-cover opacity-90 transition group-hover:opacity-100" />
+                            <button
+                              type="button"
+                              aria-label={`Remove reference image ${index + 1}`}
+                              onClick={() => setReferences(items => items.filter((_, i) => i !== index))}
+                              className="absolute inset-0 grid place-items-center bg-black/60 opacity-0 transition group-hover:opacity-100"
+                            >
+                              <Trash2 className="h-4 w-4 text-white" />
+                            </button>
+                          </div>
+                        </HoverPreviewTile>
                       ))}
                     </div>
                   )}
                   {/* The continuity clip, which had no slot of its own: the panel
                       described a reference the user could neither see nor drop,
                       and a hard cut had no way to say so. */}
-                  {media.type === "video" && (videoReferencePaths.length > 0 || previousShotClip) ? (
+                  {media.type === "video" ? (
                     <div className="mt-2 rounded-2xl border border-[#c084fc]/25 bg-[#c084fc]/[0.06] p-2.5">
-                      <div className="flex items-center gap-2">
-                        <Film className="h-3.5 w-3.5 shrink-0 text-[#c084fc]" />
-                        <p className="text-[11px] font-bold uppercase tracking-wide text-[#c084fc]">Motion reference</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Film className="h-3.5 w-3.5 shrink-0 text-[#c084fc]" />
+                          <p className="text-[11px] font-bold uppercase tracking-wide text-[#c084fc]">Motion reference</p>
+                        </div>
+                        {/* A video dropped on the composition uploader above was
+                            registered as an image and failed generation outright.
+                            These are the two ways a clip is actually correct to
+                            add here, for a user who wants one other than the
+                            previous shot's — their own footage, or an earlier
+                            shot further back in this storyboard. */}
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => { setReferenceTarget("motion"); setPicker(true); }}
+                            className="rounded-lg border border-[#c084fc]/40 px-2 py-1 text-[10px] font-bold text-[#c084fc] hover:bg-[#c084fc]/10"
+                          >
+                            Select storyboard clip
+                          </button>
+                          <label className="cursor-pointer rounded-lg border border-[#c084fc]/40 px-2 py-1 text-[10px] font-bold text-[#c084fc] hover:bg-[#c084fc]/10">
+                            + Upload video
+                            <input type="file" accept="video/*" className="hidden" onChange={(e) => { setReferenceTarget("motion"); uploadReference(e.target.files?.[0], "motion"); e.target.value = ""; }} />
+                          </label>
+                        </div>
                       </div>
                       {videoReferencePaths.length ? (
                         <>
                           <div className="mt-2 flex gap-2 overflow-x-auto">
-                            {videoReferencePaths.map((path, index) => (
-                              <div key={`${path}-${index}`} className="group relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-2xl bg-black">
-                                <ResolvedMedia src={path} type="video" className="h-full w-full object-cover opacity-90" />
-                                <button
-                                  type="button"
-                                  aria-label={`Remove motion reference ${index + 1}`}
-                                  onClick={() => setVideoReferencePaths((items) => items.filter((_, i) => i !== index))}
-                                  className="absolute inset-0 grid place-items-center bg-black/60 opacity-0 transition group-hover:opacity-100"
-                                >
-                                  <Trash2 className="h-4 w-4 text-white" />
-                                </button>
-                              </div>
-                            ))}
+                            {videoReferencePaths.map((path, index) => {
+                              // Named by the shot it came from where that shot is
+                              // still in this storyboard — "shot 12's video" is
+                              // what the user actually needs to tell two similar
+                              // clips apart, not just a bigger picture of one.
+                              const sourceShot = (shots || []).find((shot) => shot.video_url === path);
+                              const label = sourceShot ? `Shot ${sourceShot.order_index + 1} video` : "Motion reference";
+                              return (
+                              <HoverPreviewTile key={`${path}-${index}`} className="group relative h-[72px] w-[72px] shrink-0" src={path} kind="video" label={label}>
+                                <div className="h-full w-full overflow-hidden rounded-2xl bg-black">
+                                  <ResolvedMedia src={path} type="video" className="h-full w-full object-cover opacity-90" />
+                                  <button
+                                    type="button"
+                                    aria-label={`Remove motion reference ${index + 1}`}
+                                    onClick={() => setVideoReferencePaths((items) => items.filter((_, i) => i !== index))}
+                                    className="absolute inset-0 grid place-items-center bg-black/60 opacity-0 transition group-hover:opacity-100"
+                                  >
+                                    <Trash2 className="h-4 w-4 text-white" />
+                                  </button>
+                                </div>
+                              </HoverPreviewTile>
+                              );
+                            })}
                           </div>
                           <p className="mt-2 text-[11px] text-zinc-400">
-                            The clip this shot continues from. Remove it for a hard cut, then regenerate.
+                            The clip{videoReferencePaths.length > 1 ? "s" : ""} this shot continues from. Remove {videoReferencePaths.length > 1 ? "them" : "it"} for a hard cut, then regenerate.
                           </p>
                         </>
                       ) : (
@@ -5078,7 +5161,26 @@ function ShotMediaWorkspace({
         </aside>
       </div>
       {referenceSourcePicker && <ReferenceSourcePicker close={() => setReferenceSourcePicker(false)} onChooseExisting={() => { setReferenceSourcePicker(false); setPicker(true); }} onUpload={uploadReference} />}
-      {picker && <ReferencePicker entities={entities} shots={shots} selected={referenceTarget === "references" ? references : []} close={() => setPicker(false)} confirm={(items) => { const selectedImage = items[0]; if (referenceTarget === "start" && selectedImage) setStartFrame(selectedImage); else if (referenceTarget === "end" && selectedImage) setEndFrame(selectedImage); else setReferences(items); setPicker(false) }} />}
+      {picker && (
+        <ReferencePicker
+          entities={entities}
+          shots={shots}
+          selected={referenceTarget === "references" ? references : referenceTarget === "motion" ? videoReferencePaths : []}
+          // A keyframe cannot be a motion reference — Seedance takes a clip
+          // there, not a still — so picking for this target shows only the
+          // storyboard's rendered videos, not every keyframe beside them.
+          onlyKind={referenceTarget === "motion" ? "video" : undefined}
+          close={() => setPicker(false)}
+          confirm={(items) => {
+            const selectedImage = items[0];
+            if (referenceTarget === "start" && selectedImage) setStartFrame(selectedImage);
+            else if (referenceTarget === "end" && selectedImage) setEndFrame(selectedImage);
+            else if (referenceTarget === "motion") setVideoReferencePaths((current) => Array.from(new Set([...current, ...items])));
+            else setReferences(items);
+            setPicker(false);
+          }}
+        />
+      )}
       {deletingJobId && (
         <DeleteConfirmModal
           title="Delete Generation"
@@ -5313,9 +5415,10 @@ function ChatTimelineBlock({ block, proposals, awaitingApproval, onAction, disab
  * while a run is in flight, and while an approval card is pending — the card is
  * itself the next step, and two competing calls to action read as a fork.
  */
-function ChatNextStep({ messages, proposals, sessionId, busy, onAction }: {
+function ChatNextStep({ messages, proposals, shots, sessionId, busy, onAction }: {
   messages: Workspace["chatMessages"];
   proposals: ChatProposal[];
+  shots?: Shot[];
   sessionId?: string | null;
   busy: boolean;
   onAction: (intent: string) => void;
@@ -5323,19 +5426,40 @@ function ChatNextStep({ messages, proposals, sessionId, busy, onAction }: {
   if (busy) return null;
   const latest = messages.filter((item) => item.role === "assistant").at(-1);
   if (!latest) return null;
+  const latestProposalIds = proposalIdsFromActions(latest.suggested_actions);
   // Only the newest reply's own approval blocks the step, not any card left
   // unanswered earlier in the session. Suppressing on those meant one abandoned
   // proposal removed the next step from every reply that followed it.
-  const awaitingThisReply = proposalIdsFromActions(latest.suggested_actions)
+  const awaitingThisReply = latestProposalIds
     .some((id) => proposals.some((proposal) => proposal.id === id && proposal.status === "pending" && proposal.session_id === sessionId));
   if (awaitingThisReply) return null;
   const block = parseDirectorTimeline(latest.timeline_blocks).filter((item) => item.type === "suggested_actions").at(-1);
   if (!block || block.type !== "suggested_actions") return null;
+  // The button text was written into this message before its own proposal was
+  // approved, so approving it does not refresh the wording — pressing "Generate
+  // the video for shot 3" is what put shot 3 into the state that made offering
+  // it again wrong. Any suggested action still naming a shot this reply's own
+  // approved proposal just covered is the same stale offer and is dropped
+  // rather than shown a second time.
+  const justCoveredShotNumbers = latestProposalIds.flatMap((id) => {
+    const proposal = proposals.find((item) => item.id === id);
+    if (!proposal || (proposal.status !== "approved" && proposal.status !== "executed")) return [];
+    const request = generationProposalRequest(proposal);
+    if (!request) return [];
+    if (request.shotNumbers?.length) return request.shotNumbers;
+    return (shots || [])
+      .filter((shot) => request.shotIds?.includes(shot.id))
+      .map((shot) => shot.order_index + 1);
+  });
+  const actions = justCoveredShotNumbers.length
+    ? block.actions.filter((action) => !actionNamesAnyShot(action.intent, justCoveredShotNumbers))
+    : block.actions;
+  if (!actions.length) return null;
   return (
     <div className="mt-3 rounded-xl border border-[#b9f42e]/25 bg-[#b9f42e]/[0.06] p-3">
       <p className="text-[10px] font-bold uppercase tracking-wider text-[#b9f42e]">Next step</p>
       <div className="mt-2 flex flex-wrap gap-2">
-        {block.actions.map((action) => (
+        {actions.map((action) => (
           <button
             key={action.id}
             type="button"
@@ -5426,6 +5550,12 @@ function PendingProposalCards({
       </div>
     </div>
   );
+}
+
+/** Every shot number an action's intent sentence names, e.g. "Generate the video for shot 3". */
+function actionNamesAnyShot(intent: string, numbers: number[]) {
+  const named = Array.from(intent.matchAll(/\bshots?\s+(?:#\s*)?(\d+)\b/gi)).map((match) => Number(match[1]));
+  return named.some((number) => numbers.includes(number));
 }
 
 function proposalIdsFromActions(actions?: Array<Record<string, unknown>> | null) {
@@ -6180,15 +6310,18 @@ function ReferencePicker({
   selected,
   close,
   confirm,
+  onlyKind,
 }: {
   entities: Entity[];
   shots?: Shot[];
   selected: string[];
   close: () => void;
   confirm: (items: string[]) => void;
+  /** Restricts the picker to one media kind — a motion reference wants a clip, never a still. */
+  onlyKind?: "image" | "video";
 }) {
   const [choices, setChoices] = useState(selected);
-  const [filter, setFilter] = useState<"all" | Entity["type"] | "storyboard">("all");
+  const [filter, setFilter] = useState<"all" | Entity["type"] | "storyboard">(onlyKind === "video" ? "storyboard" : "all");
 
   // One tile per entity: its chosen reference. The others are alternates the
   // user decided against, and listing them invites picking a version of a
@@ -6225,14 +6358,16 @@ function ReferencePicker({
       return items;
     });
 
-  const allItems = [...entityItems, ...shotItems];
+  const kindItems = onlyKind ? [...entityItems, ...shotItems].filter((item) => item.kind === onlyKind) : [...entityItems, ...shotItems];
+  const allItems = kindItems;
   const visible = filter === "all" ? allItems : allItems.filter((item) => item.type === filter);
 
   return (
     <div className="fixed inset-0 z-[60] grid place-items-center bg-black/75 p-6 backdrop-blur-sm">
       <section className="flex h-[min(760px,85vh)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#171918] shadow-2xl">
         <header className="flex items-center gap-4 border-b border-white/10 p-5">
-          <h3 className="text-xl font-black">Select from existing assets</h3>
+          <h3 className="text-xl font-black">{onlyKind === "video" ? "Select a storyboard video" : "Select from existing assets"}</h3>
+          {!onlyKind && (
           <div className="flex gap-1 rounded-xl bg-white/5 p-1">
             {(["all", "character", "scene", "prop", "storyboard"] as const).map((item) => (
               <button
@@ -6247,6 +6382,7 @@ function ReferencePicker({
               </button>
             ))}
           </div>
+          )}
           <button type="button" onClick={close} className="ml-auto rounded-lg p-2 text-zinc-400 hover:bg-white/10">
             <X />
           </button>
@@ -6288,7 +6424,9 @@ function ReferencePicker({
           })}
           {!visible.length && (
             <p className="col-span-full py-12 text-center text-sm text-zinc-500">
-              No images found for this category. Upload an image to an asset or generate a shot keyframe first.
+              {onlyKind === "video"
+                ? "No storyboard videos yet. Generate and approve a shot's video first, then it can be used as a motion reference here."
+                : "No images found for this category. Upload an image to an asset or generate a shot keyframe first."}
             </p>
           )}
         </div>
@@ -7341,6 +7479,74 @@ function Timeline({
           shots={shots}
           close={() => setExportModalOpen(false)}
         />
+      )}
+    </div>
+  );
+}
+/**
+ * The enlarged look at a reference thumbnail, shown on hover.
+ *
+ * A reference strip is a row of 72px squares — enough to tell a face from a
+ * doorway, not enough to tell which shot's clip is sitting in Motion
+ * Reference, or which of two similar keyframes got picked. This is placed as a
+ * sibling inside the thumbnail's own `group relative` wrapper, so it needs no
+ * hover state of its own: the surrounding tile's existing `group-hover:` is
+ * what reveals it, the same trigger that already reveals that tile's remove
+ * button.
+ */
+/**
+ * The enlarged look at a reference thumbnail, shown on hover.
+ *
+ * A CSS-only `group-hover` popup, positioned `absolute` off the tile, is
+ * clipped by any scrollable ancestor between it and the page — and every one
+ * of these thumbnail strips scrolls horizontally, which forces the browser to
+ * also clip vertically per the CSS overflow spec's own fixup rule, whether or
+ * not the strip's own `overflow-hidden` was worked around. The popup escaped
+ * the tile and was still invisible, clipped one level up. Portaling it to
+ * `document.body` and positioning it from the tile's real screen coordinates
+ * is what actually gets it out from under every ancestor's clip at once.
+ */
+function HoverPreviewTile({ src, kind, label, className, children }: {
+  src: string;
+  kind: "image" | "video";
+  label?: string;
+  className: string;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(null);
+  const [url, setUrl] = useState<string>();
+  useEffect(() => {
+    if (src.startsWith("http")) { setUrl(src); return; }
+    let active = true;
+    getSignedMediaUrl(src).then((signed) => { if (active && signed) setUrl(signed); });
+    return () => { active = false; };
+  }, [src]);
+  const show = () => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (rect) setAnchor({ left: rect.left + rect.width / 2, top: rect.top });
+  };
+  return (
+    <div ref={ref} className={className} onMouseEnter={show} onMouseLeave={() => setAnchor(null)}>
+      {children}
+      {anchor && typeof document !== "undefined" && createPortal(
+        <div
+          className="pointer-events-none fixed z-[999] w-52 -translate-x-1/2 -translate-y-full overflow-hidden rounded-xl border border-white/15 bg-black shadow-2xl"
+          style={{ left: anchor.left, top: anchor.top - 8 }}
+        >
+          {url ? (
+            kind === "video"
+              // Autoplaying here, unlike the small tile's static first frame,
+              // is the whole point: it is how the user tells which clip this
+              // is without opening it.
+              ? <video src={url} className="block aspect-video w-full bg-black object-contain" autoPlay loop muted playsInline />
+              : <img src={url} alt="" className="block aspect-video w-full bg-black object-contain" />
+          ) : (
+            <div className="grid aspect-video place-items-center text-[10px] text-zinc-500">Loading…</div>
+          )}
+          {label && <p className="truncate bg-black/85 px-2 py-1 text-[10px] font-semibold text-zinc-200">{label}</p>}
+        </div>,
+        document.body,
       )}
     </div>
   );

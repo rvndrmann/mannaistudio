@@ -6,7 +6,11 @@ Welcome to the documentation directory for **AI Director Hub** & **AI Social Med
 
 | Document | Description |
 | :--- | :--- |
+| [`SESSION_HANDOFF_2026-08-15.md`](SESSION_HANDOFF_2026-08-15.md) | The episode master prompt every other prompt is extracted from, shot video prompts as timed beats separate from the image prompt, runtime derived from what happens in a shot, locations carried forward, cross-episode continuity, and closing out Director runs whose server died mid-flight. |
+| [`SESSION_HANDOFF_2026-08-14.md`](SESSION_HANDOFF_2026-08-14.md) | Deterministic routing for redo and skip requests, per-shot prompts on batch approval cards, the next-step button surviving in-flight and abandoned jobs, workflow-driven continuity, and the Seedance asset registry. |
 | [`SESSION_HANDOFF_2026-08-13.md`](SESSION_HANDOFF_2026-08-13.md) | Durable generation blocks for failed/in-progress image attempts, additive storyboard image history, failed-request credit refunds, BytePlus Seedance adaptive-ratio video references, plus the chat production pipeline with its next-step button, identity stripping so reference art outranks written description, and the project image-quality setting. |
+| [`SEEDANCE_ASSET_LIBRARY.md`](SEEDANCE_ASSET_LIBRARY.md) | The account-wide 50-image BytePlus asset library, why registration is what clears Seedance's real-person check, the registry that stopped it filling within hours, and what deletion does and does not touch. |
+| [`SESSION_HANDOFF_2026-08-12.md`](SESSION_HANDOFF_2026-08-12.md) | Unified storyboard generation block UI, and the approval card styling shared with Character Assets. |
 | [`SESSION_HANDOFF_2026-08-10.md`](SESSION_HANDOFF_2026-08-10.md) | Unified credit deductions, Voice Director tool calling, Director vision, teams and enterprise, and the open items left behind. |
 | [`TEAMS_SHARING_AND_ENTERPRISE.md`](TEAMS_SHARING_AND_ENTERPRISE.md) | Teams and roles, the two-stage team credit model, per-project sharing and how row level security enforces it, enterprise engagements, and change attribution. |
 | [`VIDEO_TAIL_REFERENCE.md`](VIDEO_TAIL_REFERENCE.md) | **On hold.** Seedance video references and why trimming a reference clip to its closing seconds needs infrastructure Netlify cannot host, with the options and what to test first. |

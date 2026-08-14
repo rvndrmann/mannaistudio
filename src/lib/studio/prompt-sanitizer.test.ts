@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { hasIdentityDescriptions, stripIdentityDescriptions, stripIdentityDescriptionsFromPrompts } from "./prompt-sanitizer"
+import { hasIdentityDescriptions, sceneNotFrameReason, stripIdentityDescriptions, stripIdentityDescriptionsFromPrompts } from "./prompt-sanitizer"
 
 const shotPrompt = `🎬 SEEDANCE 2.0 SCENE PROMPT — "Ethan Wakes to Lena Watching"
 
@@ -77,5 +77,38 @@ describe("shot prompt identity stripping", () => {
     expect(result).not.toContain("Young adult man")
     expect(result).not.toContain("Young woman mid-20s")
     expect(result).toContain("Cast in frame: @Ethan, @Lena.")
+  })
+})
+
+describe("catching a shot image prompt that is actually the whole scene", () => {
+  const wholeScene = `🌍 SETTING & ATMOSPHERE
+Cramped apartment bathroom, night, cold overhead light.
+
+🎥 SCENE PROMPT — TIMELINE
+⏱️ 0–2s — SUDDEN TURN
+@Ethan spins from the mirror.
+⏱️ 2–4s — DOOR OPENS
+@Lena steps into the doorway.
+
+🔒 CONSISTENCY RULES
+- @Ethan wardrobe stays identical across all beats.
+
+📝 PRODUCTION NOTES
+Runtime: 4 seconds`
+
+  it("flags a prompt carrying the master prompt's own section headings", () => {
+    expect(sceneNotFrameReason(wholeScene)).toContain("section headings")
+  })
+
+  it("flags a prompt scripting more than one beat", () => {
+    expect(sceneNotFrameReason("0-2s: @Ethan turns.\n2-4s: @Lena enters.")).toContain("more than one timed beat")
+  })
+
+  it("passes an ordinary single-frame shot prompt", () => {
+    expect(sceneNotFrameReason("16:9 cinematic shot. @Ethan spins around abruptly in the claustrophobic @Bathroom threshold, eyes wide with shock. No text, no subtitles.")).toBeNull()
+  })
+
+  it("does not flag a prompt naming a single beat's own timestamp", () => {
+    expect(sceneNotFrameReason("0-4s: @Ethan turns from the mirror as the tap drips.")).toBeNull()
   })
 })

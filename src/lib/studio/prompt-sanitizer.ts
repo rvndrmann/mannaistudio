@@ -92,6 +92,26 @@ export function hasIdentityDescriptions(prompt: string): boolean {
 }
 
 /**
+ * Catches a shot's image prompt when it is actually the whole scene.
+ *
+ * A shot's image prompt describes one frame — what the camera sees in a single
+ * moment. The master prompt describes a whole scene across several seconds, in
+ * named sections. Pasting the second into the first is a different mistake from
+ * the identity block: it is not one paragraph with extra sentences, it is the
+ * wrong document in the wrong field, and no amount of stripping fixes that —
+ * it has to be rejected and rewritten as one frame.
+ */
+const SCENE_SECTION_HEADING = /(?:^|\n)\s*(?:[^\w\s]+\s*)*(?:image references|setting\s*(?:&|and)\s*atmosphere|scene prompt\s*[—–-]\s*timeline|consistency rules|negative rules|production notes)\b/i
+const TIMED_BEAT = /(?:^|\n)\s*(?:[^\w\s]+\s*)*\d+(?:\.\d+)?\s*[-–—]\s*\d+(?:\.\d+)?\s*s\b/g
+
+export function sceneNotFrameReason(prompt: string): string | null {
+  if (SCENE_SECTION_HEADING.test(prompt)) return "This carries a whole scene's section headings (setting, consistency rules, production notes, and so on). A shot's image prompt describes one frame in a single paragraph — extract just this shot's moment, in your own words, and leave the rest of the master prompt where it is."
+  const beats = prompt.match(TIMED_BEAT) || []
+  if (beats.length > 1) return "This carries more than one timed beat, which is a scene's timeline rather than one shot's frame. An image prompt describes a single instant — pick the one moment this shot is, and write that."
+  return null
+}
+
+/**
  * Sanitizes every prompt in a generation proposal before it is persisted and
  * shown for approval. Execution also sanitizes defensively, but doing it here
  * keeps the review card honest: the prompt the user sees is the prompt the
