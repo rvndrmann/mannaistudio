@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { BytePlusProviderError, createBytePlusAsset, getBytePlusAsset } from "@/lib/studio/byteplus"
-import { registerVirtualPortrait } from "@/lib/studio/private-virtual-portrait"
+import { BytePlusProviderError, getBytePlusAsset } from "@/lib/studio/byteplus"
+import { registerAssetOnce } from "@/lib/studio/byteplus-assets"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 
 const createSchema = z.object({
@@ -37,17 +37,37 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     let imagePathToResolve = input.imagePath || ""
     let resolvedUrl = input.imageUrl || ""
+    // An id an earlier verification already stored for this exact image. The
+    // provider's library holds 50 images for the whole account and every
+    // registration burns one for good, so a repeat click on a character that is
+    // already verified must reuse rather than register the same face again.
+    let knownAssetId = ""
 
     if (targetShotId) {
       const { data: shot } = await context.supabase.from("creator_shots").select("id, keyframe_image, metadata").eq("id", targetShotId).maybeSingle()
       if (!shot) return NextResponse.json({ error: "Shot not found" }, { status: 404 })
       if (!imagePathToResolve && input.target === "shot" && shot.keyframe_image) imagePathToResolve = shot.keyframe_image
+      const shotMeta = (shot.metadata as Record<string, unknown>) || {}
+      if (input.target === "shot" && typeof shotMeta.byteplus_asset_id === "string") {
+        knownAssetId = shotMeta.byteplus_asset_id
+      }
+      if (input.target === "reference") {
+        const mappings = shotMeta.byteplus_reference_assets
+        const mapped = mappings && typeof mappings === "object" && !Array.isArray(mappings)
+          ? (mappings as Record<string, unknown>)[imagePathToResolve]
+          : null
+        const mappedId = mapped && typeof mapped === "object" ? (mapped as Record<string, unknown>).assetId : null
+        if (typeof mappedId === "string") knownAssetId = mappedId
+      }
     } else if (targetEntityId) {
-      const { data: entity } = await context.supabase.from("creator_entities").select("id, reference_images, metadata").eq("id", targetEntityId).eq("project_id", projectId).maybeSingle()
+      const { data: entity } = await context.supabase.from("creator_entities").select("id, reference_images, byteplus_asset_id, metadata").eq("id", targetEntityId).eq("project_id", projectId).maybeSingle()
       if (!entity) return NextResponse.json({ error: "Entity not found" }, { status: 404 })
       if (!imagePathToResolve && Array.isArray(entity.reference_images) && entity.reference_images.length > 0) {
         imagePathToResolve = entity.reference_images[0]
       }
+      const entityMeta = (entity.metadata as Record<string, unknown>) || {}
+      const stored = typeof entityMeta.byteplus_asset_id === "string" ? entityMeta.byteplus_asset_id : entity.byteplus_asset_id
+      if (typeof stored === "string") knownAssetId = stored
     }
 
     if (imagePathToResolve && !/^https?:\/\//i.test(imagePathToResolve)) {
@@ -62,8 +82,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "No valid image URL or path provided for asset registration." }, { status: 400 })
     }
 
-    // Register Private Virtual Portrait with BytePlus
-    const result = await registerVirtualPortrait({ imageUrl: resolvedUrl, name: input.name || "shot_portrait" })
+    // The image's identity in the registry is its storage path, or its own URL
+    // when it has no path. Never the signed URL — that carries a fresh token per
+    // request, so keying on it would register the same picture every click.
+    const sourcePath = imagePathToResolve || input.imageUrl || ""
+
+    // Registered at most once: an id already on the shot or entity is adopted,
+    // a path already in the registry is reused, and only a genuinely new image
+    // reaches the provider.
+    const result = await registerAssetOnce({
+      supabase: context.supabase,
+      sourcePath,
+      imageUrl: resolvedUrl,
+      name: input.name || "shot_portrait",
+      projectId,
+      entityId: targetEntityId || null,
+      userId: context.user.id,
+      knownAssetId,
+    })
     const assetUri = result.assetUri
 
     if (targetShotId && input.target === "shot") {

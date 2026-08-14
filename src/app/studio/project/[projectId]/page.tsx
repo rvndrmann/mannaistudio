@@ -60,6 +60,7 @@ import { abandonedRunSilentAfterMs } from "@/lib/studio/workflow-runs";
 import { videoPromptFor } from "@/lib/studio/shot-video-prompt";
 import { isVideoReferencePath } from "@/lib/studio/media-reference";
 import { calculateCreditCost, getUserCredits } from "@/lib/studio/credits";
+import { creditsToUsd, estimateProjectCost, projectCostSettings, summarizeProjectSpend, type ProjectSpend } from "@/lib/studio/cost-estimate";
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
 import { parseVoiceToolCall, type VoiceToolCall } from "@/lib/studio/voice";
 import { createClient } from "@/lib/supabase/client";
@@ -184,8 +185,10 @@ type Workspace = {
     referenceAssets: Array<Record<string, unknown>>;
     continuityIssues: Array<Record<string, unknown>>;
     revisions: Array<Record<string, unknown>>;
-    generationJobs: Array<{ id: string; workflow_run_id?: string | null; shot_id?: string | null; type?: string; status: string; model?: string | null; prompt?: string | null; input_images?: string[] | null; result_url?: string | null; error?: string | null; settings?: Record<string, unknown> | null; target_snapshot?: Record<string, unknown>; verification?: Record<string, unknown>; created_at?: string; completed_at?: string | null }>;
+    generationJobs: Array<{ id: string; workflow_run_id?: string | null; shot_id?: string | null; type?: string; status: string; model?: string | null; prompt?: string | null; input_images?: string[] | null; result_url?: string | null; error?: string | null; settings?: Record<string, unknown> | null; target_snapshot?: Record<string, unknown>; verification?: Record<string, unknown>; estimated_credits?: number | null; credits_used?: number | null; credits_refunded?: number | null; created_at?: string; completed_at?: string | null }>;
     creditAccount: { balance: number; reserved: number } | null;
+    /** Every job this project ever ran, charged and netted of refunds. */
+    spend?: ProjectSpend;
     workflowRuns?: Array<{ id: string; session_id?: string | null; status: string; completed_at?: string | null; started_at?: string | null; updated_at?: string | null; objective?: string | null; summary?: Record<string, unknown>; error?: Record<string, unknown> | null }>;
   };
 };
@@ -1134,7 +1137,9 @@ export default function WorkspacePage({
                   {(data.project.metadata as Record<string, unknown> | null)?.basic_settings && typeof ((data.project.metadata as Record<string, unknown>).basic_settings as Record<string, unknown>).videoModel === "string" ? getModelLabel(((data.project.metadata as Record<string, unknown>).basic_settings as Record<string, unknown>).videoModel as string) : "Seedance 2.0 Fast"}
                 </span>
                 <span className="text-[10px] text-zinc-700">•</span>
-                <span className="rounded-full border border-white/[0.06] bg-[#141414] px-2.5 py-1 text-[11px] font-medium text-zinc-300">720p</span>
+                <span className="rounded-full border border-white/[0.06] bg-[#141414] px-2.5 py-1 text-[11px] font-medium text-zinc-300">
+                  {projectCostSettings(data.project).resolution}
+                </span>
                 <span className="text-[10px] text-zinc-700">•</span>
                 <button
                   type="button"
@@ -1146,9 +1151,7 @@ export default function WorkspacePage({
                   <ChevronDown className="h-2.5 w-2.5 text-zinc-600" />
                 </button>
                 <span className="text-[10px] text-zinc-700">•</span>
-                <span className="rounded-full border border-[#b9f42e]/20 bg-[#b9f42e]/[0.06] px-2.5 py-1 text-[11px] font-bold text-[#b9f42e]">
-                  Estimated: {data.shots?.length ? data.shots.length * 10 : 409}
-                </span>
+                <CostBar data={data} />
               </div>
             )}
             {tab !== "storyboard" && tab !== "timeline" && (
@@ -2186,6 +2189,136 @@ function ModelMenu({
   );
 }
 
+/**
+ * What the episode will cost, and what it has already cost.
+ *
+ * The bar used to read `shots × 10`, a rate no model charges: the same twelve
+ * shots are 240 credits on Seedance 2.0 Mini and several thousand on 2.5 at
+ * 1080p, and nothing on screen said so. Both numbers here are the arithmetic
+ * the generation routes bill with, and the spent figure is net of the refunds a
+ * failed generation returns, so it matches the credits ledger.
+ */
+function CostBar({ data }: { data: Workspace }) {
+  const [open, setOpen] = useState(false);
+  const settings = useMemo(() => projectCostSettings(data.project), [data.project]);
+  const estimate = useMemo(() => estimateProjectCost(data.shots || [], settings), [data.shots, settings]);
+  // The server aggregates every job the project ever ran. The job list it also
+  // sends is capped at fifty, so it is only the fallback for an older response.
+  const spend = useMemo<ProjectSpend>(
+    () => data.production?.spend || summarizeProjectSpend(data.production?.generationJobs || []),
+    [data.production?.spend, data.production?.generationJobs],
+  );
+  const money = (credits: number) => `$${creditsToUsd(credits).toFixed(2)}`;
+  const row = "flex items-center justify-between gap-6 py-1.5";
+  const cell = "text-[11px] text-zinc-400";
+
+  return (
+    <span className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="flex items-center gap-1.5 rounded-full border border-[#b9f42e]/20 bg-[#b9f42e]/[0.06] px-2.5 py-1 text-[11px] font-bold text-[#b9f42e] transition hover:border-[#b9f42e]/50"
+        title="Estimated and actual credit cost for this episode"
+      >
+        <Zap className="h-3 w-3" />
+        <span>Est. {estimate.remainingCredits.toLocaleString()}</span>
+        <span className="text-zinc-600">·</span>
+        <span className="text-zinc-300">Spent {spend.net.toLocaleString()}</span>
+        {spend.awaitingRefundCredits > 0 && (
+          <span className="text-amber-400" title={`${spend.awaitingRefundCredits} credits from failed jobs not yet refunded`}>
+            <AlertTriangle className="h-3 w-3" />
+          </span>
+        )}
+        <ChevronDown className={`h-2.5 w-2.5 text-zinc-600 transition ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <>
+          <span className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-8 z-50 w-[22rem] rounded-xl border border-white/10 bg-[#141517] p-4 text-left shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-zinc-300">Estimated cost</p>
+              <p className="text-[11px] text-zinc-500">{estimate.shotCount} shot{estimate.shotCount === 1 ? "" : "s"}</p>
+            </div>
+
+            <div className="border-b border-white/10 py-2">
+              <div className={row}>
+                <span className="flex items-center gap-1.5 text-[11px] font-bold text-zinc-200">
+                  <ImageIcon className="h-3 w-3 text-zinc-500" />
+                  Keyframe images
+                </span>
+                <span className="text-[11px] font-bold text-zinc-100">⚡ {estimate.image.credits.toLocaleString()}</span>
+              </div>
+              <p className={cell}>
+                {estimate.image.label} · {settings.imageQuality} · {estimate.image.unitCredits} credits {estimate.image.unit}
+              </p>
+              {/* A leg reads ⚡ 0 once every shot has its keyframe. Say why,
+                  rather than leaving a zero that looks like a broken price. */}
+              <p className="text-[11px] text-zinc-600">
+                {estimate.image.pendingShots
+                  ? `${estimate.image.pendingShots} of ${estimate.shotCount} shots still need one`
+                  : `All ${estimate.shotCount} generated — nothing left to charge`}
+              </p>
+            </div>
+
+            <div className="border-b border-white/10 py-2">
+              <div className={row}>
+                <span className="flex items-center gap-1.5 text-[11px] font-bold text-zinc-200">
+                  <Film className="h-3 w-3 text-zinc-500" />
+                  Video renders
+                </span>
+                <span className="text-[11px] font-bold text-zinc-100">⚡ {estimate.video.credits.toLocaleString()}</span>
+              </div>
+              <p className={cell}>
+                {estimate.video.label} · {settings.resolution} · {estimate.video.unitCredits} credits {estimate.video.unit}
+              </p>
+              <p className="text-[11px] text-zinc-600">
+                {estimate.video.pendingShots
+                  ? `${estimate.video.pendingSeconds}s to render of ${estimate.video.totalSeconds}s total runtime`
+                  : `All ${estimate.shotCount} rendered — nothing left to charge`}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between py-2">
+              <span className="text-xs font-bold text-zinc-200">Remaining</span>
+              <span className="text-sm font-bold text-[#b9f42e]">⚡ {estimate.remainingCredits.toLocaleString()} <span className="text-[11px] font-medium text-zinc-500">≈ {money(estimate.remainingCredits)}</span></span>
+            </div>
+            <p className="text-[11px] text-zinc-600">Whole episode from scratch: ⚡ {estimate.totalCredits.toLocaleString()}</p>
+
+            <div className="mt-3 border-t border-white/10 pt-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-zinc-300">Actual cost</p>
+              <div className={row}>
+                <span className={cell}>Charged · {spend.jobs} job{spend.jobs === 1 ? "" : "s"}</span>
+                <span className="text-[11px] font-bold text-zinc-100">⚡ {spend.charged.toLocaleString()}</span>
+              </div>
+              <div className={row}>
+                <span className="flex items-center gap-1.5 text-[11px] text-zinc-400">
+                  <RotateCcw className="h-3 w-3 text-zinc-500" />
+                  Refunded · {spend.failedJobs} failed
+                </span>
+                <span className="text-[11px] font-bold text-emerald-400">− ⚡ {spend.refunded.toLocaleString()}</span>
+              </div>
+              <div className={`${row} border-t border-white/10`}>
+                <span className="text-xs font-bold text-zinc-200">Spent</span>
+                <span className="text-sm font-bold text-zinc-100">⚡ {spend.net.toLocaleString()} <span className="text-[11px] font-medium text-zinc-500">≈ {money(spend.net)}</span></span>
+              </div>
+              <p className="text-[11px] text-zinc-600">
+                Images ⚡ {spend.image.net.toLocaleString()} · Video ⚡ {spend.video.net.toLocaleString()}
+              </p>
+              {spend.awaitingRefundCredits > 0 && (
+                <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] p-2 text-[11px] text-amber-300">
+                  <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
+                  <span>⚡ {spend.awaitingRefundCredits.toLocaleString()} from {spend.awaitingRefund} failed job{spend.awaitingRefund === 1 ? "" : "s"} has not been refunded yet.</span>
+                </p>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </span>
+  );
+}
+
 function BasicSettingsModal({
   data,
   close,
@@ -2216,6 +2349,21 @@ function BasicSettingsModal({
   const [workflowApplyMode, setWorkflowApplyMode] = useState<"project_default" | "episode">("project_default");
   const [visualStyle, setVisualStyle] = useState<string>((metaSettings?.visualStyle as string) || (data.project.default_style || "Realistic - 3D CG"));
   const [saving, setSaving] = useState(false);
+
+  // The header quoted a fixed "⚡ 16/s" whatever was selected below it. Price
+  // the selections the dialog is currently showing instead, so changing model,
+  // quality, or resolution moves the number the user is agreeing to.
+  const liveEstimate = useMemo(
+    () => estimateProjectCost(data.shots || [], {
+      imageModel: storyboardImageModel,
+      videoModel,
+      imageQuality: (["Low", "Medium", "High", "Ultra"].includes(imageQuality) ? imageQuality : "Medium") as "Low" | "Medium" | "High" | "Ultra",
+      resolution,
+      aspectRatio,
+    }),
+    [data.shots, storyboardImageModel, videoModel, imageQuality, resolution, aspectRatio],
+  );
+  const perShotEstimate = liveEstimate.shotCount ? Math.round(liveEstimate.totalCredits / liveEstimate.shotCount) : 0;
 
   const confirmSettings = async () => {
     setSaving(true);
@@ -2265,7 +2413,11 @@ function BasicSettingsModal({
         <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
           <h2 className="text-xl font-bold">Basic Settings</h2>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-zinc-400">Current settings, estimated ⚡ 16/s</span>
+            <span className="text-xs text-zinc-400" title={`${liveEstimate.image.label} at ${imageQuality} + ${liveEstimate.video.label} at ${resolution}`}>
+              {liveEstimate.shotCount
+                ? <>These settings: ⚡ {perShotEstimate.toLocaleString()}/shot · ⚡ {liveEstimate.totalCredits.toLocaleString()} for {liveEstimate.shotCount} shot{liveEstimate.shotCount === 1 ? "" : "s"}</>
+                : <>These settings: ⚡ {liveEstimate.image.unitCredits} per image · ⚡ {liveEstimate.video.unitCredits} {liveEstimate.video.unit}</>}
+            </span>
             <button onClick={close} className="rounded-xl p-2 text-zinc-400 hover:bg-white/10 hover:text-white">
               <X className="h-5 w-5" />
             </button>
