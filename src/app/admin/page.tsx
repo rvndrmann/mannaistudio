@@ -3451,6 +3451,10 @@ function BytePlusAssetLibrary() {
                     <p className="text-white/40 text-sm">
                         BytePlus holds {limit} registered images for the whole account. Delete the ones no longer in use to free slots.
                     </p>
+                    <p className="mt-2 max-w-2xl text-xs text-white/30">
+                        Deleting frees the slot at BytePlus only. The image stays in the project — on its character card, in the storyboard,
+                        in storage — and registers itself again the next time a Seedance job needs it.
+                    </p>
                 </div>
                 <button
                     onClick={() => void load()}
