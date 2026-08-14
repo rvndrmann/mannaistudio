@@ -3787,6 +3787,21 @@ function ShotMediaWorkspace({
   const [videoInputMode, setVideoInputMode] = useState<"keyframe" | "multi_image">(savedVideoMode === "multi_image" ? "multi_image" : "keyframe");
   const [startFrame, setStartFrame] = useState<string | null>(media.type === "video" ? media.shot.keyframe_image : null);
   const [endFrame, setEndFrame] = useState<string | null>(null);
+  // The finished clip of the shot before this one, which Seedance can continue
+  // from so motion and lighting carry across the cut.
+  const previousShotClip = useMemo(() => {
+    if (media.type !== "video" || shotIndex <= 0) return null;
+    for (let index = shotIndex - 1; index >= 0; index -= 1) {
+      const candidate = (shots || [])[index];
+      if (candidate?.video_url) return { path: candidate.video_url, number: index + 1 };
+    }
+    return null;
+  }, [media.type, shotIndex, shots]);
+  // Pre-filled from the previous clip so a manual render continues by default,
+  // and removable so a hard cut does not have to inherit the shot before it.
+  const [videoReferencePaths, setVideoReferencePaths] = useState<string[]>(
+    media.type === "video" && previousShotClip ? [previousShotClip.path] : [],
+  );
   const savedAspectRatio = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "aspect_ratio" in media.shot.metadata.video_generation ? (media.shot.metadata.video_generation as { aspect_ratio?: string }).aspect_ratio : null;
   const savedResolution = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "resolution" in media.shot.metadata.video_generation ? (media.shot.metadata.video_generation as { resolution?: string }).resolution : null;
   const savedAudio = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "audio_enabled" in media.shot.metadata.video_generation ? Boolean((media.shot.metadata.video_generation as { audio_enabled?: boolean }).audio_enabled) : true;
@@ -3898,6 +3913,9 @@ function ShotMediaWorkspace({
     if (!activeGen) return;
     if (activeGen.prompt?.trim()) setPrompt(activeGen.prompt);
     if (activeGen.referenceImages?.length) setReferences(activeGen.referenceImages);
+    // The clip it continued from, so a regeneration keeps the continuity — or
+    // drops it deliberately, rather than by not knowing it was there.
+    if (activeGen.videoReferencePaths) setVideoReferencePaths(activeGen.videoReferencePaths);
     if (activeGen.model?.trim()) setModel(activeGen.model);
     // A chat-driven run stores its configuration on the job, not on the shot, so
     // this is the only place the panel can learn that the clip was a multi-image
@@ -4090,7 +4108,7 @@ function ShotMediaWorkspace({
       startFrame,
       endFrame,
       recordedFrames: media.type === "video",
-      videoReferencePaths: [],
+      videoReferencePaths: [...videoReferencePaths],
       videoUrl: null,
       error: null,
       createdAt: Date.now(),
@@ -4127,7 +4145,7 @@ function ShotMediaWorkspace({
         await reload(true);
       } else {
         setGenerationStatus("Submitting generation job…");
-        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, characterEntityIds, mentionedEntityIds, generationMode: videoInputMode, startFrame, endFrame, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
+        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, referenceVideos: videoReferencePaths, characterEntityIds, mentionedEntityIds, generationMode: videoInputMode, startFrame, endFrame, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
         const body = await response.json();
         if (!response.ok) {
           const errorMsg = body.error || "Video generation failed";
@@ -4667,15 +4685,50 @@ function ShotMediaWorkspace({
                       ))}
                     </div>
                   )}
-                  {/* A continuation clip travels with the previous shot's video,
-                      which has no slot of its own here — so the panel showed a
-                      reference list the run had not actually used. */}
-                  {activeGen?.videoReferencePaths?.length ? (
-                    <div className="mt-2 flex items-center gap-2 rounded-2xl border border-[#c084fc]/25 bg-[#c084fc]/[0.06] p-2.5">
-                      <Film className="h-3.5 w-3.5 shrink-0 text-[#c084fc]" />
-                      <p className="text-[11px] text-zinc-300">
-                        Continuing from {activeGen.videoReferencePaths.length === 1 ? "the previous shot's clip" : `${activeGen.videoReferencePaths.length} earlier clips`}, sent as a motion reference.
-                      </p>
+                  {/* The continuity clip, which had no slot of its own: the panel
+                      described a reference the user could neither see nor drop,
+                      and a hard cut had no way to say so. */}
+                  {media.type === "video" && (videoReferencePaths.length > 0 || previousShotClip) ? (
+                    <div className="mt-2 rounded-2xl border border-[#c084fc]/25 bg-[#c084fc]/[0.06] p-2.5">
+                      <div className="flex items-center gap-2">
+                        <Film className="h-3.5 w-3.5 shrink-0 text-[#c084fc]" />
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-[#c084fc]">Motion reference</p>
+                      </div>
+                      {videoReferencePaths.length ? (
+                        <>
+                          <div className="mt-2 flex gap-2 overflow-x-auto">
+                            {videoReferencePaths.map((path, index) => (
+                              <div key={`${path}-${index}`} className="group relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-2xl bg-black">
+                                <ResolvedMedia src={path} type="video" className="h-full w-full object-cover opacity-90" />
+                                <button
+                                  type="button"
+                                  aria-label={`Remove motion reference ${index + 1}`}
+                                  onClick={() => setVideoReferencePaths((items) => items.filter((_, i) => i !== index))}
+                                  className="absolute inset-0 grid place-items-center bg-black/60 opacity-0 transition group-hover:opacity-100"
+                                >
+                                  <Trash2 className="h-4 w-4 text-white" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="mt-2 text-[11px] text-zinc-400">
+                            The clip this shot continues from. Remove it for a hard cut, then regenerate.
+                          </p>
+                        </>
+                      ) : (
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <p className="text-[11px] text-zinc-400">No motion reference — this shot renders on its own.</p>
+                          {previousShotClip && (
+                            <button
+                              type="button"
+                              onClick={() => setVideoReferencePaths([previousShotClip.path])}
+                              className="shrink-0 rounded-lg border border-[#c084fc]/40 px-2.5 py-1 text-[11px] font-bold text-[#c084fc] hover:bg-[#c084fc]/10"
+                            >
+                              Continue from shot {previousShotClip.number}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ) : null}
                   {entities.some((e) => e.type === "character") && (
