@@ -11,6 +11,7 @@ import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } fr
 import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { openAIImageQuality, projectImageQuality, projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
+import { recordExistingAsset } from "@/lib/studio/byteplus-assets"
 
 const imageRequestSchema = z.object({
   target: z.enum(["asset", "shot"]),
@@ -170,6 +171,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     let image: Buffer
     let contentType = "image/png"
     let byteplusAssetId: string | null = null
+    let pendingAssetRecord: { assetId: string; name: string } | null = null
     let byteplusAssetUri: string | null = null
     let generationJobId: string | null = pendingGenerationJobId
 
@@ -194,6 +196,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const assetRes = await createBytePlusAsset({ imageUrl: generated.url, name: input.prompt.slice(0, 50) })
         byteplusAssetId = assetRes.assetId
         byteplusAssetUri = `asset://${assetRes.assetId}`
+        pendingAssetRecord = { assetId: assetRes.assetId, name: input.prompt.slice(0, 50) }
       } catch (assetErr) {
         console.warn("Could not auto-register Seedream output as BytePlus asset:", assetErr)
       }
@@ -206,20 +209,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const storagePath = `${context.user.id}/${projectId}/${provider}-image-${randomUUID()}.${extension}`
     const { error: uploadError } = await context.supabase.storage.from("creator-studio-media").upload(storagePath, image, { contentType, upsert: false })
     if (uploadError) throw uploadError
-
-    // Auto-register generated image as BytePlus Asset Library asset if management keys are set
-    if (!byteplusAssetId && process.env.ARK_ACCESS_KEY && process.env.ARK_SECRET_KEY) {
-      try {
-        const { data: signed } = await context.supabase.storage.from("creator-studio-media").createSignedUrl(storagePath, 60 * 60)
-        if (signed?.signedUrl) {
-          const assetRes = await createBytePlusAsset({ imageUrl: signed.signedUrl, name: input.prompt.slice(0, 50) })
-          byteplusAssetId = assetRes.assetId
-          byteplusAssetUri = `asset://${assetRes.assetId}`
-        }
-      } catch (assetErr) {
-        console.warn("Could not auto-register shot image to BytePlus Asset Library:", assetErr)
-      }
+    // Seedream registers its own output as part of generating it, so that slot
+    // is already spent — recording it is what lets an admin see and reclaim it.
+    if (pendingAssetRecord) {
+      await recordExistingAsset({
+        supabase: context.supabase,
+        sourcePath: storagePath,
+        assetId: pendingAssetRecord.assetId,
+        name: pendingAssetRecord.name,
+        projectId,
+        userId: context.user.id,
+      })
     }
+
+    // Every generated image used to be registered with BytePlus here, whether or
+    // not Seedance would ever reference it. The library holds 50 for the whole
+    // account, so a dozen shots at a few attempts each exhausted it in an
+    // afternoon. Registration now happens when an image is actually needed as a
+    // reference — see resolveRegisteredAsset — and on demand from the
+    // "Add to Asset Library" and "Verify for Seedance" buttons.
 
     if (input.target === "asset") {
       const { data: asset, error: readError } = await context.supabase.from("creator_entities").select("reference_images, metadata").eq("id", input.targetId).eq("project_id", projectId).single()

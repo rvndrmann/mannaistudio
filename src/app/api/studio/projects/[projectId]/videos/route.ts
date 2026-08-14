@@ -11,6 +11,7 @@ import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } fr
 import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
+import { recordExistingAsset, resolveRegisteredAsset } from "@/lib/studio/byteplus-assets"
 import { parseSeedanceRejectedReference, seedanceReferenceAssetUri } from "@/lib/studio/seedance-reference-error"
 
 const submitSchema = z.object({
@@ -118,6 +119,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           combinedReferencePaths.push(byteplusAssetId.trim())
           const viewable = entityPrimaryReference(entity as MentionableEntity)
           if (viewable) displayReferencePaths.push(viewable)
+          // Registered before this registry existed, or on an earlier run. It
+          // occupies a slot either way, so it is adopted here rather than left
+          // invisible to the admin view that has to free those slots.
+          if (viewable) {
+            await recordExistingAsset({
+              supabase: context.supabase,
+              sourcePath: viewable,
+              assetId: byteplusAssetId.trim(),
+              name: entity.name,
+              projectId,
+              entityId: entity.id,
+              userId: context.user.id,
+            })
+          }
           // Omit raw duplicates when BytePlus can use its canonical provider asset.
           if (Array.isArray(entity.reference_images)) {
             for (const img of entity.reference_images) {
@@ -170,6 +185,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const references = await signedReferenceUrls(context, combinedReferencePaths)
     const faceReferences = await signedReferenceUrls(context, combinedReferencePaths.filter((path) => facePaths.has(path)))
+    // A face has to be registered to clear the provider's real-person check.
+    // Doing that inside the submit created a new asset on every render, which is
+    // what filled the account's 50-image library within hours; the registry
+    // makes it once and remembers it.
+    const facePathList = combinedReferencePaths.filter((path) => facePaths.has(path))
+    for (let index = 0; index < facePathList.length; index += 1) {
+      const path = facePathList[index]
+      const signed = faceReferences[index]
+      if (!signed) continue
+      const assetUri = await resolveRegisteredAsset({
+        supabase: context.supabase,
+        sourcePath: path,
+        imageUrl: signed,
+        name: path.split("/").pop() || undefined,
+        projectId,
+        userId: context.user.id,
+      })
+      if (!assetUri) continue
+      const slot = references.indexOf(signed)
+      if (slot >= 0) references[slot] = assetUri
+      faceReferences[index] = assetUri
+    }
 
     // Seedance accepts finished clips as references, so a shot can inherit the
     // motion and look of the one before it instead of restarting cold.

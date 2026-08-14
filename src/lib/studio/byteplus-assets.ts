@@ -98,3 +98,48 @@ export async function listRegisteredAssets(supabase: SupabaseClient): Promise<Re
   if (error) throw error
   return (data || []) as RegisteredAsset[]
 }
+
+/**
+ * Records an asset that already exists at the provider — one registered before
+ * this registry did, or reused from an entity's stored id.
+ *
+ * Those assets occupy the same 50 slots as any other, so without adopting them
+ * on use the admin view would report an almost empty library while the account
+ * was full.
+ */
+export async function recordExistingAsset(input: {
+  supabase: SupabaseClient
+  sourcePath: string
+  assetId: string
+  name?: string
+  projectId?: string | null
+  entityId?: string | null
+  userId?: string | null
+}) {
+  try {
+    const { data: existing } = await input.supabase
+      .from("creator_byteplus_assets")
+      .select("id,use_count")
+      .eq("source_path", input.sourcePath)
+      .maybeSingle()
+    if (existing) {
+      await input.supabase
+        .from("creator_byteplus_assets")
+        .update({ last_used_at: new Date().toISOString(), use_count: (existing.use_count || 0) + 1, asset_id: input.assetId })
+        .eq("id", existing.id)
+      return
+    }
+    await input.supabase.from("creator_byteplus_assets").insert({
+      source_path: input.sourcePath,
+      asset_id: input.assetId,
+      asset_uri: `asset://${input.assetId}`,
+      name: input.name || null,
+      project_id: input.projectId || null,
+      entity_id: input.entityId || null,
+      created_by: input.userId || null,
+    })
+  } catch (error) {
+    // Bookkeeping must never fail a generation.
+    console.warn(`Could not record the existing BytePlus asset for ${input.sourcePath}:`, error)
+  }
+}
