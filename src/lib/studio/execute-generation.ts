@@ -61,6 +61,16 @@ async function withGenerationRetry<T>(context: AuthenticatedProjectContext, job:
   throw lastError
 }
 
+/**
+ * A stored path that holds a clip rather than a frame.
+ *
+ * Kept deliberately simple: it reads the extension, because these are paths in
+ * this project's own bucket, written by this project's own uploads and renders.
+ */
+export function isVideoReferencePath(path: string) {
+  return /\.(mp4|mov|webm|m4v|avi|mkv)(\?|#|$)/i.test(path)
+}
+
 export async function executeGenerationJobsInBackground(
   context: AuthenticatedProjectContext,
   jobIds: string[]
@@ -145,16 +155,26 @@ export async function executeGenerationJobsInBackground(
           // without registering it too, continuity generation fails every time
           // on a photoreal project.
           for (const path of referencePaths) {
-            if (typeof path === "string" && path.trim()) facePaths.add(path)
+            // A clip never clears a real-person check; it fails registration.
+            if (typeof path === "string" && path.trim() && !isVideoReferencePath(path)) facePaths.add(path)
           }
 
           // Video continuation names its target storyboard frame as [Image 1],
           // so keep shot-owned composition images ahead of cast references.
-          const combinedReferencePaths = Array.from(new Set(
+          const orderedReferencePaths = Array.from(new Set(
             job.type === "video"
               ? [...referencePaths, ...mentionReferencePaths]
               : [...mentionReferencePaths, ...referencePaths],
-          )).slice(0, referenceBudget)
+          ))
+          // A clip is not a composition frame. One reaching the image list —
+          // the multi-image strip accepts whatever the panel was showing, and a
+          // continuity clip is shown there — was registered with the provider
+          // as an image and failed the whole job on "Unsupported media format".
+          // It is moved to the reference it actually is rather than dropped.
+          const strayClipPaths = orderedReferencePaths.filter(isVideoReferencePath)
+          const combinedReferencePaths = orderedReferencePaths
+            .filter((path) => !isVideoReferencePath(path))
+            .slice(0, referenceBudget)
           const mentionContext = buildEntityMentionContext(mentionedEntities as MentionableEntity[])
 
           const signReference = async (ref: string) => {
@@ -197,7 +217,10 @@ export async function executeGenerationJobsInBackground(
           // Seedance takes clips alongside images so a shot can inherit motion
           // and look from an earlier shot's video. These travel separately
           // because the provider requires URLs for video, not inline data.
-          const videoReferencePaths = (Array.isArray(settings.videoReferencePaths) ? settings.videoReferencePaths as string[] : []).slice(0, 10)
+          const videoReferencePaths = Array.from(new Set([
+            ...(Array.isArray(settings.videoReferencePaths) ? settings.videoReferencePaths as string[] : []),
+            ...strayClipPaths,
+          ])).slice(0, 10)
           const videoReferenceUrls: string[] = []
           for (const ref of videoReferencePaths) {
             const signed = await signReference(ref)

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/service"
 import { fetchStudioFeatureFlags } from "@/lib/studio/feature-flags"
 import { fetchDirectorWorkflows } from "@/lib/studio/workflows"
+import { failAbandonedRuns } from "@/lib/studio/workflow-runs"
 
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 
@@ -50,6 +51,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return { ...rest, session_id: execution?.session_id ?? null }
     })
     const { data: workflowRuns } = await supabase.from("creator_workflow_runs").select("*").eq("project_id", projectId).order("started_at", { ascending: false }).limit(25)
+    // The chat rejoins whatever this list says is still in flight, so a run
+    // whose server died has to be closed here — nothing else will — and the
+    // rows are corrected in place so this response already reflects it.
+    await failAbandonedRuns(supabase, { projectId, userId: user.id, runs: workflowRuns || [] }).catch((error) => console.warn("Could not close abandoned Director runs:", error))
     // Generation jobs drive the storyboard's live refresh, so they travel on
     // every response rather than only when the production panels are enabled.
     const { data: baseGenerationJobs } = await supabase.from("creator_generation_jobs").select("id,workflow_run_id,shot_id,type,status,model,provider,prompt,input_images,result_url,error,settings,target_snapshot,verification,created_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(50)

@@ -6,10 +6,17 @@ import { getUserCredits } from "./credits"
 import { stripIdentityDescriptionsFromPrompts } from "./prompt-sanitizer"
 import { projectDirectorVideoModel } from "./generation-models"
 
+// Read from the registry rather than written out again. A second copy of this
+// list meant a tool could be registered, described, owned by an agent, and
+// offered to the model, yet still be rejected here as "tool: Invalid input" —
+// a failure that names the gate rather than the omission, and points at the
+// model's arguments rather than at the list nobody remembered to update.
+const directorToolNames = Object.keys(directorTools) as [DirectorToolName, ...DirectorToolName[]]
+
 export const toolRequestSchema = z.object({
   tool: z.preprocess(
     (val) => (typeof val === "string" ? val.trim().replaceAll(" ", "_") : val),
-    z.enum(["inspect_current_project", "read_episode_script", "save_script_prompts", "read_script_prompts", "search_episode_script", "list_production_entities", "list_storyboard_shots", "update_creative_brief", "create_series", "write_series_bible", "create_production_entity", "create_production_entities_batch", "create_storyboard_batch", "validate_production", "record_continuity_fact", "inspect_continuity", "estimate_generation_cost", "inspect_generation_jobs", "submit_generation", "update_script", "update_shot", "delete_shot", "update_asset", "attach_media_to_asset", "delete_asset", "attach_media_to_shot", "update_full_auto_mode", "create_revision_request"])
+    z.enum(directorToolNames),
   ),
   input: z.unknown(),
   idempotencyKey: z.string().trim().min(8).max(200),

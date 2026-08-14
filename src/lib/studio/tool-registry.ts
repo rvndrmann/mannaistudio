@@ -10,6 +10,9 @@ import { deductUserCredits } from "./credits"
 import { executeGenerationJobsInBackground } from "./execute-generation"
 import { findMentionedEntityIds, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
 import { stripIdentityDescriptions } from "./prompt-sanitizer"
+import { inheritedShotLocations } from "./shot-location"
+import { estimateShotSeconds } from "./shot-duration"
+import { beatRuntimeSeconds, describeBeatProblems, readShotVideoPrompt, writeShotVideoPrompt } from "./shot-video-prompt"
 import { buildGenerationTargetSnapshot } from "./generation-target"
 
 export type ToolRisk = "read" | "write" | "costly" | "destructive"
@@ -85,6 +88,70 @@ export const saveScriptPromptsTool = defineDirectorTool({
   },
 })
 
+/**
+ * The episode's master prompt — the document everything else is extracted from.
+ *
+ * Characters, keyframe prompts, and video prompts were each written from the
+ * script independently, so nothing held them to one another. Deriving all three
+ * from one document is what keeps a character's look, a shot's framing, and a
+ * clip's motion describing the same scene.
+ *
+ * Stored exactly as written, unlike every prompt downstream: the master prompt
+ * is the one place a CHARACTER / ASSET LOCK block belongs, because that block is
+ * what the entities are created from. Everything extracted out of it is
+ * sanitised on the way out.
+ */
+export const writeEpisodeMasterPromptTool = defineDirectorTool({
+  name: "write_episode_master_prompt",
+  version: 1,
+  risk: "write",
+  requiresApproval: true,
+  input: z.object({
+    episodeId: z.string().uuid(),
+    masterPrompt: z.string().trim().min(1).max(60_000),
+  }).strict(),
+  async execute(context, input) {
+    const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
+    if (!episode) throw new Error("Episode does not belong to this project")
+    const { data, error } = await context.supabase
+      .from("creator_episodes")
+      // Deliberately not stripped. This is the source the character and asset
+      // descriptions are read out of; sanitising here would delete them.
+      .update({ master_prompt: input.masterPrompt, master_prompt_updated_at: new Date().toISOString() })
+      .eq("id", input.episodeId)
+      .select("id,master_prompt_updated_at")
+      .single()
+    if (error) throw error
+    return { episodeId: data.id, characters: input.masterPrompt.length, updatedAt: data.master_prompt_updated_at }
+  },
+})
+
+export const readEpisodeMasterPromptTool = defineDirectorTool({
+  name: "read_episode_master_prompt",
+  version: 1,
+  risk: "read",
+  requiresApproval: false,
+  input: z.object({ episodeId: z.string().uuid() }).strict(),
+  async execute(context, input) {
+    const { data, error } = await context.supabase
+      .from("creator_episodes")
+      .select("id,name,master_prompt,master_prompt_updated_at")
+      .eq("id", input.episodeId)
+      .eq("project_id", context.project.id)
+      .single()
+    if (error) throw error
+    return {
+      episodeId: data.id,
+      episodeName: data.name,
+      masterPrompt: data.master_prompt || null,
+      updatedAt: data.master_prompt_updated_at || null,
+      // Said plainly so a missing master prompt reads as a stage to do rather
+      // than as a tool that failed.
+      status: data.master_prompt ? "written" : "not written yet",
+    }
+  },
+})
+
 export const readScriptPromptsTool = defineDirectorTool({
   name: "read_script_prompts",
   version: 1,
@@ -156,7 +223,12 @@ export const listStoryboardShotsTool = defineDirectorTool({
     // order_index is 0-based but the storyboard labels shots from 1. Without an
     // explicit number the Director maps "shot 2" onto order_index 2 and acts on
     // the wrong shot, so the user-visible number travels with every row.
-    const items = (data || []).map((shot) => ({ ...shot, number: shot.order_index + 1 }))
+    //
+    // The video prompt is lifted out of metadata and named, because revising a
+    // prompt starts with reading the one that is there. Left buried, the model
+    // rewrote from scratch and quietly dropped whatever the user had liked
+    // about it.
+    const items = (data || []).map((shot) => ({ ...shot, number: shot.order_index + 1, video_prompt: readShotVideoPrompt(shot) || null }))
     return { items, total: count || 0, offset: input.offset, limit: input.limit, hasMore: input.offset + input.limit < (count || 0) }
   },
 })
@@ -281,8 +353,23 @@ export const createStoryboardBatchTool = defineDirectorTool({
       // is dropped before the prompt is stored. A saved "CHARACTER / ASSET LOCK"
       // block overrides the reference art at generation time, so it must never
       // reach the row in the first place.
-      return { episode_id: input.episodeId, order_index: offset + index, title: shot.title, description: shot.description || null, script_text: shot.scriptText || null, prompt: stripIdentityDescriptions(shot.prompt), duration_seconds: shot.durationSeconds, aspect_ratio: shot.aspectRatio, referenced_entities: cast.length ? cast : shot.referencedEntityIds }
+      // A shot runs as long as what happens in it. Left on the schema default,
+      // every shot in a storyboard came out the same four seconds, and a shot
+      // carrying a long line was clipped mid-sentence.
+      const durationSeconds = shot.durationSeconds === 4
+        ? estimateShotSeconds(`${shot.prompt}\n${shot.scriptText}`)
+        : shot.durationSeconds
+      return { episode_id: input.episodeId, order_index: offset + index, title: shot.title, description: shot.description || null, script_text: shot.scriptText || null, prompt: stripIdentityDescriptions(shot.prompt), duration_seconds: durationSeconds, aspect_ratio: shot.aspectRatio, referenced_entities: cast.length ? cast : shot.referencedEntityIds }
     })
+    // A prompt names the location only where it changes, so the shots in
+    // between were built with none and later rendered nowhere. The scene runs
+    // on until the script moves it, exactly as it does on set.
+    const staged = rows.map((row, index) => ({ id: String(index), order_index: row.order_index, referenced_entities: row.referenced_entities }))
+    const inherited = inheritedShotLocations(staged, batchEntities)
+    for (const [index, locationId] of Array.from(inherited.entries())) {
+      const row = rows[Number(index)]
+      if (row) row.referenced_entities = Array.from(new Set([...row.referenced_entities, locationId]))
+    }
     const { data, error } = await context.supabase.from("creator_shots").insert(rows).select("*")
     if (error) throw error
     return { created: data || [], replacedExisting: input.replaceExisting }
@@ -602,6 +689,9 @@ export const updateShotTool = defineDirectorTool({
       description: z.string().trim().max(5_000).nullable().optional(),
       script_text: z.string().trim().max(10_000).nullable().optional(),
       prompt: z.string().trim().max(20_000).nullable().optional(),
+      // The image prompt and the video prompt are different pieces of writing
+      // for different models, so revising one must never overwrite the other.
+      video_prompt: z.string().trim().max(20_000).nullable().optional(),
       duration_seconds: z.number().positive().max(120).optional(),
       aspect_ratio: z.string().trim().max(20).optional(),
       resolution: z.string().trim().max(20).optional(),
@@ -619,15 +709,94 @@ export const updateShotTool = defineDirectorTool({
     const patch = typeof input.patch.prompt === "string"
       ? { ...input.patch, prompt: stripIdentityDescriptions(input.patch.prompt) }
       : input.patch
+    // The video prompt lives on metadata beside the shot's other extras, so it
+    // is folded in against the row as it stands rather than written as a
+    // column — patching metadata wholesale would drop the rest of it.
+    let columns: Record<string, unknown> = patch
+    if ("video_prompt" in patch) {
+      const { video_prompt: videoPrompt, ...rest } = patch
+      const { data: current } = await context.supabase.from("creator_shots").select("metadata").eq("id", input.shotId).maybeSingle()
+      const written = typeof videoPrompt === "string" ? stripIdentityDescriptions(videoPrompt) : ""
+      const runtime = written ? beatRuntimeSeconds(written) : null
+      columns = {
+        ...rest,
+        metadata: writeShotVideoPrompt(current?.metadata, written),
+        // The beats are the runtime, unless this same patch sets one outright.
+        ...(runtime && rest.duration_seconds === undefined ? { duration_seconds: runtime } : {}),
+      }
+    }
     const { data, error } = await context.supabase
       .from("creator_shots")
-      .update(patch)
+      .update(columns)
       .eq("id", input.shotId)
       .in("episode_id", episodeIds.length ? episodeIds : ["00000000-0000-0000-0000-000000000000"])
       .select("*")
       .single()
     if (error) throw error
     return data
+  },
+})
+
+/**
+ * Writes the video prompts for a storyboard, in one pass.
+ *
+ * One shot at a time meant one approval card per shot, which for a fifteen-shot
+ * episode is fifteen decisions about the same piece of work. The whole
+ * storyboard is one decision, so it is one card.
+ *
+ * The beat format lives here rather than in the agent's instructions because
+ * instructions can be replaced from the admin screen and this cannot: a saved
+ * team that has never heard of timed beats still gets them from the schema it
+ * has to fill in.
+ */
+export const writeShotVideoPromptsTool = defineDirectorTool({
+  name: "write_shot_video_prompts",
+  version: 1,
+  risk: "write",
+  requiresApproval: true,
+  input: z.object({
+    episodeId: z.string().uuid(),
+    shots: z.array(z.object({
+      shotNumber: z.number().int().positive().max(10_000).describe("The storyboard number as shown to the user, counting from 1."),
+      videoPrompt: z.string().trim().min(1).max(20_000).describe(
+        "What happens across THIS ONE SHOT, as contiguous timed beats. Each shot is its own self-contained timeline: it starts at 0s, runs to that shot's own length, and never carries a timestamp from the scene it belongs to — shot 4 is `0-4s`, not `12-16s`. One shot is a single continuous camera action of at most 15 seconds; a scene longer than that is already split across the storyboard's shots, so write each shot's slice of it rather than the whole scene. Two beat forms are accepted: `0-4s: <action>` or the timestamped-title form `0-2s — BEAT TITLE` followed by the action lines. Every beat states camera framing, who is present by @tag, the specific physical action, and the environmental reaction. Dialogue goes in braces — @Ethan says: {\"Wait.\"} — and sound in angle brackets — <Door slams>. Roughly three words a second is the ceiling for a speakable line, so a line that will not fit needs a longer shot, not a faster read. Never describe a referenced character's face, hair, build, or wardrobe, and never write a CHARACTER / ASSET LOCK block: reference art defines appearance, and written descriptions are stripped before the prompt reaches the provider.",
+      ),
+    })).min(1).max(100),
+  }).strict(),
+  async execute(context, input) {
+    const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
+    if (!episode) throw new Error("Episode does not belong to this project")
+    const { data: shots, error: shotsError } = await context.supabase.from("creator_shots").select("id,order_index,metadata,duration_seconds").eq("episode_id", input.episodeId).order("order_index")
+    if (shotsError) throw shotsError
+    const byNumber = new Map((shots || []).map((shot) => [shot.order_index + 1, shot]))
+
+    const missing = input.shots.filter((entry) => !byNumber.has(entry.shotNumber)).map((entry) => entry.shotNumber)
+    if (missing.length) throw new Error(`Shot ${missing.join(", ")} does not exist in this episode. It has ${(shots || []).length} shots.`)
+    // A prompt whose beats do not add up renders unpredictably, and the writer
+    // is the only one who can fix it — so it is refused with the reason rather
+    // than stored and discovered later as a bad clip.
+    const faults = input.shots.flatMap((entry) => describeBeatProblems(entry.videoPrompt).map((problem) => `Shot ${entry.shotNumber}: ${problem}`))
+    if (faults.length) throw new Error(faults.slice(0, 8).join(" "))
+
+    const written = await Promise.all(input.shots.map(async (entry) => {
+      const shot = byNumber.get(entry.shotNumber)!
+      // Identity descriptions override the reference art, exactly as they do in
+      // the image prompt, so they never reach the row here either.
+      const videoPrompt = stripIdentityDescriptions(entry.videoPrompt)
+      const runtime = beatRuntimeSeconds(videoPrompt)
+      const { error } = await context.supabase
+        .from("creator_shots")
+        .update({
+          metadata: writeShotVideoPrompt(shot.metadata, videoPrompt),
+          // The beats are the runtime; storing anything else would film a
+          // prompt that scripts eight seconds for four.
+          ...(runtime ? { duration_seconds: runtime } : {}),
+        })
+        .eq("id", shot.id)
+      if (error) throw error
+      return { shotNumber: entry.shotNumber, seconds: runtime ?? shot.duration_seconds }
+    }))
+    return { episodeId: input.episodeId, written: written.length, shots: written }
   },
 })
 
@@ -796,6 +965,8 @@ export const directorTools = {
   inspect_current_project: inspectCurrentProjectTool,
   read_episode_script: readEpisodeScriptTool,
   save_script_prompts: saveScriptPromptsTool,
+  write_episode_master_prompt: writeEpisodeMasterPromptTool,
+  read_episode_master_prompt: readEpisodeMasterPromptTool,
   read_script_prompts: readScriptPromptsTool,
   search_episode_script: searchEpisodeScriptTool,
   list_production_entities: listProductionEntitiesTool,
@@ -814,6 +985,7 @@ export const directorTools = {
   submit_generation: submitGenerationTool,
   update_script: updateScriptTool,
   update_shot: updateShotTool,
+  write_shot_video_prompts: writeShotVideoPromptsTool,
   delete_shot: deleteShotTool,
   update_asset: updateAssetTool,
   attach_media_to_asset: attachMediaToAssetTool,

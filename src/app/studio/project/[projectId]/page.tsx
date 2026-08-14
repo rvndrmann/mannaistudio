@@ -55,6 +55,8 @@ import {
 import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models";
 import { getModelLabel, imageGenerationModels, videoDurationOptions, videoGenerationModels, videoModelMaxDuration } from "@/lib/studio/generation-models";
 import { defaultDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows";
+import { abandonedRunSilentAfterMs } from "@/lib/studio/workflow-runs";
+import { videoPromptFor } from "@/lib/studio/shot-video-prompt";
 import { calculateCreditCost, getUserCredits } from "@/lib/studio/credits";
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
 import { parseVoiceToolCall, type VoiceToolCall } from "@/lib/studio/voice";
@@ -182,7 +184,7 @@ type Workspace = {
     revisions: Array<Record<string, unknown>>;
     generationJobs: Array<{ id: string; workflow_run_id?: string | null; shot_id?: string | null; type?: string; status: string; model?: string | null; prompt?: string | null; input_images?: string[] | null; result_url?: string | null; error?: string | null; settings?: Record<string, unknown> | null; target_snapshot?: Record<string, unknown>; verification?: Record<string, unknown>; created_at?: string; completed_at?: string | null }>;
     creditAccount: { balance: number; reserved: number } | null;
-    workflowRuns?: Array<{ id: string; session_id?: string | null; status: string; completed_at?: string | null; started_at?: string | null; objective?: string | null; summary?: Record<string, unknown>; error?: Record<string, unknown> | null }>;
+    workflowRuns?: Array<{ id: string; session_id?: string | null; status: string; completed_at?: string | null; started_at?: string | null; updated_at?: string | null; objective?: string | null; summary?: Record<string, unknown>; error?: Record<string, unknown> | null }>;
   };
 };
 const tabs = [
@@ -278,7 +280,14 @@ export default function WorkspacePage({
     }
   };
 
+  // Where the back arrow goes. Tab changes rewrite the URL in place rather than
+  // pushing history, so "back" from the Timeline had nothing to step back to
+  // and threw the user out to the project list mid-edit. The arrow returns to
+  // the tab they came from, and only leaves the project once it is out of tabs.
+  const [previousTab, setPreviousTab] = useState<string | null>(null);
+
   const setTab = (nextTab: string) => {
+    setPreviousTab((current) => (nextTab === tab ? current : tab));
     setTabState(nextTab);
     if (typeof window !== "undefined") {
       localStorage.setItem(`studio_tab_${projectId}`, nextTab);
@@ -449,18 +458,49 @@ export default function WorkspacePage({
   // outlives the page that started it. After a reload the browser has no
   // stream to read, but the run is still going and will persist its reply — so
   // rejoin it by polling until it finishes instead of pretending it stopped.
+  const latestSessionRun = useMemo(
+    () => (data?.production?.workflowRuns || []).find((run) => run.session_id === data?.activeSessionId) || null,
+    [data?.production?.workflowRuns, data?.activeSessionId],
+  );
+  const repliedRunIds = useMemo(
+    () => new Set((data?.chatMessages || []).filter((message) => message.role === "assistant" && message.workflow_run_id).map((message) => message.workflow_run_id as string)),
+    [data?.chatMessages],
+  );
+
   const activeRun = useMemo(() => {
-    const runs = data?.production?.workflowRuns || [];
-    const repliedRunIds = new Set((data?.chatMessages || []).filter((message) => message.role === "assistant" && message.workflow_run_id).map((message) => message.workflow_run_id as string));
-    // A run whose server died never gets completed_at, so anything older than
-    // the longest plausible run is treated as gone rather than polled forever.
-    const cutoff = Date.now() - 15 * 60 * 1000;
-    const latest = runs.find((run) => run.session_id === data?.activeSessionId) || null;
+    const latest = latestSessionRun;
     if (!latest || repliedRunIds.has(latest.id)) return null;
-    return !latest.completed_at
-      && (latest.status === "planning" || latest.status === "running")
-      && (!latest.started_at || new Date(latest.started_at).getTime() > cutoff) ? latest : null;
-  }, [data?.production?.workflowRuns, data?.chatMessages, data?.activeSessionId]);
+    if (latest.completed_at || !latest.started_at) return null;
+    if (latest.status !== "planning" && latest.status !== "running") return null;
+    // A run whose server died never gets completed_at. The workspace read closes
+    // those out, and the same rule is applied here so the chat stops waiting at
+    // the moment the run stops writing rather than on a guess about how long a
+    // run ought to take.
+    const lastWrite = new Date(latest.updated_at || latest.started_at).getTime();
+    return lastWrite > Date.now() - abandonedRunSilentAfterMs ? latest : null;
+  }, [latestSessionRun, repliedRunIds]);
+
+  // A rejoined run has no stream to show progress from, and these runs can
+  // legitimately take several minutes. Saying how long it has been going is the
+  // difference between a wait and an apparent hang.
+  const rejoinedRunMinutes = useMemo(() => {
+    if (!activeRun?.started_at) return 0;
+    return Math.floor((Date.now() - new Date(activeRun.started_at).getTime()) / 60_000);
+    // Recomputed as the rejoin poll refreshes the workspace.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRun?.started_at, data]);
+
+  // A run that stopped without replying. Nothing else in the chat records the
+  // turn, so without this the message the user sent sits there answered by
+  // silence — which is what the thinking bubble ends up hiding.
+  const unansweredRun = useMemo(() => {
+    if (chatSending) return null;
+    const latest = latestSessionRun;
+    if (!latest || repliedRunIds.has(latest.id)) return null;
+    if (!latest.completed_at || !["failed", "cancelled", "partially_completed"].includes(latest.status)) return null;
+    const reason = typeof latest.error?.message === "string" ? latest.error.message : null;
+    return { id: latest.id, objective: latest.objective || "", reason };
+  }, [chatSending, latestSessionRun, repliedRunIds]);
 
   useEffect(() => {
     if (!activeRun || chatSending) {
@@ -854,12 +894,26 @@ export default function WorkspacePage({
             }}
           />
         )}
-        <Link
-          href="/studio"
-          className="rounded-md p-1.5 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        {previousTab ? (
+          <button
+            type="button"
+            onClick={() => { setTab(previousTab); setPreviousTab(null); }}
+            title={`Back to ${visibleTabs.find(([id]) => id === previousTab)?.[1] || "the previous tab"}`}
+            aria-label={`Back to ${visibleTabs.find(([id]) => id === previousTab)?.[1] || "the previous tab"}`}
+            className="rounded-md p-1.5 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+        ) : (
+          <Link
+            href="/studio"
+            title="Back to all projects"
+            aria-label="Back to all projects"
+            className="rounded-md p-1.5 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        )}
         <Clapperboard className="hidden h-4 w-4 text-[#b9f42e] sm:block" />
         <p className="truncate text-[13px] font-semibold text-zinc-100">{data.project.name}</p>
         <span className="text-zinc-600">/</span>
@@ -1225,7 +1279,21 @@ export default function WorkspacePage({
                 <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} entities={data.entities} shots={data.shots} projectId={projectId} busyId={proposalBusy} onDecide={decideProposal} onAction={sendDirectorMessage} onOpenTab={setTab} />
               </div>
             ))}
-            {(chatSending || resumedRunAwaitingReply) && <ThinkingBubble reply={chatSending ? streamingReply : { content: "", status: "Picking up where the Director left off" }} />}
+            {(chatSending || resumedRunAwaitingReply) && <ThinkingBubble reply={chatSending ? streamingReply : { content: "", status: `Picking up where the Director left off${rejoinedRunMinutes ? ` · ${rejoinedRunMinutes}m` : ""}` }} />}
+            {!resumedRunAwaitingReply && unansweredRun && (
+              <div className="mt-3 max-w-[90%] rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-[13px] text-amber-100">
+                <p>{unansweredRun.reason || "That run stopped before the Director could reply."}</p>
+                {unansweredRun.objective && (
+                  <button
+                    type="button"
+                    onClick={() => sendDirectorMessage(unansweredRun.objective)}
+                    className="mt-2 rounded-full border border-amber-300/40 px-3 py-1 text-[12px] font-semibold text-amber-100 hover:bg-amber-400/20"
+                  >
+                    Send it again
+                  </button>
+                )}
+              </div>
+            )}
             <PendingProposalCards
               proposals={data.actionProposals}
               excludeIds={data.chatMessages.flatMap((item) => proposalIdsFromActions(item.suggested_actions))}
@@ -3573,16 +3641,37 @@ function Storyboard({
                   return next;
                 });
               };
+              // A render running for this shot, of either kind. The cell that
+              // holds the output says so, but the row is what the eye follows
+              // down a fifteen-shot storyboard, so the row has to say it too.
+              const renderingImage = Boolean(pendingJobs?.image.has(shot.id));
+              const renderingVideo = Boolean(pendingJobs?.video.has(shot.id));
+              const rendering = renderingImage || renderingVideo;
               return (
                 <article
                   key={shot.id}
-                  className="grid grid-cols-[42px_minmax(210px,1.6fr)_150px_170px_170px] items-start gap-3 rounded-xl border border-white/10 bg-[#1a1c1b] p-3"
+                  aria-busy={rendering || undefined}
+                  className={`relative grid grid-cols-[42px_minmax(210px,1.6fr)_150px_170px_170px] items-start gap-3 rounded-xl border bg-[#1a1c1b] p-3 transition ${rendering ? "border-[#b9f42e]/40 ring-1 ring-[#b9f42e]/20" : "border-white/10"}`}
                 >
+                  {rendering && (
+                    <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-0.5 overflow-hidden rounded-t-xl">
+                      <span className="block h-full w-full -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-[#b9f42e] to-transparent" />
+                    </span>
+                  )}
                   <div className="flex flex-col items-center gap-3">
-                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#b9f42e]/12 font-bold text-[#b9f42e]">
+                    <span className={`grid h-8 w-8 place-items-center rounded-lg font-bold text-[#b9f42e] ${rendering ? "bg-[#b9f42e]/25" : "bg-[#b9f42e]/12"}`}>
                       {index + 1}
                     </span>
-                    <span className="text-[10px] text-zinc-600">⋮⋮</span>
+                    {rendering ? (
+                      <span className="flex flex-col items-center gap-1 text-[#b9f42e]">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span className="text-[8px] font-bold uppercase tracking-wider">
+                          {renderingImage && renderingVideo ? "Both" : renderingImage ? "Image" : "Video"}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-zinc-600">⋮⋮</span>
+                    )}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
@@ -3731,12 +3820,13 @@ function Storyboard({
                     >
                       <Preview
                         src={shot.keyframe_image}
-                        label={pendingJobs?.image.has(shot.id) ? "Generating image…" : "Reference image"}
+                        label={renderingImage ? "Generating image…" : "Reference image"}
+                        busy={renderingImage}
                         aspectRatio={shot.aspect_ratio || "9:16"}
                       />
-                      <div className="flex flex-col gap-1 border-t border-white/10 px-2 py-2 text-xs text-zinc-400">
+                      <div className={`flex flex-col gap-1 border-t border-white/10 px-2 py-2 text-xs ${renderingImage ? "text-[#b9f42e]" : "text-zinc-400"}`}>
                         <div className="flex items-center justify-between">
-                          <span>Image reference</span>
+                          <span>{renderingImage ? "Generating…" : "Image reference"}</span>
                           {shot.keyframe_image && (
                             <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ${shot.is_trusted_provider_asset || (typeof shot.metadata === "object" && shot.metadata !== null && "byteplus_asset_id" in shot.metadata) ? "bg-[#b9f42e]/20 text-[#b9f42e]" : "bg-white/10 text-zinc-400"}`}>
                               {shot.is_trusted_provider_asset || (typeof shot.metadata === "object" && shot.metadata !== null && "byteplus_asset_id" in shot.metadata) ? "✓ Seedance Verified" : "+ Asset Library"}
@@ -3788,9 +3878,9 @@ function Storyboard({
                     onClick={() => setMedia({ shot, type: "video" })}
                     className="overflow-hidden rounded-lg bg-[#292b2a] text-left transition hover:ring-2 hover:ring-[#b9f42e]"
                   >
-                    <Preview src={shot.video_url} label={pendingJobs?.video.has(shot.id) ? "Generating video…" : "Generated video"} type="video" aspectRatio={shot.aspect_ratio || "9:16"} />
-                    <div className="border-t border-white/10 px-2 py-2 text-xs text-zinc-400">
-                      {pendingJobs?.video.has(shot.id)
+                    <Preview src={shot.video_url} label={renderingVideo ? "Generating video…" : "Generated video"} busy={renderingVideo} type="video" aspectRatio={shot.aspect_ratio || "9:16"} />
+                    <div className={`border-t border-white/10 px-2 py-2 text-xs ${renderingVideo ? "text-[#b9f42e]" : "text-zinc-400"}`}>
+                      {renderingVideo
                         ? "Generating…"
                         : shot.video_status === "completed"
                         ? "Video ready"
@@ -3845,7 +3935,13 @@ function ShotMediaWorkspace({
   const shotIndex = (shots || []).findIndex((s) => s.id === media.shot.id);
   const shotNumber = shotIndex >= 0 ? shotIndex + 1 : 1;
 
-  const [prompt, setPrompt] = useState(media.shot.prompt || "");
+  // The video panel is filming, not framing: it starts from the shot's video
+  // prompt when there is one. Seeding both panels from the image paragraph is
+  // why the video box still showed the old still-frame text after the beats
+  // were written — and why regenerating from it filmed the old prompt.
+  const [prompt, setPrompt] = useState(
+    media.type === "video" ? videoPromptFor(media.shot) : media.shot.prompt || "",
+  );
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [model, setModel] = useState<string>(
     media.type === "image" ? imageGenerationModels[0].id : videoGenerationModels[0].id,
@@ -6783,7 +6879,10 @@ function Timeline({
 
   const activeShot = shots[activeShotIndex] || currentShot;
   const activeOffset = cumulativeOffsets[activeShotIndex] || 0;
-  const inShotTime = getShotStart(activeShot) + Math.max(0, globalTime - activeOffset);
+  // An episode whose storyboard has not been built yet has no clip under the
+  // playhead. Everything else here already reads the active shot as optional;
+  // this asked it for a trim point and took the whole workspace down with it.
+  const inShotTime = activeShot ? getShotStart(activeShot) + Math.max(0, globalTime - activeOffset) : 0;
 
   // Synchronize player selection with active playhead index during playback
   useEffect(() => {
@@ -7300,12 +7399,19 @@ function Preview({
   type = "image",
   aspectRatio = "9:16",
   fit = "contain",
+  busy = false,
 }: {
   src: string | null;
   label: string;
   type?: "image" | "video";
   aspectRatio?: string;
   fit?: "cover" | "contain";
+  /**
+   * A render is running for this slot. The work happens on a server over
+   * minutes, so without a sign of life the cell reads as an empty frame that
+   * nothing is being done about — and on a redo, as the old frame unchanged.
+   */
+  busy?: boolean;
 }) {
   const aspectClass =
     aspectRatio === "16:9"
@@ -7317,17 +7423,28 @@ function Preview({
       : "aspect-[9/16]";
 
   return (
-    <div className={`relative overflow-hidden rounded-lg bg-[#2a2c2b] ${aspectClass}`}>
+    <div className={`relative overflow-hidden rounded-lg bg-[#2a2c2b] ${aspectClass}`} aria-busy={busy || undefined}>
       {src ? (
         <ResolvedMedia
           src={src}
           type={type}
-          className={`h-full w-full ${fit === "contain" ? "object-contain bg-black/80" : "object-cover"}`}
+          className={`h-full w-full transition ${busy ? "opacity-30" : ""} ${fit === "contain" ? "object-contain bg-black/80" : "object-cover"}`}
         />
-      ) : (
+      ) : !busy ? (
         <div className="grid h-full place-items-center p-2 text-center text-xs text-zinc-500">
           {label}
         </div>
+      ) : null}
+      {busy && (
+        <>
+          <span aria-hidden="true" className="pointer-events-none absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-[#b9f42e]/20 to-transparent" />
+          <div className="absolute inset-0 grid place-items-center p-2">
+            <span className="flex flex-col items-center gap-1.5 text-center">
+              <Loader2 className="h-4 w-4 animate-spin text-[#b9f42e]" />
+              <span className="text-[10px] font-semibold leading-tight text-[#b9f42e]">{label}</span>
+            </span>
+          </div>
+        </>
       )}
     </div>
   );

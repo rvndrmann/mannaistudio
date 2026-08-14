@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { actionMatchesRequestedShots, buildVideoContinuationPrompt, parseRequestedShotNumbers, parseTargetShotNumbers, parseVideoShotReferenceIntent , wantsRedo } from "./shot-intent"
+import { actionMatchesRequestedShots, buildVideoContinuationPrompt, parseRequestedShotNumbers, parseShotImageBatchIntent, parseTargetShotNumbers, parseVideoShotReferenceIntent , wantsRedo } from "./shot-intent"
 
 describe("parseRequestedShotNumbers", () => {
   it("reads a single named shot", () => {
@@ -92,9 +92,21 @@ describe("buildVideoContinuationPrompt", () => {
 })
 
 describe("actionMatchesRequestedShots", () => {
-  it("blocks an unrelated pipeline action from a targeted turn", () => {
-    expect(actionMatchesRequestedShots("Generate the image for shot 4", [1])).toBe(false)
+  it("keeps the step for the shot the turn was about", () => {
     expect(actionMatchesRequestedShots("Generate the image for shot 1", [1])).toBe(true)
+    expect(actionMatchesRequestedShots("Generate the video for shot 1 from its approved keyframe", [1])).toBe(true)
+  })
+
+  // Finishing shot 1's keyframe used to end with no button at all, because the
+  // pipeline had moved on to shot 2 and a step naming another shot was held.
+  it("keeps the step the finished shot leads to", () => {
+    expect(actionMatchesRequestedShots("Generate the storyboard keyframe image for shot 2", [1])).toBe(true)
+    expect(actionMatchesRequestedShots("Generate the image for shot 4", [1])).toBe(true)
+  })
+
+  it("still holds a step that points back at an earlier shot", () => {
+    expect(actionMatchesRequestedShots("Generate the image for shot 3", [8])).toBe(false)
+    expect(actionMatchesRequestedShots("Generate the image for shot 3", [4, 8])).toBe(false)
   })
 
   it("keeps non-shot pipeline actions and untargeted turns", () => {
@@ -127,5 +139,35 @@ describe("redo requests", () => {
 
   it("keeps the shot number a redo names", () => {
     expect(parseTargetShotNumbers("recreate the shot 6 video")).toEqual([6])
+  })
+})
+
+describe("parseShotImageBatchIntent", () => {
+  it("reads a request covering the whole storyboard", () => {
+    for (const message of [
+      "generate all shot image",
+      "generate all the shot images",
+      "create images for all shots",
+      "generate every shot image",
+      "generate the remaining shot images",
+      "generate images for the rest of the shots",
+    ]) {
+      expect(parseShotImageBatchIntent(message), message).toMatchObject({ all: true })
+    }
+  })
+
+  it("reads a helping size, and does not mistake it for a shot number", () => {
+    expect(parseShotImageBatchIntent("generate the first 3 shot images")).toMatchObject({ chunk: 3, numbers: [] })
+    expect(parseShotImageBatchIntent("generate 3 more")).toMatchObject({ chunk: 3, numbers: [] })
+    expect(parseShotImageBatchIntent("next 5 images please")).toMatchObject({ chunk: 5, numbers: [] })
+  })
+
+  it("reads an outright list of shots", () => {
+    expect(parseShotImageBatchIntent("generate images for shots 8, 9, 10")).toMatchObject({ numbers: [8, 9, 10] })
+  })
+
+  it("leaves a single-shot request to the path that renders one", () => {
+    expect(parseShotImageBatchIntent("generate the image for shot 1")).toBeNull()
+    expect(parseShotImageBatchIntent("regenerate shot 6")).toBeNull()
   })
 })

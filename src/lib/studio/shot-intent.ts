@@ -44,6 +44,43 @@ export function parseRequestedShotNumbers(message: string): number[] {
   return Array.from(new Set(found)).sort((a, b) => a - b)
 }
 
+/**
+ * "Generate all the shot images."
+ *
+ * One shot at a time is the only thing the image path could answer, so a
+ * request covering the whole storyboard fell through to the agent, which
+ * proposed them one by one with no total in front of the user. A batch is a
+ * single decision — how many frames, at what total cost — and it is worth
+ * answering as one.
+ */
+export type ShotBatchIntent = {
+  /** Every shot that still needs a frame. */
+  all: boolean
+  /** "the next 3", "3 more", "first 3" — take this many from the front. */
+  chunk: number | null
+  /** Shots named outright, when the user listed them. */
+  numbers: number[]
+}
+
+const BATCH_ALL = /\b(?:all|every|each)\b(?:\s+(?:the|of\s+the|remaining|rest\s+of\s+the))?\s*(?:storyboard\s+)?shots?\b|\ball\s+(?:the\s+)?(?:storyboard\s+)?shot\s+(?:image|keyframe)s?\b|\b(?:remaining|rest\s+of\s+the)\s+(?:storyboard\s+)?shots?\b|\bfor\s+all\s+shots?\b/i
+// "the next 3", "3 more", "another 3", "first 3" — the size of one helping.
+const BATCH_CHUNK = /\b(?:next|another|first)\s+(\d{1,2})\b|\b(\d{1,2})\s+more\b/i
+// A chunk this large is the whole batch by another name, and a number this
+// small is almost always a shot number rather than a helping size.
+const MAX_CHUNK = 25
+
+export function parseShotImageBatchIntent(message: string): ShotBatchIntent | null {
+  const all = BATCH_ALL.test(message)
+  const chunkMatch = message.match(BATCH_CHUNK)
+  const chunkSize = chunkMatch ? Number(chunkMatch[1] || chunkMatch[2]) : 0
+  const chunk = chunkSize > 0 && chunkSize <= MAX_CHUNK ? chunkSize : null
+  // A helping is counted in shots, not named by shot number, so the digits it
+  // consumed must not be read a second time as a list of targets.
+  const numbers = chunk ? [] : parseRequestedShotNumbers(message)
+  if (!all && !chunk && numbers.length < 2) return null
+  return { all, chunk, numbers }
+}
+
 export type VideoShotReferenceIntent = {
   targetShotNumbers: number[]
   referenceShotNumbers: number[]
@@ -99,12 +136,20 @@ export function parseTargetShotNumbers(message: string) {
 export function buildVideoContinuationPrompt(input: {
   targetShotNumber: number
   referenceShotNumber?: number
+  /**
+   * Names a clip that shot numbers cannot reach — the previous episode's
+   * ending. "@previous shot video" would point at this episode's storyboard,
+   * where the shot being continued from does not exist.
+   */
+  referenceAlias?: string
   basePrompt: string
   style: string
 }) {
   const style = input.style.trim()
   const realistic = /photo\s*-?real|realistic/i.test(style)
-  const videoAlias = input.referenceShotNumber && input.referenceShotNumber !== input.targetShotNumber - 1
+  const videoAlias = input.referenceAlias
+    ? input.referenceAlias
+    : input.referenceShotNumber && input.referenceShotNumber !== input.targetShotNumber - 1
     ? `@storyboard shot ${input.referenceShotNumber} video`
     : "@previous shot video"
   return [
@@ -117,5 +162,13 @@ export function buildVideoContinuationPrompt(input: {
 export function actionMatchesRequestedShots(intent: string, requestedShotNumbers: number[]) {
   if (!requestedShotNumbers.length) return true
   const actionShotNumbers = Array.from(intent.matchAll(/\bshots?\s+(?:#\s*)?(\d+)\b/gi)).map((match) => Number(match[1]))
-  return !actionShotNumbers.length || actionShotNumbers.some((number) => requestedShotNumbers.includes(number))
+  if (!actionShotNumbers.length) return true
+  if (actionShotNumbers.some((number) => requestedShotNumbers.includes(number))) return true
+  // Finishing one shot is the moment the step after it is most worth offering.
+  // The pipeline is read after this turn's work has landed, so a later shot is
+  // the production moving forward — holding it back is why a turn that put a
+  // keyframe on shot 1 ended with no button at all. A step pointing back at an
+  // earlier shot is a different matter: that reads as a jump, and still waits.
+  const furthestRequested = Math.max(...requestedShotNumbers)
+  return actionShotNumbers.every((number) => number > furthestRequested)
 }

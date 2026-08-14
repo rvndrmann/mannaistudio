@@ -115,6 +115,8 @@ export const toolAgentOwnership: Partial<Record<DirectorToolName, DirectorAgentK
   attach_media_to_asset: "character_asset",
   create_storyboard_batch: "storyboard",
   update_shot: "storyboard",
+  write_shot_video_prompts: "prompt",
+  write_episode_master_prompt: "prompt",
   delete_shot: "storyboard",
   attach_media_to_shot: "storyboard",
   list_storyboard_shots: "storyboard",

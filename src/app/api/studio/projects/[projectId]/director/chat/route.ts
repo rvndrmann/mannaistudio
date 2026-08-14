@@ -23,11 +23,15 @@ import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from 
 import { buildProjectStateSummary, loadProductionSnapshot } from "@/lib/studio/project-state-summary"
 import { computePipelineStage, withSkippedShots } from "@/lib/studio/pipeline"
 import type { DirectorTimelineBlock } from "@/lib/studio/timeline"
-import { actionMatchesRequestedShots, buildVideoContinuationPrompt, parseTargetShotNumbers, parseVideoShotReferenceIntent, wantsRedo } from "@/lib/studio/shot-intent"
+import { actionMatchesRequestedShots, buildVideoContinuationPrompt, parseShotImageBatchIntent, parseTargetShotNumbers, parseVideoShotReferenceIntent, wantsRedo } from "@/lib/studio/shot-intent"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 import { addWorkflowStep, createWorkflowRun, finishWorkflowRun } from "@/lib/studio/workflow-runs"
 import { buildGenerationTargetSnapshot, verifyGenerationTarget } from "@/lib/studio/generation-target"
 import { forbidsImageGeneration, forbidsMediaGeneration, forbidsVideoGeneration } from "@/lib/studio/media-intent"
+import { episodeFootageInstructions, fetchEpisodeFootage, handoffAlias, previousEpisodeHandoff } from "@/lib/studio/episode-continuity"
+import { ensureShotLocations } from "@/lib/studio/shot-location"
+import { resolveShotSeconds } from "@/lib/studio/shot-duration"
+import { beatRuntimeSeconds, videoPromptFor } from "@/lib/studio/shot-video-prompt"
 
 // A Director run can take minutes, and it must finish even when the browser
 // that started it goes away: the reply and the workflow run are persisted
@@ -188,7 +192,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           send({ type: "done", ...(await persistAssistantMessage(response)) })
         } catch (error) {
           console.error("DIRECTOR CHAT STREAM ERROR:", error)
-          send({ type: "error", error: describeError(error, "AI Director chat failed") })
+          const failure = describeError(error, "AI Director chat failed")
+          // The browser holding this stream sees the error, but a browser that
+          // reloaded sees only the run — and an unfinished run reads as one
+          // still working. Write the ending here so the failure survives the
+          // page that was watching it.
+          await recordFailedRun(context, { runId: workflowRun.id, sessionId, message: failure })
+          send({ type: "error", error: failure })
         } finally {
           controller.close()
         }
@@ -258,6 +268,201 @@ async function maybeHandleSkipShot(input: WorkflowRequestInput, normalized: stri
 }
 
 /**
+ * Leaves a failed run in a state the chat can read.
+ *
+ * Two things have to be true afterwards, or the page that reloads mid-run is
+ * left waiting: the run must be finished, so it stops reading as in flight, and
+ * the turn must carry a reply saying what went wrong, so the user's message is
+ * not sitting there unanswered with no explanation.
+ */
+async function recordFailedRun(
+  context: Awaited<ReturnType<typeof requireAuthenticatedProject>>,
+  input: { runId: string; sessionId: string; message: string },
+) {
+  try {
+    // Guarded on completed_at so a run that already wrote its own ending — a
+    // tool turn that failed and recorded why — keeps the better account of it.
+    await context.supabase
+      .from("creator_workflow_runs")
+      .update({ status: "failed", error: { message: input.message }, completed_at: new Date().toISOString() })
+      .eq("id", input.runId)
+      .eq("user_id", context.user.id)
+      .is("completed_at", null)
+    const { data: replied } = await context.supabase
+      .from("creator_chat_messages")
+      .select("id")
+      .eq("workflow_run_id", input.runId)
+      .eq("role", "assistant")
+      .limit(1)
+      .maybeSingle()
+    if (replied) return
+    await context.supabase.from("creator_chat_messages").insert({
+      session_id: input.sessionId,
+      workflow_run_id: input.runId,
+      role: "assistant",
+      content: `I could not finish that: ${input.message}`,
+      timeline_blocks: [{ type: "warning", code: "run_failed", message: input.message, recoverable: true, actions: [] }],
+      timeline_version: 1,
+    })
+  } catch (error) {
+    // Reporting the failure must not become a second failure.
+    console.warn("Could not record the failed Director run:", error)
+  }
+}
+
+/** How many frames a helping holds when the user asks for them a few at a time. */
+const IMAGE_BATCH_CHUNK = 3
+
+/**
+ * "Generate all the shot images."
+ *
+ * The image path renders exactly one frame, so anything covering more than one
+ * shot fell through to the agent, which worked through them one at a time and
+ * never put the size of the job in front of the user. A storyboard's worth of
+ * frames is a single decision with a single price, so it is answered as one
+ * proposal: the card totals every frame in it, and approving is what spends.
+ *
+ * The whole batch is offered, and so is a helping of three, because a user
+ * looking at a fifteen-frame bill often wants to see three come back first.
+ */
+async function maybeHandleShotImageBatch(input: WorkflowRequestInput, normalized: string) {
+  if (!/\b(image|keyframe|poster|visual)s?\b/.test(normalized)) return null
+  const intent = parseShotImageBatchIntent(input.message)
+  if (!intent) return null
+
+  const { data: shots, error } = await input.context.supabase
+    .from("creator_shots")
+    .select("id,order_index,title,prompt,keyframe_image,referenced_entities,aspect_ratio")
+    .eq("episode_id", input.episodeId)
+    .order("order_index")
+  if (error) throw error
+  if (!shots?.length) return textMessage(input.sessionId, "This episode has no storyboard shots yet, so there is nothing to render frames for.")
+
+  const numberOf = (shot: { order_index: number }) => shot.order_index + 1
+  const withPrompt = shots.filter((shot) => typeof shot.prompt === "string" && shot.prompt.trim())
+  const redo = wantsRedo(input.message)
+  // A frame that already exists is not work unless the user asked to redo it,
+  // and re-rendering an approved keyframe costs money and loses the approval.
+  const queue = redo ? withPrompt : withPrompt.filter((shot) => !shot.keyframe_image)
+
+  const selected = intent.numbers.length
+    ? withPrompt.filter((shot) => intent.numbers.includes(numberOf(shot)))
+    : intent.chunk
+      ? queue.slice(0, intent.chunk)
+      : queue
+  if (!selected.length) {
+    if (intent.numbers.length) return textMessage(input.sessionId, `I could not find shot ${intent.numbers.join(", ")} with a saved prompt in this episode. It has ${shots.length} shot${shots.length === 1 ? "" : "s"}.`)
+    if (!withPrompt.length) return textMessage(input.sessionId, "None of this episode's shots have a saved prompt yet, so there is nothing to render from. Write the prompt sheet first.")
+    return textMessage(input.sessionId, `Every shot with a prompt already has a keyframe — ${withPrompt.length} of ${shots.length}. Ask me to regenerate them if you want new frames.`)
+  }
+
+  const selectedNumbers = selected.map(numberOf)
+  const style = projectVisualStyle(input.context.project)
+  const projectDefaultAspect = typeof input.context.project.default_aspect === "string" ? input.context.project.default_aspect : null
+  const { data: projectEntities } = await input.context.supabase.from("creator_entities").select("*").eq("project_id", input.projectId)
+  const entities = (projectEntities || []) as ResolvedMention[]
+  // A shot whose prompt never restates the location was stored without one, and
+  // rendering it with no location is what put an apartment scene in a field —
+  // with nothing else to go on the model borrows the background from whichever
+  // reference photo it has. The scene runs on from the shot before it.
+  const located = await ensureShotLocations(input.context.supabase, { shots, entities })
+  const castById = new Map(entities.map((entity) => [entity.id, entity]))
+
+  // Built per shot rather than once for the batch: the reference art belongs to
+  // the shot's own cast, and one shared prompt would put every character in the
+  // episode into every frame.
+  const prompts = Object.fromEntries(selected.map((shot) => {
+    const aspectRatio = shot.aspect_ratio || projectDefaultAspect || "9:16"
+    const shotCast = ((shot.referenced_entities || []) as string[]).map((id) => castById.get(id)).filter((entity): entity is ResolvedMention => Boolean(entity))
+    const mentionContext = buildEntityMentionContext([
+      ...input.mentionedEntities,
+      ...shotCast.filter((entity) => !input.mentionedEntities.some((mentioned) => mentioned.id === entity.id)),
+    ])
+    return [String(numberOf(shot)), [
+      stripIdentityDescriptions(shot.prompt as string),
+      `Required composition: ${aspectRatio}.`,
+      `Required project style: ${style}.`,
+      visualStyleDirective(style),
+      mentionContext,
+    ].filter(Boolean).join("\n\n")]
+  }))
+
+  input.onProgress?.(`Preparing ${selected.length} storyboard frame${selected.length === 1 ? "" : "s"}`)
+  const result = await requestDirectorTool(input.context, {
+    tool: "submit_generation",
+    input: {
+      request: {
+        type: "image",
+        shotNumbers: selectedNumbers,
+        episodeId: input.episodeId,
+        mentionedEntityIds: input.mentionedEntities.map((entity) => entity.id),
+        preference: "balanced",
+        aspectRatio: selected[0].aspect_ratio || projectDefaultAspect || "9:16",
+        useExistingFrame: false,
+      },
+      prompts,
+      idempotencyKey: `${input.idempotencyKey}:image-batch`,
+    },
+    sessionId: input.sessionId,
+    workflowRunId: input.workflowRunId,
+    idempotencyKey: `${input.idempotencyKey}:image-batch-proposal`,
+  })
+
+  const remaining = queue.filter((shot) => !selectedNumbers.includes(numberOf(shot)))
+  const skipped = withPrompt.length - queue.length
+  const alreadyDone = !redo && skipped > 0
+    ? ` ${skipped} shot${skipped === 1 ? " already has its frame and was" : "s already have their frames and were"} left alone.`
+    : ""
+  const unprompted = shots.length - withPrompt.length
+  const noPrompt = unprompted > 0 ? ` ${unprompted} shot${unprompted === 1 ? " has" : "s have"} no prompt yet, so ${unprompted === 1 ? "it is" : "they are"} not in this batch.` : ""
+  const heading = selected.length === 1
+    ? `Ready to render the frame for shot ${selectedNumbers[0]}.`
+    : `Ready to render ${selected.length} storyboard frames — shot ${selectedNumbers.join(", ")}. The card shows the total for all ${selected.length}; nothing is charged until you approve it.`
+  // Said out loud because it changes what the frames will look like, and the
+  // user is about to pay for them.
+  const locatedNumbers = selected.filter((shot) => located.has(shot.id)).map(numberOf)
+  const locationNote = locatedNumbers.length
+    ? ` Shot ${locatedNumbers.join(", ")} named no location, so ${locatedNumbers.length === 1 ? "it carries" : "they carry"} the scene forward from the shot before.`
+    : ""
+
+  // Offered beside the full batch rather than instead of it: three frames back
+  // is how a user checks the look before committing to the rest.
+  const actions = [
+    ...(remaining.length ? [{
+      id: "image-batch-next-chunk",
+      label: `Render ${Math.min(IMAGE_BATCH_CHUNK, remaining.length)} more instead`,
+      intent: `Generate the storyboard keyframe images for the next ${Math.min(IMAGE_BATCH_CHUNK, remaining.length)} shots that still need one.`,
+      risk: "costly" as const,
+      recommended: false,
+      payload: {},
+    }] : []),
+    ...(!intent.chunk && selected.length > IMAGE_BATCH_CHUNK ? [{
+      id: "image-batch-first-chunk",
+      label: `Start with ${IMAGE_BATCH_CHUNK} instead`,
+      intent: `Generate the storyboard keyframe images for the first ${IMAGE_BATCH_CHUNK} shots that still need one.`,
+      risk: "costly" as const,
+      recommended: false,
+      payload: {},
+    }] : []),
+  ]
+
+  const proposal = typeof result === "object" && result && "proposal" in result ? (result as { proposal?: unknown }).proposal : null
+  return {
+    provider: "workflow",
+    result,
+    message: {
+      session_id: input.sessionId,
+      role: "assistant",
+      content: `${heading}${locationNote}${alreadyDone}${noPrompt}${remaining.length ? ` ${remaining.length} shot${remaining.length === 1 ? "" : "s"} would still be waiting after this.` : ""}`,
+      suggested_actions: proposal ? [{ type: "proposal", proposal }] : [],
+      // Carried on the message so the shared next-step block does not replace
+      // the choice this batch is offering with a single-shot step.
+      ...(actions.length ? { timeline_blocks: [{ type: "suggested_actions", actions }], timeline_version: 1 } : {}),
+    },
+  }
+}
+
+/**
  * Retires the approvals the user answered with words rather than a button.
  *
  * A pending proposal is a question. When the next thing that arrives is a new
@@ -311,19 +516,18 @@ async function nextStepBlock(
   try {
     const stage = computePipelineStage(await loadProductionSnapshot(context.supabase, projectId, episodeId))
     if (!stage.nextAction) return null
-    // A pipeline-wide next action is only relevant when it belongs to the
-    // current turn. Otherwise a request for Shot 1 could finish by displaying
-    // a stale-looking action for Shot 4 simply because Shot 4 is incomplete.
-    // The agent or the proposal created during this turn remains authoritative.
-    if (!actionMatchesRequestedShots(stage.nextAction.intent, requestedShotNumbers)) return null
+    // The primary step first, then the moves that make sense beside it: film the
+    // shot whose frame was just approved, or redo the frame. Each is judged on
+    // its own against the shots this turn was about — dropping the whole block
+    // because the headline step moved on to the next shot took the steps for
+    // *this* shot down with it. The schema caps this at five.
+    const actions = [stage.nextAction, ...stage.alternatives]
+      .filter((action) => actionMatchesRequestedShots(action.intent, requestedShotNumbers))
+      .slice(0, 5)
+    if (!actions.length) return null
     return {
       type: "suggested_actions",
-      // The primary step first, then the moves that make sense beside it: finish
-      // the rest in one batch, or film a shot whose frame is already approved.
-      // The schema caps this at five.
-      actions: [stage.nextAction, ...stage.alternatives]
-        .slice(0, 5)
-        .map((action) => ({ ...action, payload: { stage: stage.key, summary: stage.summary } })),
+      actions: actions.map((action) => ({ ...action, payload: { stage: stage.key, summary: stage.summary } })),
     }
   } catch (error) {
     // A reply that lost its next-step button is still a reply. Failing the whole
@@ -347,6 +551,12 @@ async function buildWorkflowInstructions(context: Awaited<ReturnType<typeof requ
   const workflow = workflows.find((item) => item.id === selectedId && item.status === "active")
   const uploadContext = await recentUploadContext(context, sessionId)
   const projectState = await buildProjectStateSummary(context.supabase, context.project.id, episodeId)
+  // The other episodes and where each one's footage ends. Without it the agent
+  // knows only the episode it is standing in, so a request to carry a shot over
+  // from an earlier one had no id to look anything up with.
+  const episodeContext = await fetchEpisodeFootage(context.supabase, context.project.id)
+    .then((footage) => episodeFootageInstructions(footage, episodeId))
+    .catch((error) => { console.warn("Could not read the project's episodes:", error); return "" })
   const workflowLines = workflow ? [
     "Selected AI Director workflow:",
     `Workflow: ${workflow.title} (${workflow.id})`,
@@ -356,9 +566,10 @@ async function buildWorkflowInstructions(context: Awaited<ReturnType<typeof requ
   return [
     baseInstructions,
     projectState,
+    episodeContext,
     ...workflowLines,
     ...uploadContext,
-  ].join("\n\n")
+  ].filter(Boolean).join("\n\n")
 }
 
 async function recentUploadContext(context: Awaited<ReturnType<typeof requireAuthenticatedProject>>, sessionId: string) {
@@ -424,7 +635,7 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
   // different shot entirely.
   const wantsMediaVerb = /\b(generate|create|make|render|produce)\b/.test(normalized) || wantsRedo(normalized)
   if (!forbidsAllMediaGeneration && !forbidsVideoGenerationRequest && /\b(video|animate|motion)\b/.test(normalized) && wantsMediaVerb) {
-    const { data: shots, error } = await input.context.supabase.from("creator_shots").select("id,prompt,title,order_index,keyframe_image,video_url,video_status").eq("episode_id", input.episodeId).order("order_index")
+    const { data: shots, error } = await input.context.supabase.from("creator_shots").select("id,prompt,title,order_index,keyframe_image,video_url,video_status,duration_seconds,metadata").eq("episode_id", input.episodeId).order("order_index")
     if (error) throw error
     // Same 1-based numbering submit_generation resolves against, so a number
     // reported back here is the number the tool will target.
@@ -464,16 +675,36 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
       && workflowContinuesFromPreviousClip(workflowId)
       && previousClipReady
     const activeReferenceNumbers = inheritsPreviousClip ? [previousNumber] : referenceNumbers
-    const videoReferencePaths = activeReferenceNumbers
-      .map((number) => byNumber.get(number)?.video_url)
-      .filter((path): path is string => Boolean(path))
-    const explicitContinuation = activeReferenceNumbers.length > 0
+    // The first shot of an episode has no previous shot to continue from inside
+    // its own storyboard, but the story does not restart there — it carries on
+    // from where the last episode ended. Without this every episode opened cold.
+    // It is only ever proposed: the reply below names the episode and shot it
+    // reached for, and the approval card is still the gate.
+    const opensTheEpisode = selectedNumbers.length === 1 && selectedNumbers[0] === 1
+    const handoff = !referenceNumbers.length && opensTheEpisode && workflowContinuesFromPreviousClip(workflowId)
+      ? previousEpisodeHandoff(await fetchEpisodeFootage(input.context.supabase, input.projectId), input.episodeId)
+      : null
+    const videoReferencePaths = handoff
+      ? [handoff.videoPath]
+      : activeReferenceNumbers
+        .map((number) => byNumber.get(number)?.video_url)
+        .filter((path): path is string => Boolean(path))
+    const explicitContinuation = Boolean(handoff) || activeReferenceNumbers.length > 0
     const style = projectVisualStyle(input.context.project)
     const prompts = Object.fromEntries(selectedNumbers.map((number) => {
       const shot = byNumber.get(number)!
-      const basePrompt = shot.prompt || shot.title
+      // The shot's video prompt when it has one — the timed beats of what
+      // happens across the runtime. Its image prompt describes a single frame,
+      // so filming from that is what made clips read as a drifting still.
+      const basePrompt = videoPromptFor(shot)
       return [String(number), explicitContinuation
-        ? buildVideoContinuationPrompt({ targetShotNumber: number, referenceShotNumber: activeReferenceNumbers[0], basePrompt, style })
+        ? buildVideoContinuationPrompt({
+            targetShotNumber: number,
+            referenceShotNumber: handoff ? undefined : activeReferenceNumbers[0],
+            referenceAlias: handoff ? handoffAlias(handoff) : undefined,
+            basePrompt,
+            style,
+          })
         : basePrompt]
     }))
     // The target keyframe is a composition input only for this explicit
@@ -495,7 +726,17 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
           episodeId: input.episodeId,
           mentionedEntityIds: input.mentionedEntities.map((entity) => entity.id),
           preference: "balanced",
-          durationSeconds: 4,
+          // A shot runs as long as what happens in it. This was pinned at four
+          // seconds whatever the shot said, so a shot set to ten still rendered
+          // four and cut its own dialogue off mid-sentence. One request renders
+          // one runtime, so a batch takes the longest shot in it.
+          durationSeconds: Math.max(...selectedNumbers.map((number) => {
+            const shot = byNumber.get(number)
+            if (!shot) return 4
+            // Beats are the runtime where they exist: a prompt that scripts
+            // eight seconds rendered at four loses its last beat outright.
+            return beatRuntimeSeconds(videoPromptFor(shot)) ?? resolveShotSeconds(shot)
+          })),
           videoReferenceShotNumbers: activeReferenceNumbers,
           videoReferencePaths,
           referencePaths: targetKeyframes,
@@ -510,13 +751,21 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
       idempotencyKey: `${input.idempotencyKey}:video-proposal`,
     })
     const skipped = unprompted.length ? ` Shot ${unprompted.join(", ")} has no prompt yet, so I left ${unprompted.length === 1 ? "it" : "them"} out.` : ""
-    const continuity = activeReferenceNumbers.length
+    const continuity = handoff
+      // Named in full: a clip carried in from another episode is the one
+      // reference the user cannot check against this storyboard.
+      ? ` continuing from the last rendered shot of ${handoff.episodeName} (shot ${handoff.shotNumber}), because this is the first shot of the episode`
+      : activeReferenceNumbers.length
       ? ` using shot ${activeReferenceNumbers.join(", ")}'s completed video as the continuity reference${inheritsPreviousClip ? " (this project's workflow continues from the previous clip)" : ""}`
       : previousNumber > 0 && workflowContinuesFromPreviousClip(workflowId)
         ? ` from its reference images only, because shot ${previousNumber} has no completed video yet to continue from`
         : ""
     return proposalMessage(input.sessionId, `Video generation is ready for shot ${selectedNumbers.join(", ")}${continuity}.${skipped} Review and approve before credits are reserved.`, result)
   }
+  const imageBatch = !forbidsAllMediaGeneration && !forbidsImageGenerationRequest && wantsMediaVerb
+    ? await maybeHandleShotImageBatch(input, normalized)
+    : null
+  if (imageBatch) return imageBatch
   // "regenerate shot 1" names no medium, and left to the agent it resolved to a
   // different shot entirely. A named shot with a redo verb is unambiguous enough
   // to answer here, and the keyframe is what a bare redo means — the reply says
@@ -546,6 +795,19 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
     const prompt = (typeof targetShot?.prompt === "string" && targetShot.prompt.trim())
       ? targetShot.prompt
       : input.message.replace(/^.*?\b(generate|create|make|draw)\b/i, "").trim() || input.message
+    // A shot whose prompt never restates the location was stored without one,
+    // and rendering it with no location is what put an apartment scene in a
+    // field. Repaired before the cast is read, so the frame is rendered
+    // somewhere and the storyboard shows where.
+    if (targetShot) {
+      const [{ data: episodeShots }, { data: locationEntities }] = await Promise.all([
+        input.context.supabase.from("creator_shots").select("id,order_index,referenced_entities,metadata").eq("episode_id", input.episodeId).order("order_index"),
+        input.context.supabase.from("creator_entities").select("id,type").eq("project_id", input.projectId),
+      ])
+      const repaired = await ensureShotLocations(input.context.supabase, { shots: episodeShots || [], entities: locationEntities || [] })
+      const location = repaired.get(targetShot.id)
+      if (location) targetShot.referenced_entities = Array.from(new Set([...(targetShot.referenced_entities as string[] || []), location]))
+    }
     // The shot's own cast, not just the entities the user retyped with @. A
     // "regenerate shot 1" names nobody, and sending no reference art at all is
     // what made the regenerated frame come back with a different face — the one
