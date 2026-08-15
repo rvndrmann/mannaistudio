@@ -1069,6 +1069,9 @@ async function generateBulkEntityReferenceImages(
       const { data: generationJob, error: generationJobError } = await input.context.supabase.from("creator_generation_jobs").insert({
         user_id: input.context.user.id,
         project_id: input.projectId,
+        // Entity art is not a shot, but it is still work done for this episode
+        // and its credits belong in that episode's total.
+        episode_id: input.episodeId,
         session_id: input.sessionId,
         workflow_run_id: input.workflowRunId,
         type: "image",

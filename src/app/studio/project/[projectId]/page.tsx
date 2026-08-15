@@ -1209,6 +1209,7 @@ export default function WorkspacePage({
               <Assets
                 entities={data.entities}
                 projectId={projectId}
+                episodeId={episode.id}
                 generationJobs={data.production?.generationJobs || []}
                 save={save}
                 reload={load}
@@ -1915,6 +1916,7 @@ function Script({
 function Assets({
   entities,
   projectId,
+  episodeId,
   generationJobs,
   save,
   reload,
@@ -1922,6 +1924,9 @@ function Assets({
 }: {
   entities: Entity[];
   projectId: string;
+  // Character and asset art is billed to the episode it was requested from;
+  // a shot names its own episode, but an entity belongs to the whole project.
+  episodeId: string;
   generationJobs: NonNullable<Workspace["production"]>["generationJobs"];
   save: (b: unknown) => Promise<void>;
   reload: () => Promise<void>;
@@ -1985,6 +1990,7 @@ function Assets({
           asset={activeAsset}
           entities={entities}
           projectId={projectId}
+          episodeId={episodeId}
           generationJobs={generationJobs}
           close={() => setSelectedAsset(null)}
           save={save}
@@ -2375,8 +2381,14 @@ function CostBar({ data }: { data: Workspace }) {
               </p>
               {/* How much of one clean pass this episode has been paid for.
                   Anything above 1× is retries, and it is the number that
-                  explains a bill several times the estimate. */}
-              {spend.net > 0 && estimate.totalCredits > 0 && (
+                  explains a bill several times the estimate.
+
+                  Only when the episode's spend is complete. With jobs missing
+                  from it the ratio is not merely imprecise, it is wrong in a
+                  way that reads as precise — an episode with every video job
+                  unattributed showed "0.0× the from-scratch cost" beside
+                  sixteen rendered shots. */}
+              {spend.net > 0 && estimate.totalCredits > 0 && breakdown.unattributedJobs === 0 && (
                 <p className="text-[11px] text-zinc-600">
                   {(spend.net / estimate.totalCredits).toFixed(1)}× the from-scratch cost
                   {estimate.video.totalSeconds > 0 && spend.video.net > 0
@@ -2730,6 +2742,7 @@ function AssetWorkspace({
   asset,
   entities,
   projectId,
+  episodeId,
   generationJobs,
   close,
   save,
@@ -2738,6 +2751,7 @@ function AssetWorkspace({
   asset: Entity;
   entities: Entity[];
   projectId: string;
+  episodeId: string;
   generationJobs: NonNullable<Workspace["production"]>["generationJobs"];
   close: () => void;
   save: (b: unknown) => Promise<void>;
@@ -2964,6 +2978,7 @@ function AssetWorkspace({
         body: JSON.stringify({
           target: "asset",
           targetId: asset.id,
+          episodeId,
           prompt,
           model,
           referenceImages: references,

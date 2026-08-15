@@ -255,6 +255,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { data: job, error: jobError } = await context.supabase.from("creator_generation_jobs").insert({
       user_id: context.user.id,
       project_id: projectId,
+      // Which episode this render belongs to. Left unset, every video job in
+      // the studio was unattributed, so an episode's cost panel reported zero
+      // video spend while its clips were the whole bill.
+      episode_id: shot.episode_id,
       shot_id: shot.id,
       type: "video",
       status: "approved",

@@ -23,6 +23,10 @@ const imageRequestSchema = z.object({
   mentionedEntityIds: z.array(z.string().uuid()).max(20).default([]),
   aspectRatio: z.string().max(20).optional(),
   quality: z.enum(["Low", "Medium", "High", "Ultra"]).optional(),
+  // Which episode the request came from. A shot names its own episode, but
+  // character and asset art does not, so without this its credits belong to no
+  // episode and go missing from every per-episode total.
+  episodeId: z.string().uuid().optional(),
 }).strict()
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
@@ -97,7 +101,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .insert({
         user_id: context.user.id,
         project_id: projectId,
-        episode_id: input.target === "shot" && typeof shotData?.episode_id === "string" ? shotData.episode_id : null,
+        episode_id: (input.target === "shot" && typeof shotData?.episode_id === "string" ? shotData.episode_id : null) || input.episodeId || null,
         shot_id: input.target === "shot" ? input.targetId : null,
         type: "image",
         status: "approved",
