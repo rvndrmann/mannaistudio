@@ -12,6 +12,7 @@ import { buildEntityMentionContext, entityPrimaryReference, type MentionableEnti
 import { openAIImageQuality, projectImageQuality, projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 import { recordExistingAsset } from "@/lib/studio/byteplus-assets"
+import { VERIFIED_ASSET } from "@/lib/studio/asset-verification"
 
 const imageRequestSchema = z.object({
   target: z.enum(["asset", "shot"]),
@@ -245,7 +246,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
       if (byteplusAssetId) updates.byteplus_asset_id = byteplusAssetId
       if (byteplusAssetUri) updates.byteplus_asset_uri = byteplusAssetUri
-      if (byteplusAssetId) updates.verification_status = "verified"
+      if (byteplusAssetId) updates.verification_status = VERIFIED_ASSET.verification_status
       const { error } = await context.supabase.from("creator_entities").update(updates).eq("id", input.targetId).eq("project_id", projectId)
       if (error) throw error
     } else {

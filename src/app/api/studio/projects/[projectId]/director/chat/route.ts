@@ -19,6 +19,7 @@ import { buildEntityMentionContext, chosenReferences, entityPrimaryReference, ty
 import { collectDirectorVisionAttachments } from "@/lib/studio/director-vision"
 import { buildEntityReferenceImagePrompt, openAIImageQuality, parseBulkEntityImageIntent, projectImageQuality, projectVisualStyle, visualStyleDirective, type BulkEntityImageIntent } from "@/lib/studio/entity-image-workflow"
 import { createBytePlusAsset } from "@/lib/studio/byteplus"
+import { VERIFIED_ASSET } from "@/lib/studio/asset-verification"
 import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
 import { buildProjectStateSummary, loadProductionSnapshot } from "@/lib/studio/project-state-summary"
 import { computePipelineStage, withSkippedShots } from "@/lib/studio/pipeline"
@@ -1037,9 +1038,7 @@ async function generateBulkEntityReferenceImages(
       if (byteplusAssetId) {
         updates.byteplus_asset_id = byteplusAssetId
         updates.byteplus_asset_uri = `asset://${byteplusAssetId}`
-        updates.source_type = "byteplus_virtual_portrait"
-        updates.byteplus_asset_class = "private_virtual_portrait"
-        updates.verification_status = "verified"
+        Object.assign(updates, VERIFIED_ASSET)
       }
       const { error: updateError } = await input.context.supabase.from("creator_entities").update(updates).eq("id", entity.id).eq("project_id", input.projectId)
       if (updateError) throw updateError

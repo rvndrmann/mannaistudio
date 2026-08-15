@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { describeError } from "@/lib/studio/errors"
+import { assetVerificationFor } from "@/lib/studio/asset-verification"
 
 async function context(projectId: string) {
   const supabase = await createClient()
@@ -52,11 +53,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         voice_id: body.asset.voice_id || null,
         status: body.asset.status || "draft",
         character_type: body.asset.character_type || "ai_human",
-        source_type: body.asset.source_type || (body.asset.byteplus_asset_id ? "byteplus_virtual_portrait" : "external_untrusted"),
-        byteplus_asset_class: body.asset.byteplus_asset_class || (body.asset.byteplus_asset_id ? "private_virtual_portrait" : "untrusted_external"),
+        source_type: body.asset.source_type || assetVerificationFor(body.asset.byteplus_asset_id).source_type,
+        byteplus_asset_class: body.asset.byteplus_asset_class || assetVerificationFor(body.asset.byteplus_asset_id).byteplus_asset_class,
         byteplus_asset_id: body.asset.byteplus_asset_id || body.asset.metadata?.byteplus_asset_id || null,
         byteplus_asset_uri: body.asset.byteplus_asset_uri || (body.asset.byteplus_asset_id ? `asset://${body.asset.byteplus_asset_id}` : null),
-        verification_status: body.asset.verification_status || (body.asset.byteplus_asset_id ? "verified" : "unverified"),
+        verification_status: body.asset.verification_status || assetVerificationFor(body.asset.byteplus_asset_id).verification_status,
         provenance: body.asset.provenance || {},
         metadata: body.asset.metadata || {},
       }

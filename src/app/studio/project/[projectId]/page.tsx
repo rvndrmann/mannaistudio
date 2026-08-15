@@ -61,6 +61,7 @@ import { videoPromptFor } from "@/lib/studio/shot-video-prompt";
 import { isVideoReferencePath } from "@/lib/studio/media-reference";
 import { calculateCreditCost, getUserCredits } from "@/lib/studio/credits";
 import { creditsToUsd, estimateProjectCost, projectCostSettings, summarizeProjectSpend, type ProjectSpend } from "@/lib/studio/cost-estimate";
+import { VERIFIED_ASSET } from "@/lib/studio/asset-verification";
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
 import { parseVoiceToolCall, type VoiceToolCall } from "@/lib/studio/voice";
 import { createClient } from "@/lib/supabase/client";
@@ -3499,7 +3500,7 @@ function AssetModal({
                                   ...a,
                                   byteplus_asset_id: generatedAssetId,
                                   byteplus_asset_uri: `asset://${generatedAssetId}`,
-                                  verification_status: "verified",
+                                  verification_status: VERIFIED_ASSET.verification_status,
                                   metadata: {
                                     ...(a.metadata || {}),
                                     byteplus_asset_id: generatedAssetId,

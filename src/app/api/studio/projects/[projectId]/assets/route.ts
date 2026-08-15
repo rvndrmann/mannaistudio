@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { BytePlusProviderError, getBytePlusAsset } from "@/lib/studio/byteplus"
 import { registerAssetOnce } from "@/lib/studio/byteplus-assets"
+import { VERIFIED_ASSET } from "@/lib/studio/asset-verification"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 
 const createSchema = z.object({
@@ -114,8 +115,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             ...shotMeta,
             byteplus_asset_id: result.assetId,
             byteplus_asset_uri: assetUri,
-            byteplus_asset_class: "private_virtual_portrait",
-            verification_status: "verified",
+            byteplus_asset_class: VERIFIED_ASSET.byteplus_asset_class,
+            verification_status: VERIFIED_ASSET.verification_status,
           },
         })
         .eq("id", targetShotId)
@@ -153,22 +154,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .update({
           byteplus_asset_id: result.assetId,
           byteplus_asset_uri: assetUri,
-          source_type: "byteplus_virtual_portrait",
-          byteplus_asset_class: "private_virtual_portrait",
-          verification_status: "verified",
+          ...VERIFIED_ASSET,
           metadata: {
             ...entityMeta,
             byteplus_asset_id: result.assetId,
             byteplus_asset_uri: assetUri,
-            byteplus_asset_class: "private_virtual_portrait",
-            source_type: "byteplus_virtual_portrait",
+            byteplus_asset_class: VERIFIED_ASSET.byteplus_asset_class,
+            source_type: VERIFIED_ASSET.source_type,
           },
         })
         .eq("id", targetEntityId)
         .eq("project_id", projectId)
     }
 
-    return NextResponse.json({ assetId: result.assetId, assetUri, status: "verified", byteplusAssetClass: "private_virtual_portrait" }, { status: 201 })
+    return NextResponse.json({
+      assetId: result.assetId,
+      assetUri,
+      status: VERIFIED_ASSET.verification_status,
+      byteplusAssetClass: VERIFIED_ASSET.byteplus_asset_class,
+      // Whether this cost the account one of its 50 library slots, so the
+      // caller can tell "already verified" from "just registered".
+      reused: result.reused,
+    }, { status: 201 })
   } catch (error) {
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid request", issues: error.flatten() }, { status: 400 })
     return NextResponse.json(

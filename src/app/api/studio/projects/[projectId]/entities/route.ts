@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
+import { UNVERIFIED_ASSET } from "@/lib/studio/asset-verification"
 
 const createEntitySchema = z.object({
   type: z.enum(["character", "scene", "prop"]).default("character"),
@@ -65,8 +66,9 @@ export async function POST(
         reference_images: input.reference_images,
         voice_id: input.voice_id || null,
         character_type: input.character_type || "ai_human",
-        source_type: input.source_type || "external_untrusted",
-        byteplus_asset_class: input.byteplus_asset_class || "untrusted_external",
+        // A new entity has registered nothing yet, so it starts untrusted.
+        source_type: input.source_type || UNVERIFIED_ASSET.source_type,
+        byteplus_asset_class: input.byteplus_asset_class || UNVERIFIED_ASSET.byteplus_asset_class,
         provenance: input.provenance || {},
         metadata: input.metadata,
       })
