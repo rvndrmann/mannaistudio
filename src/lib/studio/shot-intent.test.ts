@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { actionMatchesRequestedShots, buildVideoContinuationPrompt, isAmbiguousShotRedo, namesImageMedium, namesVideoMedium, parseRequestedShotNumbers, parseShotImageBatchIntent, parseTargetShotNumbers, parseVideoShotReferenceIntent , wantsRedo } from "./shot-intent"
+import { actionMatchesRequestedShots, buildVideoContinuationPrompt, isAmbiguousShotRedo, namesImageMedium, namesVideoMedium, parseRequestedShotNumbers, parseShotImageBatchIntent, parseShotInsertionIntent, parseTargetShotNumbers, parseVideoShotReferenceIntent , wantsRedo } from "./shot-intent"
 
 describe("parseRequestedShotNumbers", () => {
   it("reads a single named shot", () => {
@@ -192,6 +192,37 @@ describe("isAmbiguousShotRedo", () => {
     expect(isAmbiguousShotRedo(video)).toBe(false)
     expect(namesVideoMedium(video)).toBe(true)
     expect(parseTargetShotNumbers(video)).toEqual([15])
+  })
+})
+
+/**
+ * "Create one more shot after shot 15" names shot 15 as an anchor, not a
+ * target. Read as a target, the run was told to keep everything scoped to shot
+ * 15 — which forbade the one thing being asked for — and it answered with a
+ * continuity review of the fifteen shots that were already finished.
+ */
+describe("parseShotInsertionIntent", () => {
+  it("reads the request that was misread", () => {
+    const message = 'we need to create one more shot after shot 15- ETHAN "Behind our photograph." Lena backs away. LENA "No..."'
+    expect(parseShotInsertionIntent(message)).toEqual({ anchorShotNumber: 15, position: "after" })
+    // The anchor must not survive as a target, or the constraint returns.
+    expect(parseTargetShotNumbers(message)).toEqual([15])
+  })
+
+  it("reads the other ways an added shot is asked for", () => {
+    expect(parseShotInsertionIntent("add another shot after shot 4")).toEqual({ anchorShotNumber: 4, position: "after" })
+    expect(parseShotInsertionIntent("insert a new shot after storyboard shot 9")).toEqual({ anchorShotNumber: 9, position: "after" })
+    expect(parseShotInsertionIntent("I want an extra shot following shot 2")).toEqual({ anchorShotNumber: 2, position: "after" })
+    expect(parseShotInsertionIntent("write one more shot before shot 7")).toEqual({ anchorShotNumber: 7, position: "before" })
+  })
+
+  it("leaves ordinary shot requests alone", () => {
+    expect(parseShotInsertionIntent("regenerate shot 15")).toBeNull()
+    expect(parseShotInsertionIntent("generate the video for shot 7")).toBeNull()
+    expect(parseShotInsertionIntent("recreate the shot 6 video")).toBeNull()
+    // No anchor: this is a plain storyboard request, not an insertion.
+    expect(parseShotInsertionIntent("create one more shot")).toBeNull()
+    expect(parseShotInsertionIntent("what is left to do?")).toBeNull()
   })
 })
 

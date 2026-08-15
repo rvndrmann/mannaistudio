@@ -162,6 +162,35 @@ export function parseTargetShotNumbers(message: string) {
   return parseVideoShotReferenceIntent(message).targetShotNumbers
 }
 
+/**
+ * "Create one more shot after shot 15."
+ *
+ * The number in a request like this is an anchor, not a target: the shot being
+ * asked for is the one that does not exist yet. Read as a target it did real
+ * damage — the run was told to keep everything scoped to shot 15, so the one
+ * thing it could not do was add a shot after it, and the reply came back as a
+ * continuity review of the fifteen shots that were already finished.
+ */
+export type ShotInsertionIntent = {
+  anchorShotNumber: number
+  position: "after" | "before"
+}
+
+const ADD_VERB = /\b(add|create|insert|append|write|need|want|make)\b/i
+// "one more shot", "another shot", "a new shot", "an extra shot", "1 more shot"
+const NEW_SHOT = /\b(?:one|1|a|an|another|extra|additional|new|more)\s+(?:more\s+|new\s+|extra\s+|additional\s+)?(?:storyboard\s+)?shots?\b|\banother\s+(?:storyboard\s+)?shots?\b/i
+const ANCHOR = /\b(after|following|before|ahead\s+of|prior\s+to)\s+(?:the\s+)?(?:storyboard\s+)?shots?\s*(?:#\s*)?(\d{1,4})\b/i
+
+export function parseShotInsertionIntent(message: string): ShotInsertionIntent | null {
+  if (!ADD_VERB.test(message) || !NEW_SHOT.test(message)) return null
+  const anchor = message.match(ANCHOR)
+  if (!anchor) return null
+  const anchorShotNumber = Number(anchor[2])
+  if (!Number.isInteger(anchorShotNumber) || anchorShotNumber < 1) return null
+  const position = /^(?:before|prior)/i.test(anchor[1]) || /ahead/i.test(anchor[1]) ? "before" : "after"
+  return { anchorShotNumber, position }
+}
+
 export function buildVideoContinuationPrompt(input: {
   targetShotNumber: number
   referenceShotNumber?: number

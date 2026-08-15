@@ -9,7 +9,7 @@ import { defaultDirectorRuntimeSettings, runtimeInstructions, type DirectorRunti
 import { buildVisionUserContent, type DirectorVisionAttachment } from "./director-vision"
 import { agentForTool, fetchDirectorTeam, teamInstructions, type DirectorTeam } from "./director-team"
 import { addWorkflowStep, createWorkflowRun, finishWorkflowRun } from "./workflow-runs"
-import { parseTargetShotNumbers } from "./shot-intent"
+import { parseShotInsertionIntent, parseTargetShotNumbers } from "./shot-intent"
 import { directorRecovery } from "./recovery"
 
 export type DirectorStreamEvent =
@@ -162,8 +162,15 @@ export async function runDirectorAgent(input: {
   // on every run, so behavior never depends on keywords in the user's message.
   const team = input.team || await fetchDirectorTeam(input.context.supabase)
   const teamBlock = teamInstructions(team)
-  const requestedShotNumbers = parseTargetShotNumbers(input.objective)
-  const targetConstraint = requestedShotNumbers.length
+  // "Create one more shot after shot 15" names shot 15, but as an anchor. Read
+  // as a target, the constraint below forbade the one thing being asked for —
+  // a new shot is by definition a different shot — and the run answered with a
+  // continuity review of the shots that already existed.
+  const insertion = parseShotInsertionIntent(input.objective)
+  const requestedShotNumbers = insertion ? [] : parseTargetShotNumbers(input.objective)
+  const targetConstraint = insertion
+    ? `This turn asks for a NEW storyboard shot to be added ${insertion.position} shot ${insertion.anchorShotNumber}. Shot ${insertion.anchorShotNumber} is the anchor, not the target: do not re-render, review, or modify it. Write the new shot from the script text in the user's message and create it with create_storyboard_batch (replaceExisting false), which appends after the last shot in the episode. If shot ${insertion.anchorShotNumber} is not currently the last shot, say so plainly rather than appending the new shot to the end, because the storyboard cannot yet insert into the middle. Do not generate an image or video for it in this turn unless the user asked for one.`
+    : requestedShotNumbers.length
     ? `This turn explicitly targets storyboard shot ${requestedShotNumbers.join(", ")}. Do not recommend, label, or describe a different shot as the next step in this reply. Keep every tool call and concluding sentence scoped to the requested shot unless the user explicitly asks for broader pipeline guidance.`
     : ""
 
