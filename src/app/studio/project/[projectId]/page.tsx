@@ -3754,9 +3754,19 @@ function MentionedPrompt({ text, entities }: { text: string; entities: Entity[] 
  * is hovered, and says which two shots it sits between so the click is never
  * ambiguous.
  */
-function InsertShotDivider({ afterNumber, total, onAskDirector, onWriteMyself }: {
+function InsertShotDivider({ afterNumber, total, persistent, onAskDirector, onWriteMyself }: {
   afterNumber: number;
   total: number;
+  /**
+   * Always visible, rather than appearing on hover.
+   *
+   * A gap between two rows is somewhere the eye already goes, so revealing the
+   * button there keeps the list quiet. After the last shot there is no gap —
+   * only a twelve-pixel strip below the final row — so a hover-only control
+   * reads as no control at all, and appending is the most ordinary thing
+   * anyone does to a storyboard.
+   */
+  persistent?: boolean;
   onAskDirector: () => void;
   onWriteMyself: () => void;
 }) {
@@ -3766,18 +3776,22 @@ function InsertShotDivider({ afterNumber, total, onAskDirector, onWriteMyself }:
     : afterNumber >= total
       ? `Add a new shot after shot ${afterNumber}`
       : `Add a new shot between shot ${afterNumber} and shot ${afterNumber + 1}`;
+  const shown = open || persistent;
   return (
-    <div className="group relative flex h-3 items-center justify-center">
-      <span className={`absolute inset-x-0 h-px transition ${open ? "bg-[#b9f42e]/40" : "bg-[#b9f42e]/0 group-hover:bg-[#b9f42e]/40"}`} />
+    <div className={`group relative flex items-center justify-center ${persistent ? "h-11" : "h-3"}`}>
+      <span className={`absolute inset-x-0 h-px transition ${shown ? "bg-[#b9f42e]/40" : "bg-[#b9f42e]/0 group-hover:bg-[#b9f42e]/40"}`} />
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
         title={label}
         aria-label={label}
         aria-expanded={open}
-        className={`relative grid h-6 w-6 place-items-center rounded-full border bg-[#1a1c1b] transition focus-visible:opacity-100 ${open ? "border-[#b9f42e]/50 text-[#b9f42e] opacity-100" : "border-white/10 text-zinc-500 opacity-0 group-hover:border-[#b9f42e]/50 group-hover:text-[#b9f42e] group-hover:opacity-100"}`}
+        className={persistent
+          ? "relative flex items-center gap-1.5 rounded-full border border-[#b9f42e]/30 bg-[#1a1c1b] px-3 py-1.5 text-[11px] font-bold text-[#b9f42e] transition hover:border-[#b9f42e]/70 hover:bg-[#b9f42e]/[0.08]"
+          : `relative grid h-6 w-6 place-items-center rounded-full border bg-[#1a1c1b] transition focus-visible:opacity-100 ${open ? "border-[#b9f42e]/50 text-[#b9f42e] opacity-100" : "border-white/10 text-zinc-500 opacity-0 group-hover:border-[#b9f42e]/50 group-hover:text-[#b9f42e] group-hover:opacity-100"}`}
       >
         <Plus className="h-3 w-3" />
+        {persistent && <span>Add shot at the end</span>}
       </button>
       {open && (
         <>
@@ -4394,7 +4408,7 @@ function Storyboard({
             {/* The gap after the last shot, so appending reads as the same
                 gesture as inserting rather than a different button elsewhere. */}
             {order.length > 0 && (
-              <InsertShotDivider afterNumber={order.length} total={order.length} onAskDirector={() => composeInsert(order.length)} onWriteMyself={() => setAdding(order.length)} />
+              <InsertShotDivider afterNumber={order.length} total={order.length} persistent onAskDirector={() => composeInsert(order.length)} onWriteMyself={() => setAdding(order.length)} />
             )}
           </div>
           {order.length === 0 && (
