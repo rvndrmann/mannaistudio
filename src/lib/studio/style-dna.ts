@@ -274,6 +274,23 @@ export function resolveStyleDna({
 }
 
 /**
+ * One line naming the look an existing image was made under — for the badge
+ * beside a finished render, not for the prompt.
+ *
+ * Answers the three things that are otherwise invisible once an image exists:
+ * whether a look was applied at all, whether reference pixels went to the
+ * provider alongside it, and whether the reference was allowed to decide the
+ * medium. Two frames generated an hour apart look unexplainably different
+ * without it.
+ */
+export function describeStyleDna(dna: StyleDna | null | undefined, referenceCount = 0): string {
+  if (!dna || isEmptyStyleDna(dna)) return "No look reference"
+  const marks = [dna.overrideProjectStyle ? "reference sets the medium" : "palette & light only"]
+  if (referenceCount > 0) marks.push(`${referenceCount} ref image${referenceCount === 1 ? "" : "s"}`)
+  return `${dna.summary?.trim() || "Custom look"} · ${marks.join(" · ")}`
+}
+
+/**
  * The worksheet, addressed to a vision model and pointed at JSON.
  *
  * The instruction to extract essence rather than name-drop is load-bearing: a

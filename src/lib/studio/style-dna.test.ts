@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   composeLookDirectives,
+  describeStyleDna,
   isEmptyStyleDna,
   projectStyleDna,
   projectStyleReferenceImages,
@@ -195,6 +196,29 @@ describe("resolveStyleDna", () => {
   it("is null when neither the image nor the project has a look", () => {
     expect(resolveStyleDna({})).toBeNull()
     expect(resolveStyleDna({ override: {}, projectDefault: null })).toBeNull()
+  })
+})
+
+describe("describeStyleDna", () => {
+  it("says plainly when no look was applied", () => {
+    expect(describeStyleDna(null)).toBe("No look reference")
+    expect(describeStyleDna(styleDnaSchema.parse({}))).toBe("No look reference")
+  })
+
+  it("reports whether the reference was allowed to decide the medium", () => {
+    expect(describeStyleDna(full)).toContain("palette & light only")
+    expect(describeStyleDna(styleDnaSchema.parse({ ...full, overrideProjectStyle: true }))).toContain("reference sets the medium")
+  })
+
+  it("reports whether reference pixels went to the provider", () => {
+    expect(describeStyleDna(full, 1)).toContain("1 ref image")
+    expect(describeStyleDna(full, 2)).toContain("2 ref images")
+    expect(describeStyleDna(full, 0)).not.toContain("ref image")
+  })
+
+  it("leads with the look's own summary so two renders can be told apart", () => {
+    expect(describeStyleDna(full)).toContain("Sodium-lit rain-slick street at night")
+    expect(describeStyleDna(styleDnaSchema.parse({ color: { dominant: ["bone white"] } }))).toContain("Custom look")
   })
 })
 

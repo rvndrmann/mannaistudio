@@ -5,6 +5,7 @@ import { FormEvent, Fragment, use, useCallback, useEffect, useMemo, useRef, useS
 import { createPortal } from "react-dom";
 import {
   Aperture,
+  Palette,
   ArrowDown,
   ArrowLeft,
   ArrowRight,
@@ -78,7 +79,7 @@ import {
 } from "@/lib/studio/camera-settings";
 import { CameraSettingsControl, CameraSettingsPicker } from "@/components/studio/CameraSettingsPicker";
 import { StyleDnaPanel } from "@/components/studio/StyleDnaPanel";
-import { normalizeStyleDna, projectStyleDna, type StyleDna } from "@/lib/studio/style-dna";
+import { describeStyleDna, normalizeStyleDna, projectStyleDna, styleReferenceImagesOf, type StyleDna } from "@/lib/studio/style-dna";
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
 import { parseVoiceToolCall, type VoiceToolCall } from "@/lib/studio/voice";
 import { createClient } from "@/lib/supabase/client";
@@ -2911,7 +2912,7 @@ function AssetWorkspace({
   // and references that made it. Without this the panel offered a description
   // and an empty reference strip, and every regeneration started from scratch.
   const recipeByImage = useMemo(() => {
-    const recipes = new Map<string, { prompt: string; model: string; references: string[]; camera: CameraSettings | null }>();
+    const recipes = new Map<string, { prompt: string; model: string; references: string[]; camera: CameraSettings | null; styleDna: StyleDna | null; styleReferences: string[] }>();
     for (const job of generationJobs || []) {
       const settings = job.settings && typeof job.settings === "object" ? job.settings as Record<string, unknown> : null;
       if (job.type !== "image" || settings?.entityId !== asset.id) continue;
@@ -2923,6 +2924,10 @@ function AssetWorkspace({
         model: job.model || imageGenerationModels[0].id,
         references: Array.isArray(job.input_images) ? job.input_images as string[] : [],
         camera: cameraUsed,
+        styleDna: normalizeStyleDna(settings?.styleDnaUsed),
+        styleReferences: Array.isArray(settings?.styleReferenceImages)
+          ? (settings.styleReferenceImages as unknown[]).filter((item): item is string => typeof item === "string")
+          : [],
       });
     }
     return recipes;
@@ -3369,6 +3374,17 @@ function AssetWorkspace({
                         >
                           <Aperture className="h-3 w-3 text-[#b9f42e]" />
                           {describeCameraSettings(recipeByImage.get(activeImage)!.camera!)}
+                        </span>
+                      )}
+                      {activeImage && (
+                        <span
+                          className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[11px] font-semibold text-zinc-300"
+                          title={recipeByImage.get(activeImage)?.styleDna
+                            ? `This image copied a look reference. ${recipeByImage.get(activeImage)!.styleDna!.overrideProjectStyle ? "The reference decided the medium." : "The Visual Style setting decided the medium; the reference supplied palette, light and texture."}`
+                            : "No look reference was applied. This image followed the Visual Style setting alone."}
+                        >
+                          <Palette className={`h-3 w-3 ${recipeByImage.get(activeImage)?.styleDna ? "text-[#b9f42e]" : "text-zinc-600"}`} />
+                          {describeStyleDna(recipeByImage.get(activeImage)?.styleDna, recipeByImage.get(activeImage)?.styleReferences.length || 0)}
                         </span>
                       )}
                       <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-[11px] font-bold text-[#b9f42e]">
@@ -4702,6 +4718,7 @@ function ShotMediaWorkspace({
   const storedShotStyleOverride = normalizeStyleDna(media.shot.metadata?.style_dna_override);
   const [styleOverrideEnabled, setStyleOverrideEnabled] = useState(Boolean(storedShotStyleOverride));
   const [styleOverride, setStyleOverride] = useState<StyleDna | null>(storedShotStyleOverride ?? projectStyleDnaValue);
+  const effectiveShotStyleDna = styleOverrideEnabled ? styleOverride : projectStyleDnaValue;
 
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
@@ -4772,6 +4789,8 @@ function ShotMediaWorkspace({
     recordedFrames: boolean;
     videoReferencePaths: string[];
     cameraSettingsUsed: CameraSettings | null;
+    styleDnaUsed: StyleDna | null;
+    styleReferenceImages: string[];
   };
   const [genHistory, setGenHistory] = useState<GenEntry[]>(() => {
     const initial: GenEntry[] = [];
@@ -4793,6 +4812,8 @@ function ShotMediaWorkspace({
         recordedFrames: false,
         videoReferencePaths: [],
         cameraSettingsUsed: null,
+        styleDnaUsed: null,
+        styleReferenceImages: [],
       });
     }
     return initial;
@@ -4938,6 +4959,8 @@ function ShotMediaWorkspace({
             recordedFrames: false,
             videoReferencePaths: [],
             cameraSettingsUsed: null,
+            styleDnaUsed: null,
+            styleReferenceImages: [],
           });
         }
 
@@ -5051,6 +5074,8 @@ function ShotMediaWorkspace({
       recordedFrames: media.type === "video",
       videoReferencePaths: [...videoReferencePaths],
       cameraSettingsUsed: media.type === "image" && cameraEnabled ? cameraSettings : null,
+      styleDnaUsed: media.type === "image" ? effectiveShotStyleDna : null,
+      styleReferenceImages: media.type === "image" ? styleReferenceImagesOf(effectiveShotStyleDna) : [],
       videoUrl: null,
       error: null,
       createdAt: Date.now(),
@@ -5548,6 +5573,17 @@ function ShotMediaWorkspace({
                           {describeCameraSettings(activeGen.cameraSettingsUsed)}
                         </span>
                       )}
+                      {activeGen.type === "image" && (
+                        <span
+                          className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[11px] font-semibold text-zinc-300"
+                          title={activeGen.styleDnaUsed
+                            ? `This image copied a look reference. ${activeGen.styleDnaUsed.overrideProjectStyle ? "The reference decided the medium." : "The Visual Style setting decided the medium; the reference supplied palette, light and texture."}`
+                            : "No look reference was applied. This image followed the Visual Style setting alone."}
+                        >
+                          <Palette className={`h-3 w-3 ${activeGen.styleDnaUsed ? "text-[#b9f42e]" : "text-zinc-600"}`} />
+                          {describeStyleDna(activeGen.styleDnaUsed, activeGen.styleReferenceImages.length)}
+                        </span>
+                      )}
                       {activeGen.model && (
                         <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-[11px] font-bold text-[#b9f42e]">
                           Model: {getModelLabel(activeGen.model)}
@@ -5971,6 +6007,8 @@ function ShotMediaWorkspace({
               // clause is deliberately withheld for it — so there is none to
               // report back in the strip.
               cameraSettingsUsed: null,
+              styleDnaUsed: null,
+              styleReferenceImages: [],
               videoUrl: path,
               error: null,
               createdAt: Date.now(),
@@ -6086,6 +6124,12 @@ function readGenerationSettings(value: unknown) {
     // the panel: the panel holds the settings for the *next* render, so it
     // cannot answer "which package made the picture I am looking at".
     cameraSettingsUsed: isCameraSettings(settings.cameraSettingsUsed) ? settings.cameraSettingsUsed : null,
+    // Same reason as the camera package: which look made the picture already on
+    // screen is not a question the panel's own state can answer.
+    styleDnaUsed: normalizeStyleDna(settings.styleDnaUsed),
+    styleReferenceImages: Array.isArray(settings.styleReferenceImages)
+      ? (settings.styleReferenceImages as unknown[]).filter((item): item is string => typeof item === "string")
+      : [],
   };
 }
 
