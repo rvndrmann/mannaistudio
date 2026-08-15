@@ -11,6 +11,8 @@ import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } fr
 import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { openAIImageQuality, projectImageQuality, projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
+import { applyCameraSettings, cameraBlockForEntityType, projectCameraDefaults, resolveCameraSettings } from "@/lib/studio/camera-settings"
+import { composeLookDirectives, MAX_STYLE_REFERENCE_IMAGES, projectStyleDna, projectStyleReferenceImages, styleBlockForEntityType, styleReferenceClause } from "@/lib/studio/style-dna"
 import { recordExistingAsset } from "@/lib/studio/byteplus-assets"
 import { VERIFIED_ASSET } from "@/lib/studio/asset-verification"
 
@@ -27,6 +29,24 @@ const imageRequestSchema = z.object({
   // character and asset art does not, so without this its credits belong to no
   // episode and go missing from every per-episode total.
   episodeId: z.string().uuid().optional(),
+  // The camera package this one image is shot on. Omitted means "whatever the
+  // block resolves to" — the caller never has to send it, and an unknown value
+  // is repaired against the project package rather than reaching the model.
+  cameraSettings: z.object({
+    camera: z.string().trim().max(120),
+    lens: z.string().trim().max(120),
+    focalLength: z.number(),
+    aperture: z.string().trim().max(20),
+  }).optional(),
+  // A draw-to-edit request: the image the user drew on, the flattened picture
+  // actually sent, and the marks themselves. Stored so the edit can be
+  // reopened and adjusted instead of redrawn — and so a wrong result can be
+  // traced to a bad drawing rather than blamed on the model.
+  drawEdit: z.object({
+    sourceImage: z.string().max(2_000),
+    compositeImage: z.string().max(2_000),
+    objects: z.array(z.unknown()).max(500),
+  }).optional(),
 }).strict()
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
@@ -89,12 +109,48 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         if (chosen) mentionReferencePaths.push(chosen)
       }
     }
-    const combinedReferencePaths = Array.from(new Set([...mentionReferencePaths, ...input.referenceImages])).slice(0, 8)
     const mentionContext = buildEntityMentionContext((mentionedEntities || []) as MentionableEntity[])
     const style = projectVisualStyle(context.project)
+    // A draw-to-edit request is an edit of one frame, not a new photograph, so
+    // it takes neither the camera package nor the look block — both read to an
+    // edit model as permission to re-render everything.
+    const styleDna = input.drawEdit ? null : projectStyleDna(context.project)
+    const styleBlock = input.target === "shot" ? "shot" : styleBlockForEntityType(typeof assetData?.type === "string" ? assetData.type : null)
+    // The look reference is pixels, and a provider is handed one flat list it
+    // treats as things to reproduce — so these are kept out of the cast's budget
+    // rather than added to it, and named in the prompt as look-only below.
+    const styleReferencePaths = styleDna ? projectStyleReferenceImages(context.project) : []
+    const castBudget = 8 - Math.min(styleReferencePaths.length, MAX_STYLE_REFERENCE_IMAGES)
+    const castReferencePaths = Array.from(new Set([...mentionReferencePaths, ...input.referenceImages]))
+      .filter((path) => !styleReferencePaths.includes(path))
+      .slice(0, castBudget)
+    const combinedReferencePaths = [...castReferencePaths, ...styleReferencePaths]
     const projectDefaultAspect = typeof context.project.default_aspect === "string" ? context.project.default_aspect : null
     const effectiveAspectRatio = input.aspectRatio || (shotData && typeof shotData.aspect_ratio === "string" ? shotData.aspect_ratio : null) || projectDefaultAspect || "9:16"
-    const resolvedPrompt = [stripIdentityDescriptions(input.prompt), `Required composition: ${effectiveAspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
+    // The camera clause is composed here, at submit time, from the base prompt
+    // the user actually wrote — which is what is stored on the job and read
+    // back into the prompt box. Composing anywhere the result could be written
+    // back into the prompt field would stack another clause on every
+    // regeneration until the prompt degraded into noise.
+    const cameraSettings = resolveCameraSettings({
+      block: input.target === "shot" ? "shot" : cameraBlockForEntityType(typeof assetData?.type === "string" ? assetData.type : null),
+      override: input.cameraSettings ?? null,
+      projectDefaults: projectCameraDefaults(context.project),
+    })
+    // A draw-to-edit request is not a new photograph. Appending the camera
+    // package — "shot on a…, professional photography, ultra-detailed, 8K" —
+    // reads to an edit model as an instruction to re-render the whole frame,
+    // which is the opposite of applying one marked change to it.
+    const framedPrompt = input.drawEdit
+      ? stripIdentityDescriptions(input.prompt)
+      : applyCameraSettings(stripIdentityDescriptions(input.prompt), cameraSettings, { opticsOnly: Boolean(styleDna) })
+    const resolvedPrompt = [
+      framedPrompt,
+      `Required composition: ${effectiveAspectRatio}.`,
+      ...(input.drawEdit ? [`Required project style: ${style}.`, visualStyleDirective(style)] : composeLookDirectives(style, styleDna, styleBlock)),
+      styleReferenceClause(styleReferencePaths.length),
+      mentionContext,
+    ].filter(Boolean).join("\n\n")
 
     const { data: generationJob, error: generationJobError } = await context.supabase
       .from("creator_generation_jobs")
@@ -115,6 +171,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           style,
           aspectRatio: effectiveAspectRatio,
           quality,
+          // Snapshotted, not referenced: editing the project package later
+          // must leave every image already generated exactly as it was, and
+          // "regenerate this exact frame" needs the package it was shot on.
+          cameraSettingsUsed: cameraSettings,
+          // Same reason as the camera package above: re-extracting the look from
+          // a new mood board must not change what this frame was shot under, and
+          // "regenerate this exact frame" needs the look it was shot under.
+          styleDnaUsed: styleDna,
+          styleReferenceImages: styleReferencePaths,
+          basePrompt: input.prompt,
+          composedPrompt: resolvedPrompt,
+          ...(input.drawEdit ? { drawEdit: input.drawEdit } : {}),
         },
         estimated_credits: creditCost,
         credits_used: 0,
@@ -152,6 +220,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             model: input.model,
             prompt: input.prompt,
             resolved_prompt: resolvedPrompt,
+            camera_settings_used: cameraSettings,
             style,
             aspect_ratio: effectiveAspectRatio,
             reference_images: combinedReferencePaths,
@@ -241,7 +310,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const metadata = {
         ...currentMeta,
         ...(byteplusAssetId ? { byteplus_asset_id: byteplusAssetId } : {}),
-        image_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, style, aspect_ratio: effectiveAspectRatio, reference_images: combinedReferencePaths, mentioned_entity_ids: input.mentionedEntityIds, status: "completed", completed_at: new Date().toISOString() },
+        // Null, not absent: switching the override off has to be remembered as
+        // firmly as switching it on, or the panel reopens still overridden.
+        // A draw edit is the exception — it carries no camera panel at all, so
+        // writing null there would silently un-override the block.
+        ...(input.drawEdit && !input.cameraSettings ? {} : { camera_override: input.cameraSettings ? cameraSettings : null }),
+        image_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, camera_settings_used: cameraSettings, style_dna_used: styleDna, style,  aspect_ratio: effectiveAspectRatio, reference_images: combinedReferencePaths, mentioned_entity_ids: input.mentionedEntityIds, status: "completed", completed_at: new Date().toISOString() },
       }
       const updates: Record<string, unknown> = {
         reference_images: [...(asset.reference_images || []), storagePath],
@@ -264,7 +338,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         metadata: {
           ...currentMeta,
           ...(byteplusAssetId ? { byteplus_asset_id: byteplusAssetId } : {}),
-          image_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, style, reference_images: combinedReferencePaths, mentioned_entity_ids: input.mentionedEntityIds, status: "completed", completed_at: new Date().toISOString() },
+          ...(input.drawEdit && !input.cameraSettings ? {} : { camera_override: input.cameraSettings ? cameraSettings : null }),
+          image_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, camera_settings_used: cameraSettings, style_dna_used: styleDna, style,  reference_images: combinedReferencePaths, mentioned_entity_ids: input.mentionedEntityIds, status: "completed", completed_at: new Date().toISOString() },
         },
       }).eq("id", input.targetId)
       if (error) throw error
@@ -304,6 +379,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       model: input.model,
       byteplusAssetId,
       byteplusAssetUri,
+      cameraSettingsUsed: cameraSettings,
       creditsCharged: creditCost,
       creditBalance: deduct.newBalance,
     })

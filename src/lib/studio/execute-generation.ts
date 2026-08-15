@@ -3,7 +3,8 @@ import { generateOpenAIImage, type OpenAIImageModel } from "./openai"
 import { submitBytePlusVideo, generateBytePlusImage, createBytePlusAsset } from "./byteplus"
 import type { VideoGenerationModelId, ImageGenerationModelId } from "./generation-models"
 import { buildEntityMentionContext, chosenReferences, entityPrimaryReference, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
-import { openAIImageQuality, projectImageQuality, projectVisualStyle, visualStyleDirective } from "./entity-image-workflow"
+import { openAIImageQuality, projectImageQuality, projectVisualStyle } from "./entity-image-workflow"
+import { composeLookDirectives, projectStyleDna } from "./style-dna"
 import { stripIdentityDescriptions } from "./prompt-sanitizer"
 import { resolveRegisteredAsset } from "./byteplus-assets"
 import type { AuthenticatedProjectContext } from "./server-context"
@@ -229,7 +230,7 @@ export async function executeGenerationJobsInBackground(
           }).eq("id", job.id)
 
           if (job.type === "image" && job.provider === "openai") {
-            const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
+            const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
             const imageBuffer = await withGenerationRetry(context, job, () => generateOpenAIImage({
               userId: context.user.id,
               model: job.model as OpenAIImageModel,
@@ -256,7 +257,7 @@ export async function executeGenerationJobsInBackground(
             await settleWorkflowRun(context, job.workflow_run_id)
 
           } else if (job.type === "image" && job.provider === "byteplus") {
-            const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
+            const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
             const generated = await withGenerationRetry(context, job, () => generateBytePlusImage({
               model: job.model as ImageGenerationModelId,
               prompt: resolvedPrompt,

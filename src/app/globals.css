@@ -55,6 +55,18 @@
     @apply bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium transition-all hover:opacity-90 active:scale-95;
   }
 
+  /* The camera-settings dial: a vertical scroll-snap column whose own
+     scrollbar would break the illusion, and whose scroll must not leak into
+     the row and the page behind it. */
+  .camera-dial-column {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    overscroll-behavior: contain;
+  }
+  .camera-dial-column::-webkit-scrollbar {
+    display: none;
+  }
+
   .text-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-lime-300 via-lime-400 to-emerald-300;
   }

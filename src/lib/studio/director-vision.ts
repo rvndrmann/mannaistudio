@@ -122,7 +122,7 @@ export async function collectDirectorVisionAttachments(input: {
 }
 
 /** Reads an image and returns it as a data URL, or null if it cannot be used. */
-async function inlineImage(url: string, remainingBudget: number): Promise<{ dataUrl: string; bytes: number } | null> {
+export async function inlineImage(url: string, remainingBudget: number): Promise<{ dataUrl: string; bytes: number } | null> {
   if (remainingBudget <= 0) return null
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(ATTACHMENT_FETCH_TIMEOUT_MS) })

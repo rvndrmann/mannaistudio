@@ -88,7 +88,14 @@ export function projectVisualStyle(project: Record<string, unknown>) {
   return "Realistic - Photorealistic"
 }
 
-export function buildEntityReferenceImagePrompt(entity: MentionableEntity, style: string) {
+/**
+ * @param lookDirectives The project's look clauses, already composed for this
+ *   entity's block. Passed in rather than read here so this module stays free of
+ *   a cycle with ./style-dna, which needs visualStyleDirective from this one.
+ *   Omitted means the project has no extracted look and the style clause alone
+ *   describes it.
+ */
+export function buildEntityReferenceImagePrompt(entity: MentionableEntity, style: string, lookDirectives?: string[]) {
   // Each entity type earns a different frame. A character is only a usable
   // identity lock when the same face is visible from several angles; a location
   // is only a usable backdrop when nobody is standing in it; a prop is only a
@@ -101,8 +108,7 @@ export function buildEntityReferenceImagePrompt(entity: MentionableEntity, style
   return [
     subject,
     entity.description?.trim() ? `Canonical description: ${entity.description.trim()}` : "Preserve the canonical identity implied by the entity name.",
-    `Required project style: ${style || "cinematic"}.`,
-    visualStyleDirective(style),
+    ...(lookDirectives?.length ? lookDirectives : [`Required project style: ${style || "cinematic"}.`, visualStyleDirective(style)]),
     // The multi-view layout is wanted; rendered text is not. Image models set
     // labels and captions badly, and they contaminate the reference when it is
     // fed back in as a visual input.

@@ -45,6 +45,53 @@ async function openAIRequest(path: string, init: RequestInit, userId: string) {
   return response
 }
 
+/**
+ * Reads images and returns the model's parsed JSON answer.
+ *
+ * Separate from createDirectorResponse because that one takes plain strings and
+ * this turn is multimodal, and because the caller here wants an object it can
+ * validate rather than prose it has to hope about. JSON mode is asked for at the
+ * provider, so a model that drifts into an explanation fails loudly at parse
+ * time instead of being stored as a broken look.
+ */
+export async function analyzeImagesAsJson(input: {
+  userId: string
+  model?: OpenAIDirectorModel
+  instructions: string
+  text: string
+  imageUrls: string[]
+}): Promise<unknown> {
+  const model = input.model || defaultOpenAIDirectorModel()
+  const content: Array<Record<string, unknown>> = [{ type: "input_text", text: input.text }]
+  for (const url of input.imageUrls) content.push({ type: "input_image", image_url: url })
+
+  const response = await openAIRequest("/v1/responses", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      instructions: input.instructions,
+      input: [{ role: "user", content }],
+      text: { format: { type: "json_object" } },
+    }),
+  }, input.userId)
+
+  const data = await response.json() as { output_text?: string; output?: Array<{ content?: Array<{ type?: string; text?: string }> }> }
+  const raw = data.output_text?.trim()
+    || (data.output || []).flatMap((item) => item.content || []).filter((item) => item.type === "output_text" || item.type === "text").map((item) => item.text || "").join("").trim()
+  if (!raw) throw new OpenAIProviderError("OpenAI returned no analysis for the reference images.")
+  try {
+    return JSON.parse(raw)
+  } catch {
+    // Some models still wrap JSON in a fence despite json_object mode.
+    const fenced = raw.match(/\{[\s\S]*\}/)
+    if (fenced) {
+      try { return JSON.parse(fenced[0]) } catch { /* fall through to the error below */ }
+    }
+    throw new OpenAIProviderError("OpenAI returned an unreadable analysis for the reference images.")
+  }
+}
+
 export async function createDirectorResponse(input: { userId: string; model?: OpenAIDirectorModel; instructions: string; messages: Array<{ role: "user" | "assistant" | "system" | "tool"; content: string }> }) {
   const model = input.model || defaultOpenAIDirectorModel()
   const response = await openAIRequest("/v1/responses", {

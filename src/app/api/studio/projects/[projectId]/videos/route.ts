@@ -9,7 +9,8 @@ import { generationProvider, isVideoGenerationModel } from "@/lib/studio/generat
 import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
-import { projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
+import { projectVisualStyle } from "@/lib/studio/entity-image-workflow"
+import { composeLookDirectives, projectStyleDna } from "@/lib/studio/style-dna"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 import { recordExistingAsset, resolveRegisteredAsset } from "@/lib/studio/byteplus-assets"
 import { parseSeedanceMissingAssetError, parseSeedanceRejectedReference, purgeStaleBytePlusAsset, seedanceReferenceAssetUri } from "@/lib/studio/seedance-reference-error"
@@ -247,7 +248,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     )
     const mentionContext = buildEntityMentionContext((resolvedEntities || []) as MentionableEntity[])
     const style = projectVisualStyle(context.project)
-    const resolvedPrompt = [stripIdentityDescriptions(input.prompt), `Required project style: ${style}.`, visualStyleDirective(style), mentionContext].filter(Boolean).join("\n\n")
+    const resolvedPrompt = [stripIdentityDescriptions(input.prompt), ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
     const displayRatio = input.aspectRatio || shot.aspect_ratio || "9:16"
     const providerRatio = provider === "byteplus" ? bytePlusVideoRatio(displayRatio, videoReferences.length > 0) : displayRatio
     const providerRequest = { prompt: resolvedPrompt, originalPrompt: input.prompt, style, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: providerRatio, displayRatio, referenceImages: combinedReferencePaths, characterEntityIds: input.characterEntityIds, mentionedEntityIds: input.mentionedEntityIds, resolvedEntityIds, generationMode: input.generationMode, startFrame: input.startFrame || null, endFrame: input.endFrame || null, audioEnabled: input.audioEnabled }

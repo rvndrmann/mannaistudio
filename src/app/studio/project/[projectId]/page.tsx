@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, Fragment, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  Aperture,
   ArrowDown,
   ArrowLeft,
   ArrowRight,
@@ -64,6 +65,20 @@ import { isVideoReferencePath } from "@/lib/studio/media-reference";
 import { calculateCreditCost, getUserCredits } from "@/lib/studio/credits";
 import { creditsToUsd, estimateProjectCost, projectCostSettings, summarizeSpendByEpisode, type SpendBreakdown } from "@/lib/studio/cost-estimate";
 import { VERIFIED_ASSET } from "@/lib/studio/asset-verification";
+import {
+  BLOCK_CAMERA_DEFAULTS,
+  DEFAULT_PROJECT_CAMERA_SETTINGS,
+  cameraBlockForEntityType,
+  describeCameraSettings,
+  isCameraSettings,
+  normalizeCameraSettings,
+  projectCameraDefaults,
+  resolveCameraSettings,
+  type CameraSettings,
+} from "@/lib/studio/camera-settings";
+import { CameraSettingsControl, CameraSettingsPicker } from "@/components/studio/CameraSettingsPicker";
+import { StyleDnaPanel } from "@/components/studio/StyleDnaPanel";
+import { projectStyleDna, type StyleDna } from "@/lib/studio/style-dna";
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
 import { parseVoiceToolCall, type VoiceToolCall } from "@/lib/studio/voice";
 import { createClient } from "@/lib/supabase/client";
@@ -73,6 +88,7 @@ import { EntityMentionInput } from "@/components/studio/EntityMentionInput";
 import ShareProjectDialog from "@/components/studio/ShareProjectDialog";
 import ConvertToEnterpriseDialog from "@/components/enterprise/ConvertToEnterpriseDialog";
 import ProjectActivityDialog from "@/components/studio/ProjectActivityDialog";
+import DrawToEditModal from "@/components/studio/DrawToEditModal";
 import { entityPrimaryReference, findMentionedEntityIds, findShotCastEntityIds } from "@/lib/studio/entity-mentions";
 import { parseSeedanceRejectedReference } from "@/lib/studio/seedance-reference-error";
 
@@ -1183,6 +1199,7 @@ export default function WorkspacePage({
               <Assets
                 entities={data.entities}
                 projectId={projectId}
+                cameraDefaults={projectCameraDefaults(data.project)}
                 episodeId={episode.id}
                 generationJobs={data.production?.generationJobs || []}
                 save={save}
@@ -1196,6 +1213,7 @@ export default function WorkspacePage({
                 entities={data.entities}
                 episodeId={episode.id}
                 projectId={projectId}
+                cameraDefaults={projectCameraDefaults(data.project)}
                 save={save}
                 reload={load}
                 pendingJobs={pendingShotJobs}
@@ -1890,6 +1908,7 @@ function Script({
 function Assets({
   entities,
   projectId,
+  cameraDefaults,
   episodeId,
   generationJobs,
   save,
@@ -1898,6 +1917,10 @@ function Assets({
 }: {
   entities: Entity[];
   projectId: string;
+  // The project camera package, or null while nobody has chosen one. Null is
+  // what lets a character sit on its own portrait preset instead of inheriting
+  // a package that was never set.
+  cameraDefaults: CameraSettings | null;
   // Character and asset art is billed to the episode it was requested from;
   // a shot names its own episode, but an entity belongs to the whole project.
   episodeId: string;
@@ -1964,6 +1987,7 @@ function Assets({
           asset={activeAsset}
           entities={entities}
           projectId={projectId}
+          cameraDefaults={cameraDefaults}
           episodeId={episodeId}
           generationJobs={generationJobs}
           close={() => setSelectedAsset(null)}
@@ -2425,6 +2449,16 @@ function BasicSettingsModal({
   const [workflow, setWorkflow] = useState<string>(selectedEpisodeWorkflow || (projectMeta.default_workflow_id as string) || (metaSettings?.workflow as string) || "keyframe_images_to_video");
   const [workflowApplyMode, setWorkflowApplyMode] = useState<"project_default" | "episode">("project_default");
   const [visualStyle, setVisualStyle] = useState<string>((metaSettings?.visualStyle as string) || (data.project.default_style || "Realistic - 3D CG"));
+  // One camera package for the whole project. Left unset, each block keeps the
+  // preset its own job calls for — a portrait length for characters, a sharp
+  // standard for asset plates. Set it and every block inherits it instead.
+  const storedCameraDefaults = projectCameraDefaults(data.project);
+  const [cameraDefaultsEnabled, setCameraDefaultsEnabled] = useState(Boolean(storedCameraDefaults));
+  const [cameraDefaults, setCameraDefaults] = useState<CameraSettings>(storedCameraDefaults || DEFAULT_PROJECT_CAMERA_SETTINGS);
+  // The look read off the project's reference images. Held here and written with
+  // the rest of the settings, so a bad reading of a mood board never becomes the
+  // look every image inherits without the user seeing and confirming it first.
+  const [styleDna, setStyleDna] = useState<StyleDna | null>(projectStyleDna(data.project));
   const [saving, setSaving] = useState(false);
 
   // The header quoted a fixed "⚡ 16/s" whatever was selected below it. Price
@@ -2460,6 +2494,12 @@ function BasicSettingsModal({
           workflowApplyMode,
           episodeId: data.activeEpisode.id,
           visualStyle,
+          // Null rather than omitted: clearing the package has to reach the
+          // stored settings, or turning it off would silently keep the old one.
+          cameraDefaults: cameraDefaultsEnabled ? cameraDefaults : null,
+          // Null rather than omitted, for the same reason as the camera package:
+          // clearing the look has to reach the stored settings.
+          styleDna,
         },
       });
       await reload();
@@ -2660,6 +2700,37 @@ function BasicSettingsModal({
             </div>
           </div>
 
+          {/* Row 3b: Project Camera Package */}
+          <div>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <label className="block text-xs font-bold uppercase text-zinc-400">Camera Package</label>
+                <p className="text-[11px] text-zinc-500">
+                  The optics every character, asset, and shot image inherits. Shots can override it; character and asset art stays locked to it.
+                </p>
+              </div>
+              <label className="flex items-center gap-2 text-xs font-bold text-zinc-300">
+                <input
+                  type="checkbox"
+                  checked={cameraDefaultsEnabled}
+                  onChange={(event) => setCameraDefaultsEnabled(event.target.checked)}
+                  className="h-3.5 w-3.5 accent-[#b9f42e]"
+                />
+                Set one for this project
+              </label>
+            </div>
+            {cameraDefaultsEnabled ? (
+              <CameraSettingsPicker value={cameraDefaults} onChange={setCameraDefaults} size="full" />
+            ) : (
+              <p className="rounded-xl border border-dashed border-white/15 p-4 text-xs text-zinc-500">
+                Unset. Characters shoot on {describeCameraSettings(BLOCK_CAMERA_DEFAULTS.character)}, assets on {describeCameraSettings(BLOCK_CAMERA_DEFAULTS.asset)}, and shots on {describeCameraSettings(BLOCK_CAMERA_DEFAULTS.shot)}.
+              </p>
+            )}
+          </div>
+
+          {/* Row 3c: Look & Feel reference */}
+          <StyleDnaPanel projectId={data.project.id} value={styleDna} onChange={setStyleDna} />
+
           {/* Row 4: Visual Style Selector */}
           <div>
             <label className="block text-xs font-bold uppercase text-zinc-400 mb-2">Visual Style</label>
@@ -2716,6 +2787,7 @@ function AssetWorkspace({
   asset,
   entities,
   projectId,
+  cameraDefaults,
   episodeId,
   generationJobs,
   close,
@@ -2725,6 +2797,7 @@ function AssetWorkspace({
   asset: Entity;
   entities: Entity[];
   projectId: string;
+  cameraDefaults: CameraSettings | null;
   episodeId: string;
   generationJobs: NonNullable<Workspace["production"]>["generationJobs"];
   close: () => void;
@@ -2746,6 +2819,23 @@ function AssetWorkspace({
   const [model, setModel] = useState<string>(imageGenerationModels[0].id);
   const [aspectRatio, setAspectRatio] = useState<string>("9:16");
   const [quality, setQuality] = useState<"Low" | "Medium" | "High" | "Ultra">("Medium");
+  // Character and asset art is locked to the project camera package by default:
+  // references that do not match each other are worth less than references that
+  // are individually prettier. The lock is only lifted per image, on purpose.
+  const cameraBlock = cameraBlockForEntityType(asset.type);
+  const storedCameraOverride = asset.metadata?.camera_override;
+  const [cameraOverrideEnabled, setCameraOverrideEnabled] = useState(isCameraSettings(storedCameraOverride));
+  const [cameraSettings, setCameraSettings] = useState<CameraSettings>(() => resolveCameraSettings({
+    block: cameraBlock,
+    override: storedCameraOverride,
+    projectDefaults: cameraDefaults,
+  }));
+  const lockedCameraSettings = resolveCameraSettings({ block: cameraBlock, projectDefaults: cameraDefaults });
+  // Derived, not synced: while the lock is on, the project package *is* the
+  // answer, so switching the override off snaps back to it — including to a
+  // package that changed while the panel was open — with no effect to keep in
+  // step and no stale copy to generate from.
+  const effectiveCameraSettings = cameraOverrideEnabled ? cameraSettings : lockedCameraSettings;
   const persistedGenerationStatus = entityImageGenerationStatus(asset);
   const [working, setWorking] = useState(persistedGenerationStatus === "generating");
   const [generationError, setGenerationError] = useState<string | null>(null);
@@ -2811,16 +2901,18 @@ function AssetWorkspace({
   // and references that made it. Without this the panel offered a description
   // and an empty reference strip, and every regeneration started from scratch.
   const recipeByImage = useMemo(() => {
-    const recipes = new Map<string, { prompt: string; model: string; references: string[] }>();
+    const recipes = new Map<string, { prompt: string; model: string; references: string[]; camera: CameraSettings | null }>();
     for (const job of generationJobs || []) {
       const settings = job.settings && typeof job.settings === "object" ? job.settings as Record<string, unknown> : null;
       if (job.type !== "image" || settings?.entityId !== asset.id) continue;
       if (typeof job.result_url !== "string" || !job.result_url) continue;
       if (recipes.has(job.result_url)) continue;
+      const cameraUsed = settings && isCameraSettings(settings.cameraSettingsUsed) ? settings.cameraSettingsUsed : null;
       recipes.set(job.result_url, {
         prompt: job.prompt || "",
         model: job.model || imageGenerationModels[0].id,
         references: Array.isArray(job.input_images) ? job.input_images as string[] : [],
+        camera: cameraUsed,
       });
     }
     return recipes;
@@ -2892,6 +2984,7 @@ function AssetWorkspace({
   };
 
   const [confirmDeleteAssetImage, setConfirmDeleteAssetImage] = useState(false);
+  const [drawing, setDrawing] = useState(false);
 
   const deleteSelectedImage = () => {
     if (!activeImage) return;
@@ -2959,6 +3052,10 @@ function AssetWorkspace({
           mentionedEntityIds,
           aspectRatio,
           quality,
+          // Sent as an override only when the user took this image off the
+          // project package; otherwise the server resolves it, so the two
+          // never disagree about what "locked" means.
+          ...(cameraOverrideEnabled ? { cameraSettings: effectiveCameraSettings } : {}),
         }),
       });
       const body = await response.json();
@@ -3183,6 +3280,19 @@ function AssetWorkspace({
               </button>
             )}
 
+            {activeImage && (
+              <button
+                type="button"
+                onClick={() => setDrawing(true)}
+                disabled={working}
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-zinc-200 hover:border-[#b9f42e]/40 hover:text-[#b9f42e] transition disabled:opacity-40"
+                title="Draw on this image and describe the edit"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Draw
+              </button>
+            )}
+
             <button
               type="button"
               onClick={addActiveAsReference}
@@ -3238,8 +3348,19 @@ function AssetWorkspace({
                     <p className="text-[10px] font-bold uppercase tracking-widest text-[#b9f42e]">
                       PROMPT USED
                     </p>
-                    <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-[11px] font-bold text-[#b9f42e]">
-                      Model: {getModelLabel(activeAttempt?.model || model)}
+                    <span className="flex flex-wrap items-center gap-2">
+                      {activeImage && recipeByImage.get(activeImage)?.camera && (
+                        <span
+                          className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[11px] font-semibold text-zinc-300"
+                          title="The camera package this image was generated with"
+                        >
+                          <Aperture className="h-3 w-3 text-[#b9f42e]" />
+                          {describeCameraSettings(recipeByImage.get(activeImage)!.camera!)}
+                        </span>
+                      )}
+                      <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-[11px] font-bold text-[#b9f42e]">
+                        Model: {getModelLabel(activeAttempt?.model || model)}
+                      </span>
                     </span>
                   </div>
                   <p className="mt-1.5 text-sm leading-relaxed text-zinc-200">{activeAttempt?.prompt || prompt || asset.description || "—"}</p>
@@ -3303,6 +3424,17 @@ function AssetWorkspace({
                   placeholder="Describe the image. Type @ to mention a character, scene, or asset…"
                   ariaLabel="Asset image prompt"
                   menuPlacement="top"
+                />
+              </div>
+
+              <div className="mb-4">
+                <CameraSettingsControl
+                  value={effectiveCameraSettings}
+                  onChange={setCameraSettings}
+                  lockable
+                  overrideEnabled={cameraOverrideEnabled}
+                  onOverrideChange={setCameraOverrideEnabled}
+                  projectSummary={describeCameraSettings(lockedCameraSettings)}
                 />
               </div>
 
@@ -3402,6 +3534,31 @@ function AssetWorkspace({
           confirm={(items) => {
             void saveReferences(items);
             setPicker(false);
+          }}
+        />
+      )}
+      {drawing && activeImage && (
+        <DrawToEditModal
+          projectId={projectId}
+          sourcePath={activeImage}
+          blockType={asset.type === "character" ? "character" : "asset"}
+          target="asset"
+          targetId={asset.id}
+          episodeId={episodeId}
+          model={model}
+          quality={quality}
+          title={asset.name}
+          close={() => setDrawing(false)}
+          onEdited={({ path }) => {
+            // A new version, in front of the one it was drawn on — which stays
+            // in the gallery, because an edit that walked back is exactly what
+            // storyboarding needs.
+            setLibraryImages((current) => [path, ...current.filter((image) => image !== path)]);
+            setSelected(0);
+            setSelectedAttemptId(null);
+            setGenerationStatus("Edited image saved as a new version ✓");
+            notifyCreditBalanceChanged();
+            void reload(true);
           }}
         />
       )}
@@ -3818,6 +3975,7 @@ function Storyboard({
   entities,
   episodeId,
   projectId,
+  cameraDefaults,
   save,
   reload,
   pendingJobs,
@@ -3829,6 +3987,7 @@ function Storyboard({
   entities: Entity[];
   episodeId: string;
   projectId: string;
+  cameraDefaults: CameraSettings | null;
   save: (b: unknown) => Promise<void>;
   // Silent when true: swaps the data in place instead of blanking the whole
   // workspace to the first-load spinner, which reads as an unexpected page
@@ -4412,6 +4571,7 @@ function Storyboard({
           media={activeMedia}
           entities={entities}
           shots={shots}
+          cameraDefaults={cameraDefaults}
           generationJobs={generationJobs}
           projectId={projectId}
           close={() => setMedia(null)}
@@ -4427,6 +4587,7 @@ function ShotMediaWorkspace({
   media,
   entities,
   shots,
+  cameraDefaults,
   generationJobs,
   projectId,
   close,
@@ -4437,6 +4598,7 @@ function ShotMediaWorkspace({
   media: { shot: Shot; type: "image" | "video" };
   entities: Entity[];
   shots?: Shot[];
+  cameraDefaults: CameraSettings | null;
   generationJobs: NonNullable<Workspace["production"]>["generationJobs"];
   projectId: string;
   close: () => void;
@@ -4492,6 +4654,14 @@ function ShotMediaWorkspace({
     setDurationSeconds((current) => (current > max ? max : current));
   }, [model]);
   const [busy, setBusy] = useState(false);
+  // A shot is where the director wants real control: the dial is freely
+  // editable here, pre-filled from the project package, and remembered per
+  // shot once it has been generated with one.
+  const [cameraSettings, setCameraSettings] = useState<CameraSettings>(() => resolveCameraSettings({
+    block: "shot",
+    override: media.shot.metadata?.camera_override,
+    projectDefaults: cameraDefaults,
+  }));
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
   const [verifyingReferencePath, setVerifyingReferencePath] = useState<string | null>(null);
@@ -4560,6 +4730,7 @@ function ShotMediaWorkspace({
     endFrame: string | null;
     recordedFrames: boolean;
     videoReferencePaths: string[];
+    cameraSettingsUsed: CameraSettings | null;
   };
   const [genHistory, setGenHistory] = useState<GenEntry[]>(() => {
     const initial: GenEntry[] = [];
@@ -4580,6 +4751,7 @@ function ShotMediaWorkspace({
         endFrame: null,
         recordedFrames: false,
         videoReferencePaths: [],
+        cameraSettingsUsed: null,
       });
     }
     return initial;
@@ -4724,6 +4896,7 @@ function ShotMediaWorkspace({
             endFrame: null,
             recordedFrames: false,
             videoReferencePaths: [],
+            cameraSettingsUsed: null,
           });
         }
 
@@ -4836,6 +5009,7 @@ function ShotMediaWorkspace({
       endFrame,
       recordedFrames: media.type === "video",
       videoReferencePaths: [...videoReferencePaths],
+      cameraSettingsUsed: media.type === "image" ? cameraSettings : null,
       videoUrl: null,
       error: null,
       createdAt: Date.now(),
@@ -4853,7 +5027,7 @@ function ShotMediaWorkspace({
       const characterEntityIds = Array.from(new Set([...mentionedCharacterIds, ...selectedCharacterIds])).slice(0, 10);
       if (isImage) {
         setGenerationStatus("Submitting image generation job…");
-        const response = await fetch(`/api/studio/projects/${projectId}/images`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, mentionedEntityIds, aspectRatio, quality }) });
+        const response = await fetch(`/api/studio/projects/${projectId}/images`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, mentionedEntityIds, aspectRatio, quality, cameraSettings }) });
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || "Image generation failed");
         notifyCreditBalanceChanged(typeof body.creditBalance === "number" ? body.creditBalance : undefined);
@@ -5034,6 +5208,7 @@ function ShotMediaWorkspace({
   };
 
   const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
+  const [drawing, setDrawing] = useState(false);
 
   const deleteGenerationJob = (jobId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -5244,6 +5419,19 @@ function ShotMediaWorkspace({
               </button>
             )}
 
+            {isImage && previewSource && (
+              <button
+                type="button"
+                onClick={() => setDrawing(true)}
+                disabled={busy}
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-zinc-200 hover:border-[#b9f42e]/40 hover:text-[#b9f42e] transition disabled:opacity-40"
+                title="Draw on this frame and describe the edit"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Draw
+              </button>
+            )}
+
             <button onClick={addCurrentSourceAsReference} disabled={!previewSource} className="rounded-lg px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40">
               Use as reference
             </button>
@@ -5309,11 +5497,22 @@ function ShotMediaWorkspace({
                     <p className="text-[10px] font-bold uppercase tracking-widest text-[#b9f42e]">
                       PROMPT USED
                     </p>
-                    {activeGen.model && (
-                      <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-[11px] font-bold text-[#b9f42e]">
-                        Model: {getModelLabel(activeGen.model)}
-                      </span>
-                    )}
+                    <span className="flex flex-wrap items-center gap-2">
+                      {activeGen.cameraSettingsUsed && (
+                        <span
+                          className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[11px] font-semibold text-zinc-300"
+                          title="The camera package this image was generated with"
+                        >
+                          <Aperture className="h-3 w-3 text-[#b9f42e]" />
+                          {describeCameraSettings(activeGen.cameraSettingsUsed)}
+                        </span>
+                      )}
+                      {activeGen.model && (
+                        <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-[11px] font-bold text-[#b9f42e]">
+                          Model: {getModelLabel(activeGen.model)}
+                        </span>
+                      )}
+                    </span>
                   </div>
                   <div className="mt-1.5 text-sm leading-relaxed text-zinc-200">
                     <p className={promptExpanded ? "" : "line-clamp-3"}>
@@ -5554,6 +5753,15 @@ function ShotMediaWorkspace({
                 />
               </div>
 
+              {/* The dial frames a still. The video panel films an existing
+                  keyframe, so it inherits that frame's optics rather than
+                  offering a second, contradictory camera package. */}
+              {isImage && (
+                <div className="mb-4">
+                  <CameraSettingsControl value={cameraSettings} onChange={setCameraSettings} />
+                </div>
+              )}
+
               {/* Inline Toolbar */}
               <div className="flex flex-col gap-3 border-t border-white/10 pt-3">
                 <div className="flex flex-wrap items-center gap-4">
@@ -5679,6 +5887,50 @@ function ShotMediaWorkspace({
           }}
         />
       )}
+      {drawing && isImage && previewSource && (
+        <DrawToEditModal
+          projectId={projectId}
+          sourcePath={previewSource}
+          blockType="shot"
+          target="shot"
+          targetId={media.shot.id}
+          model={model}
+          quality={quality}
+          title={`Scene ${shotNumber}${media.shot.title ? ` — ${media.shot.title}` : ""}`}
+          close={() => setDrawing(false)}
+          onEdited={({ path, jobId, prompt: editPrompt }) => {
+            // Lands in the generation strip like any other render, so the frame
+            // it was drawn on is still one click away.
+            const entryId = jobId || `draw-${Date.now()}`;
+            setGenHistory((current) => [{
+              id: entryId,
+              type: "image",
+              status: "completed" as const,
+              prompt: editPrompt,
+              model,
+              referenceImages: [],
+              // A draw-to-edit render is not shot on a camera package — the
+              // clause is deliberately withheld for it — so there is none to
+              // report back in the strip.
+              cameraSettingsUsed: null,
+              videoUrl: path,
+              error: null,
+              createdAt: Date.now(),
+              completedAt: new Date().toISOString(),
+              generationMode: null,
+              startFrame: null,
+              endFrame: null,
+              recordedFrames: false,
+              videoReferencePaths: [],
+            }, ...current]);
+            setActiveGenId(entryId);
+            media.shot.keyframe_image = path;
+            setGenerationStatus("Edited frame saved as a new version ✓");
+            notifyCreditBalanceChanged();
+            void reload(true);
+          }}
+        />
+      )}
       {deletingJobId && (
         <DeleteConfirmModal
           title="Delete Generation"
@@ -5772,6 +6024,10 @@ function readGenerationSettings(value: unknown) {
     // than the user is looking at.
     recordedFrames: "startFrame" in settings || "endFrame" in settings,
     videoReferencePaths: paths,
+    // What this image was actually shot on. Read from the job rather than from
+    // the panel: the panel holds the settings for the *next* render, so it
+    // cannot answer "which package made the picture I am looking at".
+    cameraSettingsUsed: isCameraSettings(settings.cameraSettingsUsed) ? settings.cameraSettingsUsed : null,
   };
 }
 
