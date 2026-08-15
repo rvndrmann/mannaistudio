@@ -2,11 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
   Clapperboard,
   FolderKanban,
   Image,
@@ -35,15 +33,6 @@ type Project = {
   enterprise_status?: string | null;
 };
 
-const categories = [
-  "Featured",
-  "Short drama",
-  "Advertisement",
-  "Music video",
-  "Movie",
-  "Animation",
-];
-
 export default function StudioHome() {
   const router = useRouter();
   const { user, signInWithGoogle } = useAuth();
@@ -52,7 +41,6 @@ export default function StudioHome() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const projectsScrollerRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
     try {
@@ -133,13 +121,6 @@ export default function StudioHome() {
     }
   };
 
-  const scrollProjects = (direction: "left" | "right") => {
-    projectsScrollerRef.current?.scrollBy({
-      left: direction === "right" ? 440 : -440,
-      behavior: "smooth",
-    });
-  };
-
   return (
     <main className="min-h-screen bg-[#070807] text-[#f5f2e5]">
       <TopBar onOpenCreate={() => handleCreateProject("Untitled production")} creating={creating} />
@@ -176,22 +157,6 @@ export default function StudioHome() {
               <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => scrollProjects("left")}
-                  aria-label="Show previous projects"
-                  className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 text-zinc-300 transition hover:border-[#b9f42e] hover:text-[#b9f42e]"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => scrollProjects("right")}
-                  aria-label="Show more projects"
-                  className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 text-zinc-300 transition hover:border-[#b9f42e] hover:text-[#b9f42e]"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
                   disabled={creating}
                   onClick={() => handleCreateProject("Untitled production")}
                   className="ml-2 flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-3.5 py-1.5 text-xs font-black text-black hover:bg-[#a6de25] transition disabled:opacity-50"
@@ -208,15 +173,15 @@ export default function StudioHome() {
               </div>
             ) : (
               <div
-                ref={projectsScrollerRef}
                 id="projects"
-                className="flex snap-x snap-mandatory gap-5 overflow-x-auto scroll-smooth pb-4 [scrollbar-width:thin]"
+                style={{ gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }}
+                className="grid gap-5 pb-4"
               >
                 <button
                   type="button"
                   onClick={() => handleCreateProject("Untitled production")}
                   disabled={creating}
-                  className="flex h-56 w-[360px] shrink-0 snap-start flex-col items-center justify-center rounded-2xl border border-dashed border-[#b9f42e]/60 bg-[#202119] text-[#b9f42e] transition hover:bg-[#292b20] disabled:cursor-wait disabled:opacity-60"
+                  className="flex h-56 flex-col items-center justify-center rounded-2xl border border-dashed border-[#b9f42e]/60 bg-[#202119] text-[#b9f42e] transition hover:bg-[#292b20] disabled:cursor-wait disabled:opacity-60"
                 >
                   <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[#b9f42e]/15">
                     {creating ? <Loader2 className="animate-spin" /> : <Plus />}
@@ -231,45 +196,6 @@ export default function StudioHome() {
               </div>
             )}
           </section>
-
-          <section className="mt-12">
-            <h2 className="text-3xl font-bold text-[#b9f42e]">Showcase</h2>
-            <div className="mt-5 flex gap-2 overflow-x-auto">
-              {categories.map((category, index) => (
-                <button
-                  key={category}
-                  className={`whitespace-nowrap rounded-full border px-4 py-2 text-sm ${
-                    index === 0
-                      ? "border-[#b9f42e] bg-[#b9f42e]/10 text-[#b9f42e]"
-                      : "border-white/10 text-zinc-400"
-                  }`}
-                >
-                  {category}
-                </button>
-              ))}
-            </div>
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
-              {["Film concept", "Product story", "Music visual"].map(
-                (title, index) => (
-                  <article
-                    key={title}
-                    className="overflow-hidden rounded-xl border border-white/10 bg-[#151615]"
-                  >
-                    <div
-                      className={`aspect-video ${
-                        [
-                          "bg-gradient-to-br from-[#6e4925] to-[#15120f]",
-                          "bg-gradient-to-br from-[#183c4a] to-[#08171d]",
-                          "bg-gradient-to-br from-[#40205c] to-[#160d21]",
-                        ][index]
-                      }`}
-                    />
-                    <p className="p-4 font-semibold">{title}</p>
-                  </article>
-                ),
-              )}
-            </div>
-          </section>
         </div>
       </section>
     </main>
@@ -281,7 +207,7 @@ function ProjectGalleryCard({ project, onDelete }: { project: Project; onDelete?
   return (
     <Link
       href={`/studio/project/${project.id}`}
-      className="group relative h-56 w-[360px] shrink-0 snap-start overflow-hidden rounded-2xl border border-white/10 bg-[#171817] shadow-[0_12px_36px_rgba(0,0,0,.24)] transition hover:-translate-y-1 hover:border-[#b9f42e]/55"
+      className="group relative h-56 overflow-hidden rounded-2xl border border-white/10 bg-[#171817] shadow-[0_12px_36px_rgba(0,0,0,.24)] transition hover:-translate-y-1 hover:border-[#b9f42e]/55"
     >
       {images.length ? (
         <div
