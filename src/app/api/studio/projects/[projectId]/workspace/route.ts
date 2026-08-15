@@ -139,6 +139,39 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json(data)
     }
     if (body.action === "reorderShots") { await Promise.all((body.ids as string[]).map((id, order_index) => supabase.from("creator_shots").update({ order_index }).eq("id", id))); return NextResponse.json({ success: true }) }
+    if (body.action === "insertShot") {
+      // Writing a shot by hand into a gap. `afterNumber` is 1-based: 0 puts it
+      // first, and anything at or past the end appends. Everything from that
+      // point down moves one place, before the insert, so the new row lands in
+      // a gap rather than sharing an index with the shot it displaced —
+      // saveShot's fixed 9999 gave every hand-written shot the same index.
+      const { data: existing, error: readError } = await supabase
+        .from("creator_shots")
+        .select("id,order_index")
+        .eq("episode_id", body.episodeId)
+        .order("order_index", { ascending: false })
+      if (readError) throw readError
+      const insertAt = Math.min(Math.max(Number(body.afterNumber) || 0, 0), (existing || []).length)
+      for (const shot of existing || []) {
+        if (shot.order_index < insertAt) continue
+        const { error } = await supabase.from("creator_shots").update({ order_index: shot.order_index + 1 }).eq("id", shot.id)
+        if (error) throw error
+      }
+      const payload = {
+        episode_id: body.episodeId,
+        order_index: insertAt,
+        title: body.shot.title,
+        prompt: body.shot.prompt || null,
+        duration_seconds: body.shot.duration_seconds || 4,
+        aspect_ratio: body.shot.aspect_ratio || "9:16",
+        resolution: body.shot.resolution || "720p",
+        referenced_entities: body.shot.entityIds || [],
+      }
+      const { data, error } = await supabase.from("creator_shots").insert(payload).select().single()
+      if (error) throw error
+      if (body.shot.entityIds?.length) await supabase.from("creator_shot_assets").insert(body.shot.entityIds.map((entity_id: string, order_index: number) => ({ shot_id: data.id, entity_id, order_index })))
+      return NextResponse.json(data)
+    }
     if (body.action === "deleteShot") {
       // A shot's number is its position, so a gap left behind renumbers nothing
       // but leaves every later shot one index further out than its number. The

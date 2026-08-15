@@ -180,15 +180,42 @@ const ADD_VERB = /\b(add|create|insert|append|write|need|want|make)\b/i
 // "one more shot", "another shot", "a new shot", "an extra shot", "1 more shot"
 const NEW_SHOT = /\b(?:one|1|a|an|another|extra|additional|new|more)\s+(?:more\s+|new\s+|extra\s+|additional\s+)?(?:storyboard\s+)?shots?\b|\banother\s+(?:storyboard\s+)?shots?\b/i
 const ANCHOR = /\b(after|following|before|ahead\s+of|prior\s+to)\s+(?:the\s+)?(?:storyboard\s+)?shots?\s*(?:#\s*)?(\d{1,4})\b/i
+// "between shot 10 and shot 11" — the way a gap is named when it has a shot on
+// both sides, which is how the storyboard's own insert button words it.
+const BETWEEN = /\bbetween\s+(?:the\s+)?(?:storyboard\s+)?shots?\s*(?:#\s*)?(\d{1,4})\s*(?:and|&|-|–|—)\s*(?:(?:storyboard\s+)?shots?\s*)?(?:#\s*)?(\d{1,4})\b/i
 
 export function parseShotInsertionIntent(message: string): ShotInsertionIntent | null {
   if (!ADD_VERB.test(message) || !NEW_SHOT.test(message)) return null
+
+  // A gap named by both its sides anchors on the earlier one.
+  const between = message.match(BETWEEN)
+  if (between) {
+    const first = Number(between[1])
+    if (Number.isInteger(first) && first >= 1) return { anchorShotNumber: first, position: "after" }
+  }
+
   const anchor = message.match(ANCHOR)
   if (!anchor) return null
   const anchorShotNumber = Number(anchor[2])
   if (!Number.isInteger(anchorShotNumber) || anchorShotNumber < 1) return null
   const position = /^(?:before|prior)/i.test(anchor[1]) || /ahead/i.test(anchor[1]) ? "before" : "after"
   return { anchorShotNumber, position }
+}
+
+/**
+ * The half-written instruction the storyboard's insert button puts in the
+ * composer, for the gap after `afterNumber` of `total` shots.
+ *
+ * It lives here, beside the parser that has to read it back. Written in the
+ * component instead, the button produced "between shot 10 and shot 11" while
+ * the parser only understood "after" and "before" — so the studio's own button
+ * generated a sentence the studio could not act on, and the request came back
+ * as an inspection of the two shots it named.
+ */
+export function buildInsertShotDraft(afterNumber: number, total: number) {
+  if (afterNumber <= 0) return "I want to add a new shot before shot 1: "
+  if (afterNumber >= total) return `I want to add a new shot after shot ${afterNumber}: `
+  return `I want to add a new shot between shot ${afterNumber} and shot ${afterNumber + 1}: `
 }
 
 export function buildVideoContinuationPrompt(input: {

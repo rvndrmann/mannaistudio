@@ -59,6 +59,7 @@ import { getModelLabel, imageGenerationModels, supportedVideoModel, videoDuratio
 import { defaultDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows";
 import { abandonedRunSilentAfterMs } from "@/lib/studio/workflow-runs";
 import { videoPromptFor } from "@/lib/studio/shot-video-prompt";
+import { buildInsertShotDraft } from "@/lib/studio/shot-intent";
 import { isVideoReferencePath } from "@/lib/studio/media-reference";
 import { calculateCreditCost, getUserCredits } from "@/lib/studio/credits";
 import { creditsToUsd, estimateProjectCost, projectCostSettings, summarizeSpendByEpisode, type SpendBreakdown } from "@/lib/studio/cost-estimate";
@@ -3753,11 +3754,13 @@ function MentionedPrompt({ text, entities }: { text: string; entities: Entity[] 
  * is hovered, and says which two shots it sits between so the click is never
  * ambiguous.
  */
-function InsertShotDivider({ afterNumber, total, onInsert }: {
+function InsertShotDivider({ afterNumber, total, onAskDirector, onWriteMyself }: {
   afterNumber: number;
   total: number;
-  onInsert: () => void;
+  onAskDirector: () => void;
+  onWriteMyself: () => void;
 }) {
+  const [open, setOpen] = useState(false);
   const label = afterNumber === 0
     ? "Add a new shot before shot 1"
     : afterNumber >= total
@@ -3765,16 +3768,44 @@ function InsertShotDivider({ afterNumber, total, onInsert }: {
       : `Add a new shot between shot ${afterNumber} and shot ${afterNumber + 1}`;
   return (
     <div className="group relative flex h-3 items-center justify-center">
-      <span className="absolute inset-x-0 h-px bg-[#b9f42e]/0 transition group-hover:bg-[#b9f42e]/40" />
+      <span className={`absolute inset-x-0 h-px transition ${open ? "bg-[#b9f42e]/40" : "bg-[#b9f42e]/0 group-hover:bg-[#b9f42e]/40"}`} />
       <button
         type="button"
-        onClick={onInsert}
+        onClick={() => setOpen((current) => !current)}
         title={label}
         aria-label={label}
-        className="relative grid h-6 w-6 place-items-center rounded-full border border-white/10 bg-[#1a1c1b] text-zinc-500 opacity-0 transition group-hover:border-[#b9f42e]/50 group-hover:text-[#b9f42e] group-hover:opacity-100 focus-visible:opacity-100"
+        aria-expanded={open}
+        className={`relative grid h-6 w-6 place-items-center rounded-full border bg-[#1a1c1b] transition focus-visible:opacity-100 ${open ? "border-[#b9f42e]/50 text-[#b9f42e] opacity-100" : "border-white/10 text-zinc-500 opacity-0 group-hover:border-[#b9f42e]/50 group-hover:text-[#b9f42e] group-hover:opacity-100"}`}
       >
         <Plus className="h-3 w-3" />
       </button>
+      {open && (
+        <>
+          <span className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          {/* Two ways to fill a gap, because a beat you can already picture is
+              faster to type than to describe, and one you cannot is faster to
+              hand to the Director. */}
+          <div className="absolute top-7 z-40 w-56 rounded-xl border border-white/10 bg-[#1a1c1b] p-1 shadow-2xl">
+            <p className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">{label}</p>
+            <button
+              type="button"
+              onClick={() => { setOpen(false); onWriteMyself(); }}
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-bold text-zinc-200 transition hover:bg-white/[0.06]"
+            >
+              <Pencil className="h-3.5 w-3.5 text-zinc-400" />
+              Write it myself
+            </button>
+            <button
+              type="button"
+              onClick={() => { setOpen(false); onAskDirector(); }}
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-bold text-zinc-200 transition hover:bg-white/[0.06]"
+            >
+              <Bot className="h-3.5 w-3.5 text-[#b9f42e]" />
+              Ask the Director
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -3815,7 +3846,9 @@ function Storyboard({
   // have to type the scene, not work out how to describe the position.
   onCompose?: (draft: string, chip: string) => void;
 }) {
-  const [adding, setAdding] = useState(false);
+  // The gap a hand-written shot goes into, as a 1-based "after this shot"
+  // number. Null when the form is closed.
+  const [adding, setAdding] = useState<number | null>(null);
   // Reordering is a drag, but the row is full of text to select, so the row is
   // only draggable while the handle is held.
   const [dragArmedId, setDragArmedId] = useState<string | null>(null);
@@ -3957,14 +3990,10 @@ function Storyboard({
   };
 
   // The instruction the Director needs, written from the gap that was clicked.
+  // The wording comes from the same module that parses it back, so the button
+  // cannot produce a sentence the Director does not understand.
   const composeInsert = (afterNumber: number) => {
-    const newNumber = afterNumber + 1;
-    const draft = afterNumber === 0
-      ? `I want to add a new shot before shot 1: `
-      : afterNumber >= order.length
-        ? `I want to add a new shot after shot ${afterNumber}: `
-        : `I want to add a new shot between shot ${afterNumber} and shot ${newNumber}: `;
-    onCompose?.(draft, `New Shot ${newNumber}`);
+    onCompose?.(buildInsertShotDraft(afterNumber, order.length), `New Shot ${afterNumber + 1}`);
   };
 
   const activeMedia = media
@@ -3982,18 +4011,20 @@ function Storyboard({
           </button>
         </div>
         <button
-          onClick={() => setAdding(true)}
+          onClick={() => setAdding(order.length)}
           className="rounded-xl bg-[#b9f42e] px-4 py-2 text-sm font-bold text-black"
         >
           + Add shot
         </button>
       </div>
-      {adding && (
+      {adding !== null && (
         <ShotForm
           entities={entities}
           episodeId={episodeId}
+          afterNumber={adding}
+          total={order.length}
           save={save}
-          close={() => setAdding(false)}
+          close={() => setAdding(null)}
           reload={reload}
         />
       )}
@@ -4045,7 +4076,7 @@ function Storyboard({
               const rendering = renderingImage || renderingVideo;
               return (
                 <Fragment key={shot.id}>
-                <InsertShotDivider afterNumber={index} total={order.length} onInsert={() => composeInsert(index)} />
+                <InsertShotDivider afterNumber={index} total={order.length} onAskDirector={() => composeInsert(index)} onWriteMyself={() => setAdding(index)} />
                 <article
                   aria-busy={rendering || undefined}
                   draggable={dragArmedId === shot.id}
@@ -4363,7 +4394,7 @@ function Storyboard({
             {/* The gap after the last shot, so appending reads as the same
                 gesture as inserting rather than a different button elsewhere. */}
             {order.length > 0 && (
-              <InsertShotDivider afterNumber={order.length} total={order.length} onInsert={() => composeInsert(order.length)} />
+              <InsertShotDivider afterNumber={order.length} total={order.length} onAskDirector={() => composeInsert(order.length)} onWriteMyself={() => setAdding(order.length)} />
             )}
           </div>
           {order.length === 0 && (
@@ -6910,35 +6941,59 @@ function ReferenceSourcePicker({ close, onChooseExisting, onUpload }: { close: (
 function ShotForm({
   entities,
   episodeId,
+  afterNumber,
+  total,
   save,
   close,
   reload,
 }: {
   entities: Entity[];
   episodeId: string;
+  /** The gap this shot goes into, as a 1-based "after this shot" number. */
+  afterNumber: number;
+  total: number;
   save: (b: unknown) => Promise<void>;
   close: () => void;
-  reload: () => Promise<void>;
+  reload: (silent?: boolean) => Promise<void>;
 }) {
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
   const [ids, setIds] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const position = afterNumber >= total
+    ? `Adds as shot ${total + 1}, at the end`
+    : `Adds as shot ${afterNumber + 1}. Shot ${afterNumber + 1}${total > afterNumber + 1 ? ` and everything after it` : ""} moves down one.`;
   return (
     <form
       onSubmit={async (e) => {
         e.preventDefault();
+        if (saving) return;
         const mentionedIds = findMentionedEntityIds(prompt, entities);
-        await save({
-          action: "saveShot",
-          episodeId,
-          orderIndex: 9999,
-          shot: { title, prompt, entityIds: Array.from(new Set([...ids, ...mentionedIds])) },
-        });
-        await reload();
-        close();
+        setSaving(true);
+        setError(null);
+        try {
+          // insertShot, not saveShot: a hand-written shot goes where the user
+          // put it, and saveShot's fixed 9999 index put every one of them at
+          // the end, tied with each other.
+          await save({
+            action: "insertShot",
+            episodeId,
+            afterNumber,
+            shot: { title, prompt, entityIds: Array.from(new Set([...ids, ...mentionedIds])) },
+          });
+          await reload(true);
+          close();
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Could not add the shot.");
+        } finally {
+          setSaving(false);
+        }
       }}
       className="rounded-2xl border border-[#b9f42e]/30 bg-[#1b1d1c] p-5"
     >
+      <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#b9f42e]">{position}</p>
+      {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
       <input
         required
         value={title}
@@ -6977,8 +7032,8 @@ function ShotForm({
         ))}
       </div>
       <div className="mt-4 flex gap-2">
-        <button className="rounded-lg bg-[#b9f42e] px-4 py-2 text-sm font-bold text-black">
-          Save shot
+        <button disabled={saving} className="rounded-lg bg-[#b9f42e] px-4 py-2 text-sm font-bold text-black disabled:opacity-60">
+          {saving ? "Adding…" : "Save shot"}
         </button>
         <button
           type="button"

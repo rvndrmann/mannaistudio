@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { actionMatchesRequestedShots, buildVideoContinuationPrompt, isAmbiguousShotRedo, namesImageMedium, namesVideoMedium, parseRequestedShotNumbers, parseShotImageBatchIntent, parseShotInsertionIntent, parseTargetShotNumbers, parseVideoShotReferenceIntent , wantsRedo } from "./shot-intent"
+import { actionMatchesRequestedShots, buildInsertShotDraft, buildVideoContinuationPrompt, isAmbiguousShotRedo, namesImageMedium, namesVideoMedium, parseRequestedShotNumbers, parseShotImageBatchIntent, parseShotInsertionIntent, parseTargetShotNumbers, parseVideoShotReferenceIntent , wantsRedo } from "./shot-intent"
 
 describe("parseRequestedShotNumbers", () => {
   it("reads a single named shot", () => {
@@ -214,6 +214,39 @@ describe("parseShotInsertionIntent", () => {
     expect(parseShotInsertionIntent("insert a new shot after storyboard shot 9")).toEqual({ anchorShotNumber: 9, position: "after" })
     expect(parseShotInsertionIntent("I want an extra shot following shot 2")).toEqual({ anchorShotNumber: 2, position: "after" })
     expect(parseShotInsertionIntent("write one more shot before shot 7")).toEqual({ anchorShotNumber: 7, position: "before" })
+  })
+
+  it("reads a gap named by the shots on both sides", () => {
+    // The storyboard's own insert button words it this way. It did not parse,
+    // so clicking "+" produced a sentence the Director could not act on and
+    // the reply came back as an inspection of shots 10 and 11.
+    expect(parseShotInsertionIntent("I want to add a new shot between shot 10 and shot 11: ETHAN \"Behind our photograph.\""))
+      .toEqual({ anchorShotNumber: 10, position: "after" })
+    expect(parseShotInsertionIntent("add a new shot between shot 3 and 4")).toEqual({ anchorShotNumber: 3, position: "after" })
+    expect(parseShotInsertionIntent("insert one more shot in between shots 7 & 8")).toEqual({ anchorShotNumber: 7, position: "after" })
+  })
+
+  /**
+   * The button writes the sentence and the parser reads it. They have to agree,
+   * and the only way to be sure is to send one through the other.
+   */
+  it("understands every draft the insert button can write", () => {
+    const total = 15
+    for (const afterNumber of [0, 1, 7, 14, 15]) {
+      const draft = buildInsertShotDraft(afterNumber, total)
+      const parsed = parseShotInsertionIntent(draft)
+      expect(parsed, `draft was: ${draft}`).not.toBeNull()
+      if (afterNumber === 0) {
+        expect(parsed).toEqual({ anchorShotNumber: 1, position: "before" })
+      } else {
+        expect(parsed).toEqual({ anchorShotNumber: afterNumber, position: "after" })
+      }
+    }
+  })
+
+  it("still parses once the user has typed their scene after the draft", () => {
+    const draft = `${buildInsertShotDraft(10, 15)}ETHAN "Behind our photograph." Lena backs away. LENA "No..." 0:29-0:35`
+    expect(parseShotInsertionIntent(draft)).toEqual({ anchorShotNumber: 10, position: "after" })
   })
 
   it("leaves ordinary shot requests alone", () => {
