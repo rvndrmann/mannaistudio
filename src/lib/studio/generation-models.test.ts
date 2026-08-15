@@ -1,6 +1,6 @@
 import { calculateCreditCost } from "./credits"
 import { describe, expect, it } from "vitest"
-import { defaultDirectorVideoModel, generationProvider, imageGenerationModels, isImageGenerationModel, isVideoGenerationModel, projectDirectorVideoModel, videoGenerationModels, videoDurationOptions, videoModelMaxDuration } from "./generation-models"
+import { defaultDirectorVideoModel, generationProvider, imageGenerationModels, isImageGenerationModel, isVideoGenerationModel, projectDirectorVideoModel, supportedVideoModel, videoGenerationModels, videoDurationOptions, videoModelMaxDuration } from "./generation-models"
 
 describe("studio generation model registry", () => {
   it("exposes Seedream 5.0 Pro through BytePlus", () => {
@@ -24,6 +24,25 @@ describe("studio generation model registry", () => {
   it("rejects unknown model identifiers", () => {
     expect(isImageGenerationModel("seedream-latest")).toBe(false)
     expect(isVideoGenerationModel("seedance-latest")).toBe(false)
+  })
+
+  it("no longer offers the Hunyuan and Luma series", () => {
+    expect(videoGenerationModels.some((model) => /hunyuan|luma/i.test(model.id))).toBe(false)
+    expect(isVideoGenerationModel("fal-hunyuan-video")).toBe(false)
+    expect(isVideoGenerationModel("fal-luma-dream-machine")).toBe(false)
+  })
+
+  it("resolves a retired model still saved on a project to one that is offered", () => {
+    // Left alone, a stored "fal-hunyuan-video" priced at the flat fallback and
+    // rendered on whatever fal.ts defaulted to, with nothing saying so.
+    expect(supportedVideoModel("fal-hunyuan-video")).toBe(videoGenerationModels[0].id)
+    expect(supportedVideoModel("fal-luma-dream-machine")).toBe(videoGenerationModels[0].id)
+    expect(supportedVideoModel(undefined)).toBe(videoGenerationModels[0].id)
+    expect(isVideoGenerationModel(supportedVideoModel("anything at all"))).toBe(true)
+  })
+
+  it("leaves a model that is still offered alone", () => {
+    expect(supportedVideoModel("dreamina-seedance-2-5-260628")).toBe("dreamina-seedance-2-5-260628")
   })
 })
 

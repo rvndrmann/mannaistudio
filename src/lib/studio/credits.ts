@@ -37,8 +37,6 @@ export const MODEL_CREDIT_COSTS: Record<string, { cost: number; unit: string; de
   "fal-kling-1-6-pro": { cost: 16, unit: "per video", description: "Kling 1.6 Pro" },
   "fal-minimax-h3": { cost: 16, unit: "per video", description: "MiniMax H3" },
   "fal-minimax-video-01": { cost: 16, unit: "per video", description: "MiniMax Video-01" },
-  "fal-hunyuan-video": { cost: 14, unit: "per video", description: "Hunyuan Video" },
-  "fal-luma-dream-machine": { cost: 16, unit: "per video", description: "Luma Dream Machine" },
 }
 
 export function calculateCreditCost(

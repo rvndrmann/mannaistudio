@@ -58,7 +58,9 @@ export async function submitFalVideo(input: {
   fal.config({ credentials: falKey })
 
   const hasRef = Boolean(input.referenceUrls && input.referenceUrls.length > 0)
-  let endpoint = "fal-ai/hunyuan-video"
+  // Every branch below assigns, including the default; this only has to be a
+  // model that still exists, so a future edit cannot fall back to a retired one.
+  let endpoint = "fal-ai/kling-video/v1.6/pro/text-to-video"
 
   switch (input.model) {
     case "fal-seedance-2-0":
@@ -85,12 +87,6 @@ export async function submitFalVideo(input: {
       break
     case "fal-minimax-video-01":
       endpoint = "fal-ai/minimax/video-01"
-      break
-    case "fal-hunyuan-video":
-      endpoint = "fal-ai/hunyuan-video"
-      break
-    case "fal-luma-dream-machine":
-      endpoint = "fal-ai/luma-dream-machine"
       break
     default:
       endpoint = hasRef ? "fal-ai/kling-video/v1.6/pro/image-to-video" : "fal-ai/kling-video/v1.6/pro/text-to-video"

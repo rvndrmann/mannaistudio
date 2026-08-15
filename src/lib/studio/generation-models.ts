@@ -25,8 +25,6 @@ export const videoGenerationModels = [
   { id: "fal-kling-1-6-pro", label: "Kling 1.6 Pro (fal.ai)", provider: "fal" },
   { id: "fal-minimax-h3", label: "MiniMax H3 (fal.ai)", provider: "fal" },
   { id: "fal-minimax-video-01", label: "MiniMax Video-01 (fal.ai)", provider: "fal" },
-  { id: "fal-hunyuan-video", label: "Hunyuan Video (fal.ai)", provider: "fal" },
-  { id: "fal-luma-dream-machine", label: "Luma Dream Machine (fal.ai)", provider: "fal" },
 ] as const
 
 export type ImageGenerationModelId = (typeof imageGenerationModels)[number]["id"]
@@ -59,6 +57,18 @@ export function projectDirectorVideoModel(project: Record<string, unknown>): Vid
   const configured = typeof settings.videoModel === "string" ? settings.videoModel : ""
   const supported = videoGenerationModels.find((model) => model.id === configured && model.provider === "byteplus")
   return supported?.id || defaultDirectorVideoModel
+}
+
+/**
+ * A video model that is still offered.
+ *
+ * A model retired from the list stays saved in the projects that chose it, and
+ * nothing downstream notices: pricing falls back to a flat default, the picker
+ * shows a raw id, and fal.ts renders on whatever its switch defaults to. So a
+ * stored id no longer on the list resolves here to one that is.
+ */
+export function supportedVideoModel(value: unknown): VideoGenerationModelId {
+  return isVideoGenerationModel(value) ? value : videoGenerationModels[0].id
 }
 
 export function getModelLabel(modelId: string) {

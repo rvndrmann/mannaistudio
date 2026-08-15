@@ -54,7 +54,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models";
-import { getModelLabel, imageGenerationModels, videoDurationOptions, videoGenerationModels, videoModelMaxDuration } from "@/lib/studio/generation-models";
+import { getModelLabel, imageGenerationModels, supportedVideoModel, videoDurationOptions, videoGenerationModels, videoModelMaxDuration } from "@/lib/studio/generation-models";
 import { defaultDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows";
 import { abandonedRunSilentAfterMs } from "@/lib/studio/workflow-runs";
 import { videoPromptFor } from "@/lib/studio/shot-video-prompt";
@@ -1135,7 +1135,9 @@ export default function WorkspacePage({
                 </button>
                 <span className="text-[10px] text-zinc-700">•</span>
                 <span className="rounded-full border border-white/[0.06] bg-[#141414] px-2.5 py-1 text-[11px] font-medium text-zinc-300">
-                  {(data.project.metadata as Record<string, unknown> | null)?.basic_settings && typeof ((data.project.metadata as Record<string, unknown>).basic_settings as Record<string, unknown>).videoModel === "string" ? getModelLabel(((data.project.metadata as Record<string, unknown>).basic_settings as Record<string, unknown>).videoModel as string) : "Seedance 2.0 Fast"}
+                  {/* The same resolved setting the cost bar prices, so the chip
+                      can never name a model the estimate is not quoting. */}
+                  {getModelLabel(projectCostSettings(data.project).videoModel)}
                 </span>
                 <span className="text-[10px] text-zinc-700">•</span>
                 <span className="rounded-full border border-white/[0.06] bg-[#141414] px-2.5 py-1 text-[11px] font-medium text-zinc-300">
@@ -2103,7 +2105,6 @@ function ModelMenu({
       { label: "BytePlus Direct Seedance Series", icon: WandSparkles, models: videoGenerationModels.filter((m) => m.id.startsWith("dreamina-")) },
       { label: "Kling AI Series (Kling 3, O3)", icon: WandSparkles, models: videoGenerationModels.filter((m) => m.id.includes("kling")) },
       { label: "MiniMax & Hailuo Series (H3)", icon: WandSparkles, models: videoGenerationModels.filter((m) => m.id.includes("minimax")) },
-      { label: "Hunyuan & Luma Series", icon: WandSparkles, models: videoGenerationModels.filter((m) => m.id.includes("hunyuan") || m.id.includes("luma")) },
     ];
   return (
     <div className={`relative ${inline ? "" : "mt-5"}`}>
@@ -2344,7 +2345,7 @@ function BasicSettingsModal({
   // One quality for the whole project: chat keyframes, character and asset art,
   // and the storyboard's own generate button all read this.
   const [imageQuality, setImageQuality] = useState<string>((metaSettings?.imageQuality as string) || "Medium");
-  const [videoModel, setVideoModel] = useState<string>((metaSettings?.videoModel as string) || videoGenerationModels[0].id);
+  const [videoModel, setVideoModel] = useState<string>(supportedVideoModel(metaSettings?.videoModel));
   const [generateAudio, setGenerateAudio] = useState<boolean>(metaSettings?.generateAudio !== false);
   const [workflow, setWorkflow] = useState<string>(selectedEpisodeWorkflow || (projectMeta.default_workflow_id as string) || (metaSettings?.workflow as string) || "keyframe_images_to_video");
   const [workflowApplyMode, setWorkflowApplyMode] = useState<"project_default" | "episode">("project_default");

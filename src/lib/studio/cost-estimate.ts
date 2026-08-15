@@ -1,5 +1,5 @@
 import { calculateCreditCost, MODEL_CREDIT_COSTS } from "./credits"
-import { getModelLabel, imageGenerationModels, videoGenerationModels } from "./generation-models"
+import { getModelLabel, imageGenerationModels, supportedVideoModel } from "./generation-models"
 import { resolveShotSeconds } from "./shot-duration"
 
 /**
@@ -79,7 +79,9 @@ function readSettings(project: Record<string, unknown>): ProjectCostSettings {
     // The storyboard's keyframes are what a shot is priced on, so the
     // storyboard model is the one quoted — not the character-art model.
     imageModel: text(basic.storyboardImageModel) || imageGenerationModels[0].id,
-    videoModel: text(basic.videoModel) || videoGenerationModels[0].id,
+    // A model since retired is still saved on old projects, and pricing it at
+    // the flat fallback would quote a rate nothing will actually bill.
+    videoModel: supportedVideoModel(text(basic.videoModel)),
     imageQuality: quality || "Medium",
     resolution: text(basic.resolution) || "720p",
     aspectRatio: text(basic.aspectRatio) || text(project.default_aspect) || "9:16",
