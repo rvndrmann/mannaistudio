@@ -2827,23 +2827,19 @@ function AssetWorkspace({
   const [model, setModel] = useState<string>(imageGenerationModels[0].id);
   const [aspectRatio, setAspectRatio] = useState<string>("9:16");
   const [quality, setQuality] = useState<"Low" | "Medium" | "High" | "Ultra">("Medium");
-  // Character and asset art is locked to the project camera package by default:
-  // references that do not match each other are worth less than references that
-  // are individually prettier. The lock is only lifted per image, on purpose.
+  // The camera package is opt-in. Off, the prompt is sent exactly as written —
+  // no optics, no "professional photography, 8K" tail — because a user who has
+  // not asked to shoot on a particular camera has not asked for their prompt to
+  // be rewritten either. A project package only decides what the switch starts
+  // on and which four values it opens with.
   const cameraBlock = cameraBlockForEntityType(asset.type);
   const storedCameraOverride = asset.metadata?.camera_override;
-  const [cameraOverrideEnabled, setCameraOverrideEnabled] = useState(isCameraSettings(storedCameraOverride));
+  const [cameraEnabled, setCameraEnabled] = useState(isCameraSettings(storedCameraOverride) || Boolean(cameraDefaults));
   const [cameraSettings, setCameraSettings] = useState<CameraSettings>(() => resolveCameraSettings({
     block: cameraBlock,
     override: storedCameraOverride,
     projectDefaults: cameraDefaults,
   }));
-  const lockedCameraSettings = resolveCameraSettings({ block: cameraBlock, projectDefaults: cameraDefaults });
-  // Derived, not synced: while the lock is on, the project package *is* the
-  // answer, so switching the override off snaps back to it — including to a
-  // package that changed while the panel was open — with no effect to keep in
-  // step and no stale copy to generate from.
-  const effectiveCameraSettings = cameraOverrideEnabled ? cameraSettings : lockedCameraSettings;
   // The look follows the same lock as the camera package, for the same reason:
   // a library whose references were each shot under a different look is worth
   // less than one whose references match, so lifting it is a per-image act.
@@ -3069,7 +3065,9 @@ function AssetWorkspace({
           // Sent as an override only when the user took this image off the
           // project package; otherwise the server resolves it, so the two
           // never disagree about what "locked" means.
-          ...(cameraOverrideEnabled ? { cameraSettings: effectiveCameraSettings } : {}),
+          // Sent only when the switch is on. Omitted means the server leaves
+          // the prompt alone rather than resolving a package of its own.
+          ...(cameraEnabled ? { cameraSettings } : {}),
           ...(styleOverrideEnabled ? { styleDna: styleOverride } : {}),
         }),
       });
@@ -3444,12 +3442,11 @@ function AssetWorkspace({
 
               <div className="mb-4">
                 <CameraSettingsControl
-                  value={effectiveCameraSettings}
+                  value={cameraSettings}
                   onChange={setCameraSettings}
-                  lockable
-                  overrideEnabled={cameraOverrideEnabled}
-                  onOverrideChange={setCameraOverrideEnabled}
-                  projectSummary={describeCameraSettings(lockedCameraSettings)}
+                  enabled={cameraEnabled}
+                  onEnabledChange={setCameraEnabled}
+                  projectSummary={cameraDefaults ? describeCameraSettings(cameraDefaults) : undefined}
                 />
               </div>
 
@@ -4688,12 +4685,15 @@ function ShotMediaWorkspace({
     setDurationSeconds((current) => (current > max ? max : current));
   }, [model]);
   const [busy, setBusy] = useState(false);
-  // A shot is where the director wants real control: the dial is freely
-  // editable here, pre-filled from the project package, and remembered per
-  // shot once it has been generated with one.
+  // Opt-in here too, and for the same reason as the entity panels: off, the
+  // shot prompt reaches the model exactly as written. On, the dial is freely
+  // editable — a shot is where the director actually wants the choice — and
+  // the package is remembered per shot once one has been generated with it.
+  const storedShotCamera = media.shot.metadata?.camera_override;
+  const [cameraEnabled, setCameraEnabled] = useState(isCameraSettings(storedShotCamera) || Boolean(cameraDefaults));
   const [cameraSettings, setCameraSettings] = useState<CameraSettings>(() => resolveCameraSettings({
     block: "shot",
-    override: media.shot.metadata?.camera_override,
+    override: storedShotCamera,
     projectDefaults: cameraDefaults,
   }));
   // A shot can be shot under its own look — a flashback, a dream, one sequence
@@ -5050,7 +5050,7 @@ function ShotMediaWorkspace({
       endFrame,
       recordedFrames: media.type === "video",
       videoReferencePaths: [...videoReferencePaths],
-      cameraSettingsUsed: media.type === "image" ? cameraSettings : null,
+      cameraSettingsUsed: media.type === "image" && cameraEnabled ? cameraSettings : null,
       videoUrl: null,
       error: null,
       createdAt: Date.now(),
@@ -5068,7 +5068,7 @@ function ShotMediaWorkspace({
       const characterEntityIds = Array.from(new Set([...mentionedCharacterIds, ...selectedCharacterIds])).slice(0, 10);
       if (isImage) {
         setGenerationStatus("Submitting image generation job…");
-        const response = await fetch(`/api/studio/projects/${projectId}/images`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, mentionedEntityIds, aspectRatio, quality, cameraSettings, ...(styleOverrideEnabled ? { styleDna: styleOverride } : {}) }) });
+        const response = await fetch(`/api/studio/projects/${projectId}/images`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, mentionedEntityIds, aspectRatio, quality, ...(cameraEnabled ? { cameraSettings } : {}), ...(styleOverrideEnabled ? { styleDna: styleOverride } : {}) }) });
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || "Image generation failed");
         notifyCreditBalanceChanged(typeof body.creditBalance === "number" ? body.creditBalance : undefined);
@@ -5799,7 +5799,13 @@ function ShotMediaWorkspace({
                   offering a second, contradictory camera package. */}
               {isImage && (
                 <div className="mb-4 space-y-3">
-                  <CameraSettingsControl value={cameraSettings} onChange={setCameraSettings} />
+                  <CameraSettingsControl
+                    value={cameraSettings}
+                    onChange={setCameraSettings}
+                    enabled={cameraEnabled}
+                    onEnabledChange={setCameraEnabled}
+                    projectSummary={cameraDefaults ? describeCameraSettings(cameraDefaults) : undefined}
+                  />
                   <StyleDnaPanel
                     projectId={projectId}
                     value={styleOverride}

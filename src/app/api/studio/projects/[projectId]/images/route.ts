@@ -29,9 +29,10 @@ const imageRequestSchema = z.object({
   // character and asset art does not, so without this its credits belong to no
   // episode and go missing from every per-episode total.
   episodeId: z.string().uuid().optional(),
-  // The camera package this one image is shot on. Omitted means "whatever the
-  // block resolves to" — the caller never has to send it, and an unknown value
-  // is repaired against the project package rather than reaching the model.
+  // The camera package this one image is shot on. Omitted means the camera
+  // switch is off and the prompt is used as written — no optics are added on
+  // the caller's behalf. An unknown value is repaired against the project
+  // package rather than reaching the model as a raw string.
   cameraSettings: z.object({
     camera: z.string().trim().max(120),
     lens: z.string().trim().max(120),
@@ -136,16 +137,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // back into the prompt box. Composing anywhere the result could be written
     // back into the prompt field would stack another clause on every
     // regeneration until the prompt degraded into noise.
-    const cameraSettings = resolveCameraSettings({
-      block: input.target === "shot" ? "shot" : cameraBlockForEntityType(typeof assetData?.type === "string" ? assetData.type : null),
-      override: input.cameraSettings ?? null,
-      projectDefaults: projectCameraDefaults(context.project),
-    })
+    // No settings sent means the caller left the camera switch off, and an
+    // untouched prompt is the whole point of that switch: nothing is appended,
+    // nothing is rewritten, and the image is generated from exactly what the
+    // user typed. Only a package the caller actually chose is composed in.
+    const cameraSettings = input.cameraSettings
+      ? resolveCameraSettings({
+        block: input.target === "shot" ? "shot" : cameraBlockForEntityType(typeof assetData?.type === "string" ? assetData.type : null),
+        override: input.cameraSettings,
+        projectDefaults: projectCameraDefaults(context.project),
+      })
+      : null
     // A draw-to-edit request is not a new photograph. Appending the camera
     // package — "shot on a…, professional photography, ultra-detailed, 8K" —
     // reads to an edit model as an instruction to re-render the whole frame,
     // which is the opposite of applying one marked change to it.
-    const framedPrompt = input.drawEdit
+    const framedPrompt = input.drawEdit || !cameraSettings
       ? stripIdentityDescriptions(input.prompt)
       : applyCameraSettings(stripIdentityDescriptions(input.prompt), cameraSettings, { opticsOnly: Boolean(styleDna) })
     const resolvedPrompt = [

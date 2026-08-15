@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Aperture, Camera, Focus, Lock, Ruler, Unlock, Video } from "lucide-react";
+import { Aperture, Camera, Focus, Ruler, Video } from "lucide-react";
 import {
   type CameraSettings,
   apertureOptions,
@@ -409,34 +409,34 @@ export function CameraSettingsPicker({
 }
 
 /**
- * The mounted control: a collapsed summary line that opens the dial.
+ * The mounted control: an off/on switch with the dial behind it.
  *
- * Character and asset blocks pass `lockable`, which keeps them on the project
- * package until the user explicitly takes this one image off it — that lock is
- * the consistency guarantee, so it is on by default and visible when it is on.
+ * Off is the honest default: nothing is appended to the prompt at all, and the
+ * image is generated from exactly what the user wrote. The camera package is
+ * something you opt into, per image — a project package only decides what the
+ * switch starts on and what values it opens with.
  */
 export function CameraSettingsControl({
   value,
   onChange,
-  lockable,
-  overrideEnabled,
-  onOverrideChange,
+  enabled,
+  onEnabledChange,
   projectSummary,
   size = "compact",
 }: {
   value: CameraSettings;
   onChange: (settings: CameraSettings) => void;
-  lockable?: boolean;
-  overrideEnabled?: boolean;
-  onOverrideChange?: (enabled: boolean) => void;
+  /** Whether this image gets a camera clause at all. */
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+  /** The project package, named in the hint when there is one. */
   projectSummary?: string;
   size?: DialSize;
 }) {
   const [open, setOpen] = useState(false);
-  const locked = Boolean(lockable) && !overrideEnabled;
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.02]">
+    <div className={`rounded-2xl border bg-white/[0.02] ${enabled ? "border-[#b9f42e]/30" : "border-white/10"}`}>
       <div className="flex flex-wrap items-center gap-2 p-3">
         <button
           type="button"
@@ -444,53 +444,50 @@ export function CameraSettingsControl({
           aria-expanded={open}
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
         >
-          <Aperture className="h-3.5 w-3.5 shrink-0 text-[#b9f42e]" aria-hidden />
+          <Aperture className={`h-3.5 w-3.5 shrink-0 ${enabled ? "text-[#b9f42e]" : "text-zinc-600"}`} aria-hidden />
           <span className="min-w-0">
             <span className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500">Camera Settings</span>
-            <span className="block truncate text-[11px] font-semibold text-zinc-300">{describeCameraSettings(value)}</span>
+            <span className={`block truncate text-[11px] font-semibold ${enabled ? "text-zinc-300" : "text-zinc-500"}`}>
+              {enabled ? describeCameraSettings(value) : "Off — prompt sent unchanged"}
+            </span>
           </span>
         </button>
-        {lockable && (
-          <button
-            type="button"
-            onClick={() => {
-              const next = !overrideEnabled;
-              onOverrideChange?.(next);
-              if (next) setOpen(true);
-            }}
-            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold transition ${
-              locked ? "bg-white/5 text-zinc-400 hover:text-zinc-200" : "bg-[#b9f42e]/15 text-[#b9f42e]"
-            }`}
-            title={locked ? "This image follows the project camera package" : "This image uses its own camera package"}
-          >
-            {locked ? <Lock className="h-3 w-3" aria-hidden /> : <Unlock className="h-3 w-3" aria-hidden />}
-            {locked ? "Project locked" : "Override on"}
-          </button>
-        )}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          aria-label="Add camera settings to this image"
+          onClick={() => {
+            const next = !enabled;
+            onEnabledChange(next);
+            if (next) setOpen(true);
+          }}
+          className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors ${enabled ? "bg-[#b9f42e]" : "bg-white/15"}`}
+          title={enabled ? "This image is generated with the camera package below" : "No camera language is added to this prompt"}
+        >
+          <span className={`h-4 w-4 rounded-full bg-black transition-transform ${enabled ? "translate-x-4" : "translate-x-0"}`} />
+        </button>
       </div>
       {open && (
         <div className="border-t border-white/10 p-3">
-          {locked && (
-            <p className="mb-3 flex items-center gap-1.5 rounded-lg bg-white/[0.03] px-3 py-2 text-[11px] text-zinc-400">
-              <Ruler className="h-3 w-3 shrink-0" aria-hidden />
-              <span>
-                Following the project camera package{projectSummary ? ` (${projectSummary})` : ""} so every reference matches. Turn on
-                {" "}<strong className="font-semibold text-zinc-200">Override for this image</strong> to change it here.
-              </span>
-            </p>
-          )}
-          <CameraSettingsPicker value={value} onChange={onChange} disabled={locked} size={size} />
-          {lockable && (
-            <label className="mt-3 flex items-center gap-2 text-[11px] font-semibold text-zinc-300">
-              <input
-                type="checkbox"
-                checked={Boolean(overrideEnabled)}
-                onChange={(event) => onOverrideChange?.(event.target.checked)}
-                className="h-3.5 w-3.5 accent-[#b9f42e]"
-              />
-              Override for this image
-            </label>
-          )}
+          <p className="mb-3 flex items-start gap-1.5 rounded-lg bg-white/[0.03] px-3 py-2 text-[11px] leading-relaxed text-zinc-400">
+            <Ruler className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+            <span>
+              {enabled
+                ? <>These optics are appended to the prompt when you generate. Your prompt text is never rewritten.</>
+                : <>Off. The prompt is sent exactly as written, with no camera or lens language added{projectSummary ? <> — turn this on to shoot it on {projectSummary}</> : null}.</>}
+            </span>
+          </p>
+          <CameraSettingsPicker value={value} onChange={onChange} disabled={!enabled} size={size} />
+          <label className="mt-3 flex items-center gap-2 text-[11px] font-semibold text-zinc-300">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(event) => onEnabledChange(event.target.checked)}
+              className="h-3.5 w-3.5 accent-[#b9f42e]"
+            />
+            Use camera settings for this image
+          </label>
         </div>
       )}
     </div>

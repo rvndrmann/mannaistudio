@@ -62,7 +62,13 @@ export async function analyzeImagesAsJson(input: {
   imageUrls: string[]
 }): Promise<unknown> {
   const model = input.model || defaultOpenAIDirectorModel()
-  const content: Array<Record<string, unknown>> = [{ type: "input_text", text: input.text }]
+  // json_object mode is rejected outright unless the word "json" appears in the
+  // input messages — the provider does not count `instructions`, so a caller
+  // that spelled out its JSON contract there still fails with a 400. Asked for
+  // here rather than left to each caller, so the request cannot be built
+  // without the thing that makes it legal.
+  const text = /json/i.test(input.text) ? input.text : `${input.text}\n\nRespond with JSON only.`
+  const content: Array<Record<string, unknown>> = [{ type: "input_text", text }]
   for (const url of input.imageUrls) content.push({ type: "input_image", image_url: url })
 
   const response = await openAIRequest("/v1/responses", {
