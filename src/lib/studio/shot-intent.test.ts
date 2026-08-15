@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { actionMatchesRequestedShots, buildVideoContinuationPrompt, parseRequestedShotNumbers, parseShotImageBatchIntent, parseTargetShotNumbers, parseVideoShotReferenceIntent , wantsRedo } from "./shot-intent"
+import { actionMatchesRequestedShots, buildVideoContinuationPrompt, isAmbiguousShotRedo, namesImageMedium, namesVideoMedium, parseRequestedShotNumbers, parseShotImageBatchIntent, parseTargetShotNumbers, parseVideoShotReferenceIntent , wantsRedo } from "./shot-intent"
 
 describe("parseRequestedShotNumbers", () => {
   it("reads a single named shot", () => {
@@ -139,6 +139,59 @@ describe("redo requests", () => {
 
   it("keeps the shot number a redo names", () => {
     expect(parseTargetShotNumbers("recreate the shot 6 video")).toEqual([6])
+  })
+})
+
+/**
+ * "Regenerate shot 15" used to resolve silently to the keyframe. A shot is a
+ * keyframe and a clip priced very differently — eight credits against fifty a
+ * second — so guessing spent the user's money on an answer they never gave.
+ */
+describe("isAmbiguousShotRedo", () => {
+  it("is ambiguous when a redo names a shot but no medium", () => {
+    for (const message of [
+      "regenerate shot 15",
+      "redo shot 15",
+      "shot 15 again",
+      "remake shot 3",
+      "re-do storyboard shot 7",
+    ]) {
+      expect(isAmbiguousShotRedo(message)).toBe(true)
+    }
+  })
+
+  it("is settled once the user names the medium", () => {
+    for (const message of [
+      "regenerate shot 15 image",
+      "regenerate the shot 15 keyframe",
+      "recreate the shot 6 video",
+      "redo shot 2's clip",
+      "remake shot 4 animation",
+    ]) {
+      expect(isAmbiguousShotRedo(message)).toBe(false)
+    }
+  })
+
+  it("does not fire without a redo verb or without a shot number", () => {
+    expect(isAmbiguousShotRedo("generate the video for shot 7")).toBe(false)
+    expect(isAmbiguousShotRedo("regenerate everything")).toBe(false)
+    expect(isAmbiguousShotRedo("what is left to do?")).toBe(false)
+  })
+
+  it("routes each answer button back to the medium it names", () => {
+    // The buttons the question offers are ordinary messages, so they have to
+    // read as unambiguous when they come back in — otherwise clicking one asks
+    // the same question again.
+    const image = "Regenerate the storyboard keyframe image for shot 15."
+    const video = "Regenerate the video for shot 15."
+
+    expect(isAmbiguousShotRedo(image)).toBe(false)
+    expect(namesImageMedium(image)).toBe(true)
+    expect(parseTargetShotNumbers(image)).toEqual([15])
+
+    expect(isAmbiguousShotRedo(video)).toBe(false)
+    expect(namesVideoMedium(video)).toBe(true)
+    expect(parseTargetShotNumbers(video)).toEqual([15])
   })
 })
 

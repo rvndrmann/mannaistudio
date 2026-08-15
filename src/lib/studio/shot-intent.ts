@@ -129,6 +129,35 @@ export function wantsRedo(message: string) {
   return REDO_VERB.test(message)
 }
 
+// Which medium a request names, if it names one at all.
+const NAMES_IMAGE = /\b(image|images|keyframe|keyframes|frame|poster|visual|visuals|still|photo|picture)\b/i
+const NAMES_VIDEO = /\b(video|videos|clip|clips|animate|animation|motion|render|footage|shot\s+film)\b/i
+
+export function namesImageMedium(message: string) {
+  return NAMES_IMAGE.test(message)
+}
+
+export function namesVideoMedium(message: string) {
+  return NAMES_VIDEO.test(message)
+}
+
+/**
+ * "Regenerate shot 15" — a shot the user wants redone, without saying which of
+ * its two halves.
+ *
+ * A shot is a keyframe and a clip, and they cost very differently: a Seedance
+ * 2.5 render is fifty credits a second where the keyframe is eight. This used
+ * to resolve silently to the image, which is the cheaper guess but still a
+ * guess, and a user who meant the clip paid for a frame they did not ask for
+ * and had to ask again. Nothing in the sentence says which, so nothing should
+ * be assumed — the reply asks.
+ */
+export function isAmbiguousShotRedo(message: string) {
+  if (!wantsRedo(message)) return false
+  if (namesImageMedium(message) || namesVideoMedium(message)) return false
+  return parseTargetShotNumbers(message).length > 0
+}
+
 export function parseTargetShotNumbers(message: string) {
   return parseVideoShotReferenceIntent(message).targetShotNumbers
 }

@@ -24,7 +24,7 @@ import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from 
 import { buildProjectStateSummary, loadProductionSnapshot } from "@/lib/studio/project-state-summary"
 import { computePipelineStage, withSkippedShots } from "@/lib/studio/pipeline"
 import type { DirectorTimelineBlock } from "@/lib/studio/timeline"
-import { actionMatchesRequestedShots, buildVideoContinuationPrompt, parseShotImageBatchIntent, parseTargetShotNumbers, parseVideoShotReferenceIntent, wantsRedo } from "@/lib/studio/shot-intent"
+import { actionMatchesRequestedShots, buildVideoContinuationPrompt, isAmbiguousShotRedo, parseShotImageBatchIntent, parseTargetShotNumbers, parseVideoShotReferenceIntent, wantsRedo } from "@/lib/studio/shot-intent"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 import { addWorkflowStep, createWorkflowRun, finishWorkflowRun } from "@/lib/studio/workflow-runs"
 import { buildGenerationTargetSnapshot, verifyGenerationTarget } from "@/lib/studio/generation-target"
@@ -326,6 +326,74 @@ const IMAGE_BATCH_CHUNK = 3
  * The whole batch is offered, and so is a helping of three, because a user
  * looking at a fifteen-frame bill often wants to see three come back first.
  */
+/**
+ * "Regenerate shot 15" — which half of it?
+ *
+ * A shot is a keyframe and a clip. They cost very differently: the keyframe is
+ * a handful of credits, the Seedance 2.5 render is fifty a second, so guessing
+ * spends the user's money on an answer they did not give. The two buttons
+ * carry the wording the fast paths above already recognise, so a click routes
+ * straight to the medium it names.
+ */
+async function askWhichShotMedium(input: WorkflowRequestInput) {
+  const numbers = parseTargetShotNumbers(input.message)
+  if (numbers.length !== 1) return null
+  const [number] = numbers
+
+  const { data: shot } = await input.context.supabase
+    .from("creator_shots")
+    .select("id,order_index,prompt,keyframe_image,video_url,video_status")
+    .eq("episode_id", input.episodeId)
+    .order("order_index", { ascending: true })
+    .range(number - 1, number - 1)
+    .maybeSingle()
+  // An unknown shot, or one with no prompt, has its own answer further down.
+  if (!shot || !(typeof shot.prompt === "string" && shot.prompt.trim())) return null
+
+  const hasImage = Boolean(shot.keyframe_image)
+  const hasVideo = Boolean(shot.video_url) && shot.video_status === "completed"
+  const state = hasImage && hasVideo
+    ? "It has both a keyframe and a completed video"
+    : hasImage
+      ? "It has a keyframe but no completed video"
+      : hasVideo
+        ? "It has a completed video but no keyframe"
+        : "It has neither a keyframe nor a video yet"
+
+  return {
+    provider: "workflow",
+    result: { type: "text" },
+    message: {
+      session_id: input.sessionId,
+      role: "assistant",
+      content: `Do you want the shot ${number} image or the shot ${number} video? ${state}, and the two cost very differently — so I would rather ask than spend credits on the wrong one.`,
+      suggested_actions: [],
+      timeline_blocks: [{
+        type: "suggested_actions",
+        actions: [
+          {
+            id: `redo-shot-${number}-image`,
+            label: `Regenerate the shot ${number} image`,
+            intent: `Regenerate the storyboard keyframe image for shot ${number}.`,
+            risk: "costly" as const,
+            recommended: false,
+            payload: {},
+          },
+          {
+            id: `redo-shot-${number}-video`,
+            label: `Regenerate the shot ${number} video`,
+            intent: `Regenerate the video for shot ${number}.`,
+            risk: "costly" as const,
+            recommended: false,
+            payload: {},
+          },
+        ],
+      }],
+      timeline_version: 1,
+    },
+  }
+}
+
 async function maybeHandleShotImageBatch(input: WorkflowRequestInput, normalized: string) {
   if (!/\b(image|keyframe|poster|visual)s?\b/.test(normalized)) return null
   const intent = parseShotImageBatchIntent(input.message)
@@ -767,10 +835,17 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
     ? await maybeHandleShotImageBatch(input, normalized)
     : null
   if (imageBatch) return imageBatch
+  // "regenerate shot 15" names a shot but not which half of it. Guessing the
+  // keyframe was cheap but still a guess, and a user who meant the clip paid
+  // for a frame they never asked for. Ask instead.
+  const ambiguousRedo = !forbidsAllMediaGeneration && isAmbiguousShotRedo(input.message)
+    ? await askWhichShotMedium(input)
+    : null
+  if (ambiguousRedo) return ambiguousRedo
   // "regenerate shot 1" names no medium, and left to the agent it resolved to a
   // different shot entirely. A named shot with a redo verb is unambiguous enough
-  // to answer here, and the keyframe is what a bare redo means — the reply says
-  // so, so asking for the clip instead is one sentence away.
+  // to answer here once the medium is settled — either the user named it, or
+  // the question above did.
   const wantsShotRedo = wantsRedo(normalized) && parseTargetShotNumbers(input.message).length > 0
   const namesImage = /\b(image|keyframe|poster|visual)\b/.test(normalized) && /\b(generate|create|make|draw)\b/.test(normalized)
   if (!forbidsAllMediaGeneration && !forbidsImageGenerationRequest && (namesImage || wantsShotRedo)) {
