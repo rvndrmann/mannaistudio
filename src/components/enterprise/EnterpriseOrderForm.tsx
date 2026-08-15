@@ -111,8 +111,8 @@ export default function EnterpriseOrderForm({
         <p className="mt-3 text-sm font-bold text-white">Request sent to the production team</p>
         <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-zinc-400">
           {placed.minutes} finished minute{placed.minutes === 1 ? "" : "s"} at ${placed.rate_usd_per_minute}/min —
-          <strong className="text-[#b9f42e]"> {(placed.credits_charged || 0).toLocaleString()} credits</strong> (${Number(placed.total_usd).toLocaleString()}) have been deducted.
-          The team picks the project up from here. If we cancel the order, the credits go straight back to your balance.
+          <strong className="text-[#b9f42e]">${Number(placed.total_usd).toLocaleString()}</strong>.
+          Nothing has been charged yet. The team reviews the request, and the credits are deducted only when we accept it and start work.
         </p>
         <button type="button" onClick={() => setPlaced(null)} className="mt-4 rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/[0.06]">
           Place another request
@@ -196,10 +196,10 @@ export default function EnterpriseOrderForm({
           </p>
           <p className="text-[11px] text-zinc-500">{validMinutes ? `${parsedMinutes} min × $${rate.usdPerMinute}/min` : `$${rate.usdPerMinute} per finished minute`}</p>
           <p className="mt-1 text-[11px] font-semibold text-zinc-300">
-            ⚡ {creditsNeeded.toLocaleString()} credits
+            ⚡ {creditsNeeded.toLocaleString()} credits on acceptance
             {creditBalance !== null && (
-              <span className={`ml-2 font-normal ${shortBy ? "text-red-300" : "text-zinc-500"}`}>
-                (balance {creditBalance.toLocaleString()}{shortBy ? ` — ${shortBy.toLocaleString()} short` : ""})
+              <span className={`ml-2 font-normal ${shortBy ? "text-amber-300" : "text-zinc-500"}`}>
+                (balance {creditBalance.toLocaleString()}{shortBy ? ` — top up ${shortBy.toLocaleString()} before we can accept` : ""})
               </span>
             )}
           </p>
@@ -207,7 +207,7 @@ export default function EnterpriseOrderForm({
         <button
           type="button"
           onClick={submit}
-          disabled={busy || !validMinutes || !rate.enabled || shortBy > 0}
+          disabled={busy || !validMinutes || !rate.enabled}
           className="rounded-xl bg-[#b9f42e] px-5 py-3 text-sm font-black text-black transition hover:bg-[#a6de25] disabled:opacity-50"
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Request the team"}
@@ -215,8 +215,8 @@ export default function EnterpriseOrderForm({
       </div>
 
       <p className="text-[11px] leading-5 text-zinc-500">
-        Placing the order deducts the credits above and hands the project to our production team. Cancel it, or have us cancel it,
-        and every credit is returned to your balance.
+        Requesting is free. We review it first, and the credits above are deducted only when we accept the order and begin work —
+        so top up before then if your balance is short. Once accepted, the fee is not refundable if the project is cancelled part-way.
       </p>
 
       {error && <p className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">{error}</p>}
@@ -230,7 +230,7 @@ export default function EnterpriseOrderForm({
                 <div>
                   <p className="text-xs font-semibold text-zinc-100">
                     {order.minutes} min · ${Number(order.total_usd).toLocaleString()}
-                    {order.credits_charged ? <span className="ml-2 font-normal text-zinc-500">⚡ {order.credits_charged.toLocaleString()}{order.credits_refunded_at ? " refunded" : ""}</span> : null}
+                    <span className="ml-2 font-normal text-zinc-500">{order.credits_charged ? `⚡ ${order.credits_charged.toLocaleString()} charged` : "not charged yet"}</span>
                   </p>
                   <p className="text-[11px] text-zinc-500">{new Date(order.created_at).toLocaleDateString()}{order.admin_note ? ` · ${order.admin_note}` : ""}</p>
                 </div>
