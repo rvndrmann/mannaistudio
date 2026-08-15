@@ -1093,32 +1093,6 @@ export default function WorkspacePage({
 
           <span className="h-4 border-l border-white/[0.06] mx-0.5" />
 
-          {/* AI Marketing & Ads Navigation Dropdown */}
-          <div className="relative group">
-            <button
-              type="button"
-              className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-bold transition ${marketingTabs.some(([id]) => id === tab) ? "bg-[#b9f42e] text-black" : "bg-[#141414] text-[#b9f42e] hover:bg-[#1e1e1e]"}`}
-            >
-              <Bot className="h-3 w-3" />
-              <span>Marketing Agent</span>
-              <ChevronDown className="h-3 w-3 text-zinc-500" />
-            </button>
-            <div className="absolute right-0 top-full z-[90] hidden w-48 rounded-lg border border-white/[0.08] bg-[#141414] p-1.5 shadow-2xl group-hover:block">
-              {marketingTabs.map(([id, label, Icon]) => (
-                <button
-                  key={id}
-                  onClick={() => setTab(id)}
-                  className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[11px] font-bold transition ${tab === id ? "bg-[#b9f42e] text-black" : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200"}`}
-                >
-                  <Icon className="h-3.5 w-3.5 shrink-0 text-[#b9f42e]" />
-                  <span>{label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <span className="h-4 border-l border-white/[0.06] mx-0.5" />
-
           {/* Hand the project to the AI Director Hub production team */}
           {data.project.enterprise_status ? (
             <span className="flex items-center gap-1 rounded-full border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2.5 py-1.5 text-[11px] font-bold text-[#b9f42e]" title="This project is with the AI Director Hub production team">
