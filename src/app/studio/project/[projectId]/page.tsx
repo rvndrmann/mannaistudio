@@ -622,9 +622,21 @@ export default function WorkspacePage({
       <div className="grid min-h-screen place-items-center bg-[#070807] text-white">
         <div className="text-center">
           <p className="text-xl font-semibold">Workspace unavailable</p>
-          <Link href="/studio" className="mt-4 inline-block text-[#b9f42e]">
-            Back to Studio
-          </Link>
+          <p className="mt-1 text-sm text-zinc-500">The workspace could not be loaded. Nothing has been lost.</p>
+          {/* One dropped request used to end the session here, with a link away
+              from the project as the only way out. */}
+          <div className="mt-4 flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="rounded-xl bg-[#b9f42e] px-4 py-2 text-sm font-bold text-black"
+            >
+              Try again
+            </button>
+            <Link href="/studio" className="text-sm text-[#b9f42e]">
+              Back to Studio
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -3784,7 +3796,10 @@ function Storyboard({
   episodeId: string;
   projectId: string;
   save: (b: unknown) => Promise<void>;
-  reload: () => Promise<void>;
+  // Silent when true: swaps the data in place instead of blanking the whole
+  // workspace to the first-load spinner, which reads as an unexpected page
+  // reload — and, if that refetch then fails, leaves nothing behind at all.
+  reload: (silent?: boolean) => Promise<void>;
   // Shots with generation still running, so a cell can say so instead of
   // showing the same empty placeholder it shows when nothing was ever asked for.
   pendingJobs?: { image: Set<string>; video: Set<string> };
@@ -3808,6 +3823,11 @@ function Storyboard({
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [rowMenu, setRowMenu] = useState<string | null>(null);
   const [busyShot, setBusyShot] = useState<string | null>(null);
+  const [shotError, setShotError] = useState<string | null>(null);
+  // The order as dragged, held only until the server's copy arrives. Waiting
+  // for the round trip made the row snap back under the cursor before landing
+  // in its new place.
+  const [localOrder, setLocalOrder] = useState<Shot[] | null>(null);
   const [media, setMedia] = useState<{
     shot: Shot;
     type: "image" | "video";
@@ -3843,7 +3863,7 @@ function Storyboard({
         metadata: { ...(shot.metadata || {}), cast_curated: true },
       },
     });
-    await reload();
+    await reload(true);
   };
 
   const saveShotPrompt = async (shot: Shot) => {
@@ -3863,22 +3883,56 @@ function Storyboard({
         },
       });
       setEditingShot(null);
-      await reload();
+      await reload(true);
     } finally {
       setSavingShot(false);
     }
   };
-  /** Put a shot at a given position and renumber everything around it. */
+  // The dragged order stands in for the server's until the server catches up.
+  // Derived rather than cleared in an effect: once the saved order matches, the
+  // optimistic copy is simply no longer the one that differs, so nothing has to
+  // remember to throw it away.
+  const order = useMemo(() => {
+    const serverKey = shots.map((shot) => shot.id).join(",");
+    if (!localOrder || localOrder.length !== shots.length) return shots;
+    const localKey = localOrder.map((shot) => shot.id).join(",");
+    if (localKey === serverKey) return shots;
+    // Only while it holds the same shots — an added or deleted shot makes the
+    // dragged order stale, and the server's is the truth.
+    const sameShots = localOrder.every((shot) => shots.some((item) => item.id === shot.id));
+    return sameShots ? localOrder : shots;
+  }, [localOrder, shots]);
+
+  /**
+   * Put a shot at a given position and renumber everything around it.
+   *
+   * The new order is shown immediately and the refetch is silent. Reloading
+   * the workspace the loud way unmounts it to the first-load spinner — which
+   * looks exactly like the page reloading — and if that refetch fails it
+   * clears the workspace entirely, so one dropped request took the storyboard
+   * down and nothing brought it back.
+   */
   const moveShotTo = async (shotId: string, targetIndex: number) => {
-    const ids = shots.map((item) => item.id);
+    const ids = order.map((item) => item.id);
     const from = ids.indexOf(shotId);
     if (from < 0 || from === targetIndex || targetIndex < 0 || targetIndex >= ids.length) return;
     const next = ids.filter((id) => id !== shotId);
     next.splice(targetIndex, 0, shotId);
+    const reordered = next
+      .map((id) => order.find((item) => item.id === id))
+      .filter((item): item is Shot => Boolean(item))
+      .map((item, index) => ({ ...item, order_index: index }));
+    setLocalOrder(reordered);
+    setShotError(null);
     setBusyShot(shotId);
     try {
       await save({ action: "reorderShots", ids: next });
-      await reload();
+      await reload(true);
+    } catch (error) {
+      // Put the rows back where they were rather than leaving the screen
+      // showing an order the database does not have.
+      setLocalOrder(null);
+      setShotError(error instanceof Error ? error.message : "Could not reorder the shots.");
     } finally {
       setBusyShot(null);
     }
@@ -3889,10 +3943,14 @@ function Storyboard({
     // which were paid for, and there is no undo.
     if (!window.confirm(`Delete shot ${number} — "${shot.title}"? Its keyframe and video are deleted with it and cannot be recovered.`)) return;
     setRowMenu(null);
+    setShotError(null);
     setBusyShot(shot.id);
     try {
       await save({ action: "deleteShot", shotId: shot.id, episodeId });
-      await reload();
+      setLocalOrder(null);
+      await reload(true);
+    } catch (error) {
+      setShotError(error instanceof Error ? error.message : "Could not delete the shot.");
     } finally {
       setBusyShot(null);
     }
@@ -3903,7 +3961,7 @@ function Storyboard({
     const newNumber = afterNumber + 1;
     const draft = afterNumber === 0
       ? `I want to add a new shot before shot 1: `
-      : afterNumber >= shots.length
+      : afterNumber >= order.length
         ? `I want to add a new shot after shot ${afterNumber}: `
         : `I want to add a new shot between shot ${afterNumber} and shot ${newNumber}: `;
     onCompose?.(draft, `New Shot ${newNumber}`);
@@ -3939,6 +3997,15 @@ function Storyboard({
           reload={reload}
         />
       )}
+      {shotError && (
+        <div className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/[0.07] p-3 text-sm text-red-300">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="flex-1">{shotError}</span>
+          <button type="button" onClick={() => setShotError(null)} aria-label="Dismiss error" className="rounded p-0.5 text-red-300/70 hover:text-red-200">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <div className="min-w-[830px]">
           <div className="grid grid-cols-[42px_minmax(210px,1.6fr)_150px_170px_170px] gap-3 px-4 pb-3 text-xs font-bold uppercase tracking-wide text-zinc-400">
@@ -3949,7 +4016,7 @@ function Storyboard({
             <span>Videos</span>
           </div>
           <div className="space-y-3">
-            {shots.map((shot, index) => {
+            {order.map((shot, index) => {
               // A cast the user set by hand is the truth and is never
               // second-guessed. Otherwise it is read from the shot's own prompt,
               // the same rule generation follows, which also corrects shots
@@ -3978,7 +4045,7 @@ function Storyboard({
               const rendering = renderingImage || renderingVideo;
               return (
                 <Fragment key={shot.id}>
-                <InsertShotDivider afterNumber={index} total={shots.length} onInsert={() => composeInsert(index)} />
+                <InsertShotDivider afterNumber={index} total={order.length} onInsert={() => composeInsert(index)} />
                 <article
                   aria-busy={rendering || undefined}
                   draggable={dragArmedId === shot.id}
@@ -3993,7 +4060,9 @@ function Storyboard({
                     if (!draggingId || draggingId === shot.id) return;
                     event.preventDefault();
                     event.dataTransfer.dropEffect = "move";
-                    setDropIndex(index);
+                    // dragover fires continuously while the cursor is held over
+                    // a row, so this must not re-render on every event.
+                    setDropIndex((current) => current === index ? current : index);
                   }}
                   onDrop={(event) => {
                     event.preventDefault();
@@ -4036,7 +4105,7 @@ function Storyboard({
                             event.preventDefault();
                             void moveShotTo(shot.id, index - 1);
                           }
-                          if (event.key === "ArrowDown" && index < shots.length - 1) {
+                          if (event.key === "ArrowDown" && index < order.length - 1) {
                             event.preventDefault();
                             void moveShotTo(shot.id, index + 1);
                           }
@@ -4261,7 +4330,7 @@ function Storyboard({
                             if (!res.ok) alert(json.error || "Asset registration failed");
                             else {
                               alert(`✅ Registered to BytePlus Asset Library!\nAsset ID: ${json.assetId}\nAsset URI: ${json.assetUri || `asset://${json.assetId}`}`);
-                              await reload();
+                              await reload(true);
                             }
                           } catch (err) {
                             alert(err instanceof Error ? err.message : "Asset registration failed");
@@ -4293,11 +4362,11 @@ function Storyboard({
             })}
             {/* The gap after the last shot, so appending reads as the same
                 gesture as inserting rather than a different button elsewhere. */}
-            {shots.length > 0 && (
-              <InsertShotDivider afterNumber={shots.length} total={shots.length} onInsert={() => composeInsert(shots.length)} />
+            {order.length > 0 && (
+              <InsertShotDivider afterNumber={order.length} total={order.length} onInsert={() => composeInsert(order.length)} />
             )}
           </div>
-          {shots.length === 0 && (
+          {order.length === 0 && (
             <div className="rounded-2xl border border-dashed border-white/15 p-12 text-center text-zinc-500">
               Add a shot to begin your visual storyboard.
             </div>
