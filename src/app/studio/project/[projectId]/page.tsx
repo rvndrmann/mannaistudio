@@ -79,7 +79,7 @@ import {
 } from "@/lib/studio/camera-settings";
 import { CameraSettingsControl, CameraSettingsPicker } from "@/components/studio/CameraSettingsPicker";
 import { StyleDnaPanel } from "@/components/studio/StyleDnaPanel";
-import { ShotComments } from "@/components/studio/ShotComments";
+import { RevisionNotes } from "@/components/studio/RevisionNotes";
 import { describeStyleDna, normalizeStyleDna, projectStyleDna, styleReferenceImagesOf, type StyleDna } from "@/lib/studio/style-dna";
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
 import { parseVoiceToolCall, type VoiceToolCall } from "@/lib/studio/voice";
@@ -3481,6 +3481,10 @@ function AssetWorkspace({
                 />
               </div>
 
+              <div className="mb-4">
+                <RevisionNotes projectId={projectId} target={{ type: "entity", id: asset.id }} defaultOpen={false} />
+              </div>
+
               {/* Inline Toolbar */}
               <div className="flex items-center justify-between border-t border-white/10 pt-3">
                 <div className="flex flex-wrap items-center gap-4">
@@ -4609,6 +4613,14 @@ function Storyboard({
               Add a shot to begin your visual storyboard.
             </div>
           )}
+
+          {/* The whole-cut thread, under the board rather than inside a shot:
+              pacing, music, and running time are notes about the edit, and
+              filing them against whichever shot happened to be open is where
+              nobody looks for them afterwards. */}
+          <div className="mt-6">
+            <RevisionNotes projectId={projectId} target={{ type: "project" }} title="Project revision notes" defaultOpen={false} />
+          </div>
         </div>
       </div>
       {activeMedia && (
@@ -5857,13 +5869,13 @@ function ShotMediaWorkspace({
                 </div>
               )}
 
-              {/* Revision notes live with the frame they are about, not in a
-                  project-wide inbox where nobody can tell which shot is meant. */}
-              {isImage && (
-                <div className="mb-4">
-                  <ShotComments projectId={projectId} shotId={media.shot.id} />
-                </div>
-              )}
+              {/* Revision notes live with the shot they are about, not in a
+                  project-wide inbox where nobody can tell which one is meant.
+                  Shown on the video panel as well as the image panel: a note
+                  about the clip is still a note about this shot. */}
+              <div className="mb-4">
+                <RevisionNotes projectId={projectId} target={{ type: "shot", id: media.shot.id }} defaultOpen={false} />
+              </div>
 
               {/* Inline Toolbar */}
               <div className="flex flex-col gap-3 border-t border-white/10 pt-3">

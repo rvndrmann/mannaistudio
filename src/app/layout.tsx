@@ -13,7 +13,7 @@ const CLARITY_ID = "xckmot5rdo";
 
 export const metadata: Metadata = {
     title: "AI Director Hub — AI Director Agent",
-    description: "Learn AI video creation from a Top Rated Upwork freelancer with $18K+ earned. Project-based courses, AI agents, and prompts for Seedance, Veo, and Kling.",
+    description: "An AI Director agent that turns your script into characters, storyboards, and finished video. Generate it yourself, or hire our team to produce it for you.",
     icons: {
         icon: "/favicon.png",
         apple: "/favicon.png",

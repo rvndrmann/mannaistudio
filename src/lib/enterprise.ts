@@ -29,3 +29,19 @@ export function normalizeEnterpriseRate(value: unknown): EnterpriseRate {
     enabled: typeof raw.enabled === "boolean" ? raw.enabled : true,
   }
 }
+
+/**
+ * Whether a project's revision notes are live.
+ *
+ * Notes are the client-facing half of a paid engagement, not a general comment
+ * feature: they exist so someone who has bought finished minutes can say what to
+ * change, and so the team can answer. A project nobody has hired us for has
+ * nothing to revise.
+ *
+ * "requested" deliberately does not count. The credits are taken when the team
+ * accepts, so a request that has not been accepted has not been paid for and the
+ * team has not agreed to do anything about it yet.
+ */
+export function enterpriseNotesActive(enterpriseStatus: unknown): boolean {
+  return enterpriseStatus === "active" || enterpriseStatus === "delivered"
+}

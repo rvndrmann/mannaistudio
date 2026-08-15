@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { DEFAULT_ENTERPRISE_RATE, enterpriseCreditsFor, normalizeEnterpriseRate } from "./enterprise"
+import { DEFAULT_ENTERPRISE_RATE, enterpriseCreditsFor, enterpriseNotesActive, normalizeEnterpriseRate } from "./enterprise"
 
 describe("enterpriseCreditsFor", () => {
   it("charges 20,000 credits for one minute at the published $200 rate", () => {
@@ -41,5 +41,25 @@ describe("normalizeEnterpriseRate", () => {
   it("keeps a rate an admin actually set", () => {
     expect(normalizeEnterpriseRate({ usdPerMinute: 350, enabled: false }).usdPerMinute).toBe(350)
     expect(normalizeEnterpriseRate({ usdPerMinute: 350, enabled: false }).enabled).toBe(false)
+  })
+})
+
+describe("enterpriseNotesActive", () => {
+  it("opens notes once the team has accepted and been paid", () => {
+    expect(enterpriseNotesActive("active")).toBe(true)
+    expect(enterpriseNotesActive("delivered")).toBe(true)
+  })
+
+  it("keeps them shut for a request nobody has accepted yet", () => {
+    // Credits are taken on acceptance, so "requested" is unpaid work the team
+    // has not agreed to — there is nothing to revise.
+    expect(enterpriseNotesActive("requested")).toBe(false)
+  })
+
+  it("keeps them shut for a project nobody hired us for", () => {
+    expect(enterpriseNotesActive(null)).toBe(false)
+    expect(enterpriseNotesActive(undefined)).toBe(false)
+    expect(enterpriseNotesActive("")).toBe(false)
+    expect(enterpriseNotesActive("cancelled")).toBe(false)
   })
 })
