@@ -1,34 +1,36 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Aperture, Camera, Focus, Ruler, Video } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Aperture, Camera, ChevronRight, Focus, Video } from "lucide-react";
 import {
   type CameraSettings,
   apertureOptions,
   cameraOptions,
-  describeCameraSettings,
   focalLengthOptions,
   lensOptions,
 } from "@/lib/studio/camera-settings";
 
 /**
- * The camera dial. Four columns, each a vertical scroll-snap picker whose
- * selection is whatever sits in the vertical centre — not whatever was last
- * clicked. Clicking scrolls an item to the centre and the scroll handler makes
- * the selection, so there is exactly one path into state and exactly one
- * active item per column at all times.
+ * The camera package picker: four plain lists, one per setting.
+ *
+ * It was a scroll-snap dial — the selection was whatever row sat in the vertical
+ * centre, over a radial glow, behind gradient fades, with everything unselected
+ * at 40% opacity. Four separate mechanisms competed to say "this one is picked"
+ * and the cost was that you could not read the options you had not picked, could
+ * not see more than three at once, and could not click one without the column
+ * animating underneath you. Each column then carried a duplicate <select> as its
+ * keyboard twin, so every control existed twice.
+ *
+ * A list of buttons says the same thing with none of that: every option legible,
+ * the selected one ringed, one control per setting, and keyboard support for
+ * free because they are real buttons.
  */
 
-/**
- * Two sizes, because the same dial is mounted in a wide settings modal and in
- * the 420px generation sidebar, where a full-size dial is taller than the
- * prompt box it belongs to.
- */
 const SIZES = {
-  // 72px is what lets all four columns sit on one row inside the 420px
-  // generation sidebar; anything wider wraps aperture onto its own line.
-  compact: { item: 62, list: 186, thumb: "h-6 w-6", label: "text-[8px]", focal: "text-sm", minColumn: 72 },
-  full: { item: 112, list: 352, thumb: "h-11 w-11", label: "text-[12px]", focal: "text-2xl", minColumn: 132 },
+  // 132px is what puts two columns side by side in the 420px generation
+  // sidebar and all four in the settings modal, from the same grid.
+  compact: { minColumn: 132, list: 208, thumb: "h-7 w-7", label: "text-[11px]", gap: "gap-2" },
+  full: { minColumn: 168, list: 300, thumb: "h-9 w-9", label: "text-[13px]", gap: "gap-3" },
 } as const;
 
 type DialSize = keyof typeof SIZES;
@@ -73,29 +75,34 @@ function thumbnailPath(value: string) {
 type Option = {
   value: string | number;
   label: string;
-  /** Focal lengths render as their own number, centred, rather than as artwork. */
-  text?: string;
   thumbnail?: string;
   glyph?: typeof Camera;
 };
 
 function OptionThumbnail({ option, active, size }: { option: Option; active: boolean; size: DialSize }) {
-  // One tile, one artwork path for the life of the column, so a failed load is
+  // One tile, one artwork path for the life of the row, so a failed load is
   // remembered rather than retried on every re-render.
   const [broken, setBroken] = useState(false);
-  const shell = `grid ${SIZES[size].thumb} shrink-0 place-items-center overflow-hidden rounded-lg bg-white/[0.05]`;
+  const shell = `grid ${SIZES[size].thumb} shrink-0 place-items-center overflow-hidden rounded-lg`;
 
   if (option.thumbnail && !broken) {
     return (
       <span className={shell}>
-        <img src={option.thumbnail} alt="" aria-hidden className="h-full w-full object-contain p-0.5" onError={() => setBroken(true)} />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={option.thumbnail}
+          alt=""
+          aria-hidden
+          className={`h-full w-full object-contain transition-opacity ${active ? "opacity-100" : "opacity-55"}`}
+          onError={() => setBroken(true)}
+        />
       </span>
     );
   }
   const Glyph = option.glyph || Camera;
   return (
     <span className={shell}>
-      <Glyph className={`${size === "compact" ? "h-3 w-3" : "h-5 w-5"} ${active ? "text-[#b9f42e]" : "text-zinc-500"}`} aria-hidden />
+      <Glyph className={`h-4 w-4 ${active ? "text-[#b9f42e]" : "text-zinc-600"}`} aria-hidden />
     </span>
   );
 }
@@ -117,237 +124,64 @@ function CameraColumn({
 }) {
   const metrics = SIZES[size];
   const listRef = useRef<HTMLDivElement | null>(null);
-  const itemRefs = useRef<Array<HTMLDivElement | null>>([]);
-  const frame = useRef<number | null>(null);
-  // A scroll we started ourselves must not be read back as a choice. Centering
-  // the initial value fires scroll events on the way there, and treating those
-  // as user input selected whichever row the animation happened to pass
-  // through — a panel opened on 35mm settled on 24mm.
-  const programmatic = useRef(false);
-  const programmaticTimer = useRef<number | null>(null);
-  // The scroll handler reads the live value without re-subscribing on every
-  // selection change.
-  const valueRef = useRef(value);
-  valueRef.current = value;
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  const activeRef = useRef<HTMLButtonElement | null>(null);
 
-  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
-
-  const scrollToIndex = useCallback((index: number, smooth: boolean) => {
-    const list = listRef.current;
-    const item = itemRefs.current[index];
-    if (!list || !item) return;
-    programmatic.current = true;
-    if (programmaticTimer.current !== null) window.clearTimeout(programmaticTimer.current);
-    programmaticTimer.current = window.setTimeout(() => { programmatic.current = false; }, smooth ? 700 : 150);
-    // Deliberately not scrollIntoView: that scrolls every ancestor too, which
-    // on mount drags the whole dialog to wherever the column happens to sit.
-    const top = item.offsetTop + item.offsetHeight / 2 - list.clientHeight / 2;
-    list.scrollTo({ top, behavior: smooth ? "smooth" : "auto" });
-  }, []);
-
-  // Centre the initial value once layout has settled. Twice, deliberately: the
-  // first pass runs before the column has its final height inside a panel that
-  // is still opening, and the second corrects it.
-  useLayoutEffect(() => {
-    scrollToIndex(selectedIndex, false);
-    const raf = window.requestAnimationFrame(() => scrollToIndex(selectedIndex, false));
-    const timer = window.setTimeout(() => scrollToIndex(selectedIndex, false), 120);
-    return () => {
-      window.cancelAnimationFrame(raf);
-      window.clearTimeout(timer);
-    };
-    // Mount only; later value changes are handled below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // A value changed from outside (project defaults arriving, an override being
-  // switched off) has to move the dial to match.
+  // Bring the selection into view when the column opens or the value changes
+  // from outside. Only the column scrolls — scrollIntoView would drag every
+  // ancestor with it and yank the whole dialog sideways.
   useEffect(() => {
     const list = listRef.current;
-    const item = itemRefs.current[selectedIndex];
+    const item = activeRef.current;
     if (!list || !item) return;
-    const centred = Math.abs(item.offsetTop + item.offsetHeight / 2 - (list.scrollTop + list.clientHeight / 2)) < metrics.item / 2;
-    if (!centred) scrollToIndex(selectedIndex, true);
-  }, [selectedIndex, scrollToIndex, metrics.item]);
-
-  const handleScroll = useCallback(() => {
-    // Every scroll event reads the layout of every child, so it is batched
-    // into one frame or a low-end device janks its way down the column.
-    if (frame.current !== null) return;
-    frame.current = window.requestAnimationFrame(() => {
-      frame.current = null;
-      const list = listRef.current;
-      if (!list) return;
-      const centre = list.scrollTop + list.clientHeight / 2;
-      let nearest = 0;
-      let nearestDistance = Number.POSITIVE_INFINITY;
-      itemRefs.current.forEach((item, index) => {
-        if (!item) return;
-        const distance = Math.abs(item.offsetTop + item.offsetHeight / 2 - centre);
-        if (distance < nearestDistance) {
-          nearestDistance = distance;
-          nearest = index;
-        }
-      });
-      const next = options[nearest];
-      // Only a changed centre is a change, and only when the user is the one
-      // scrolling: firing on every frame would write the same value dozens of
-      // times per flick, and firing on our own centering would fight it.
-      if (!programmatic.current && next && next.value !== valueRef.current) onChangeRef.current(next.value);
-    });
-  }, [options]);
-
-  useEffect(() => () => {
-    if (frame.current !== null) window.cancelAnimationFrame(frame.current);
-    if (programmaticTimer.current !== null) window.clearTimeout(programmaticTimer.current);
-  }, []);
-
-  // Anything the user does to the column hands control straight back to them,
-  // even mid-animation.
-  const releaseToUser = () => { programmatic.current = false; };
-
-  // Click-drag with a mouse, snap disabled for the duration so the column
-  // follows the pointer instead of fighting it.
-  const drag = useRef<{ startY: number; startTop: number } | null>(null);
-  const beginDrag = (event: React.MouseEvent) => {
-    if (disabled) return;
-    const list = listRef.current;
-    if (!list) return;
-    programmatic.current = false;
-    drag.current = { startY: event.pageY, startTop: list.scrollTop };
-    list.style.scrollSnapType = "none";
-  };
-  const endDrag = () => {
-    const list = listRef.current;
-    if (!list || !drag.current) return;
-    drag.current = null;
-    list.style.scrollSnapType = "";
-  };
-  const moveDrag = (event: React.MouseEvent) => {
-    const list = listRef.current;
-    if (!list || !drag.current) return;
-    event.preventDefault();
-    list.scrollTop = drag.current.startTop - (event.pageY - drag.current.startY) * 1.5;
-  };
-
-  // A scroll-snap picker is invisible to a keyboard, so the column is a real
-  // listbox: arrows, Home and End move the selection, and the scroll follows.
-  const handleKeyDown = (event: React.KeyboardEvent) => {
-    if (disabled) return;
-    const step = event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 : event.key === "ArrowUp" || event.key === "ArrowLeft" ? -1 : 0;
-    let nextIndex = selectedIndex;
-    if (step !== 0) nextIndex = Math.min(options.length - 1, Math.max(0, selectedIndex + step));
-    else if (event.key === "Home") nextIndex = 0;
-    else if (event.key === "End") nextIndex = options.length - 1;
-    else return;
-    event.preventDefault();
-    if (nextIndex !== selectedIndex) onChange(options[nextIndex].value);
-    scrollToIndex(nextIndex, true);
-  };
-
-  const listId = `camera-column-${label.toLowerCase().replace(/[^a-z]+/g, "-")}`;
+    const above = item.offsetTop < list.scrollTop;
+    const below = item.offsetTop + item.offsetHeight > list.scrollTop + list.clientHeight;
+    if (above || below) list.scrollTop = item.offsetTop - list.clientHeight / 2 + item.offsetHeight / 2;
+  }, [value]);
 
   return (
     <div className="min-w-0">
-      <div className="mb-1.5 flex items-center justify-between px-1">
-        <p id={`${listId}-label`} className={`font-semibold text-zinc-300 ${size === "compact" ? "text-[10px]" : "text-[11px]"}`}>{label}</p>
-        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-[#b9f42e]/70" />
+      <p className={`mb-2 px-0.5 font-bold text-zinc-300 ${size === "compact" ? "text-[11px]" : "text-xs"}`}>{label}</p>
+      <div
+        ref={listRef}
+        role="radiogroup"
+        aria-label={label}
+        style={{ maxHeight: metrics.list }}
+        // relative, because the scroll maths below reads item.offsetTop, which
+        // is measured against the nearest positioned ancestor — without this it
+        // resolves to some outer container and the column scrolls to a position
+        // that has nothing to do with the selected row.
+        className={`camera-dial-column relative space-y-1.5 overflow-y-auto rounded-2xl border border-white/[0.07] bg-black/30 p-1.5 ${
+          disabled ? "pointer-events-none opacity-40" : ""
+        }`}
+      >
+        {options.map((option) => {
+          const active = option.value === value;
+          return (
+            <button
+              key={String(option.value)}
+              ref={active ? activeRef : undefined}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              disabled={disabled}
+              onClick={() => { if (option.value !== value) onChange(option.value); }}
+              className={`flex w-full items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#b9f42e]/60 ${
+                active
+                  ? "border-[#b9f42e]/50 bg-[#b9f42e]/[0.10]"
+                  : "border-transparent bg-white/[0.04] hover:bg-white/[0.08]"
+              }`}
+            >
+              {/* Readable whether or not it is the one picked. The old column
+                  put everything unselected at 40% opacity, which made choosing
+                  from it a matter of guessing. */}
+              <span className={`min-w-0 flex-1 truncate font-semibold ${metrics.label} ${active ? "text-white" : "text-zinc-400"}`} title={option.label}>
+                {option.label}
+              </span>
+              <OptionThumbnail option={option} active={active} size={size} />
+            </button>
+          );
+        })}
       </div>
-      <div className={`relative overflow-hidden border border-white/[0.07] bg-white/[0.02] backdrop-blur-md ${size === "compact" ? "rounded-2xl" : "rounded-[2rem]"}`}>
-        {/* The centre row's glow and the top/bottom fades are what make a
-            plain list read as a dial. */}
-        <div aria-hidden style={{ height: metrics.item }} className="pointer-events-none absolute inset-x-0 top-1/2 z-10 -translate-y-1/2 bg-[radial-gradient(ellipse_at_center,rgba(185,244,46,0.10),transparent_70%)]" />
-        <div aria-hidden className={`pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-[#101210] via-[#101210]/70 to-transparent ${size === "compact" ? "h-10" : "h-20"}`} />
-        <div aria-hidden className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-[#101210] via-[#101210]/70 to-transparent ${size === "compact" ? "h-10" : "h-20"}`} />
-        <div
-          ref={listRef}
-          id={listId}
-          role="listbox"
-          aria-labelledby={`${listId}-label`}
-          aria-disabled={disabled || undefined}
-          tabIndex={disabled ? -1 : 0}
-          onScroll={handleScroll}
-          onKeyDown={handleKeyDown}
-          onWheel={releaseToUser}
-          onTouchStart={releaseToUser}
-          onMouseDown={beginDrag}
-          onMouseMove={moveDrag}
-          onMouseUp={endDrag}
-          onMouseLeave={endDrag}
-          style={{ height: metrics.list }}
-          className={`camera-dial-column snap-y snap-mandatory overflow-y-auto px-1.5 outline-none focus-visible:ring-2 focus-visible:ring-[#b9f42e]/50 ${
-            disabled ? "pointer-events-none opacity-50" : ""
-          }`}
-        >
-          <div aria-hidden style={{ height: `calc(50% - ${metrics.item / 2}px)` }} />
-          {options.map((option, index) => {
-            const active = index === selectedIndex;
-            return (
-              <div
-                key={String(option.value)}
-                ref={(node) => { itemRefs.current[index] = node; }}
-                role="option"
-                aria-selected={active}
-                onClick={() => {
-                  if (disabled) return;
-                  if (option.value !== value) onChange(option.value);
-                  scrollToIndex(index, true);
-                }}
-                style={{ height: metrics.item }}
-                className={`flex cursor-pointer snap-center items-center ${size === "compact" ? "py-1" : "py-2"}`}
-              >
-                {/* The active row is a filled pill; the rest fade back rather
-                    than shrinking away, so the column still reads as a list. */}
-                <div
-                  className={`flex h-full w-full items-center border transition-all duration-500 ease-out ${
-                    size === "compact" ? "flex-col justify-center gap-1 rounded-xl px-1" : "gap-3 rounded-2xl px-3"
-                  } ${
-                    option.text ? "justify-center" : ""
-                  } ${
-                    active
-                      ? "border-[#b9f42e]/40 bg-[#b9f42e]/[0.08] opacity-100"
-                      : "border-transparent opacity-40"
-                  }`}
-                >
-                  {option.text ? (
-                    <span className={`${metrics.focal} font-semibold ${active ? "text-[#b9f42e]" : "text-zinc-500"}`}>{option.text}</span>
-                  ) : (
-                    <>
-                      <OptionThumbnail option={option} active={active} size={size} />
-                      <span className={`${metrics.label} font-medium leading-tight ${size === "compact" ? "text-center" : ""} ${active ? "text-white" : "text-zinc-400"}`}>
-                        {option.label}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-          <div aria-hidden style={{ height: `calc(50% - ${metrics.item / 2}px)` }} />
-        </div>
-      </div>
-      {/* The plain control underneath is not a fallback for the dial, it is the
-          dial's accessible twin. Dropped when compact — at 84px it is
-          unreadable, and the column itself is already a keyboard listbox. */}
-      <label className={`mt-2 block ${size === "compact" ? "hidden" : ""}`}>
-        <span className="sr-only">{label}</span>
-        <select
-          value={String(value)}
-          disabled={disabled}
-          onChange={(event) => {
-            const raw = event.target.value;
-            const matched = options.find((option) => String(option.value) === raw);
-            if (matched) onChange(matched.value);
-          }}
-          className="w-full rounded-lg border border-white/10 bg-[#0b0c0b] px-2 py-1.5 text-[11px] font-semibold text-zinc-300 outline-none focus:border-[#b9f42e] disabled:opacity-50"
-        >
-          {options.map((option) => (
-            <option key={String(option.value)} value={String(option.value)}>{option.label}</option>
-          ))}
-        </select>
-      </label>
     </div>
   );
 }
@@ -369,7 +203,7 @@ export function CameraSettingsPicker({
       // modal and in a narrow sidebar, and a viewport breakpoint cannot tell
       // those apart.
       style={{ gridTemplateColumns: `repeat(auto-fit, minmax(${SIZES[size].minColumn}px, 1fr))` }}
-      className={`grid pb-1 ${size === "compact" ? "gap-1.5" : "gap-3"}`}
+      className={`grid ${SIZES[size].gap}`}
     >
       {/* Four columns, in the order a camera department would name them. */}
       <CameraColumn
@@ -390,7 +224,7 @@ export function CameraSettingsPicker({
       />
       <CameraColumn
         label="Focal Length"
-        options={focalLengthOptions.map((option) => ({ value: option, label: `${option}mm`, text: `${option}mm` }))}
+        options={focalLengthOptions.map((option) => ({ value: option, label: `${option}mm`, glyph: Focus }))}
         value={value.focalLength}
         disabled={disabled}
         size={size}
@@ -409,12 +243,16 @@ export function CameraSettingsPicker({
 }
 
 /**
- * The mounted control: an off/on switch with the dial behind it.
+ * The mounted control: a summary row that opens the picker.
  *
  * Off is the honest default: nothing is appended to the prompt at all, and the
  * image is generated from exactly what the user wrote. The camera package is
  * something you opt into, per image — a project package only decides what the
  * switch starts on and what values it opens with.
+ *
+ * The settings read as chips rather than as one run-on string, because four
+ * values separated by dots is a sentence you have to parse and four chips is a
+ * thing you can scan.
  */
 export function CameraSettingsControl({
   value,
@@ -434,23 +272,33 @@ export function CameraSettingsControl({
   size?: DialSize;
 }) {
   const [open, setOpen] = useState(false);
+  const chips = [value.camera, value.lens, `${value.focalLength}mm`, value.aperture];
 
   return (
-    <div className={`rounded-2xl border bg-white/[0.02] ${enabled ? "border-[#b9f42e]/30" : "border-white/10"}`}>
-      <div className="flex flex-wrap items-center gap-2 p-3">
+    <div className={`overflow-hidden rounded-2xl border bg-white/[0.02] ${enabled ? "border-[#b9f42e]/25" : "border-white/10"}`}>
+      <div className="flex items-center gap-2 p-2.5">
         <button
           type="button"
           onClick={() => setOpen((current) => !current)}
           aria-expanded={open}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1 py-0.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#b9f42e]/60"
         >
-          <Aperture className={`h-3.5 w-3.5 shrink-0 ${enabled ? "text-[#b9f42e]" : "text-zinc-600"}`} aria-hidden />
-          <span className="min-w-0">
-            <span className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500">Camera Settings</span>
-            <span className={`block truncate text-[11px] font-semibold ${enabled ? "text-zinc-300" : "text-zinc-500"}`}>
-              {enabled ? describeCameraSettings(value) : "Off — prompt sent unchanged"}
-            </span>
+          <Aperture className={`h-4 w-4 shrink-0 ${enabled ? "text-[#b9f42e]" : "text-zinc-600"}`} aria-hidden />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500">Camera</span>
+            {enabled ? (
+              <span className="mt-1 flex flex-wrap items-center gap-1">
+                {chips.map((chip) => (
+                  <span key={chip} className="truncate rounded-md bg-white/[0.07] px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300">
+                    {chip}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              <span className="block truncate text-[11px] font-semibold text-zinc-500">Off — prompt sent unchanged</span>
+            )}
           </span>
+          <ChevronRight className={`h-4 w-4 shrink-0 text-zinc-500 transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />
         </button>
         <button
           type="button"
@@ -469,25 +317,16 @@ export function CameraSettingsControl({
         </button>
       </div>
       {open && (
-        <div className="border-t border-white/10 p-3">
-          <p className="mb-3 flex items-start gap-1.5 rounded-lg bg-white/[0.03] px-3 py-2 text-[11px] leading-relaxed text-zinc-400">
-            <Ruler className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
-            <span>
-              {enabled
-                ? <>These optics are appended to the prompt when you generate. Your prompt text is never rewritten.</>
-                : <>Off. The prompt is sent exactly as written, with no camera or lens language added{projectSummary ? <> — turn this on to shoot it on {projectSummary}</> : null}.</>}
-            </span>
-          </p>
+        <div className="border-t border-white/[0.07] p-2.5">
+          {/* One line, and only when it says something the row above does not.
+              The panel used to carry a hint paragraph *and* a checkbox that
+              repeated the toggle two inches above it. */}
+          {!enabled && (
+            <p className="mb-2.5 text-[11px] leading-relaxed text-zinc-500">
+              Turn the switch on to shoot this image on {projectSummary || "the package below"}.
+            </p>
+          )}
           <CameraSettingsPicker value={value} onChange={onChange} disabled={!enabled} size={size} />
-          <label className="mt-3 flex items-center gap-2 text-[11px] font-semibold text-zinc-300">
-            <input
-              type="checkbox"
-              checked={enabled}
-              onChange={(event) => onEnabledChange(event.target.checked)}
-              className="h-3.5 w-3.5 accent-[#b9f42e]"
-            />
-            Use camera settings for this image
-          </label>
         </div>
       )}
     </div>

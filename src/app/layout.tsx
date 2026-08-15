@@ -12,7 +12,7 @@ const GADS_ID = "AW-18272552489";
 const CLARITY_ID = "xckmot5rdo";
 
 export const metadata: Metadata = {
-    title: "AI Director Hub — Learn AI Filmmaking From a Top Rated Upwork Creator",
+    title: "AI Director Hub — AI Director Agent",
     description: "Learn AI video creation from a Top Rated Upwork freelancer with $18K+ earned. Project-based courses, AI agents, and prompts for Seedance, Veo, and Kling.",
     icons: {
         icon: "/favicon.png",
