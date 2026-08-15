@@ -227,10 +227,50 @@ export function projectStyleDna(project: Record<string, unknown> | null | undefi
 /** The project's look reference images, capped so they cannot crowd out the cast. */
 export const MAX_STYLE_REFERENCE_IMAGES = 2
 
-export function projectStyleReferenceImages(project: Record<string, unknown> | null | undefined): string[] {
-  const dna = projectStyleDna(project)
+/** The pixels that go to the provider alongside a look, from whichever look won. */
+export function styleReferenceImagesOf(dna: StyleDna | null | undefined): string[] {
   if (!dna) return []
   return dna.sourceImages.filter((path) => typeof path === "string" && path.trim()).slice(0, MAX_STYLE_REFERENCE_IMAGES)
+}
+
+export function projectStyleReferenceImages(project: Record<string, unknown> | null | undefined): string[] {
+  return styleReferenceImagesOf(projectStyleDna(project))
+}
+
+/**
+ * Reads a look that came out of the database or off the wire, where the shape
+ * may have moved underneath it. Anything unusable falls back to the project's
+ * look rather than being passed through to the prompt half-formed.
+ */
+export function normalizeStyleDna(value: unknown): StyleDna | null {
+  if (!value || typeof value !== "object") return null
+  const parsed = styleDnaSchema.safeParse(value)
+  if (!parsed.success) return null
+  return isEmptyStyleDna(parsed.data) ? null : parsed.data
+}
+
+/**
+ * project look → this one image's override → the look the prompt is built from.
+ *
+ * Mirrors resolveCameraSettings, and for the same reason: a library whose
+ * references were each shot under a different look is worth less than one whose
+ * references match, so the project's look is the floor and lifting it is a
+ * deliberate, per-image act.
+ *
+ * `null` as an override is meaningful and distinct from `undefined`: it is how
+ * "this image deliberately has no look" is expressed, and it must not silently
+ * inherit the project's.
+ */
+export function resolveStyleDna({
+  override,
+  projectDefault,
+}: {
+  override?: unknown
+  projectDefault?: StyleDna | null
+}): StyleDna | null {
+  if (override === undefined) return projectDefault ?? null
+  if (override === null) return null
+  return normalizeStyleDna(override) ?? projectDefault ?? null
 }
 
 /**

@@ -82,10 +82,24 @@ export function StyleDnaPanel({
   projectId,
   value,
   onChange,
+  lockable = false,
+  overrideEnabled = true,
+  onOverrideChange,
+  projectSummary,
+  heading = "Look & Feel Reference",
+  blurb = "Drop images whose look you want copied. Every character, asset, and shot then inherits their palette, light, and texture.",
 }: {
   projectId: string;
   value: StyleDna | null;
   onChange: (next: StyleDna | null) => void;
+  /** Renders the project-look lock, for the per-image copies of this panel. */
+  lockable?: boolean;
+  overrideEnabled?: boolean;
+  onOverrideChange?: (next: boolean) => void;
+  /** One line describing the look this image inherits while the lock is on. */
+  projectSummary?: string | null;
+  heading?: string;
+  blurb?: string;
 }) {
   const [pending, setPending] = useState<string[]>(value?.sourceImages || []);
   const [previews, setPreviews] = useState<Record<string, string>>({});
@@ -170,16 +184,47 @@ export function StyleDnaPanel({
 
   const hasLook = Boolean(value && !isEmptyStyleDna(value));
 
+  const lock = lockable && onOverrideChange ? (
+    <label className="flex shrink-0 items-center gap-2 text-[11px] font-bold text-zinc-300">
+      <input
+        type="checkbox"
+        checked={overrideEnabled}
+        onChange={(event) => onOverrideChange(event.target.checked)}
+        className="h-3.5 w-3.5 accent-[#b9f42e]"
+      />
+      Different look for this one
+    </label>
+  ) : null;
+
+  // Locked to the project look: one line saying what that look is, and the way
+  // out. The uploader stays hidden, because a reference dropped here while the
+  // lock is on would be quietly ignored at generation time.
+  if (lockable && !overrideEnabled) {
+    return (
+      <div className="rounded-xl border border-white/10 bg-[#0b0c0b] p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase text-zinc-500">{heading}</p>
+            <p className="mt-0.5 truncate text-[11px] text-zinc-400">
+              {projectSummary || "No project look set. This image follows the Visual Style setting alone."}
+            </p>
+          </div>
+          {lock}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-white/10 bg-[#0b0c0b] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-bold uppercase text-zinc-400">Look &amp; Feel Reference</p>
+          <p className="text-xs font-bold uppercase text-zinc-400">{heading}</p>
           <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-            Drop images whose look you want copied. Every character, asset, and shot then inherits their palette, light, and texture.
-            The first {MAX_STYLE_REFERENCE_IMAGES} are also sent to the image model as look references.
+            {blurb} The first {MAX_STYLE_REFERENCE_IMAGES} are also sent to the image model as look references.
           </p>
         </div>
+        {lock}
         <button
           type="button"
           onClick={() => fileInput.current?.click()}

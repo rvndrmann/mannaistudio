@@ -78,7 +78,7 @@ import {
 } from "@/lib/studio/camera-settings";
 import { CameraSettingsControl, CameraSettingsPicker } from "@/components/studio/CameraSettingsPicker";
 import { StyleDnaPanel } from "@/components/studio/StyleDnaPanel";
-import { projectStyleDna, type StyleDna } from "@/lib/studio/style-dna";
+import { normalizeStyleDna, projectStyleDna, type StyleDna } from "@/lib/studio/style-dna";
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
 import { parseVoiceToolCall, type VoiceToolCall } from "@/lib/studio/voice";
 import { createClient } from "@/lib/supabase/client";
@@ -1200,6 +1200,7 @@ export default function WorkspacePage({
                 entities={data.entities}
                 projectId={projectId}
                 cameraDefaults={projectCameraDefaults(data.project)}
+                projectStyleDnaValue={projectStyleDna(data.project)}
                 episodeId={episode.id}
                 generationJobs={data.production?.generationJobs || []}
                 save={save}
@@ -1214,6 +1215,7 @@ export default function WorkspacePage({
                 episodeId={episode.id}
                 projectId={projectId}
                 cameraDefaults={projectCameraDefaults(data.project)}
+                projectStyleDnaValue={projectStyleDna(data.project)}
                 save={save}
                 reload={load}
                 pendingJobs={pendingShotJobs}
@@ -1909,6 +1911,7 @@ function Assets({
   entities,
   projectId,
   cameraDefaults,
+  projectStyleDnaValue,
   episodeId,
   generationJobs,
   save,
@@ -1921,6 +1924,8 @@ function Assets({
   // what lets a character sit on its own portrait preset instead of inheriting
   // a package that was never set.
   cameraDefaults: CameraSettings | null;
+  // The look read off the project's reference images, or null while none is set.
+  projectStyleDnaValue: StyleDna | null;
   // Character and asset art is billed to the episode it was requested from;
   // a shot names its own episode, but an entity belongs to the whole project.
   episodeId: string;
@@ -1988,6 +1993,7 @@ function Assets({
           entities={entities}
           projectId={projectId}
           cameraDefaults={cameraDefaults}
+          projectStyleDnaValue={projectStyleDnaValue}
           episodeId={episodeId}
           generationJobs={generationJobs}
           close={() => setSelectedAsset(null)}
@@ -2788,6 +2794,7 @@ function AssetWorkspace({
   entities,
   projectId,
   cameraDefaults,
+  projectStyleDnaValue,
   episodeId,
   generationJobs,
   close,
@@ -2798,6 +2805,7 @@ function AssetWorkspace({
   entities: Entity[];
   projectId: string;
   cameraDefaults: CameraSettings | null;
+  projectStyleDnaValue: StyleDna | null;
   episodeId: string;
   generationJobs: NonNullable<Workspace["production"]>["generationJobs"];
   close: () => void;
@@ -2836,6 +2844,12 @@ function AssetWorkspace({
   // package that changed while the panel was open — with no effect to keep in
   // step and no stale copy to generate from.
   const effectiveCameraSettings = cameraOverrideEnabled ? cameraSettings : lockedCameraSettings;
+  // The look follows the same lock as the camera package, for the same reason:
+  // a library whose references were each shot under a different look is worth
+  // less than one whose references match, so lifting it is a per-image act.
+  const storedStyleOverride = normalizeStyleDna(asset.metadata?.style_dna_override);
+  const [styleOverrideEnabled, setStyleOverrideEnabled] = useState(Boolean(storedStyleOverride));
+  const [styleOverride, setStyleOverride] = useState<StyleDna | null>(storedStyleOverride ?? projectStyleDnaValue);
   const persistedGenerationStatus = entityImageGenerationStatus(asset);
   const [working, setWorking] = useState(persistedGenerationStatus === "generating");
   const [generationError, setGenerationError] = useState<string | null>(null);
@@ -3056,6 +3070,7 @@ function AssetWorkspace({
           // project package; otherwise the server resolves it, so the two
           // never disagree about what "locked" means.
           ...(cameraOverrideEnabled ? { cameraSettings: effectiveCameraSettings } : {}),
+          ...(styleOverrideEnabled ? { styleDna: styleOverride } : {}),
         }),
       });
       const body = await response.json();
@@ -3435,6 +3450,20 @@ function AssetWorkspace({
                   overrideEnabled={cameraOverrideEnabled}
                   onOverrideChange={setCameraOverrideEnabled}
                   projectSummary={describeCameraSettings(lockedCameraSettings)}
+                />
+              </div>
+
+              <div className="mb-4">
+                <StyleDnaPanel
+                  projectId={projectId}
+                  value={styleOverride}
+                  onChange={setStyleOverride}
+                  lockable
+                  overrideEnabled={styleOverrideEnabled}
+                  onOverrideChange={setStyleOverrideEnabled}
+                  projectSummary={projectStyleDnaValue?.summary || null}
+                  heading="Look &amp; Feel"
+                  blurb="Drop a reference whose look this asset alone should copy."
                 />
               </div>
 
@@ -3976,6 +4005,7 @@ function Storyboard({
   episodeId,
   projectId,
   cameraDefaults,
+  projectStyleDnaValue,
   save,
   reload,
   pendingJobs,
@@ -3988,6 +4018,7 @@ function Storyboard({
   episodeId: string;
   projectId: string;
   cameraDefaults: CameraSettings | null;
+  projectStyleDnaValue: StyleDna | null;
   save: (b: unknown) => Promise<void>;
   // Silent when true: swaps the data in place instead of blanking the whole
   // workspace to the first-load spinner, which reads as an unexpected page
@@ -4572,6 +4603,7 @@ function Storyboard({
           entities={entities}
           shots={shots}
           cameraDefaults={cameraDefaults}
+          projectStyleDnaValue={projectStyleDnaValue}
           generationJobs={generationJobs}
           projectId={projectId}
           close={() => setMedia(null)}
@@ -4588,6 +4620,7 @@ function ShotMediaWorkspace({
   entities,
   shots,
   cameraDefaults,
+  projectStyleDnaValue,
   generationJobs,
   projectId,
   close,
@@ -4599,6 +4632,7 @@ function ShotMediaWorkspace({
   entities: Entity[];
   shots?: Shot[];
   cameraDefaults: CameraSettings | null;
+  projectStyleDnaValue: StyleDna | null;
   generationJobs: NonNullable<Workspace["production"]>["generationJobs"];
   projectId: string;
   close: () => void;
@@ -4662,6 +4696,13 @@ function ShotMediaWorkspace({
     override: media.shot.metadata?.camera_override,
     projectDefaults: cameraDefaults,
   }));
+  // A shot can be shot under its own look — a flashback, a dream, one sequence
+  // graded apart from the rest. Off, it follows the project, so the episode
+  // stays consistent unless someone deliberately breaks it for one frame.
+  const storedShotStyleOverride = normalizeStyleDna(media.shot.metadata?.style_dna_override);
+  const [styleOverrideEnabled, setStyleOverrideEnabled] = useState(Boolean(storedShotStyleOverride));
+  const [styleOverride, setStyleOverride] = useState<StyleDna | null>(storedShotStyleOverride ?? projectStyleDnaValue);
+
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
   const [verifyingReferencePath, setVerifyingReferencePath] = useState<string | null>(null);
@@ -5027,7 +5068,7 @@ function ShotMediaWorkspace({
       const characterEntityIds = Array.from(new Set([...mentionedCharacterIds, ...selectedCharacterIds])).slice(0, 10);
       if (isImage) {
         setGenerationStatus("Submitting image generation job…");
-        const response = await fetch(`/api/studio/projects/${projectId}/images`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, mentionedEntityIds, aspectRatio, quality, cameraSettings }) });
+        const response = await fetch(`/api/studio/projects/${projectId}/images`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, mentionedEntityIds, aspectRatio, quality, cameraSettings, ...(styleOverrideEnabled ? { styleDna: styleOverride } : {}) }) });
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || "Image generation failed");
         notifyCreditBalanceChanged(typeof body.creditBalance === "number" ? body.creditBalance : undefined);
@@ -5757,8 +5798,19 @@ function ShotMediaWorkspace({
                   keyframe, so it inherits that frame's optics rather than
                   offering a second, contradictory camera package. */}
               {isImage && (
-                <div className="mb-4">
+                <div className="mb-4 space-y-3">
                   <CameraSettingsControl value={cameraSettings} onChange={setCameraSettings} />
+                  <StyleDnaPanel
+                    projectId={projectId}
+                    value={styleOverride}
+                    onChange={setStyleOverride}
+                    lockable
+                    overrideEnabled={styleOverrideEnabled}
+                    onOverrideChange={setStyleOverrideEnabled}
+                    projectSummary={projectStyleDnaValue?.summary || null}
+                    heading="Look &amp; Feel"
+                    blurb="Drop a reference whose look this shot alone should copy."
+                  />
                 </div>
               )}
 

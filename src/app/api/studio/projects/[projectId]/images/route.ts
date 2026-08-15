@@ -12,7 +12,7 @@ import { buildEntityMentionContext, entityPrimaryReference, type MentionableEnti
 import { openAIImageQuality, projectImageQuality, projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 import { applyCameraSettings, cameraBlockForEntityType, projectCameraDefaults, resolveCameraSettings } from "@/lib/studio/camera-settings"
-import { composeLookDirectives, MAX_STYLE_REFERENCE_IMAGES, projectStyleDna, projectStyleReferenceImages, styleBlockForEntityType, styleReferenceClause } from "@/lib/studio/style-dna"
+import { composeLookDirectives, MAX_STYLE_REFERENCE_IMAGES, projectStyleDna, resolveStyleDna, styleBlockForEntityType, styleDnaSchema, styleReferenceClause, styleReferenceImagesOf } from "@/lib/studio/style-dna"
 import { recordExistingAsset } from "@/lib/studio/byteplus-assets"
 import { VERIFIED_ASSET } from "@/lib/studio/asset-verification"
 
@@ -38,6 +38,10 @@ const imageRequestSchema = z.object({
     focalLength: z.number(),
     aperture: z.string().trim().max(20),
   }).optional(),
+  // The look this one image is shot under. Absent means "whatever the project
+  // says"; explicit null means this image deliberately has no look, which is
+  // not the same thing and must not fall back to the project's.
+  styleDna: styleDnaSchema.nullish(),
   // A draw-to-edit request: the image the user drew on, the flattened picture
   // actually sent, and the marks themselves. Stored so the edit can be
   // reopened and adjusted instead of redrawn — and so a wrong result can be
@@ -114,12 +118,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // A draw-to-edit request is an edit of one frame, not a new photograph, so
     // it takes neither the camera package nor the look block — both read to an
     // edit model as permission to re-render everything.
-    const styleDna = input.drawEdit ? null : projectStyleDna(context.project)
+    const styleDna = input.drawEdit ? null : resolveStyleDna({ override: input.styleDna, projectDefault: projectStyleDna(context.project) })
     const styleBlock = input.target === "shot" ? "shot" : styleBlockForEntityType(typeof assetData?.type === "string" ? assetData.type : null)
     // The look reference is pixels, and a provider is handed one flat list it
     // treats as things to reproduce — so these are kept out of the cast's budget
     // rather than added to it, and named in the prompt as look-only below.
-    const styleReferencePaths = styleDna ? projectStyleReferenceImages(context.project) : []
+    const styleReferencePaths = styleReferenceImagesOf(styleDna)
     const castBudget = 8 - Math.min(styleReferencePaths.length, MAX_STYLE_REFERENCE_IMAGES)
     const castReferencePaths = Array.from(new Set([...mentionReferencePaths, ...input.referenceImages]))
       .filter((path) => !styleReferencePaths.includes(path))
@@ -315,6 +319,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         // A draw edit is the exception — it carries no camera panel at all, so
         // writing null there would silently un-override the block.
         ...(input.drawEdit && !input.cameraSettings ? {} : { camera_override: input.cameraSettings ? cameraSettings : null }),
+        // Null, not absent, for the same reason as the camera override above:
+        // switching the look override off has to be remembered as firmly as
+        // switching it on, or the panel reopens still overridden.
+        ...(input.drawEdit && input.styleDna === undefined ? {} : { style_dna_override: input.styleDna === undefined ? null : styleDna }),
         image_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, camera_settings_used: cameraSettings, style_dna_used: styleDna, style,  aspect_ratio: effectiveAspectRatio, reference_images: combinedReferencePaths, mentioned_entity_ids: input.mentionedEntityIds, status: "completed", completed_at: new Date().toISOString() },
       }
       const updates: Record<string, unknown> = {
@@ -339,6 +347,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           ...currentMeta,
           ...(byteplusAssetId ? { byteplus_asset_id: byteplusAssetId } : {}),
           ...(input.drawEdit && !input.cameraSettings ? {} : { camera_override: input.cameraSettings ? cameraSettings : null }),
+        // Null, not absent, for the same reason as the camera override above:
+        // switching the look override off has to be remembered as firmly as
+        // switching it on, or the panel reopens still overridden.
+        ...(input.drawEdit && input.styleDna === undefined ? {} : { style_dna_override: input.styleDna === undefined ? null : styleDna }),
           image_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, camera_settings_used: cameraSettings, style_dna_used: styleDna, style,  reference_images: combinedReferencePaths, mentioned_entity_ids: input.mentionedEntityIds, status: "completed", completed_at: new Date().toISOString() },
         },
       }).eq("id", input.targetId)

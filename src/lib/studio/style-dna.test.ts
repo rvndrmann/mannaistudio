@@ -4,10 +4,12 @@ import {
   isEmptyStyleDna,
   projectStyleDna,
   projectStyleReferenceImages,
+  resolveStyleDna,
   styleBlockForEntityType,
   styleDnaDirective,
   styleDnaSchema,
   styleReferenceClause,
+  styleReferenceImagesOf,
 } from "./style-dna"
 
 const full = styleDnaSchema.parse({
@@ -163,5 +165,45 @@ describe("projectStyleDna", () => {
   it("never lets the look references crowd out the cast", () => {
     const project = { metadata: { basic_settings: { styleDna: { ...full, sourceImages: ["a.png", "b.png", "c.png", "d.png"] } } } }
     expect(projectStyleReferenceImages(project)).toHaveLength(2)
+  })
+})
+
+describe("resolveStyleDna", () => {
+  const projectDefault = styleDnaSchema.parse({ summary: "project look", color: { dominant: ["bone white"] } })
+  const override = styleDnaSchema.parse({ summary: "this shot only", color: { dominant: ["sodium orange"] } })
+
+  it("falls back to the project look when the image names none", () => {
+    expect(resolveStyleDna({ projectDefault })?.summary).toBe("project look")
+    expect(resolveStyleDna({ override: undefined, projectDefault })?.summary).toBe("project look")
+  })
+
+  it("lets one image be shot under its own look", () => {
+    expect(resolveStyleDna({ override, projectDefault })?.summary).toBe("this shot only")
+  })
+
+  it("treats an explicit null as 'this image has no look', not as 'inherit'", () => {
+    // The distinction is the whole point of the per-image lock: clearing the
+    // look on one frame must not quietly hand it the project's back.
+    expect(resolveStyleDna({ override: null, projectDefault })).toBeNull()
+  })
+
+  it("repairs an unusable override against the project look rather than shipping it", () => {
+    expect(resolveStyleDna({ override: "sodium orange", projectDefault })?.summary).toBe("project look")
+    expect(resolveStyleDna({ override: {}, projectDefault })?.summary).toBe("project look")
+  })
+
+  it("is null when neither the image nor the project has a look", () => {
+    expect(resolveStyleDna({})).toBeNull()
+    expect(resolveStyleDna({ override: {}, projectDefault: null })).toBeNull()
+  })
+})
+
+describe("styleReferenceImagesOf", () => {
+  it("takes the pixels from whichever look won, not always the project's", () => {
+    // A shot shot under its own look has to send its own reference, or the
+    // override would be described in words while the project's board is what
+    // the provider actually sees.
+    expect(styleReferenceImagesOf(styleDnaSchema.parse({ ...full, sourceImages: ["shot-ref.png"] }))).toEqual(["shot-ref.png"])
+    expect(styleReferenceImagesOf(null)).toEqual([])
   })
 })
