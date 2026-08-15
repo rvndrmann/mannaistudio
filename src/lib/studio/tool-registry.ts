@@ -325,6 +325,13 @@ export const createStoryboardBatchTool = defineDirectorTool({
   input: z.object({
     episodeId: z.string().uuid(),
     replaceExisting: z.boolean().default(false),
+    /**
+     * Where the new shots go, as a 1-based shot number: 1 puts them after shot
+     * 1, and 0 puts them at the very front. Omitted, they append to the end.
+     * Without this a shot asked for "after shot 8" landed at the end of the
+     * storyboard, which is a different scene order than the one requested.
+     */
+    insertAfterShotNumber: z.number().int().min(0).max(1_000).optional(),
     shots: z.array(z.object({ title: z.string().trim().min(1).max(200), description: z.string().trim().max(5_000).default(""), scriptText: z.string().trim().max(10_000).default(""), prompt: z.string().trim().min(1).max(20_000), durationSeconds: z.number().positive().max(120).default(4), aspectRatio: z.string().trim().max(20).default("16:9"), referencedEntityIds: z.array(z.string().uuid()).max(30).default([]) }).strict()).min(1).max(100),
   }).strict(),
   async execute(context, input) {
@@ -349,7 +356,29 @@ export const createStoryboardBatchTool = defineDirectorTool({
       if (error) throw error
     }
     const { count } = await context.supabase.from("creator_shots").select("id", { count: "exact", head: true }).eq("episode_id", input.episodeId)
-    const offset = input.replaceExisting ? 0 : count || 0
+    // Inserting into the middle means everything after the anchor moves down by
+    // as many shots as are going in. Done before the insert, so the new rows
+    // land in a gap rather than sharing an index with the shots they displace.
+    const insertAt = input.replaceExisting || input.insertAfterShotNumber === undefined
+      ? null
+      : Math.min(Math.max(input.insertAfterShotNumber, 0), count || 0)
+    if (insertAt !== null) {
+      const { data: displaced, error: displacedError } = await context.supabase
+        .from("creator_shots")
+        .select("id,order_index")
+        .eq("episode_id", input.episodeId)
+        .gte("order_index", insertAt)
+        .order("order_index", { ascending: false })
+      if (displacedError) throw displacedError
+      for (const row of displaced || []) {
+        const { error } = await context.supabase
+          .from("creator_shots")
+          .update({ order_index: row.order_index + input.shots.length })
+          .eq("id", row.id)
+        if (error) throw error
+      }
+    }
+    const offset = input.replaceExisting ? 0 : insertAt ?? (count || 0)
     // A shot's cast is what its own prompt names. Models routinely pass the
     // project's whole entity list on every shot, which then reaches generation
     // as references and puts unrelated characters and props in the frame.

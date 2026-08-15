@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, Fragment, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowDown,
@@ -12,6 +12,7 @@ import {
   ChevronDown,
   Clapperboard,
   Gem,
+  GripVertical,
   History,
   FileText,
   AlertTriangle,
@@ -304,6 +305,25 @@ export default function WorkspacePage({
   };
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  // A storyboard action can hand the composer a half-written instruction — the
+  // "+" between two rows knows exactly which shots it sits between, and typing
+  // that out by hand is the part the user should not have to do. The chip names
+  // what the draft is about so the message cannot be sent at the wrong shot by
+  // accident, and clearing it clears the draft with it.
+  const [composerChip, setComposerChip] = useState<string | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const composeDirectorMessage = useCallback((draft: string, chip: string) => {
+    setMessage(draft);
+    setComposerChip(chip);
+    // The draft is a prompt to keep typing, so the caret goes where the user
+    // will continue rather than at the start of what was written for them.
+    window.requestAnimationFrame(() => {
+      const field = composerRef.current;
+      if (!field) return;
+      field.focus();
+      field.setSelectionRange(field.value.length, field.value.length);
+    });
+  }, []);
   const [chatSending, setChatSending] = useState(false);
   const [streamingReply, setStreamingReply] = useState<{ content: string; status: string | null } | null>(null);
   const [resumedRun, setResumedRun] = useState(false);
@@ -633,6 +653,7 @@ export default function WorkspacePage({
     // The timeline owns the sent copy. Clear the composer before awaiting the
     // network response so the same message never appears as an unsent draft.
     setMessage("");
+    setComposerChip(null);
     setChatSending(true);
     setChatError(null);
     setData((current) => current ? {
@@ -1192,6 +1213,7 @@ export default function WorkspacePage({
                 pendingJobs={pendingShotJobs}
                 generationJobs={data.production?.generationJobs || []}
                 onGenerationStarted={(shotId, type) => setJustSubmitted((current) => ({ ...current, [type]: Array.from(new Set([...current[type], shotId])) }))}
+                onCompose={composeDirectorMessage}
               />
             )}
             {tab === "timeline" && (
@@ -1348,9 +1370,31 @@ export default function WorkspacePage({
             onSubmit={sendChat}
             className="border-t border-white/[0.06] bg-[#111111] p-3"
           >
+            {composerChip && (
+              <div className="mb-2 flex">
+                <span className="relative flex items-center gap-1.5 rounded-lg bg-[#1e1f1e] py-1.5 pl-2.5 pr-7 text-[11px] font-bold text-zinc-200">
+                  <Clapperboard className="h-3 w-3 text-zinc-400" />
+                  <span>{composerChip}</span>
+                  <button
+                    type="button"
+                    onClick={() => { setComposerChip(null); setMessage(""); }}
+                    aria-label={`Discard the draft for ${composerChip}`}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-zinc-500 hover:bg-white/10 hover:text-white"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              </div>
+            )}
             <EntityMentionInput
               value={message}
-              onChange={setMessage}
+              onChange={(value) => {
+                setMessage(value);
+                // The chip describes a draft. Empty the field and it describes
+                // nothing, so it goes rather than mislabelling the next message.
+                if (!value.trim()) setComposerChip(null);
+              }}
+              textareaRef={composerRef}
               entities={data.entities}
               menuPlacement="top"
               onKeyDown={(event) => {
@@ -3688,6 +3732,41 @@ function MentionedPrompt({ text, entities }: { text: string; entities: Entity[] 
   );
 }
 
+/**
+ * The gap between two shots, as somewhere to add one.
+ *
+ * A storyboard is an order, and the thing a writer wants at the point they
+ * notice a beat is missing is a shot *there* — not one appended to the end and
+ * then dragged fifteen rows up. The button stays out of the way until the gap
+ * is hovered, and says which two shots it sits between so the click is never
+ * ambiguous.
+ */
+function InsertShotDivider({ afterNumber, total, onInsert }: {
+  afterNumber: number;
+  total: number;
+  onInsert: () => void;
+}) {
+  const label = afterNumber === 0
+    ? "Add a new shot before shot 1"
+    : afterNumber >= total
+      ? `Add a new shot after shot ${afterNumber}`
+      : `Add a new shot between shot ${afterNumber} and shot ${afterNumber + 1}`;
+  return (
+    <div className="group relative flex h-3 items-center justify-center">
+      <span className="absolute inset-x-0 h-px bg-[#b9f42e]/0 transition group-hover:bg-[#b9f42e]/40" />
+      <button
+        type="button"
+        onClick={onInsert}
+        title={label}
+        aria-label={label}
+        className="relative grid h-6 w-6 place-items-center rounded-full border border-white/10 bg-[#1a1c1b] text-zinc-500 opacity-0 transition group-hover:border-[#b9f42e]/50 group-hover:text-[#b9f42e] group-hover:opacity-100 focus-visible:opacity-100"
+      >
+        <Plus className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
 function Storyboard({
   shots,
   entities,
@@ -3698,6 +3777,7 @@ function Storyboard({
   pendingJobs,
   generationJobs,
   onGenerationStarted,
+  onCompose,
 }: {
   shots: Shot[];
   entities: Entity[];
@@ -3715,8 +3795,19 @@ function Storyboard({
   // notice the new job, which for a fast image call could be after it had
   // already finished.
   onGenerationStarted?: (shotId: string, type: "image" | "video") => void;
+  // Writes a half-finished instruction into the Director composer. The "+"
+  // between two rows knows which shots it sits between; the user should only
+  // have to type the scene, not work out how to describe the position.
+  onCompose?: (draft: string, chip: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
+  // Reordering is a drag, but the row is full of text to select, so the row is
+  // only draggable while the handle is held.
+  const [dragArmedId, setDragArmedId] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const [rowMenu, setRowMenu] = useState<string | null>(null);
+  const [busyShot, setBusyShot] = useState<string | null>(null);
   const [media, setMedia] = useState<{
     shot: Shot;
     type: "image" | "video";
@@ -3777,6 +3868,47 @@ function Storyboard({
       setSavingShot(false);
     }
   };
+  /** Put a shot at a given position and renumber everything around it. */
+  const moveShotTo = async (shotId: string, targetIndex: number) => {
+    const ids = shots.map((item) => item.id);
+    const from = ids.indexOf(shotId);
+    if (from < 0 || from === targetIndex || targetIndex < 0 || targetIndex >= ids.length) return;
+    const next = ids.filter((id) => id !== shotId);
+    next.splice(targetIndex, 0, shotId);
+    setBusyShot(shotId);
+    try {
+      await save({ action: "reorderShots", ids: next });
+      await reload();
+    } finally {
+      setBusyShot(null);
+    }
+  };
+
+  const removeShot = async (shot: Shot, number: number) => {
+    // Deleting a shot throws away its keyframe and its rendered clip, both of
+    // which were paid for, and there is no undo.
+    if (!window.confirm(`Delete shot ${number} — "${shot.title}"? Its keyframe and video are deleted with it and cannot be recovered.`)) return;
+    setRowMenu(null);
+    setBusyShot(shot.id);
+    try {
+      await save({ action: "deleteShot", shotId: shot.id, episodeId });
+      await reload();
+    } finally {
+      setBusyShot(null);
+    }
+  };
+
+  // The instruction the Director needs, written from the gap that was clicked.
+  const composeInsert = (afterNumber: number) => {
+    const newNumber = afterNumber + 1;
+    const draft = afterNumber === 0
+      ? `I want to add a new shot before shot 1: `
+      : afterNumber >= shots.length
+        ? `I want to add a new shot after shot ${afterNumber}: `
+        : `I want to add a new shot between shot ${afterNumber} and shot ${newNumber}: `;
+    onCompose?.(draft, `New Shot ${newNumber}`);
+  };
+
   const activeMedia = media
     ? { ...media, shot: shots.find((shot) => shot.id === media.shot.id) || media.shot }
     : null;
@@ -3845,10 +3977,33 @@ function Storyboard({
               const renderingVideo = Boolean(pendingJobs?.video.has(shot.id));
               const rendering = renderingImage || renderingVideo;
               return (
+                <Fragment key={shot.id}>
+                <InsertShotDivider afterNumber={index} total={shots.length} onInsert={() => composeInsert(index)} />
                 <article
-                  key={shot.id}
                   aria-busy={rendering || undefined}
-                  className={`relative grid grid-cols-[42px_minmax(210px,1.6fr)_150px_170px_170px] items-start gap-3 rounded-xl border bg-[#1a1c1b] p-3 transition ${rendering ? "border-[#b9f42e]/40 ring-1 ring-[#b9f42e]/20" : "border-white/10"}`}
+                  draggable={dragArmedId === shot.id}
+                  onDragStart={(event) => {
+                    setDraggingId(shot.id);
+                    event.dataTransfer.effectAllowed = "move";
+                    // Firefox will not start a drag without payload.
+                    event.dataTransfer.setData("text/plain", shot.id);
+                  }}
+                  onDragEnd={() => { setDraggingId(null); setDropIndex(null); setDragArmedId(null); }}
+                  onDragOver={(event) => {
+                    if (!draggingId || draggingId === shot.id) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                    setDropIndex(index);
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const moved = draggingId || event.dataTransfer.getData("text/plain");
+                    setDropIndex(null);
+                    setDraggingId(null);
+                    setDragArmedId(null);
+                    if (moved) void moveShotTo(moved, index);
+                  }}
+                  className={`relative grid grid-cols-[42px_minmax(210px,1.6fr)_150px_170px_170px] items-start gap-3 rounded-xl border bg-[#1a1c1b] p-3 transition ${rendering ? "border-[#b9f42e]/40 ring-1 ring-[#b9f42e]/20" : dropIndex === index ? "border-[#b9f42e] ring-1 ring-[#b9f42e]/40" : "border-white/10"} ${draggingId === shot.id ? "opacity-40" : ""} ${busyShot === shot.id ? "pointer-events-none opacity-60" : ""}`}
                 >
                   {rendering && (
                     <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-0.5 overflow-hidden rounded-t-xl">
@@ -3867,8 +4022,56 @@ function Storyboard({
                         </span>
                       </span>
                     ) : (
-                      <span className="text-[10px] text-zinc-600">⋮⋮</span>
+                      <button
+                        type="button"
+                        title="Drag to reorder"
+                        aria-label={`Reorder shot ${index + 1}. Press the up or down arrow key to move it.`}
+                        onMouseDown={() => setDragArmedId(shot.id)}
+                        onMouseUp={() => setDragArmedId(null)}
+                        onBlur={() => setDragArmedId(null)}
+                        // Reordering by keyboard, so the storyboard is not
+                        // rearrangeable only with a mouse.
+                        onKeyDown={(event) => {
+                          if (event.key === "ArrowUp" && index > 0) {
+                            event.preventDefault();
+                            void moveShotTo(shot.id, index - 1);
+                          }
+                          if (event.key === "ArrowDown" && index < shots.length - 1) {
+                            event.preventDefault();
+                            void moveShotTo(shot.id, index + 1);
+                          }
+                        }}
+                        className="cursor-grab rounded p-1 text-zinc-600 transition hover:bg-white/[0.06] hover:text-zinc-300 active:cursor-grabbing"
+                      >
+                        <GripVertical className="h-3.5 w-3.5" />
+                      </button>
                     )}
+                    <div className="relative mt-auto">
+                      <button
+                        type="button"
+                        onClick={() => setRowMenu((current) => current === shot.id ? null : shot.id)}
+                        aria-label={`More actions for shot ${index + 1}`}
+                        aria-expanded={rowMenu === shot.id}
+                        className="rounded p-1 text-zinc-600 transition hover:bg-white/[0.06] hover:text-zinc-300"
+                      >
+                        <MoreVertical className="h-3.5 w-3.5" />
+                      </button>
+                      {rowMenu === shot.id && (
+                        <>
+                          <span className="fixed inset-0 z-30" onClick={() => setRowMenu(null)} />
+                          <div className="absolute left-6 top-0 z-40 w-36 rounded-xl border border-white/10 bg-[#1a1c1b] p-1 shadow-2xl">
+                            <button
+                              type="button"
+                              onClick={() => void removeShot(shot, index + 1)}
+                              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-bold text-red-400 transition hover:bg-red-500/10"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
@@ -4085,8 +4288,14 @@ function Storyboard({
                     </div>
                   </button>
                 </article>
+                </Fragment>
               );
             })}
+            {/* The gap after the last shot, so appending reads as the same
+                gesture as inserting rather than a different button elsewhere. */}
+            {shots.length > 0 && (
+              <InsertShotDivider afterNumber={shots.length} total={shots.length} onInsert={() => composeInsert(shots.length)} />
+            )}
           </div>
           {shots.length === 0 && (
             <div className="rounded-2xl border border-dashed border-white/15 p-12 text-center text-zinc-500">

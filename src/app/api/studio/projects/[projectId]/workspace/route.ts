@@ -139,6 +139,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json(data)
     }
     if (body.action === "reorderShots") { await Promise.all((body.ids as string[]).map((id, order_index) => supabase.from("creator_shots").update({ order_index }).eq("id", id))); return NextResponse.json({ success: true }) }
+    if (body.action === "deleteShot") {
+      // A shot's number is its position, so a gap left behind renumbers nothing
+      // but leaves every later shot one index further out than its number. The
+      // survivors are compacted, which keeps "shot 9" meaning the ninth row.
+      const { error } = await supabase.from("creator_shots").delete().eq("id", body.shotId).eq("episode_id", body.episodeId)
+      if (error) throw error
+      const { data: remaining, error: readError } = await supabase
+        .from("creator_shots")
+        .select("id,order_index")
+        .eq("episode_id", body.episodeId)
+        .order("order_index", { ascending: true })
+      if (readError) throw readError
+      await Promise.all((remaining || [])
+        .map((shot, order_index) => shot.order_index === order_index
+          ? null
+          : supabase.from("creator_shots").update({ order_index }).eq("id", shot.id))
+        .filter(Boolean))
+      return NextResponse.json({ success: true })
+    }
     if (body.action === "saveMediaDraft") {
       const { data: current, error: currentError } = await supabase.from("creator_shots").select("metadata").eq("id", body.shotId).single(); if (currentError) throw currentError
       const metadata = { ...(current?.metadata || {}), [`${body.type}_generation`]: { prompt: body.prompt, model: body.model, reference_images: body.referenceImages || [], status: "requested", requested_at: new Date().toISOString() } }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState, type KeyboardEvent } from "react"
+import { useMemo, useRef, useState, type KeyboardEvent, type MutableRefObject } from "react"
 import { AtSign } from "lucide-react"
 import { findActiveEntityMention, findMentionedEntityIds, insertEntityMention, type MentionableEntity } from "@/lib/studio/entity-mentions"
 
@@ -13,6 +13,11 @@ type EntityMentionInputProps = {
   menuPlacement?: "top" | "bottom"
   onKeyDown?: (event: KeyboardEvent<HTMLTextAreaElement>) => void
   ariaLabel?: string
+  /**
+   * The field itself, for callers that write a draft into it and then need to
+   * put the caret where the user carries on typing.
+   */
+  textareaRef?: MutableRefObject<HTMLTextAreaElement | null>
 }
 
 const typeLabel: Record<MentionableEntity["type"], string> = {
@@ -21,7 +26,7 @@ const typeLabel: Record<MentionableEntity["type"], string> = {
   prop: "Asset",
 }
 
-export function EntityMentionInput({ value, onChange, entities, placeholder, className, menuPlacement = "bottom", onKeyDown, ariaLabel }: EntityMentionInputProps) {
+export function EntityMentionInput({ value, onChange, entities, placeholder, className, menuPlacement = "bottom", onKeyDown, ariaLabel, textareaRef: externalRef }: EntityMentionInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [caret, setCaret] = useState(value.length)
   const [activeIndex, setActiveIndex] = useState(0)
@@ -84,7 +89,10 @@ export function EntityMentionInput({ value, onChange, entities, placeholder, cla
   return (
     <div className="relative">
       <textarea
-        ref={textareaRef}
+        ref={(node) => {
+          (textareaRef as MutableRefObject<HTMLTextAreaElement | null>).current = node
+          if (externalRef) externalRef.current = node
+        }}
         value={value}
         onChange={(event) => {
           onChange(event.target.value)
