@@ -23,7 +23,10 @@ import { BadgeCheck, Check, ChevronRight, CornerDownRight, Loader2, Lock, Messag
  */
 
 export type RevisionTarget =
-  | { type: "shot"; id: string }
+  // A shot has two threads. The keyframe is frequently exactly right and the
+  // clip made from it is not — framing lands, motion drifts — and merging them
+  // makes the client write "the image is fine but the video is bad" every time.
+  | { type: "shot"; id: string; track: "image" | "video" }
   | { type: "entity"; id: string }
   | { type: "project" };
 
@@ -31,6 +34,7 @@ type Note = {
   id: string;
   shot_id: string | null;
   entity_id: string | null;
+  track: "image" | "video" | null;
   parent_id: string | null;
   author_id: string;
   body: string;
@@ -51,28 +55,32 @@ function when(iso: string) {
 }
 
 function queryFor(target: RevisionTarget) {
-  if (target.type === "shot") return `shotId=${target.id}`;
+  if (target.type === "shot") return `shotId=${target.id}&track=${target.track}`;
   if (target.type === "entity") return `entityId=${target.id}`;
   return "scope=project";
 }
 
 function bodyFor(target: RevisionTarget) {
-  if (target.type === "shot") return { shotId: target.id };
+  if (target.type === "shot") return { shotId: target.id, track: target.track };
   if (target.type === "entity") return { entityId: target.id };
   return {};
 }
 
-const PLACEHOLDER: Record<RevisionTarget["type"], string> = {
-  shot: "Leave a note on this shot…",
-  entity: "Leave a note on this asset…",
-  project: "Leave a note on the whole project…",
-};
+function placeholderFor(target: RevisionTarget) {
+  if (target.type === "shot") return target.track === "video" ? "What should change in this clip?" : "What should change in this frame?";
+  if (target.type === "entity") return "Leave a note on this asset…";
+  return "Leave a note on the whole project…";
+}
 
-const EMPTY: Record<RevisionTarget["type"], string> = {
-  shot: "No notes on this shot yet.",
-  entity: "No notes on this asset yet.",
-  project: "No notes on the project yet. Use this for anything that is not about one shot — pacing, music, the cut as a whole.",
-};
+function emptyFor(target: RevisionTarget) {
+  if (target.type === "shot") {
+    return target.track === "video"
+      ? "No notes on this clip yet. Motion, timing, performance — anything about how it moves."
+      : "No notes on this frame yet. Framing, lighting, likeness — anything about how it looks.";
+  }
+  if (target.type === "entity") return "No notes on this asset yet.";
+  return "No notes on the project yet. Use this for anything that is not about one shot — pacing, music, the cut as a whole.";
+}
 
 export function RevisionNotes({
   projectId,
@@ -220,7 +228,7 @@ export function RevisionNotes({
           {loading ? (
             <p className="text-[11px] text-zinc-500">Loading…</p>
           ) : threads.length === 0 ? (
-            <p className="text-[11px] leading-relaxed text-zinc-500">{EMPTY[target.type]}</p>
+            <p className="text-[11px] leading-relaxed text-zinc-500">{emptyFor(target)}</p>
           ) : (
             <div className="space-y-3">
               {threads.map((thread) => (
@@ -301,7 +309,7 @@ export function RevisionNotes({
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void post(draft); } }}
-              placeholder={PLACEHOLDER[target.type]}
+              placeholder={placeholderFor(target)}
               maxLength={5000}
               className="flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-[12px] text-zinc-200 outline-none focus:border-[#b9f42e]"
             />

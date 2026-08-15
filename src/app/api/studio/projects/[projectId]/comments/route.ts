@@ -23,6 +23,9 @@ import { enterpriseNotesActive } from "@/lib/enterprise"
 const targetSchema = {
   shotId: z.string().uuid().optional(),
   entityId: z.string().uuid().optional(),
+  // Which of a shot's two threads. Only a shot has two — an asset has one
+  // image, and a project note is about the cut.
+  track: z.enum(["image", "video"]).optional(),
 }
 
 const createSchema = z.object({
@@ -47,11 +50,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     let query = context.supabase
       .from("creator_shot_comments")
-      .select("id,shot_id,entity_id,parent_id,author_id,body,resolved_at,resolved_by,created_at")
+      .select("id,shot_id,entity_id,track,parent_id,author_id,body,resolved_at,resolved_by,created_at")
       .eq("project_id", projectId)
       .order("created_at", { ascending: true })
       .limit(500)
-    if (shotId) query = query.eq("shot_id", shotId)
+    if (shotId) {
+      query = query.eq("shot_id", shotId)
+      // A shot without a named track would return the still's notes and the
+      // clip's notes in one list, which is the merge this column exists to undo.
+      const track = request.nextUrl.searchParams.get("track")
+      query = query.eq("track", track === "video" ? "video" : "image")
+    }
     else if (entityId) query = query.eq("entity_id", entityId)
     // The project thread is the notes that name nothing else. Without both
     // filters it would also return every shot and entity note in the project.
@@ -100,6 +109,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (input.shotId && input.entityId) {
       return NextResponse.json({ error: "A note belongs to one thing, not two" }, { status: 400 })
     }
+    if (input.track && !input.shotId) {
+      return NextResponse.json({ error: "Only a shot has an image and a video thread" }, { status: 400 })
+    }
+    // A shot note always lands in one of the two threads; unnamed means the
+    // still, which is the panel a note is most often written from.
+    const track = input.shotId ? (input.track ?? "image") : null
 
     // The target has to belong to this project. Without this, a member of one
     // project could hang a note on any id they could guess and the denormalised
@@ -127,12 +142,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (parentId) {
       const { data: parent } = await context.supabase
         .from("creator_shot_comments")
-        .select("id,shot_id,entity_id,parent_id")
+        .select("id,shot_id,entity_id,track,parent_id")
         .eq("id", parentId)
         .eq("project_id", projectId)
         .maybeSingle()
       if (!parent) return NextResponse.json({ error: "The note you replied to no longer exists" }, { status: 404 })
-      if ((parent.shot_id ?? null) !== (input.shotId ?? null) || (parent.entity_id ?? null) !== (input.entityId ?? null)) {
+      if ((parent.shot_id ?? null) !== (input.shotId ?? null)
+        || (parent.entity_id ?? null) !== (input.entityId ?? null)
+        || (parent.track ?? null) !== track) {
         return NextResponse.json({ error: "That reply belongs to a different thread" }, { status: 400 })
       }
       // One level deep: a reply to a reply is folded onto the note that started
@@ -146,12 +163,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .insert({
         shot_id: input.shotId ?? null,
         entity_id: input.entityId ?? null,
+        track,
         project_id: projectId,
         author_id: context.user.id,
         parent_id: parentId ?? null,
         body: input.body,
       })
-      .select("id,shot_id,entity_id,parent_id,author_id,body,resolved_at,resolved_by,created_at")
+      .select("id,shot_id,entity_id,track,parent_id,author_id,body,resolved_at,resolved_by,created_at")
       .single()
     if (error) throw error
 

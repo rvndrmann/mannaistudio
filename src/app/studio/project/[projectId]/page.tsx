@@ -5870,11 +5870,16 @@ function ShotMediaWorkspace({
               )}
 
               {/* Revision notes live with the shot they are about, not in a
-                  project-wide inbox where nobody can tell which one is meant.
-                  Shown on the video panel as well as the image panel: a note
-                  about the clip is still a note about this shot. */}
+                  project-wide inbox where nobody can tell which one is meant —
+                  and the still and the clip keep separate threads, because a
+                  keyframe that landed can still produce a clip that did not. */}
               <div className="mb-4">
-                <RevisionNotes projectId={projectId} target={{ type: "shot", id: media.shot.id }} defaultOpen={false} />
+                <RevisionNotes
+                  projectId={projectId}
+                  target={{ type: "shot", id: media.shot.id, track: isImage ? "image" : "video" }}
+                  title={isImage ? "Revision notes · Image" : "Revision notes · Video"}
+                  defaultOpen={false}
+                />
               </div>
 
               {/* Inline Toolbar */}
