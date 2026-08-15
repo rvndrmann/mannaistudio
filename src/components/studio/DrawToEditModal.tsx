@@ -358,6 +358,17 @@ export default function DrawToEditModal({
     // stroke into hundreds of undo steps.
     if (drag.kind === "erase" && !drag.erased) return;
     let next = objectsRef.current;
+    if (drag.kind === "resize") {
+      // Dragging a text box narrower rewraps it, so its height — which is what
+      // the selection box and hit test are drawn from — has to be remeasured.
+      const canvas = drawCanvasRef.current;
+      next = next.map((item) => {
+        if (item.id !== drag.id || item.type !== "text" || !item.text || !canvas) return item;
+        const fontSize = item.fontSize || 32;
+        const lines = wrapText(item.text, item.width || canvas.width, textMeasurer(canvas, fontSize));
+        return { ...item, height: lines.length * fontSize * TEXT_LINE_HEIGHT };
+      });
+    }
     if (drag.kind === "draw") {
       next = next
         .map((item) => (item.type === "stroke" && item.id === drag.object.id
