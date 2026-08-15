@@ -60,7 +60,7 @@ import { abandonedRunSilentAfterMs } from "@/lib/studio/workflow-runs";
 import { videoPromptFor } from "@/lib/studio/shot-video-prompt";
 import { isVideoReferencePath } from "@/lib/studio/media-reference";
 import { calculateCreditCost, getUserCredits } from "@/lib/studio/credits";
-import { creditsToUsd, estimateProjectCost, projectCostSettings, summarizeProjectSpend, type ProjectSpend } from "@/lib/studio/cost-estimate";
+import { creditsToUsd, estimateProjectCost, projectCostSettings, summarizeSpendByEpisode, type SpendBreakdown } from "@/lib/studio/cost-estimate";
 import { VERIFIED_ASSET } from "@/lib/studio/asset-verification";
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
 import { parseVoiceToolCall, type VoiceToolCall } from "@/lib/studio/voice";
@@ -188,8 +188,8 @@ type Workspace = {
     revisions: Array<Record<string, unknown>>;
     generationJobs: Array<{ id: string; workflow_run_id?: string | null; shot_id?: string | null; type?: string; status: string; model?: string | null; prompt?: string | null; input_images?: string[] | null; result_url?: string | null; error?: string | null; settings?: Record<string, unknown> | null; target_snapshot?: Record<string, unknown>; verification?: Record<string, unknown>; estimated_credits?: number | null; credits_used?: number | null; credits_refunded?: number | null; created_at?: string; completed_at?: string | null }>;
     creditAccount: { balance: number; reserved: number } | null;
-    /** Every job this project ever ran, charged and netted of refunds. */
-    spend?: ProjectSpend;
+    /** Every job this project ever ran, netted of refunds and split by episode. */
+    spend?: SpendBreakdown;
     workflowRuns?: Array<{ id: string; session_id?: string | null; status: string; completed_at?: string | null; started_at?: string | null; updated_at?: string | null; objective?: string | null; summary?: Record<string, unknown>; error?: Record<string, unknown> | null }>;
   };
 };
@@ -2204,12 +2204,18 @@ function CostBar({ data }: { data: Workspace }) {
   const [open, setOpen] = useState(false);
   const settings = useMemo(() => projectCostSettings(data.project), [data.project]);
   const estimate = useMemo(() => estimateProjectCost(data.shots || [], settings), [data.shots, settings]);
-  // The server aggregates every job the project ever ran. The job list it also
-  // sends is capped at fifty, so it is only the fallback for an older response.
-  const spend = useMemo<ProjectSpend>(
-    () => data.production?.spend || summarizeProjectSpend(data.production?.generationJobs || []),
-    [data.production?.spend, data.production?.generationJobs],
+  // The server aggregates every job the project ever ran, split by episode. The
+  // job list it also sends is capped at fifty, so it is only the fallback for
+  // an older response.
+  const breakdown = useMemo<SpendBreakdown>(
+    () => data.production?.spend
+      || summarizeSpendByEpisode(data.production?.generationJobs || [], data.activeEpisode?.id),
+    [data.production?.spend, data.production?.generationJobs, data.activeEpisode?.id],
   );
+  // The estimate is built from this episode's shots, so the spend beside it has
+  // to be this episode's too, or a multi-episode project reads as though one
+  // episode cost several times its own estimate.
+  const spend = breakdown.episode;
   const money = (credits: number) => `$${creditsToUsd(credits).toFixed(2)}`;
   const row = "flex items-center justify-between gap-6 py-1.5";
   const cell = "text-[11px] text-zinc-400";
@@ -2288,7 +2294,10 @@ function CostBar({ data }: { data: Workspace }) {
             <p className="text-[11px] text-zinc-600">Whole episode from scratch: ⚡ {estimate.totalCredits.toLocaleString()}</p>
 
             <div className="mt-3 border-t border-white/10 pt-3">
-              <p className="text-xs font-bold uppercase tracking-wide text-zinc-300">Actual cost</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold uppercase tracking-wide text-zinc-300">Actual cost</p>
+                <p className="text-[11px] text-zinc-500">this episode</p>
+              </div>
               <div className={row}>
                 <span className={cell}>Charged · {spend.jobs} job{spend.jobs === 1 ? "" : "s"}</span>
                 <span className="text-[11px] font-bold text-zinc-100">⚡ {spend.charged.toLocaleString()}</span>
@@ -2307,6 +2316,29 @@ function CostBar({ data }: { data: Workspace }) {
               <p className="text-[11px] text-zinc-600">
                 Images ⚡ {spend.image.net.toLocaleString()} · Video ⚡ {spend.video.net.toLocaleString()}
               </p>
+              {/* How much of one clean pass this episode has been paid for.
+                  Anything above 1× is retries, and it is the number that
+                  explains a bill several times the estimate. */}
+              {spend.net > 0 && estimate.totalCredits > 0 && (
+                <p className="text-[11px] text-zinc-600">
+                  {(spend.net / estimate.totalCredits).toFixed(1)}× the from-scratch cost
+                  {estimate.video.totalSeconds > 0 && spend.video.net > 0
+                    ? ` · ${Math.round(spend.video.net / Math.max(1, estimate.video.unitCredits))}s of video billed against ${estimate.video.totalSeconds}s of runtime`
+                    : ""}
+                </p>
+              )}
+              {breakdown.project.net !== spend.net && (
+                <p className="mt-1 text-[11px] text-zinc-600">
+                  Whole project, all episodes: ⚡ {breakdown.project.net.toLocaleString()} across {breakdown.project.jobs} job{breakdown.project.jobs === 1 ? "" : "s"}
+                </p>
+              )}
+              {/* Jobs predating per-episode attribution cannot be assigned to
+                  one, so say so rather than under-report the episode. */}
+              {breakdown.unattributedJobs > 0 && (
+                <p className="text-[11px] text-zinc-600">
+                  ⚡ {breakdown.unattributedCredits.toLocaleString()} from {breakdown.unattributedJobs} earlier job{breakdown.unattributedJobs === 1 ? "" : "s"} predates per-episode tracking and counts only in the project total.
+                </p>
+              )}
               {spend.awaitingRefundCredits > 0 && (
                 <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] p-2 text-[11px] text-amber-300">
                   <AlertTriangle className="mt-px h-3 w-3 shrink-0" />

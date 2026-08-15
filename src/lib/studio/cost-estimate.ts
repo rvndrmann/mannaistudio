@@ -184,6 +184,7 @@ export type SpendJob = {
   estimated_credits?: number | null
   credits_used?: number | null
   credits_refunded?: number | null
+  episode_id?: string | null
 }
 
 export type SpendLeg = {
@@ -265,6 +266,40 @@ export function summarizeProjectSpend(jobs: SpendJob[]): ProjectSpend {
     failedJobs,
     awaitingRefund,
     awaitingRefundCredits,
+  }
+}
+
+export type SpendBreakdown = {
+  /** Spend on the episode the storyboard is showing. Compares to the estimate. */
+  episode: ProjectSpend
+  /** Spend across every episode in the project. */
+  project: ProjectSpend
+  /**
+   * Jobs from before generation was recorded per episode. They count in the
+   * project total and cannot count in any episode's, so the panel says so
+   * rather than quietly under-reporting the episode.
+   */
+  unattributedJobs: number
+  unattributedCredits: number
+}
+
+/**
+ * Spend for one episode, and for the project around it.
+ *
+ * The estimate is built from the shots of the episode on screen, so a spend
+ * figure covering every episode made the two incomparable: a three-episode
+ * project read as though one episode had cost three times its own estimate.
+ */
+export function summarizeSpendByEpisode(jobs: SpendJob[], episodeId: string | null | undefined): SpendBreakdown {
+  const attributed = jobs.filter((job) => job.episode_id)
+  const orphans = jobs.filter((job) => !job.episode_id)
+  const mine = episodeId ? attributed.filter((job) => job.episode_id === episodeId) : []
+  const orphanSpend = summarizeProjectSpend(orphans)
+  return {
+    episode: summarizeProjectSpend(mine),
+    project: summarizeProjectSpend(jobs),
+    unattributedJobs: orphans.length,
+    unattributedCredits: orphanSpend.net,
   }
 }
 

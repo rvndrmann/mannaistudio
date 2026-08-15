@@ -4,7 +4,7 @@ import { createServiceClient } from "@/lib/supabase/service"
 import { fetchStudioFeatureFlags } from "@/lib/studio/feature-flags"
 import { fetchDirectorWorkflows } from "@/lib/studio/workflows"
 import { failAbandonedRuns } from "@/lib/studio/workflow-runs"
-import { summarizeProjectSpend } from "@/lib/studio/cost-estimate"
+import { summarizeSpendByEpisode } from "@/lib/studio/cost-estimate"
 
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 
@@ -61,9 +61,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { data: baseGenerationJobs } = await supabase.from("creator_generation_jobs").select("id,workflow_run_id,shot_id,type,status,model,provider,prompt,input_images,result_url,error,settings,target_snapshot,verification,estimated_credits,credits_used,credits_refunded,created_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(50)
     // What the project has actually cost is every job it ever ran, not the
     // fifty most recent the storyboard renders, so the ledger is aggregated
-    // over the whole project separately from the job list.
-    const { data: spendRows } = await supabase.from("creator_generation_jobs").select("type,status,estimated_credits,credits_used,credits_refunded").eq("project_id", projectId)
-    const spend = summarizeProjectSpend(spendRows || [])
+    // over the whole project separately from the job list — and split by
+    // episode, because the estimate beside it is built from one episode's
+    // shots and the two have to be comparable.
+    const { data: spendRows } = await supabase.from("creator_generation_jobs").select("type,status,estimated_credits,credits_used,credits_refunded,episode_id").eq("project_id", projectId)
+    const spend = summarizeSpendByEpisode(spendRows || [], activeEpisode.id)
     let production = { series: [], scenes: [], referenceAssets: [], continuityIssues: [], revisions: [], generationJobs: baseGenerationJobs || [], creditAccount: null, workflowRuns: workflowRuns || [], spend } as Record<string, unknown>
     if (features.series_hierarchy_enabled || features.continuity_checks_enabled || features.generation_jobs_enabled) {
       const [{ data: series }, { data: scenes }, { data: referenceAssets }, { data: continuityIssues }, { data: revisions }, { data: generationJobs }, { data: creditAccount }] = await Promise.all([

@@ -4,6 +4,7 @@ import {
   estimateProjectCost,
   projectCostSettings,
   summarizeProjectSpend,
+  summarizeSpendByEpisode,
   type ShotCostInput,
 } from "./cost-estimate"
 
@@ -173,5 +174,52 @@ describe("summarizeProjectSpend", () => {
 
   it("is zero for a project that has generated nothing", () => {
     expect(summarizeProjectSpend([]).net).toBe(0)
+  })
+})
+
+/**
+ * The estimate is built from the shots of the episode on screen, so the spend
+ * beside it has to be that episode's. Aggregating the whole project made a
+ * three-episode production read as though one episode had cost three times its
+ * own estimate.
+ */
+describe("summarizeSpendByEpisode", () => {
+  const jobs = [
+    { type: "video", status: "completed", credits_used: 500, episode_id: "ep-1" },
+    { type: "image", status: "completed", credits_used: 20, episode_id: "ep-1" },
+    { type: "video", status: "completed", credits_used: 900, episode_id: "ep-2" },
+    { type: "video", status: "failed", credits_used: 300, credits_refunded: 300, episode_id: "ep-2" },
+  ]
+
+  it("counts only the episode on screen", () => {
+    const breakdown = summarizeSpendByEpisode(jobs, "ep-1")
+    expect(breakdown.episode.net).toBe(520)
+    expect(breakdown.episode.jobs).toBe(2)
+  })
+
+  it("still reports the project around it", () => {
+    const breakdown = summarizeSpendByEpisode(jobs, "ep-1")
+    expect(breakdown.project.net).toBe(1420)
+    expect(breakdown.project.jobs).toBe(4)
+    expect(breakdown.project.refunded).toBe(300)
+  })
+
+  it("keeps jobs that predate per-episode tracking out of every episode", () => {
+    // episode_id was added later, so older rows carry none. Counting them in
+    // whichever episode is open would attribute another episode's spend to it.
+    const breakdown = summarizeSpendByEpisode([
+      ...jobs,
+      { type: "video", status: "completed", credits_used: 750, episode_id: null },
+    ], "ep-1")
+    expect(breakdown.episode.net).toBe(520)
+    expect(breakdown.project.net).toBe(2170)
+    expect(breakdown.unattributedJobs).toBe(1)
+    expect(breakdown.unattributedCredits).toBe(750)
+  })
+
+  it("reports no episode spend when no episode is active", () => {
+    const breakdown = summarizeSpendByEpisode(jobs, null)
+    expect(breakdown.episode.net).toBe(0)
+    expect(breakdown.project.net).toBe(1420)
   })
 })
