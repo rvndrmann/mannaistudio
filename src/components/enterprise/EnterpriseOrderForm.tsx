@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { BadgeCheck, Loader2, Users } from "lucide-react"
+import { enterpriseCreditsFor } from "@/lib/enterprise"
 
 type EnterpriseRate = { usdPerMinute: number; currency: string; enabled: boolean }
 type EnterpriseOrder = {
@@ -14,6 +15,8 @@ type EnterpriseOrder = {
   brief: string
   admin_note: string
   created_at: string
+  credits_charged?: number
+  credits_refunded_at?: string | null
 }
 
 const statusCopy: Record<string, string> = {
@@ -37,6 +40,7 @@ export default function EnterpriseOrderForm({
 }) {
   const [rate, setRate] = useState<EnterpriseRate | null>(null)
   const [orders, setOrders] = useState<EnterpriseOrder[]>([])
+  const [creditBalance, setCreditBalance] = useState<number | null>(null)
   const [minutes, setMinutes] = useState("1")
   const [brief, setBrief] = useState("")
   const [contactName, setContactName] = useState("")
@@ -52,6 +56,7 @@ export default function EnterpriseOrderForm({
       if (!response.ok) throw new Error(json.error || "Could not load enterprise details")
       setRate(json.rate)
       setOrders(json.orders || [])
+      setCreditBalance(typeof json.creditBalance === "number" ? json.creditBalance : null)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load enterprise details")
     }
@@ -62,6 +67,10 @@ export default function EnterpriseOrderForm({
   const parsedMinutes = Number(minutes)
   const validMinutes = Number.isFinite(parsedMinutes) && parsedMinutes > 0
   const total = rate && validMinutes ? Math.round(parsedMinutes * rate.usdPerMinute * 100) / 100 : 0
+  // The same conversion the database performs, so the number on the button is
+  // the number that leaves the wallet.
+  const creditsNeeded = rate && validMinutes ? enterpriseCreditsFor(parsedMinutes, rate.usdPerMinute) : 0
+  const shortBy = creditBalance !== null && creditsNeeded > creditBalance ? creditsNeeded - creditBalance : 0
 
   const submit = async () => {
     if (!validMinutes) {
@@ -102,8 +111,8 @@ export default function EnterpriseOrderForm({
         <p className="mt-3 text-sm font-bold text-white">Request sent to the production team</p>
         <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-zinc-400">
           {placed.minutes} finished minute{placed.minutes === 1 ? "" : "s"} at ${placed.rate_usd_per_minute}/min —
-          estimated <strong className="text-[#b9f42e]">${Number(placed.total_usd).toLocaleString()}</strong>.
-          Nothing has been charged. The team will confirm scope and send a quote before any work starts.
+          <strong className="text-[#b9f42e]"> {(placed.credits_charged || 0).toLocaleString()} credits</strong> (${Number(placed.total_usd).toLocaleString()}) have been deducted.
+          The team picks the project up from here. If we cancel the order, the credits go straight back to your balance.
         </p>
         <button type="button" onClick={() => setPlaced(null)} className="mt-4 rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/[0.06]">
           Place another request
@@ -186,11 +195,19 @@ export default function EnterpriseOrderForm({
             ${total.toLocaleString()} <span className="text-xs font-medium text-zinc-500">{rate.currency}</span>
           </p>
           <p className="text-[11px] text-zinc-500">{validMinutes ? `${parsedMinutes} min × $${rate.usdPerMinute}/min` : `$${rate.usdPerMinute} per finished minute`}</p>
+          <p className="mt-1 text-[11px] font-semibold text-zinc-300">
+            ⚡ {creditsNeeded.toLocaleString()} credits
+            {creditBalance !== null && (
+              <span className={`ml-2 font-normal ${shortBy ? "text-red-300" : "text-zinc-500"}`}>
+                (balance {creditBalance.toLocaleString()}{shortBy ? ` — ${shortBy.toLocaleString()} short` : ""})
+              </span>
+            )}
+          </p>
         </div>
         <button
           type="button"
           onClick={submit}
-          disabled={busy || !validMinutes || !rate.enabled}
+          disabled={busy || !validMinutes || !rate.enabled || shortBy > 0}
           className="rounded-xl bg-[#b9f42e] px-5 py-3 text-sm font-black text-black transition hover:bg-[#a6de25] disabled:opacity-50"
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Request the team"}
@@ -198,7 +215,8 @@ export default function EnterpriseOrderForm({
       </div>
 
       <p className="text-[11px] leading-5 text-zinc-500">
-        This sends a request, not a payment. The team confirms scope and sends a quote before any work begins or any money changes hands.
+        Placing the order deducts the credits above and hands the project to our production team. Cancel it, or have us cancel it,
+        and every credit is returned to your balance.
       </p>
 
       {error && <p className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">{error}</p>}
@@ -212,6 +230,7 @@ export default function EnterpriseOrderForm({
                 <div>
                   <p className="text-xs font-semibold text-zinc-100">
                     {order.minutes} min · ${Number(order.total_usd).toLocaleString()}
+                    {order.credits_charged ? <span className="ml-2 font-normal text-zinc-500">⚡ {order.credits_charged.toLocaleString()}{order.credits_refunded_at ? " refunded" : ""}</span> : null}
                   </p>
                   <p className="text-[11px] text-zinc-500">{new Date(order.created_at).toLocaleDateString()}{order.admin_note ? ` · ${order.admin_note}` : ""}</p>
                 </div>

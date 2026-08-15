@@ -19,17 +19,22 @@ export async function GET() {
 
     const { data: rateRow } = await supabase.from("site_settings").select("value").eq("key", "enterprise_rate").maybeSingle()
     const rate = normalizeEnterpriseRate(rateRow?.value)
-    if (!user) return NextResponse.json({ rate, orders: [] })
+    if (!user) return NextResponse.json({ rate, orders: [], creditBalance: null })
+
+    // The order is paid for in credits, so the form has to be able to say
+    // whether this one can be afforded before the button is pressed.
+    const { data: profile } = await supabase.from("profiles").select("credits_balance").eq("id", user.id).maybeSingle()
+    const creditBalance = typeof profile?.credits_balance === "number" ? profile.credits_balance : 0
 
     const { data: orders, error } = await supabase
       .from("enterprise_orders")
-      .select("id,project_id,minutes,rate_usd_per_minute,total_usd,status,brief,admin_note,created_at")
+      .select("id,project_id,minutes,rate_usd_per_minute,total_usd,status,brief,admin_note,created_at,credits_charged,credits_refunded_at")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(25)
     if (error) throw error
 
-    return NextResponse.json({ rate, orders: orders || [] })
+    return NextResponse.json({ rate, orders: orders || [], creditBalance })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Could not load enterprise details" }, { status: 500 })
   }

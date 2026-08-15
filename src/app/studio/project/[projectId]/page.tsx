@@ -79,6 +79,7 @@ import {
 } from "@/lib/studio/camera-settings";
 import { CameraSettingsControl, CameraSettingsPicker } from "@/components/studio/CameraSettingsPicker";
 import { StyleDnaPanel } from "@/components/studio/StyleDnaPanel";
+import { ShotComments } from "@/components/studio/ShotComments";
 import { describeStyleDna, normalizeStyleDna, projectStyleDna, styleReferenceImagesOf, type StyleDna } from "@/lib/studio/style-dna";
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
 import { parseVoiceToolCall, type VoiceToolCall } from "@/lib/studio/voice";
@@ -5853,6 +5854,14 @@ function ShotMediaWorkspace({
                     heading="Look &amp; Feel"
                     blurb="Drop a reference whose look this shot alone should copy."
                   />
+                </div>
+              )}
+
+              {/* Revision notes live with the frame they are about, not in a
+                  project-wide inbox where nobody can tell which shot is meant. */}
+              {isImage && (
+                <div className="mb-4">
+                  <ShotComments projectId={projectId} shotId={media.shot.id} />
                 </div>
               )}
 
