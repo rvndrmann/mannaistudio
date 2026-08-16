@@ -2,6 +2,7 @@
 
 import Footer from "@/components/Footer"
 import Navbar from "@/components/Navbar"
+import HoverSoundVideo from "@/components/HoverSoundVideo"
 import { useAuth } from "@/components/auth/auth-provider"
 import { adminShowcase as mockShowcase } from "@/lib/data"
 import { createClient } from "@/lib/supabase/client"
@@ -273,12 +274,14 @@ export default function LandingPage() {
                                         className="pointer-events-none h-full w-full"
                                     />
                                 ) : heroFeatured?.videoUrl ? (
-                                    <video
+                                    <HoverSoundVideo
                                         src={`${heroFeatured.videoUrl}#t=0.1`}
-                                        muted
+                                        // The hero is the one clip that turns its own sound on.
+                                        // The showcase cards below stay hover-only, or the page
+                                        // plays three soundtracks at once.
+                                        autoSound
                                         loop
                                         autoPlay
-                                        playsInline
                                         preload="metadata"
                                         onLoadedMetadata={(event) => {
                                             const el = event.currentTarget
@@ -505,12 +508,10 @@ export default function LandingPage() {
                                             className="pointer-events-none h-full w-full"
                                         />
                                     ) : showcaseItem?.videoUrl ? (
-                                        <video
+                                        <HoverSoundVideo
                                             src={`${showcaseItem.videoUrl}#t=0.1`}
-                                            muted
                                             loop
                                             autoPlay
-                                            playsInline
                                             preload="metadata"
                                             className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
                                         />
