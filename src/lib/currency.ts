@@ -16,7 +16,7 @@
 // less than what the card is likely to be charged. Override with
 // NEXT_PUBLIC_INR_PER_USD when the rate drifts far enough to matter.
 
-const FALLBACK_INR_PER_USD = 88
+const FALLBACK_INR_PER_USD = 95.4
 
 export const INR_PER_USD = (() => {
   const configured = Number(process.env.NEXT_PUBLIC_INR_PER_USD)

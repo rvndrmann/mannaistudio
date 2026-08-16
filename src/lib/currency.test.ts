@@ -3,9 +3,9 @@ import { INR_PER_USD, formatInr, formatUsd, formatUsdWithInr, usdFromInr } from 
 
 describe("usdFromInr", () => {
   it("rounds up, so the price shown is never under what the card is charged", () => {
-    // A rate of 88 puts ₹999 at $11.35. Displaying $11 would understate the
-    // charge; the customer should never find the statement is higher than the
-    // number they agreed to.
+    // ₹999 does not divide evenly at any plausible rate. Rounding the leftover
+    // down would understate the charge; the customer should never find the
+    // statement is higher than the number they agreed to.
     expect(usdFromInr(999)).toBeGreaterThanOrEqual(999 / INR_PER_USD)
     expect(usdFromInr(2_999)).toBeGreaterThanOrEqual(2_999 / INR_PER_USD)
   })
