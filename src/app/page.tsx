@@ -28,14 +28,19 @@ import {
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 
+// The models named on the landing page. Kept in step with
+// src/lib/studio/generation-models.ts by hand — a visitor who reads a name here
+// and cannot find it in the picker has been told something untrue.
 const frontierModels = [
-    { name: "GPT-5.6 / Luna", category: "LLM Director" },
-    { name: "Gemini 2.5 Pro", category: "Reasoning" },
-    { name: "Seedance 2.0", category: "Video Motion" },
+    { name: "Seedance 2.5", category: "Video Motion", live: true },
+    { name: "Kling 3.0", category: "Cinematic Video" },
+    { name: "Kling O3", category: "Video Reasoning" },
     { name: "Veo 3.1", category: "Cinematic Video" },
-    { name: "Flux Pro 1.1", category: "Photoreal Images" },
-    { name: "Kling 2.5", category: "Video Gen" },
-    { name: "BytePlus V2", category: "Style Transfer" },
+    { name: "GPT Image 2", category: "Image Gen" },
+    { name: "Nano Banana 2 Pro", category: "Photoreal Images" },
+    { name: "Nano Banana 2", category: "Image Gen" },
+    { name: "GPT-5.6 / Luna", category: "LLM Director" },
+    { name: "Gemini 3.6 Flash", category: "Reasoning" },
 ]
 
 const pipelineSteps = [
@@ -329,16 +334,28 @@ export default function LandingPage() {
                             </span>
                             <h2 className="mt-6 text-3xl font-black tracking-tight md:text-4xl">Every Frontier AI Model</h2>
                             <p className="mt-4 text-base leading-7 text-white/60">
-                                All the leading frontier models under one prompt — GPT-5.6, Gemini 2.5 Pro & Flash, Seedance 2.0, Veo 3.1, Flux Pro, Kling 2.5, and BytePlus. Switch, compare, and combine in seconds.
+                                All the leading frontier models under one prompt — Seedance 2.5, the most advanced video model available today and live now on AI Director Hub, alongside Kling 3.0, Kling O3, Veo 3.1, GPT Image 2, and Nano Banana 2 Pro. Switch, compare, and combine in seconds.
                             </p>
 
                             {/* Model Badges Pills */}
                             <div className="mt-8 flex flex-wrap gap-2.5">
                                 {frontierModels.map((m) => (
-                                    <div key={m.name} className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[.04] px-3.5 py-2 text-xs font-bold transition hover:border-cyan-400/40">
-                                        <span className="h-2 w-2 rounded-full bg-cyan-400" />
+                                    <div
+                                        key={m.name}
+                                        className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition ${
+                                            m.live
+                                                ? "border-cyan-400/50 bg-cyan-400/[.08] hover:border-cyan-400"
+                                                : "border-white/10 bg-white/[.04] hover:border-cyan-400/40"
+                                        }`}
+                                    >
+                                        <span className={`h-2 w-2 rounded-full bg-cyan-400 ${m.live ? "animate-pulse" : ""}`} />
                                         <span>{m.name}</span>
                                         <span className="text-[10px] text-white/40">({m.category})</span>
+                                        {m.live && (
+                                            <span className="rounded-md bg-cyan-400 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-black">
+                                                Live
+                                            </span>
+                                        )}
                                     </div>
                                 ))}
                             </div>

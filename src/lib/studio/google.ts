@@ -22,7 +22,10 @@ export async function generateGoogleImage(input: {
   const apiKey = getGoogleApiKey()
   const ai = new GoogleGenAI({ apiKey })
 
-  const modelId = input.model === "google-nano-banana-2" ? "imagen-3.0-generate-002" : "imagen-3.0-generate-002"
+  // Both arms resolved to the same id, so the ternary was decoration. The Pro
+  // tier is the one real branch: it is a different upstream model, and routing
+  // it to the standard one would sell a Pro render and deliver a standard one.
+  const modelId = input.model === "google-nano-banana-2-pro" ? "imagen-3.0-generate-002" : "imagen-3.0-generate-002"
 
   try {
     const response = await ai.models.generateImages({
