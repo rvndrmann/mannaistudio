@@ -23,6 +23,7 @@ import { applyCameraSettings, cameraBlockForEntityType, projectCameraDefaults, r
 import { createBytePlusAsset } from "@/lib/studio/byteplus"
 import { VERIFIED_ASSET } from "@/lib/studio/asset-verification"
 import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
+import { trackGenerationActivation } from "@/lib/studio/activation"
 import { buildProjectStateSummary, loadProductionSnapshot } from "@/lib/studio/project-state-summary"
 import { computePipelineStage, withSkippedShots } from "@/lib/studio/pipeline"
 import type { DirectorTimelineBlock } from "@/lib/studio/timeline"
@@ -985,6 +986,12 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
       }).eq("id", generationJob.id)
       if (historyError) throw historyError
     }
+    await trackGenerationActivation({
+      supabase: input.context.supabase,
+      userId: input.context.user.id,
+      email: input.context.user.email,
+      sourceUrl: `https://www.aidirectorhub.com/studio/project/${input.projectId}`,
+    })
     const { data: signed } = await input.context.supabase.storage.from("creator-studio-media").createSignedUrl(path, 60 * 60)
     return {
       provider: "openai",
@@ -1143,6 +1150,15 @@ async function generateBulkEntityReferenceImages(
       }).eq("id", generationJob.id)
       creditsCharged += creditCost
       creditBalance = deduction.newBalance
+      // A batch generates several references at once, so several of these land
+      // together — the counter is incremented in the database precisely so
+      // concurrent callers cannot both come away thinking they were the first.
+      await trackGenerationActivation({
+        supabase: input.context.supabase,
+        userId: input.context.user.id,
+        email: input.context.user.email,
+        sourceUrl: `https://www.aidirectorhub.com/studio/project/${input.projectId}`,
+      })
       return { entityId: entity.id, entityName: entity.name, path, url: signedOutput?.signedUrl, prompt }
       } catch (error) {
         await refundGenerationCredits(input.context.user.id, creditCost, refundKey, `Refund: failed reference image for ${entity.name}`, generationJob.id, input.context.supabase)

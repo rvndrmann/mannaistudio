@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { getUserCredits } from "@/lib/studio/credits"
 import { isAdminUser, isMembershipActive } from "@/lib/membership"
 import { CREDIT_PACKAGES } from "@/lib/credits-packages"
+import { sendCapiEvent } from "@/lib/meta-capi"
 
 const topUpSchema = z.object({
   packageId: z.string().optional(),
@@ -71,6 +72,20 @@ export async function POST(request: NextRequest) {
         packageId,
         email: user.email || "",
       },
+    })
+
+    // The mid-funnel signal Meta can optimise against while actual purchase
+    // volume is still too low to train on. Keyed on the order ID so a retried
+    // request deduplicates rather than reporting a second checkout.
+    await sendCapiEvent({
+      eventName: "InitiateCheckout",
+      eventId: `checkout-${order.id}`,
+      email: user.email,
+      externalId: user.id,
+      value: priceInr,
+      currency: "INR",
+      sourceUrl: "https://www.aidirectorhub.com/billing",
+      customData: { content_name: `Credits: ${credits}`, content_type: "credits", content_ids: [packageId] },
     })
 
     return NextResponse.json({

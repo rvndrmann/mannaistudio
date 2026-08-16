@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from 'react'
 import { User } from '@supabase/supabase-js'
+import { claimOnce } from '@/lib/track-once'
 
 type AuthContextType = {
     user: User | null
@@ -28,23 +29,6 @@ function isFreshlyCreated(createdAt: string | undefined): boolean {
     const created = new Date(createdAt).getTime()
     if (!Number.isFinite(created)) return false
     return Date.now() - created < NEW_ACCOUNT_WINDOW_MS
-}
-
-/**
- * Records that this user's registration has been reported, returning false if it
- * already had been. Returns false when storage is unavailable too: this event
- * was over-firing badly, so losing the odd private-window signup is much
- * cheaper than feeding the optimiser duplicates again.
- */
-function claimRegistration(userId: string): boolean {
-    try {
-        const seen: string[] = JSON.parse(window.localStorage.getItem(TRACKED_KEY) || '[]')
-        if (seen.includes(userId)) return false
-        window.localStorage.setItem(TRACKED_KEY, JSON.stringify([...seen.slice(-19), userId]))
-        return true
-    } catch {
-        return false
-    }
 }
 
 function isSupabaseConfigured() {
@@ -77,7 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     event === 'SIGNED_IN' &&
                     signedInUser &&
                     isFreshlyCreated(signedInUser.created_at) &&
-                    claimRegistration(signedInUser.id)
+                    claimOnce(TRACKED_KEY, signedInUser.id)
                 ) {
                     import('@/lib/fbpixel')
                         .then(({ fbTrack }) => fbTrack('CompleteRegistration'))

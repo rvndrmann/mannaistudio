@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import Razorpay from 'razorpay'
 import { createClient } from '@/lib/supabase/server'
+import { sendCapiEvent } from '@/lib/meta-capi'
 
 const PRICE_PER_BID = 10 // ₹10 per bid (10 bids = ₹100)
 
@@ -39,6 +40,19 @@ export async function POST(req: Request) {
                 bids: String(bids),
                 email: user.email || '',
             },
+        })
+
+        // Bids fire Purchase on order.paid, so they report the start of the
+        // checkout too — otherwise the funnel has a paid step with nothing
+        // above it. The order ID keeps a retried request to one event.
+        await sendCapiEvent({
+            eventName: 'InitiateCheckout',
+            eventId: `checkout-${order.id}`,
+            email: user.email,
+            externalId: user.id,
+            value: bids * PRICE_PER_BID,
+            currency: 'INR',
+            customData: { content_name: `Bids: ${bids}`, content_type: 'bids' },
         })
 
         return NextResponse.json({

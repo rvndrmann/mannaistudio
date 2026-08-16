@@ -7,6 +7,7 @@ import { FalProviderError, getFalVideoTask, submitFalVideo } from "@/lib/studio/
 import { getGoogleVideoTask, GoogleProviderError, submitGoogleVideo } from "@/lib/studio/google"
 import { generationProvider, isVideoGenerationModel } from "@/lib/studio/generation-models"
 import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
+import { trackGenerationActivation } from "@/lib/studio/activation"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { projectVisualStyle } from "@/lib/studio/entity-image-workflow"
@@ -447,6 +448,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const verification = { status: "verified", checkedAt: new Date().toISOString(), checks, resultPath: storagePath }
     await context.supabase.from("creator_generation_jobs").update({ status: "completed", provider_response: task, result_url: storagePath, verification, completed_at: completedAt }).eq("id", job.id)
     if (job.workflow_run_id) await context.supabase.from("creator_workflow_runs").update({ status: "completed", summary: { generationJobs: 1, completed: 1, failed: 0, verified: 1 }, completed_at: completedAt }).eq("id", job.workflow_run_id)
+    // The clip is downloaded, stored, attached and verified. A later poll of the
+    // same job returns early above, so this runs once per finished video.
+    await trackGenerationActivation({
+      supabase: context.supabase,
+      userId: context.user.id,
+      email: context.user.email,
+      sourceUrl: `https://www.aidirectorhub.com/studio/project/${projectId}`,
+    })
     return NextResponse.json({ ...job, status: "completed", result_url: storagePath, verification, completed_at: completedAt })
   } catch (error) {
     return NextResponse.json({ error: studioErrorMessage(error, "Could not check video status") }, { status: error instanceof BytePlusProviderError || error instanceof FalProviderError ? error.status : studioErrorStatus(error) })

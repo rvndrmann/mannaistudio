@@ -10,6 +10,9 @@ import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
 import { checkEnrollment, enrollFreeCourse } from "@/lib/supabase-helpers"
 import { createClient } from "@/lib/supabase/client"
+import { fbTrack } from "@/lib/fbpixel"
+import { claimOnce } from "@/lib/track-once"
+import { formatInr, formatUsd } from "@/lib/currency"
 import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, hasPremiumAccess, isAdminUser } from "@/lib/membership"
 // @ts-ignore
 import confetti from "canvas-confetti"
@@ -75,6 +78,8 @@ function getGoogleDriveEmbedUrl(url: string) {
     }
 }
 
+const COURSE_START_KEY = 'adh:course-start-tracked'
+
 export default function CourseDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
     const { user, signInWithGoogle } = useAuth()
@@ -129,6 +134,17 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
         }
         load()
     }, [id])
+
+    // CourseStart: opening a course is the first thing past the landing page
+    // that means anything, so it is worth reporting — but only the first time
+    // this person opens this course. The effect below re-runs on every auth
+    // change and every course refetch, so the ledger, not the effect, is what
+    // makes it fire once.
+    useEffect(() => {
+        if (!course) return
+        if (!claimOnce(COURSE_START_KEY, `${user?.id || 'anon'}:${course.id}`)) return
+        fbTrack('CourseStart', { content_type: 'course', content_ids: [course.id], content_name: course.title })
+    }, [course, user?.id])
 
     const isFree = course?.price === "Free" || course?.price === "$0" || course?.price === 0 || course?.price === "0" || !course?.price
     // Courses are gated behind Pro membership. Trial members (active membership) keep access; everyone else must subscribe.
@@ -240,7 +256,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     </div>
                                     <div className="text-center space-y-2">
                                         <h3 className="text-xl font-bold">Membership Required</h3>
-                                        <p className="text-white/50 text-sm">Start Pro for ₹{activePlanPrice}/month to unlock paid courses</p>
+                                        <p className="text-white/50 text-sm">Start Pro for {formatUsd(activePlanPrice)}/month ({formatInr(activePlanPrice)}, billed by Razorpay) to unlock paid courses</p>
                                     </div>
                                     <button
                                         onClick={handleEnroll}
@@ -252,7 +268,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                         ) : (
                                             <ShoppingCart className="w-5 h-5" />
                                         )}
-                                        {enrollLoading ? 'Processing...' : `Start Pro ₹${activePlanPrice}/mo`}
+                                        {enrollLoading ? 'Processing...' : `Start Pro ${formatUsd(activePlanPrice)}/mo`}
                                     </button>
                                 </div>
                             ) : activeLessonYouTubeUrl ? (
@@ -305,7 +321,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                             <div className="glass-card p-6 rounded-2xl border border-primary/20 bg-primary/5 flex items-center justify-between">
                                 <div className="space-y-1">
                                     <h3 className="font-bold text-lg">Get Full Access with Pro</h3>
-                                    <p className="text-sm text-white/50">₹{activePlanPrice}/month • paid courses • 10 portfolio videos</p>
+                                    <p className="text-sm text-white/50">{formatUsd(activePlanPrice)}/month • paid courses • 10 portfolio videos</p>
                                 </div>
                                 <button
                                     onClick={handleEnroll}

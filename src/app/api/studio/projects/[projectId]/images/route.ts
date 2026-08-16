@@ -7,6 +7,7 @@ import { FalProviderError, generateFalImage } from "@/lib/studio/fal"
 import { generateGoogleImage, GoogleProviderError } from "@/lib/studio/google"
 import { generationProvider, isImageGenerationModel, type ImageGenerationModelId } from "@/lib/studio/generation-models"
 import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
+import { trackGenerationActivation } from "@/lib/studio/activation"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { openAIImageQuality, projectImageQuality, projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
@@ -390,6 +391,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (historyError) throw historyError
     }
     pendingRefund = null
+    // The image is stored and its job is recorded, so this generation really
+    // happened — the only point at which it counts as activation.
+    await trackGenerationActivation({
+      supabase: context.supabase,
+      userId: context.user.id,
+      email: context.user.email,
+      sourceUrl: `https://www.aidirectorhub.com/studio/project/${projectId}`,
+    })
     return NextResponse.json({
       path: storagePath,
       imageUrl: storagePath,

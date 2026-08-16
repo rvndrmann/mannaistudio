@@ -64,6 +64,9 @@ import { videoPromptFor } from "@/lib/studio/shot-video-prompt";
 import { buildInsertShotDraft } from "@/lib/studio/shot-intent";
 import { isVideoReferencePath } from "@/lib/studio/media-reference";
 import { calculateCreditCost, getUserCredits } from "@/lib/studio/credits";
+import { useAuth } from "@/components/auth/auth-provider";
+import { fbTrack } from "@/lib/fbpixel";
+import { claimOnce } from "@/lib/track-once";
 import { creditsToUsd, estimateProjectCost, projectCostSettings, summarizeSpendByEpisode, type SpendBreakdown } from "@/lib/studio/cost-estimate";
 import { VERIFIED_ASSET } from "@/lib/studio/asset-verification";
 import {
@@ -248,14 +251,25 @@ const blankScript = {
 // is stored once instead of per project.
 const directorModelStorageKey = "studio_director_model";
 
+const DIRECTOR_OPENED_KEY = "adh:director-opened-tracked";
+
 export default function WorkspacePage({
   params,
 }: {
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = use(params);
+  const { user } = useAuth();
   const [data, setData] = useState<Workspace | null>(null);
   const [tab, setTabState] = useState<string>("canvas");
+
+  // DirectorOpened: this person has a project open in the studio. The workspace
+  // re-renders constantly and this effect re-runs whenever auth resolves, so the
+  // ledger is what holds the event to once per person per project.
+  useEffect(() => {
+    if (!claimOnce(DIRECTOR_OPENED_KEY, `${user?.id || "anon"}:${projectId}`)) return;
+    fbTrack("DirectorOpened", { content_type: "project", content_ids: [projectId] });
+  }, [projectId, user?.id]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

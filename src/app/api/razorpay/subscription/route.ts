@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Razorpay from 'razorpay'
 import { createClient } from '@/lib/supabase/server'
 import { applyBillingOverrides, isBillingTierId, type BillingTierId } from '@/lib/billing-plans'
+import { sendCapiEvent } from '@/lib/meta-capi'
 
 // Creates a Razorpay subscription for the logged-in user against the chosen tier.
 export async function POST(request: NextRequest) {
@@ -52,6 +53,25 @@ export async function POST(request: NextRequest) {
                 email: user.email || '',
                 // Read back by the webhook to grant this tier's credits on each charge.
                 tier: tier.id,
+            },
+        })
+
+        // Purchases will be far too rare for a while for Meta to optimise
+        // against — it wants around fifty a week — so the start of a checkout is
+        // the mid-funnel signal we can point the ads at while volume builds.
+        // The subscription ID is stable, so a retried request reports once.
+        await sendCapiEvent({
+            eventName: 'InitiateCheckout',
+            eventId: `checkout-${subscription.id}`,
+            email: user.email,
+            externalId: user.id,
+            value: tier.priceInr,
+            currency: 'INR',
+            sourceUrl: 'https://www.aidirectorhub.com/billing',
+            customData: {
+                content_name: `Membership: AI Director Hub ${tier.name}`,
+                content_type: 'subscription',
+                content_ids: [tier.id],
             },
         })
 
