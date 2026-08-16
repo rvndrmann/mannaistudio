@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 import { Zap, Plus, X, Check, Loader2, CreditCard, AlertCircle } from "lucide-react"
 import { creditBalanceChangedEvent } from "@/lib/credit-balance-events"
 import { CREDIT_PACKAGES } from "@/lib/credits-packages"
+import { formatUsdWithInr } from "@/lib/currency"
 import CreditUsageTab from "@/components/credits/CreditUsageTab"
 import TeamTab from "@/components/credits/TeamTab"
 
@@ -198,7 +199,7 @@ export default function CreditBadge({ className }: { className?: string }) {
               {Object.entries(CREDIT_PACKAGES).map(([id, { credits, priceInr }]) => ({
                 id,
                 credits,
-                price: `₹${priceInr.toLocaleString("en-IN")} INR`,
+                price: formatUsdWithInr(priceInr),
                 popular: id === "2500",
               })).map((pkg) => (
                 <div

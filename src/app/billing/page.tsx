@@ -5,6 +5,7 @@ import EnterpriseOrderForm from "@/components/enterprise/EnterpriseOrderForm"
 import Navbar from "@/components/Navbar"
 import { useAuth } from "@/components/auth/auth-provider"
 import { orderedBillingTiers, type BillingTierId } from "@/lib/billing-plans"
+import { INR_PER_USD, formatInr, formatUsd, formatUsdWithInr } from "@/lib/currency"
 import {
   AlertCircle,
   BadgeCheck,
@@ -33,7 +34,8 @@ const faqs = [
   ["How do credits work?", "Credits are used when generating AI images and videos. Planning, script writing, workflow instructions, and chat guidance are included in your plan."],
   ["How do Razorpay subscriptions work?", "When you subscribe, Razorpay securely establishes a monthly recurring payment mandate. Your plan automatically renews each month, granting fresh credits to your account upon every successful charge."],
   ["Can I cancel my subscription anytime?", "Yes. You can cancel your subscription anytime directly from your billing dashboard. Your membership access and remaining credits stay active until the end of your current billing period."],
-  ["Can I buy extra credits anytime?", "Yes. You can purchase additional credits starting from ₹1,000 (1,000 credits at ₹1 per credit) up to any custom amount whenever your production needs grow."],
+  ["Can I buy extra credits anytime?", `Yes. You can purchase additional credits starting from 1,000 credits (${formatUsdWithInr(1000)}) up to any custom amount whenever your production needs grow.`],
+  ["Why is my card charged in rupees?", `Prices are shown in US dollars for convenience, but AI Director Hub bills through Razorpay, an Indian payment gateway, so the charge settles in rupees and that is the amount your statement will show. International cards are accepted. Your bank applies its own exchange rate, so the dollar total may differ by a few cents from the figure shown here (currently converted at ₹${INR_PER_USD} to the dollar).`],
 ]
 
 const billingHighlights = [
@@ -197,7 +199,7 @@ export default function BillingPage() {
     }
 
     if (amountInr < 1000) {
-      setSubError("Minimum purchase is ₹1,000 (1,000 credits).")
+      setSubError(`Minimum purchase is 1,000 credits (${formatUsdWithInr(1000)}).`)
       return
     }
 
@@ -415,8 +417,14 @@ export default function BillingPage() {
                 </div>
 
                 <div className="mt-7">
-                  <span className="text-5xl font-black">₹{tier.priceInr.toLocaleString()}</span>
+                  <span className="text-5xl font-black">{formatUsd(tier.priceInr)}</span>
                   <span className="ml-2 text-white/45">/ month</span>
+                  {/* Razorpay charges in rupees, and that is the amount that
+                      reaches the card statement — so it is named here rather
+                      than discovered at checkout. */}
+                  <p className="mt-2 text-xs text-white/40">
+                    Billed as {formatInr(tier.priceInr)} / month by Razorpay
+                  </p>
                 </div>
 
                 <button
@@ -465,8 +473,8 @@ export default function BillingPage() {
                 Buy Extra Generation Credits
               </h2>
               <p className="mt-2 max-w-xl text-sm leading-6 text-white/60">
-                Need more credits? Buy top-up credits anytime at <strong className="text-primary font-bold">₹1 per credit</strong>.
-                Minimum purchase is ₹1,000 (1,000 credits) — add as much as you need.
+                Need more credits? Buy top-up credits anytime — <strong className="text-primary font-bold">1,000 credits for {formatUsd(1000)}</strong>.
+                Minimum purchase is 1,000 credits — add as much as you need.
               </p>
             </div>
 
@@ -483,7 +491,7 @@ export default function BillingPage() {
                       : "border-white/10 bg-white/[.04] text-white hover:border-white/20"
                   }`}
                 >
-                  ₹{preset.toLocaleString()} ({preset.toLocaleString()} Cr)
+                  {formatUsd(preset)} ({preset.toLocaleString()} Cr)
                 </button>
               ))}
             </div>
@@ -492,7 +500,7 @@ export default function BillingPage() {
           <div className="mt-8 grid gap-4 rounded-2xl border border-white/10 bg-black/40 p-6 md:grid-cols-[1fr_auto]">
             <div className="flex flex-col gap-2">
               <label htmlFor="custom-credits" className="text-xs font-bold uppercase tracking-wider text-white/70">
-                Enter Amount (INR) — 1 Credit = ₹1 (Min ₹1,000)
+                Enter Amount — 1 credit per ₹1, minimum 1,000 (Razorpay bills in ₹)
               </label>
               <div className="relative flex items-center">
                 <span className="absolute left-4 text-lg font-black text-primary">₹</span>
@@ -509,6 +517,7 @@ export default function BillingPage() {
               </div>
               <span className="text-xs text-white/45">
                 Calculated Credits: <strong className="text-primary font-bold">{customCreditAmount.toLocaleString()} Credits</strong>
+                {customCreditAmount > 0 && <> — {formatUsdWithInr(customCreditAmount)}</>}
               </span>
             </div>
 
@@ -523,7 +532,7 @@ export default function BillingPage() {
                 ) : (
                   <>
                     <CreditCard className="h-5 w-5" />
-                    Buy {customCreditAmount.toLocaleString()} Credits (₹{customCreditAmount.toLocaleString()})
+                    Buy {customCreditAmount.toLocaleString()} Credits ({formatUsd(customCreditAmount)})
                   </>
                 )}
               </button>
@@ -649,7 +658,8 @@ export default function BillingPage() {
             {orderedBillingTiers.map((tier) => (
               <div key={tier.id}>
                 <h3 className="text-2xl font-black">{tier.name}</h3>
-                <p className="mt-3 text-white/70">₹{tier.priceInr.toLocaleString()}/mo.</p>
+                <p className="mt-3 text-white/70">{formatUsd(tier.priceInr)}/mo.</p>
+                <p className="text-xs text-white/40">Billed as {formatInr(tier.priceInr)}</p>
                 <button
                   disabled={loadingTier !== null}
                   onClick={() => handleSubscribe(tier.id)}

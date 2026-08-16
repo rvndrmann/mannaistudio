@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Zap, ArrowLeft, Check, Loader2, Sparkles, AlertCircle, CreditCard } from "lucide-react"
 import CreditUsageTab from "@/components/credits/CreditUsageTab"
+import { formatInr, formatUsd, formatUsdWithInr } from "@/lib/currency"
 import TeamTab from "@/components/credits/TeamTab"
 
 type CreditsTab = "topup" | "usage" | "team"
@@ -50,7 +51,7 @@ export default function CreditsPage() {
 
   const handleTopUp = async (amountInr: number) => {
     if (amountInr < 1000) {
-      setTopUpError("Minimum purchase is ₹1,000 (1,000 credits).")
+      setTopUpError(`Minimum purchase is 1,000 credits (${formatUsdWithInr(1000)}).`)
       return
     }
 
@@ -143,7 +144,7 @@ export default function CreditsPage() {
               ? "Every credit movement on your account, newest first."
               : tab === "team"
                 ? "Share credits with your team and manage who can spend them."
-                : "Buy credits at ₹1 per credit (min ₹1,000). Secure Razorpay payment integration."}
+                : `Buy credits from 1,000 (${formatUsdWithInr(1000)}). Secure Razorpay payment integration.`}
           </p>
         </div>
 
@@ -187,7 +188,7 @@ export default function CreditsPage() {
                 <div>
                   <span className="text-xs font-bold uppercase tracking-wider text-[#b9f42e]">Flexible Top-Up</span>
                   <h3 className="text-xl font-bold text-white mt-1">Buy Custom Credit Amount</h3>
-                  <p className="text-xs text-zinc-400 mt-1">1 Credit = ₹1 INR (Minimum ₹1,000)</p>
+                  <p className="text-xs text-zinc-400 mt-1">1 credit per ₹1, minimum 1,000 — {formatUsdWithInr(1000)}</p>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
@@ -202,7 +203,7 @@ export default function CreditsPage() {
                           : "border-white/10 bg-white/[0.04] text-white hover:border-white/20"
                       }`}
                     >
-                      ₹{preset.toLocaleString()}
+                      {formatUsd(preset)}
                     </button>
                   ))}
                 </div>
@@ -232,7 +233,7 @@ export default function CreditsPage() {
                   ) : (
                     <>
                       <CreditCard className="h-4 w-4" />
-                      Buy {customAmount.toLocaleString()} Credits (₹{customAmount.toLocaleString()})
+                      Buy {customAmount.toLocaleString()} Credits ({formatUsd(customAmount)})
                     </>
                   )}
                 </button>
@@ -242,10 +243,10 @@ export default function CreditsPage() {
             {/* Standard Packages Grid */}
             <div className="grid gap-4 sm:grid-cols-2">
               {[
-                { id: "1000", credits: 1000, price: "₹1,000 INR", popular: false },
-                { id: "2500", credits: 2500, price: "₹2,500 INR", popular: true },
-                { id: "5000", credits: 5000, price: "₹5,000 INR", popular: false },
-                { id: "10000", credits: 10000, price: "₹10,000 INR", popular: false },
+                { id: "1000", credits: 1000, price: formatUsdWithInr(1000), popular: false },
+                { id: "2500", credits: 2500, price: formatUsdWithInr(2500), popular: true },
+                { id: "5000", credits: 5000, price: formatUsdWithInr(5000), popular: false },
+                { id: "10000", credits: 10000, price: formatUsdWithInr(10000), popular: false },
               ].map((pkg) => (
                 <div
                   key={pkg.id}
