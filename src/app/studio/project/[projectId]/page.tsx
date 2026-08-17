@@ -3221,9 +3221,9 @@ function AssetWorkspace({
 
   return (
     <div className="fixed inset-0 z-50 bg-[#080908] text-white">
-      <div className="flex h-full flex-col lg:flex-row">
+      <div className="flex h-full flex-col overflow-y-auto overscroll-contain lg:flex-row lg:overflow-hidden">
         {/* Left Side Thumbnail History List */}
-        <aside className="no-scrollbar flex w-full shrink-0 gap-3 overflow-x-auto border-b border-white/10 bg-[#0b0c0b] p-3 lg:block lg:w-44 lg:overflow-y-auto lg:overflow-x-visible lg:border-b-0 lg:border-r lg:p-4">
+        <aside className="no-scrollbar order-1 flex max-h-32 w-full shrink-0 gap-3 overflow-x-auto border-b border-white/10 lg:max-h-none lg:order-none bg-[#0b0c0b] p-3 lg:block lg:w-44 lg:overflow-y-auto lg:overflow-x-visible lg:border-b-0 lg:border-r lg:p-4">
           <button
             onClick={close}
             className="touch-target flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 text-zinc-300 hover:bg-white/10 lg:mb-4"
@@ -3310,7 +3310,7 @@ function AssetWorkspace({
         </aside>
 
         {/* Main Content Area */}
-        <main className="flex min-w-0 flex-1 flex-col">
+        <main className="order-3 flex min-w-0 flex-1 flex-col lg:order-none">
           {/* Top Bar Actions */}
           <header className="flex h-16 items-center gap-3 border-b border-white/10 px-6 bg-[#0b0c0b]">
             {isCurrentlyChosen ? (
@@ -3455,7 +3455,7 @@ function AssetWorkspace({
         </main>
 
         {/* Right Sidebar Controls */}
-        <aside className="flex w-full shrink-0 flex-col border-t border-white/10 bg-[#151715] lg:w-[420px] lg:border-l lg:border-t-0">
+        <aside className="order-2 flex w-full shrink-0 flex-col border-t border-white/10 bg-[#151715] lg:order-none lg:w-[420px] lg:border-l lg:border-t-0">
           <div className="flex items-start justify-between p-6 border-b border-white/10">
             <div>
               <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">
@@ -5400,9 +5400,9 @@ function ShotMediaWorkspace({
 
   return (
     <div className="fixed inset-0 z-50 bg-[#080908] text-white">
-      <div className="flex h-full flex-col lg:flex-row">
+      <div className="flex h-full flex-col overflow-y-auto overscroll-contain lg:flex-row lg:overflow-hidden">
         {/* Left sidebar — Generation History */}
-        <aside className="relative flex max-h-32 w-full shrink-0 flex-row border-b border-white/10 bg-[#0b0c0b] lg:max-h-none lg:w-44 lg:flex-col lg:border-b-0 lg:border-r">
+        <aside className="relative order-1 flex max-h-32 w-full shrink-0 flex-row border-b border-white/10 lg:order-none bg-[#0b0c0b] lg:max-h-none lg:w-44 lg:flex-col lg:border-b-0 lg:border-r">
           <div className="sticky top-0 left-0 z-20 flex shrink-0 flex-col items-center justify-start gap-1 border-r border-white/10 bg-[#0b0c0b]/95 p-3 backdrop-blur-md lg:flex-row lg:justify-between lg:border-b lg:border-r-0">
             <button
               onClick={close}
@@ -5500,7 +5500,7 @@ function ShotMediaWorkspace({
         </aside>
 
         {/* Main preview area */}
-        <main className="flex min-w-0 flex-1 flex-col">
+        <main className="order-3 flex min-w-0 flex-1 flex-col lg:order-none">
           <header className="flex h-16 items-center gap-3 border-b border-white/10 px-6">
             {isCurrentlyChosen ? (
               <span className="flex items-center gap-1.5 rounded-lg border border-[#b9f42e]/50 bg-[#b9f42e]/20 px-4 py-2 text-xs font-semibold text-[#b9f42e]">
@@ -5690,7 +5690,7 @@ function ShotMediaWorkspace({
             </div>
           </div>
         </main>
-        <aside className="flex w-full shrink-0 flex-col border-t border-white/10 bg-[#151715] lg:w-[430px] lg:border-l lg:border-t-0">
+        <aside className="order-2 flex w-full shrink-0 flex-col border-t border-white/10 bg-[#151715] lg:order-none lg:w-[430px] lg:border-l lg:border-t-0">
           <div className="flex items-start justify-between p-6">
             <div>
               <h2 className="text-3xl font-semibold text-white">Scene {shotNumber}</h2>
