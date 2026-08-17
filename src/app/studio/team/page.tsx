@@ -6,7 +6,7 @@ import TeamTab from "@/components/credits/TeamTab"
 
 export default function StudioTeamPage() {
   return (
-    <div className="min-h-screen bg-[#070807] text-white">
+    <div className="studio-dense min-h-screen bg-[#070807] text-white">
       <header className="sticky top-0 z-10 border-b border-white/[0.06] bg-[#070807]/95 backdrop-blur">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
           <Link href="/studio" className="flex items-center gap-2 text-sm text-zinc-400 transition hover:text-white">

@@ -262,6 +262,10 @@ export default function WorkspacePage({
   const { user } = useAuth();
   const [data, setData] = useState<Workspace | null>(null);
   const [tab, setTabState] = useState<string>("canvas");
+  // Below xl the chat cannot sit beside the canvas, so it becomes a sheet the
+  // user raises over it. Hiding it outright — which is what this layout used to
+  // do — removes the Director from the product on every phone.
+  const [chatSheetOpen, setChatSheetOpen] = useState(false);
 
   // DirectorOpened: this person has a project open in the studio. The workspace
   // re-renders constantly and this effect re-runs whenever auth resolves, so the
@@ -945,7 +949,7 @@ export default function WorkspacePage({
     }
   };
   return (
-    <main className="h-screen overflow-hidden bg-black text-[#e8e6df]">
+    <main className="studio-dense flex h-[100dvh] flex-col overflow-hidden bg-black text-[#e8e6df]">
       {shareOpen && <ShareProjectDialog projectId={projectId} onClose={() => setShareOpen(false)} />}
       {activityOpen && <ProjectActivityDialog projectId={projectId} onClose={() => setActivityOpen(false)} />}
       {enterpriseOpen && (
@@ -956,7 +960,7 @@ export default function WorkspacePage({
           onPlaced={() => load(true)}
         />
       )}
-      <header className="relative z-50 flex h-12 items-center gap-2 border-b border-white/[0.06] bg-[#0a0a0a] px-3">
+      <header className="relative z-50 flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-white/[0.06] bg-[#0a0a0a] px-3 sm:h-12 sm:flex-nowrap">
         {(projectMenu || episodeMenu) && (
           <div
             className="fixed inset-0 z-40 bg-transparent"
@@ -987,7 +991,7 @@ export default function WorkspacePage({
           </Link>
         )}
         <Clapperboard className="hidden h-4 w-4 text-[#b9f42e] sm:block" />
-        <p className="truncate text-[13px] font-semibold text-zinc-100">{data.project.name}</p>
+        <p className="max-w-[34vw] truncate text-[13px] font-semibold text-zinc-100 sm:max-w-none">{data.project.name}</p>
         <span className="text-zinc-600">/</span>
 
         {/* Episode Selector Dropdown */}
@@ -1107,27 +1111,27 @@ export default function WorkspacePage({
             )}
           </div>
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-1.5 overflow-x-auto">
+        <div className="order-last flex w-full min-w-0 shrink flex-wrap items-center gap-1.5 border-t border-white/[0.06] px-1 pb-2 pt-2 sm:order-none sm:ml-auto sm:w-auto sm:flex-nowrap sm:overflow-x-auto sm:border-t-0 sm:p-0">
           {visibleTabs.map(([id, label, Icon], index) => (
             <div key={id} className="flex items-center gap-1.5">
               <button
                 onClick={() => setTab(id)}
-                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-bold transition ${tab === id ? "bg-[#b9f42e] text-black" : "bg-[#141414] text-zinc-300 hover:bg-[#1e1e1e]"}`}
+                className={`flex min-h-[38px] items-center gap-1.5 rounded-full px-3 py-2 text-[11px] font-bold transition duration-press ease-out active:scale-[0.97] sm:min-h-0 sm:px-2.5 sm:py-1.5 ${tab === id ? "bg-[#b9f42e] text-black" : "bg-[#141414] text-zinc-300 hover:bg-[#1e1e1e]"}`}
               >
                 <Icon className="h-3 w-3" />
                 <span>{label}</span>
               </button>
               {index < visibleTabs.length - 1 && (
-                <span className="text-[10px] text-zinc-700">·</span>
+                <span className="hidden text-[10px] text-zinc-700 sm:inline">·</span>
               )}
             </div>
           ))}
 
-          <span className="h-4 border-l border-white/[0.06] mx-0.5" />
+          <span className="mx-0.5 hidden h-4 border-l border-white/[0.06] sm:block" />
 
           {/* Hand the project to the AI Director Hub production team */}
           {data.project.enterprise_status ? (
-            <span className="flex items-center gap-1 rounded-full border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2.5 py-1.5 text-[11px] font-bold text-[#b9f42e]" title="This project is with the AI Director Hub production team">
+            <span className="hidden items-center gap-1 rounded-full border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2.5 py-1.5 text-[11px] font-bold text-[#b9f42e] sm:flex" title="This project is with the AI Director Hub production team">
               <BadgeCheck className="h-3 w-3" />
               <span>{data.project.enterprise_status === "delivered" ? "Delivered" : data.project.enterprise_status === "active" ? "Enterprise" : "Enterprise requested"}</span>
             </span>
@@ -1135,7 +1139,7 @@ export default function WorkspacePage({
             <button
               type="button"
               onClick={() => setEnterpriseOpen(true)}
-              className="flex items-center gap-1 rounded-full border border-[#b9f42e]/25 bg-[#b9f42e]/[0.07] px-2.5 py-1.5 text-[11px] font-bold text-[#b9f42e] transition hover:bg-[#b9f42e]/15"
+              className="hidden items-center gap-1 rounded-full border border-[#b9f42e]/25 bg-[#b9f42e]/[0.07] px-2.5 py-1.5 text-[11px] font-bold text-[#b9f42e] transition hover:bg-[#b9f42e]/15 sm:flex"
               title="Hire the AI Director Hub team to finish this project"
             >
               <BadgeCheck className="h-3 w-3" />
@@ -1144,7 +1148,7 @@ export default function WorkspacePage({
           )}
 
           {/* Team */}
-          <Link href="/studio/team" className="flex items-center gap-1 rounded-full bg-[#141414] px-2.5 py-1.5 text-[11px] font-bold text-zinc-300 hover:bg-[#1e1e1e] hover:text-white transition" title="Add and manage team members">
+          <Link href="/studio/team" className="hidden items-center gap-1 rounded-full bg-[#141414] px-2.5 py-1.5 text-[11px] font-semibold text-zinc-300 hover:bg-[#1e1e1e] hover:text-white transition sm:flex" title="Add and manage team members">
             <Users className="h-3 w-3" />
             <span>Team</span>
           </Link>
@@ -1156,7 +1160,17 @@ export default function WorkspacePage({
           </Link>
         </div>
       </header>
-      <div className="flex h-[calc(100vh-48px)]">
+      {!chatSheetOpen && (
+        <button
+          type="button"
+          onClick={() => setChatSheetOpen(true)}
+          className="fixed bottom-5 right-5 z-50 flex h-14 min-h-[44px] items-center gap-2 rounded-full bg-[#b9f42e] px-5 text-[13px] font-semibold text-black shadow-[0_10px_30px_-6px_rgba(185,244,46,0.5)] transition-transform duration-press ease-out active:scale-95 xl:hidden"
+        >
+          <Sparkles className="h-4 w-4" />
+          Director
+        </button>
+      )}
+      <div className="flex min-h-0 flex-1">
         <section className="min-w-0 flex-1 overflow-auto border-r border-white/[0.06]">
           <div
             className={`${tab === "timeline" ? "max-w-none p-0" : "mx-auto max-w-6xl p-4 lg:p-6"}`}
@@ -1261,7 +1275,33 @@ export default function WorkspacePage({
             {tab === "integrations" && <IntegrationsSettings />}
           </div>
         </section>
-        <aside className="hidden w-[40%] min-w-[360px] max-w-[520px] flex-col bg-[#0d0d0d] xl:flex">
+        {chatSheetOpen && (
+          <div
+            className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-[2px] xl:hidden"
+            onClick={() => setChatSheetOpen(false)}
+            aria-hidden="true"
+          />
+        )}
+        <aside
+          className={`${chatSheetOpen
+            ? "fixed inset-x-0 bottom-0 z-[60] flex h-[85dvh] rounded-t-xl border-t border-white/10 shadow-[0_-24px_60px_-12px_rgba(0,0,0,0.8)]"
+            : "hidden"} w-full min-w-0 flex-col bg-[#0d0d0d] xl:static xl:z-auto xl:flex xl:h-auto xl:w-[40%] xl:min-w-[360px] xl:max-w-[520px] xl:rounded-none xl:border-t-0 xl:shadow-none`}
+        >
+          {/* The grab handle only means anything while this is a sheet. The
+              row is tall enough to hold the 44px close button: when it was not,
+              the button hung past the bottom edge and the chat header — which
+              comes later in the DOM — painted straight over it. */}
+          <div className="relative flex h-12 shrink-0 items-center justify-center border-b border-white/[0.06] xl:hidden">
+            <span className="h-1 w-10 rounded-full bg-white/25" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={() => setChatSheetOpen(false)}
+              aria-label="Close the Director"
+              className="absolute right-2 top-1/2 z-20 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full text-zinc-300 transition-transform duration-press ease-out active:scale-90"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
           <div className="border-b border-white/[0.06] px-4 py-3">
             {chatSessionMenu && (
               <div
@@ -3181,16 +3221,16 @@ function AssetWorkspace({
 
   return (
     <div className="fixed inset-0 z-50 bg-[#080908] text-white">
-      <div className="flex h-full">
+      <div className="flex h-full flex-col lg:flex-row">
         {/* Left Side Thumbnail History List */}
-        <aside className="w-44 shrink-0 overflow-y-auto border-r border-white/10 bg-[#0b0c0b] p-4">
+        <aside className="no-scrollbar flex w-full shrink-0 gap-3 overflow-x-auto border-b border-white/10 bg-[#0b0c0b] p-3 lg:block lg:w-44 lg:overflow-y-auto lg:overflow-x-visible lg:border-b-0 lg:border-r lg:p-4">
           <button
             onClick={close}
-            className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 text-zinc-300 hover:bg-white/10"
+            className="touch-target flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 text-zinc-300 hover:bg-white/10 lg:mb-4"
           >
             <X className="h-5 w-5" />
           </button>
-          <label className="mb-4 grid aspect-[3/4] cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-xs text-zinc-400 hover:border-[#b9f42e] transition">
+          <label className="grid aspect-[3/4] w-20 shrink-0 cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-xs text-zinc-400 transition hover:border-[#b9f42e] lg:mb-4 lg:w-auto">
             +<br />Upload
             <input type="file" accept="image/*" className="hidden" onChange={(e) => uploadImage(e.target.files?.[0], "library")} />
           </label>
@@ -3415,7 +3455,7 @@ function AssetWorkspace({
         </main>
 
         {/* Right Sidebar Controls */}
-        <aside className="flex w-[420px] shrink-0 flex-col border-l border-white/10 bg-[#151715]">
+        <aside className="flex w-full shrink-0 flex-col border-t border-white/10 bg-[#151715] lg:w-[420px] lg:border-l lg:border-t-0">
           <div className="flex items-start justify-between p-6 border-b border-white/10">
             <div>
               <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">
@@ -4262,9 +4302,9 @@ function Storyboard({
           </button>
         </div>
       )}
-      <div className="overflow-x-auto">
-        <div className="min-w-[830px]">
-          <div className="grid grid-cols-[42px_minmax(210px,1.6fr)_150px_170px_170px] gap-3 px-4 pb-3 t-caption text-zinc-400">
+      <div className="lg:overflow-x-auto">
+        <div className="lg:min-w-[830px]">
+          <div className="hidden grid-cols-[42px_minmax(210px,1.6fr)_150px_170px_170px] gap-3 px-4 pb-3 t-caption text-zinc-400 lg:grid">
             <span>#</span>
             <span>Description</span>
             <span>Assets</span>
@@ -4328,7 +4368,7 @@ function Storyboard({
                     setDragArmedId(null);
                     if (moved) void moveShotTo(moved, index);
                   }}
-                  className={`relative grid grid-cols-[42px_minmax(210px,1.6fr)_150px_170px_170px] items-start gap-3 rounded-xl border bg-[#1a1c1b] p-3 transition ${rendering ? "border-[#b9f42e]/40 ring-1 ring-[#b9f42e]/20" : dropIndex === index ? "border-[#b9f42e] ring-1 ring-[#b9f42e]/40" : "border-white/10"} ${draggingId === shot.id ? "opacity-40" : ""} ${busyShot === shot.id ? "pointer-events-none opacity-60" : ""}`}
+                  className={`relative grid grid-cols-[34px_minmax(0,1fr)_minmax(0,1fr)] items-start gap-2 rounded-xl border bg-[#1a1c1b] p-2.5 transition lg:gap-3 lg:p-3 lg:grid-cols-[42px_minmax(210px,1.6fr)_150px_170px_170px] ${rendering ? "border-[#b9f42e]/40 ring-1 ring-[#b9f42e]/20" : dropIndex === index ? "border-[#b9f42e] ring-1 ring-[#b9f42e]/40" : "border-white/10"} ${draggingId === shot.id ? "opacity-40" : ""} ${busyShot === shot.id ? "pointer-events-none opacity-60" : ""}`}
                 >
                   {rendering && (
                     <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-0.5 overflow-hidden rounded-t-xl">
@@ -4398,12 +4438,12 @@ function Storyboard({
                       )}
                     </div>
                   </div>
-                  <div>
+                  <div className="col-span-2 lg:col-span-1">
                     <div className="flex items-center gap-2">
                       <span className="rounded bg-[#b9f42e]/15 px-1.5 py-0.5 text-xs font-bold text-[#b9f42e]">
                         {shot.duration_seconds}s
                       </span>
-                      <p className="font-bold">{shot.title}</p>
+                      <p className="text-[13px] font-bold leading-tight lg:text-base">{shot.title}</p>
                     </div>
                     {editingShot === shot.id ? (
                       <div className="mt-3 space-y-2">
@@ -4437,7 +4477,7 @@ function Storyboard({
                       </div>
                     ) : (
                       <>
-                        <div className="mt-3 text-sm leading-6 text-zinc-300">
+                        <div className="mt-2 text-[12.5px] leading-5 text-zinc-300 lg:mt-3 lg:text-sm lg:leading-6">
                           {/* A div, not a p: the mention chips carry a hover
                               preview containing block elements, which is
                               invalid inside a paragraph and breaks hydration. */}
@@ -4474,7 +4514,7 @@ function Storyboard({
                       </>
                     )}
                   </div>
-                  <div className="flex flex-wrap content-start gap-2">
+                  <div className="col-start-2 col-span-2 flex flex-wrap content-start gap-2 lg:col-auto lg:col-span-1 lg:col-start-auto">
                     {linked.map((entity) => (
                       <div key={entity.id} className="group/asset relative w-[62px]">
                         <AssetImage src={entityPrimaryReference(entity)} />
@@ -4538,7 +4578,7 @@ function Storyboard({
                       )}
                     </div>
                   </div>
-                  <div className="relative group">
+                  <div className="relative group col-start-2 lg:col-start-auto">
                     <button
                       onClick={() => setMedia({ shot, type: "image" })}
                       className="w-full overflow-hidden rounded-lg bg-[#292b2a] text-left transition hover:ring-2 hover:ring-[#b9f42e]"
@@ -4601,10 +4641,10 @@ function Storyboard({
 
                   <button
                     onClick={() => setMedia({ shot, type: "video" })}
-                    className="overflow-hidden rounded-lg bg-[#292b2a] text-left transition hover:ring-2 hover:ring-[#b9f42e]"
+                    className="col-start-3 overflow-hidden rounded-lg bg-[#292b2a] text-left transition hover:ring-2 hover:ring-[#b9f42e] lg:col-start-auto"
                   >
                     <Preview src={shot.video_url} label={renderingVideo ? "Generating video…" : "Generated video"} busy={renderingVideo} type="video" aspectRatio={shot.aspect_ratio || "9:16"} />
-                    <div className={`border-t border-white/10 px-2 py-2 text-xs ${renderingVideo ? "text-[#b9f42e]" : "text-zinc-400"}`}>
+                    <div className={`border-t border-white/10 px-1.5 py-1.5 text-[11px] lg:px-2 lg:py-2 lg:text-xs ${renderingVideo ? "text-[#b9f42e]" : "text-zinc-400"}`}>
                       {renderingVideo
                         ? "Generating…"
                         : shot.video_status === "completed"
@@ -5360,10 +5400,10 @@ function ShotMediaWorkspace({
 
   return (
     <div className="fixed inset-0 z-50 bg-[#080908] text-white">
-      <div className="flex h-full">
+      <div className="flex h-full flex-col lg:flex-row">
         {/* Left sidebar — Generation History */}
-        <aside className="relative flex w-44 shrink-0 flex-col border-r border-white/10 bg-[#0b0c0b]">
-          <div className="sticky top-0 z-20 flex items-center justify-between border-b border-white/10 bg-[#0b0c0b]/95 p-3 backdrop-blur-md">
+        <aside className="relative flex max-h-32 w-full shrink-0 flex-row border-b border-white/10 bg-[#0b0c0b] lg:max-h-none lg:w-44 lg:flex-col lg:border-b-0 lg:border-r">
+          <div className="sticky top-0 left-0 z-20 flex shrink-0 flex-col items-center justify-start gap-1 border-r border-white/10 bg-[#0b0c0b]/95 p-3 backdrop-blur-md lg:flex-row lg:justify-between lg:border-b lg:border-r-0">
             <button
               onClick={close}
               className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white transition hover:bg-white/20 hover:text-[#b9f42e]"
@@ -5373,13 +5413,13 @@ function ShotMediaWorkspace({
             </button>
             <span className="text-[10px] font-bold text-zinc-500">Esc</span>
           </div>
-          <div className="flex-1 overflow-y-auto p-3">
-            <label className="mb-3 grid aspect-[3/4] cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-xs text-zinc-400 hover:border-[#b9f42e] transition">
+          <div className="no-scrollbar flex flex-1 gap-3 overflow-x-auto p-3 lg:block lg:overflow-x-visible lg:overflow-y-auto">
+            <label className="grid aspect-[3/4] w-16 shrink-0 cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-xs text-zinc-400 transition hover:border-[#b9f42e] lg:mb-3 lg:w-auto">
               +<br />Upload
               <input type="file" accept="image/*,video/*" className="hidden" onChange={(e) => uploadReference(e.target.files?.[0])} />
             </label>
-            <p className="mb-2 text-[10px] font-bold text-zinc-600">Generations</p>
-            <div className="flex flex-col gap-2">
+            <p className="mb-2 hidden text-[10px] font-bold text-zinc-600 lg:block">Generations</p>
+            <div className="flex gap-2 lg:flex-col">
               {displayGenerations.map((gen) => {
                 const isActive = activeGenId === gen.id;
                 const isGenChosen = Boolean(gen.videoUrl && gen.videoUrl === currentActiveChosenSource);
@@ -5650,7 +5690,7 @@ function ShotMediaWorkspace({
             </div>
           </div>
         </main>
-        <aside className="flex w-[430px] shrink-0 flex-col border-l border-white/10 bg-[#151715]">
+        <aside className="flex w-full shrink-0 flex-col border-t border-white/10 bg-[#151715] lg:w-[430px] lg:border-l lg:border-t-0">
           <div className="flex items-start justify-between p-6">
             <div>
               <h2 className="text-3xl font-semibold text-white">Scene {shotNumber}</h2>

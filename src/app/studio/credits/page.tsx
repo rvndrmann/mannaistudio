@@ -114,7 +114,7 @@ export default function CreditsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-[#e8e6df]">
+    <div className="studio-dense min-h-screen bg-black text-[#e8e6df]">
       {/* Top Header */}
       <header className="border-b border-white/[0.06] bg-[#0a0a0a] px-6 py-4">
         <div className="mx-auto flex max-w-4xl items-center justify-between">

@@ -210,6 +210,17 @@
     display: none;
   }
 
+  /* A strip that scrolls sideways without showing a bar — tab rails, chip rows.
+     The content must still be reachable, so this only hides the scrollbar, it
+     never hides overflow. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   .text-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-lime-300 via-lime-400 to-emerald-300;
   }
@@ -224,6 +235,34 @@
 
 .animate-float {
   animation: float 6s ease-in-out infinite;
+}
+
+/* The studio is a dense professional tool, and 10-11px labels are legitimate
+   at a desk with a pointer. On a phone held at arm's length they are not
+   readable, and there are 226 of them. Rather than fork every call site, lift
+   the floor on small screens only: desktop density is untouched, and nothing
+   on a phone renders below 12px.
+
+   Scoped to the studio because that is where the dense scale lives; the
+   marketing pages already sit on the type scale. */
+@media (max-width: 767px) {
+  .studio-dense .text-\[9px\],
+  .studio-dense .text-\[10px\] {
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .studio-dense .text-\[11px\] {
+    font-size: 12.5px;
+    line-height: 1.35;
+  }
+  /* Tap targets are handled per-control rather than by a blanket rule here: a
+     global min-height on every button in a dense tool changes rows, toolbars
+     and grids that are hard to check, and the studio is behind auth. The
+     controls a phone user actually reaches for carry `.touch-target`. */
+  .studio-dense .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
 
 /* Accessibility. Reduced motion is not "no feedback" — it is a gentler,

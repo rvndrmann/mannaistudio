@@ -122,7 +122,7 @@ export default function StudioHome() {
   };
 
   return (
-    <main className="min-h-screen bg-[#070807] text-[#f5f2e5]">
+    <main className="studio-dense min-h-screen bg-[#070807] text-[#f5f2e5]">
       <TopBar onOpenCreate={() => handleCreateProject("Untitled production")} creating={creating} />
       <StudioRail />
       <section className="min-h-screen pl-[84px] pt-[84px] lg:pl-[156px]">
@@ -150,8 +150,8 @@ export default function StudioHome() {
           )}
 
           <section className="mt-6">
-            <div className="mb-5 flex items-center justify-between">
-              <h1 className="text-3xl font-bold tracking-tight">
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+              <h1 className="text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">
                 Recent projects
               </h1>
               <div className="flex items-center gap-3">
@@ -159,7 +159,7 @@ export default function StudioHome() {
                   type="button"
                   disabled={creating}
                   onClick={() => handleCreateProject("Untitled production")}
-                  className="ml-2 flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-3.5 py-1.5 text-xs font-semibold text-black hover:bg-[#a6de25] transition disabled:opacity-50"
+                  className="touch-target flex items-center gap-1.5 rounded-md bg-[#b9f42e] px-3.5 py-2 text-xs font-semibold text-black transition duration-press ease-out hover:bg-[#a6de25] active:scale-[0.97] disabled:opacity-50"
                 >
                   {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                   New Project
@@ -276,39 +276,40 @@ function ProjectGalleryCard({ project, onDelete }: { project: Project; onDelete?
 function TopBar({ onOpenCreate, creating }: { onOpenCreate: () => void; creating: boolean }) {
   return (
     <>
-      <header className="fixed inset-x-0 top-0 z-30 flex h-20 items-center justify-between border-b border-white/10 bg-[#090a09]/95 px-5 backdrop-blur">
-        <div className="flex items-center gap-3">
+      <header className="fixed inset-x-0 top-0 z-30 flex h-16 items-center justify-between gap-2 border-b border-white/10 bg-[#090a09]/95 px-3 backdrop-blur sm:h-20 sm:gap-3 sm:px-5">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <Link
             href="/"
-            className="flex items-center gap-2 rounded-xl bg-white/10 px-3.5 py-2 text-sm font-semibold text-zinc-300 transition hover:bg-white/20 hover:text-white"
+            className="touch-target flex shrink-0 items-center gap-2 rounded-md bg-white/10 px-3 py-2 text-sm font-semibold text-zinc-300 transition hover:bg-white/20 hover:text-white sm:px-3.5"
             title="Back to Home"
           >
             <ArrowLeft className="h-4 w-4" />
             <span className="hidden sm:inline">Back to Home</span>
           </Link>
-          <span className="h-6 border-r border-white/10" />
-          <div className="flex items-center gap-3 text-xl font-bold">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#b9f42e] text-black">
+          <span className="hidden h-6 border-r border-white/10 sm:block" />
+          <div className="flex min-w-0 items-center gap-2 truncate text-base font-semibold sm:gap-3 sm:text-xl">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#b9f42e] text-black sm:h-10 sm:w-10">
               <Clapperboard className="h-5 w-5" />
             </span>
-            AI Director <span className="text-[#b9f42e]">Studio</span>
+            <span className="hidden truncate sm:inline">AI Director&nbsp;</span>
+            <span className="text-[#b9f42e]">Studio</span>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           <button
             type="button"
             disabled={creating}
             onClick={onOpenCreate}
-            className="flex items-center gap-1.5 rounded-xl bg-[#b9f42e] px-4 py-2 text-xs font-semibold text-black hover:bg-[#a6de25] transition disabled:opacity-50"
+            className="touch-target flex items-center gap-1.5 rounded-md bg-[#b9f42e] px-3 py-2 text-xs font-semibold text-black transition duration-press ease-out hover:bg-[#a6de25] active:scale-[0.97] disabled:opacity-50 sm:px-4"
           >
             {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            <span>New Production</span>
+            <span className="hidden sm:inline">New Production</span>
           </button>
           <CreditBadge />
           <Link
             href="/studio/team"
             title="Add and manage team members"
-            className="flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+            className="touch-target hidden items-center gap-1.5 rounded-md border border-white/10 px-3 py-2 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white md:flex"
           >
             <Users className="h-4 w-4" />
             Team

@@ -111,7 +111,7 @@ ${mcpConfig}
   }
 
   return (
-    <main className="min-h-screen bg-[#0b0d0c] text-white">
+    <main className="studio-dense min-h-screen bg-[#0b0d0c] text-white">
       <Navbar />
 
       {isPaused && (
