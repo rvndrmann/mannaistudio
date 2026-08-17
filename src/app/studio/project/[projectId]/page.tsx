@@ -666,7 +666,7 @@ export default function WorkspacePage({
             <button
               type="button"
               onClick={() => void load()}
-              className="rounded-xl bg-[#b9f42e] px-4 py-2 text-sm font-bold text-black"
+              className="shrink-0 whitespace-nowrap rounded-lg bg-[#b9f42e] px-3.5 py-2 text-[12px] font-bold text-black transition duration-press ease-out active:scale-[0.97] lg:px-4 lg:text-sm"
             >
               Try again
             </button>
@@ -1177,7 +1177,7 @@ export default function WorkspacePage({
           >
             {/* Compact settings bar — visible on storyboard */}
             {tab === "storyboard" && (
-              <div className="mb-4 flex flex-wrap items-center gap-1.5">
+              <div className="no-scrollbar mb-3 flex items-center gap-1.5 overflow-x-auto pb-1 [&>*]:shrink-0 [&>*]:whitespace-nowrap lg:mb-4 lg:flex-wrap lg:overflow-x-visible lg:pb-0 lg:[&>*]:whitespace-normal">
                 <button
                   type="button"
                   onClick={() => setShowBasicSettings(true)}
@@ -1874,7 +1874,7 @@ function Script({
     }
   };
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 lg:space-y-5">
       <section className="border border-white/10 bg-[#0b0c0b] p-6 sm:p-9">
         <div className="mb-7 flex items-start justify-between gap-4">
           <p className="text-xs font-bold tracking-[.2em] text-[#b9f42e]">
@@ -1883,7 +1883,7 @@ function Script({
           <button
             onClick={submit}
             disabled={saving}
-            className="rounded-xl bg-[#b9f42e] px-4 py-2 text-sm font-bold text-black"
+            className="shrink-0 whitespace-nowrap rounded-lg bg-[#b9f42e] px-3.5 py-2 text-[12px] font-bold text-black transition duration-press ease-out active:scale-[0.97] lg:px-4 lg:text-sm"
           >
             {saving ? "Saving…" : "Save script"}
           </button>
@@ -4265,19 +4265,19 @@ function Storyboard({
     ? { ...media, shot: shots.find((shot) => shot.id === media.shot.id) || media.shot }
     : null;
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
+    <div className="space-y-4 lg:space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-2 lg:gap-3">
+        <div className="no-scrollbar flex gap-2 overflow-x-auto [&>*]:shrink-0 [&>*]:whitespace-nowrap lg:flex-wrap lg:overflow-x-visible lg:[&>*]:whitespace-normal">
           <Pill>▯ {"9:16"}</Pill>
           <Pill>◉ Cinematic</Pill>
           <Pill>↗ 720p</Pill>
-          <button className="rounded-lg bg-[#222423] px-3 py-2 text-sm text-zinc-300">
+          <button className="shrink-0 whitespace-nowrap rounded-lg bg-[#222423] px-2.5 py-1.5 text-[12px] text-zinc-300 lg:px-3 lg:py-2 lg:text-sm">
             Batch download
           </button>
         </div>
         <button
           onClick={() => setAdding(order.length)}
-          className="rounded-xl bg-[#b9f42e] px-4 py-2 text-sm font-bold text-black"
+          className="shrink-0 whitespace-nowrap rounded-lg bg-[#b9f42e] px-3.5 py-2 text-[12px] font-bold text-black transition duration-press ease-out active:scale-[0.97] lg:px-4 lg:text-sm"
         >
           + Add shot
         </button>
@@ -7737,7 +7737,7 @@ function RenderExportModal({
 
         <div className="p-6">
           {tab === "all" ? (
-            <div className="space-y-5">
+            <div className="space-y-4 lg:space-y-5">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="t-caption text-zinc-400">Quality</label>
