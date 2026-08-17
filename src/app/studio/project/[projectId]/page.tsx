@@ -362,7 +362,12 @@ export default function WorkspacePage({
     });
   }, []);
   const [chatSending, setChatSending] = useState(false);
-  const [streamingReply, setStreamingReply] = useState<{ content: string; status: string | null } | null>(null);
+  const [streamingReply, setStreamingReply] = useState<{
+    content: string;
+    status: string | null;
+    steps: Array<{ label: string; state: "running" | "done" | "failed" }>;
+    startedAt: number;
+  } | null>(null);
   const [resumedRun, setResumedRun] = useState(false);
   // Shots whose generation was just approved. The jobs exist server-side before
   // the next workspace load returns them, and the storyboard should say so the
@@ -424,6 +429,7 @@ export default function WorkspacePage({
     voiceState,
     streamingReply?.status,
     streamingReply?.content.length,
+    streamingReply?.steps.length,
     scrollToBottom,
   ]);
   useEffect(() => () => {
@@ -731,17 +737,40 @@ export default function WorkspacePage({
       let buffer = "";
       let json: Record<string, unknown> = {};
       let streamError = "";
-      setStreamingReply({ content: "", status: null });
+      setStreamingReply({ content: "", status: null, steps: [], startedAt: Date.now() });
 
       const handleEvent = (event: Record<string, unknown>) => {
         if (event.type === "text" && typeof event.delta === "string") {
-          setStreamingReply((current) => ({ status: null, content: (current?.content || "") + (event.delta as string) }));
-        } else if (event.type === "tool") {
-          const running = event.status === "running";
           setStreamingReply((current) => ({
-            content: current?.content || "",
-            status: running ? `${event.label}…` : event.status === "failed" ? `${event.label} failed` : `${event.label} done`,
+            steps: current?.steps || [],
+            startedAt: current?.startedAt || Date.now(),
+            status: null,
+            content: (current?.content || "") + (event.delta as string),
           }));
+        } else if (event.type === "tool") {
+          const label = String(event.label || "Working");
+          const state: "running" | "done" | "failed" =
+            event.status === "running" ? "running" : event.status === "failed" ? "failed" : "done";
+          setStreamingReply((current) => {
+            const steps = [...(current?.steps || [])];
+            // A tool reports twice, once starting and once finishing. The second
+            // report settles the line the first one added rather than adding a
+            // duplicate beneath it.
+            const open = steps.findIndex((step) => step.label === label && step.state === "running");
+            if (state === "running") {
+              if (open === -1) steps.push({ label, state });
+            } else if (open !== -1) {
+              steps[open] = { label, state };
+            } else {
+              steps.push({ label, state });
+            }
+            return {
+              content: current?.content || "",
+              startedAt: current?.startedAt || Date.now(),
+              status: state === "running" ? `${label}…` : current?.status || null,
+              steps,
+            };
+          });
         } else if (event.type === "proposal") {
           // Pull the card into view immediately rather than at the end of the run.
           void load(true);
@@ -6256,10 +6285,32 @@ function ChatRunStatus({ run }: { run?: ChatWorkflowRun }) {
   return <p className={`mt-2 t-caption ${alert ? "text-amber-300" : "text-emerald-300/80"}`}>{labels[run.status] || run.status.replaceAll("_", " ")}</p>;
 }
 
-function ThinkingBubble({ reply }: { reply?: { content: string; status: string | null } | null }) {
-  // Once text starts arriving the bubble becomes the reply itself, so the
-  // answer reads as it is written rather than appearing all at once.
-  const label = reply?.status || "AI Director is thinking";
+/**
+ * What the Director is doing while it is doing it.
+ *
+ * A run can take minutes, and for most of that the model is working through
+ * tools with nothing to say. Reporting only the newest step — which is what
+ * this did — left a single short line that changed every so often and never
+ * moved, and a line that does not move reads as a hang. The steps accumulate
+ * instead, so the panel grows as work happens and the chat scrolls with it.
+ */
+function ThinkingBubble({ reply }: { reply?: { content: string; status: string | null; steps?: Array<{ label: string; state: "running" | "done" | "failed" }>; startedAt?: number } | null }) {
+  const [elapsed, setElapsed] = useState(0);
+  const startedAt = reply?.startedAt;
+
+  useEffect(() => {
+    if (!startedAt) return;
+    const tick = () => setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+
+  const steps = reply?.steps || [];
+  // Before the first tool reports there is nothing concrete to show, so the
+  // header carries the waiting and the dots carry the liveness.
+  const label = reply?.status || (steps.length ? "Working" : "AI Director is thinking");
+
   return (
     <div className="mt-3 max-w-[90%] rounded-xl bg-[#1a1a1a] p-3 text-[13px] text-zinc-300">
       <div className="flex items-center gap-2">
@@ -6269,7 +6320,36 @@ function ThinkingBubble({ reply }: { reply?: { content: string; status: string |
           <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#b9f42e] [animation-delay:120ms]" />
           <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#b9f42e] [animation-delay:240ms]" />
         </span>
+        {/* A counter that keeps moving is the cheapest proof the run is alive
+            even during the long stretches when no tool reports anything. */}
+        {startedAt ? (
+          <span className="ml-auto font-mono text-[11px] tabular-nums text-zinc-600">
+            {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}
+          </span>
+        ) : null}
       </div>
+
+      {steps.length ? (
+        <ul className="mt-2.5 space-y-1.5" aria-live="polite">
+          {steps.map((step, index) => (
+            <li key={`${step.label}-${index}`} className="flex items-start gap-2 text-[12px] leading-5">
+              <span className="mt-0.5 shrink-0" aria-hidden="true">
+                {step.state === "running" ? (
+                  <Loader2 className="h-3 w-3 animate-spin text-[#b9f42e]" />
+                ) : step.state === "failed" ? (
+                  <AlertTriangle className="h-3 w-3 text-red-400" />
+                ) : (
+                  <Check className="h-3 w-3 text-[#b9f42e]" />
+                )}
+              </span>
+              <span className={step.state === "running" ? "text-zinc-200" : step.state === "failed" ? "text-red-300" : "text-zinc-500"}>
+                {step.label}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
       {reply?.content ? (
         <p className="mt-2 whitespace-pre-wrap leading-relaxed">
           {reply.content}
