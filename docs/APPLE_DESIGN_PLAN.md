@@ -4,6 +4,20 @@ Applying the `apple-design` skill (Apple's WWDC design talks, translated to web)
 AI Director Hub. Ordered so each phase is shippable on its own and later phases build
 on earlier ones.
 
+## Status as of 2026-08-18
+
+| Phase | State |
+| --- | --- |
+| 1 — Tokens | **Done.** `globals.css`, `tailwind.config.ts`, `src/lib/motion.ts`. |
+| 2 — Typography | **Done.** 160 `font-black` and 271 `uppercase` gone; type scale applied. |
+| 3 — Materials | **Partial.** Translucent chrome, scroll-edge masks and the `.material-*` classes are in. Stacked-sheet dimming is not. |
+| 4 — Motion | **Partial.** Press feedback, compositor-only transitions and springs are in. `transform-origin` anchoring on the studio modals is not. |
+| 5 — Gestures | **Not started.** Pointer capture, velocity handoff, momentum projection, rubber-banding. |
+| 6 — Accessibility | **Done.** All three media queries, plus 44px tap targets across the marketing pages and studio chrome. |
+
+See [`SESSION_HANDOFF_2026-08-18.md`](SESSION_HANDOFF_2026-08-18.md) for what shipped
+and what was left unverified.
+
 ## Audit baseline (measured 2026-08-17)
 
 | Signal | Count | Why it fights the Apple aesthetic |
