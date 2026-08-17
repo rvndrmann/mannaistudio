@@ -3226,16 +3226,16 @@ function AssetWorkspace({
         <aside className="no-scrollbar flex max-h-44 w-full shrink-0 gap-3 overflow-x-auto border-b border-white/10 lg:max-h-none bg-[#0b0c0b] p-3 lg:block lg:w-44 lg:overflow-y-auto lg:overflow-x-visible lg:border-b-0 lg:border-r lg:p-4">
           <button
             onClick={close}
-            className="touch-target flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 text-zinc-300 hover:bg-white/10 lg:mb-4"
+            className="touch-target flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 text-zinc-300 hover:bg-white/10 lg:mb-4 lg:h-10 lg:w-10"
           >
             <X className="h-5 w-5" />
           </button>
-          <label className="grid aspect-[3/4] w-20 shrink-0 cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-xs text-zinc-400 transition hover:border-[#b9f42e] lg:mb-4 lg:w-auto">
+          <label className="grid aspect-[3/4] w-[72px] shrink-0 cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-[11px] text-zinc-400 transition hover:border-[#b9f42e] lg:mb-4 lg:w-auto lg:text-xs">
             +<br />Upload
             <input type="file" accept="image/*" className="hidden" onChange={(e) => uploadImage(e.target.files?.[0], "library")} />
           </label>
-          <p className="mb-2 text-[10px] font-bold text-zinc-600">Asset Concept Gallery</p>
-          <div className="space-y-2.5">
+          <p className="mb-2 hidden text-[10px] font-bold text-zinc-600 lg:block">Asset Concept Gallery</p>
+          <div className="flex gap-2.5 lg:block lg:space-y-2.5">
             {assetAttempts.map((attempt) => {
               const isSel = selectedAttemptId === attempt.id;
               return (
@@ -3249,7 +3249,7 @@ function AssetWorkspace({
                     if (attempt.referenceImages.length) setReferences(attempt.referenceImages);
                     setGenerationError(attempt.status === "failed" ? attempt.error : null);
                   }}
-                  className={`block w-full overflow-hidden rounded-xl border-2 transition text-left ${
+                  className={`block w-[72px] shrink-0 overflow-hidden rounded-xl border-2 transition text-left lg:w-full ${
                     isSel ? "border-white/60" : "border-white/10 hover:border-white/25"
                   }`}
                 >
@@ -3288,7 +3288,7 @@ function AssetWorkspace({
                       setSelected(index);
                       setGenerationError(null);
                     }}
-                    className={`block w-full overflow-hidden rounded-xl border-2 transition text-left ${
+                    className={`block w-[72px] shrink-0 overflow-hidden rounded-xl border-2 transition text-left lg:w-full ${
                       isChosen
                         ? "border-[#b9f42e] ring-2 ring-[#b9f42e]/40"
                         : isSel
@@ -3298,8 +3298,8 @@ function AssetWorkspace({
                   >
                     <AssetImage src={image} />
                     {isChosen && (
-                      <span className="absolute left-1.5 top-1.5 rounded-md bg-[#b9f42e] px-1.5 py-0.5 t-caption text-black shadow">
-                        ✓ CHOSEN
+                      <span className="absolute left-1 top-1 rounded-md bg-[#b9f42e] px-1 py-0.5 text-[10px] font-bold leading-none text-black shadow lg:left-1.5 lg:top-1.5 lg:px-1.5">
+                        ✓<span className="hidden lg:inline"> CHOSEN</span>
                       </span>
                     )}
                   </button>
@@ -5446,7 +5446,7 @@ function ShotMediaWorkspace({
                         if (gen.status === "failed") setGenerationError(gen.error);
                         else setGenerationError(null);
                       }}
-                      className={`group relative block w-20 shrink-0 overflow-hidden rounded-xl border-2 transition text-left lg:w-full ${
+                      className={`group relative block w-[72px] shrink-0 overflow-hidden rounded-xl border-2 transition text-left lg:w-full ${
                         isGenChosen
                           ? "border-[#b9f42e] ring-2 ring-[#b9f42e]/40"
                           : isActive
@@ -5479,8 +5479,8 @@ function ShotMediaWorkspace({
 
                       {/* Chosen Badge */}
                       {isGenChosen && (
-                        <span className="absolute right-1.5 top-1.5 rounded-md bg-[#b9f42e] px-1.5 py-0.5 t-caption text-black shadow-md z-10">
-                          ✓ CHOSEN
+                        <span className="absolute right-1 top-1 z-10 rounded-md bg-[#b9f42e] px-1 py-0.5 text-[10px] font-bold leading-none text-black shadow-md lg:right-1.5 lg:top-1.5 lg:px-1.5">
+                          ✓<span className="hidden lg:inline"> CHOSEN</span>
                         </span>
                       )}
 
