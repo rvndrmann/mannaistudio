@@ -109,7 +109,7 @@ export default function ShareProjectDialog({ projectId, onClose }: { projectId: 
             )}
 
             <div className="mt-5">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Shared with</p>
+              <p className="t-caption text-zinc-500">Shared with</p>
               {!shares.length ? (
                 <p className="mt-2 text-xs text-zinc-500">Only you can open this project.</p>
               ) : (

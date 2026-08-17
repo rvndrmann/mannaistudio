@@ -31,8 +31,8 @@ export function IntegrationsSettings() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e] uppercase">System Integrations & API Credentials</p>
-        <h1 className="mt-1 text-3xl font-black text-white">Integrations & API Settings</h1>
+        <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">System Integrations & API Credentials</p>
+        <h1 className="mt-1 text-3xl font-semibold text-white">Integrations & API Settings</h1>
         <p className="mt-1 text-sm text-zinc-400">Configure third-party API credentials, OAuth tokens, and permissions for social media publishing and advertising.</p>
       </div>
 
@@ -44,7 +44,7 @@ export function IntegrationsSettings() {
           { key: "competitor", title: "COMPETITOR DATA SOURCES" },
         ].map((sec) => (
           <div key={sec.key} className="rounded-2xl border border-white/10 bg-[#161817] p-6 shadow-xl space-y-4">
-            <h2 className="text-sm font-bold text-[#b9f42e] uppercase tracking-wider">{sec.title}</h2>
+            <h2 className="text-sm font-bold text-[#b9f42e]">{sec.title}</h2>
 
             <div className="space-y-3">
               {mockIntegrations.filter((i) => i.category === sec.key).map((int) => (
@@ -55,7 +55,7 @@ export function IntegrationsSettings() {
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <span className={`rounded-md px-2.5 py-1 text-[10px] font-bold uppercase ${int.status === "connected" ? "bg-green-500/20 text-green-400" : int.status === "configured" ? "bg-blue-500/20 text-blue-400" : int.status === "permission_required" ? "bg-yellow-500/20 text-yellow-400" : "bg-zinc-500/20 text-zinc-400"}`}>
+                    <span className={`rounded-md px-2.5 py-1 text-[10px] font-bold  ${int.status === "connected" ? "bg-green-500/20 text-green-400" : int.status === "configured" ? "bg-blue-500/20 text-blue-400" : int.status === "permission_required" ? "bg-yellow-500/20 text-yellow-400" : "bg-zinc-500/20 text-zinc-400"}`}>
                       {int.status.replace("_", " ")}
                     </span>
 

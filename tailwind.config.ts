@@ -44,9 +44,20 @@ const config: Config = {
         },
       },
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        sm: "var(--radius-sm)",
+        md: "var(--radius-md)",
+        lg: "var(--radius-lg)",
+        xl: "var(--radius-xl)",
+      },
+      transitionDuration: {
+        press: "120ms",
+        state: "240ms",
+        surface: "400ms",
+      },
+      transitionTimingFunction: {
+        // Decelerating: fast to start so the response feels immediate, easing
+        // out so it settles rather than stopping dead.
+        out: "cubic-bezier(0.22, 1, 0.36, 1)",
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",

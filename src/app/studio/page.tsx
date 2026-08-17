@@ -130,13 +130,13 @@ export default function StudioHome() {
           {!user && (
             <div className="mx-auto my-8 max-w-2xl rounded-2xl border border-[#b9f42e]/30 bg-[#b9f42e]/[0.05] p-8 text-center">
               <Sparkles className="mx-auto h-10 w-10 text-[#b9f42e] mb-3" />
-              <h2 className="text-2xl font-black text-white">Sign In to Access Studio</h2>
+              <h2 className="text-2xl font-semibold text-white">Sign In to Access Studio</h2>
               <p className="mt-2 text-sm text-zinc-400">
                 Sign in with Google to create AI projects, generate videos, and chat with your AI Director Employee.
               </p>
               <button
                 onClick={signInWithGoogle}
-                className="mt-6 rounded-xl bg-[#b9f42e] px-8 py-3.5 text-sm font-black text-black hover:bg-[#a5de25] transition"
+                className="mt-6 rounded-xl bg-[#b9f42e] px-8 py-3.5 text-sm font-semibold text-black hover:bg-[#a5de25] transition"
               >
                 Sign In with Google
               </button>
@@ -159,7 +159,7 @@ export default function StudioHome() {
                   type="button"
                   disabled={creating}
                   onClick={() => handleCreateProject("Untitled production")}
-                  className="ml-2 flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-3.5 py-1.5 text-xs font-black text-black hover:bg-[#a6de25] transition disabled:opacity-50"
+                  className="ml-2 flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-3.5 py-1.5 text-xs font-semibold text-black hover:bg-[#a6de25] transition disabled:opacity-50"
                 >
                   {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                   New Project
@@ -299,7 +299,7 @@ function TopBar({ onOpenCreate, creating }: { onOpenCreate: () => void; creating
             type="button"
             disabled={creating}
             onClick={onOpenCreate}
-            className="flex items-center gap-1.5 rounded-xl bg-[#b9f42e] px-4 py-2 text-xs font-black text-black hover:bg-[#a6de25] transition disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-xl bg-[#b9f42e] px-4 py-2 text-xs font-semibold text-black hover:bg-[#a6de25] transition disabled:opacity-50"
           >
             {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             <span>New Production</span>

@@ -66,7 +66,7 @@ export default function RootLayout({
                         src={`https://www.facebook.com/tr?id=${FB_PIXEL_ID}&ev=PageView&noscript=1`}
                         alt="" />
                 </noscript>
-                <div className="fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,rgba(196,245,43,0.06),transparent)] transition-all pointer-events-none" />
+                <div className="fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,rgba(196,245,43,0.06),transparent)] transition pointer-events-none" />
                 <AuthProvider>
                     {children}
                 </AuthProvider>

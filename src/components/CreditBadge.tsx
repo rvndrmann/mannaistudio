@@ -212,7 +212,7 @@ export default function CreditBadge({ className }: { className?: string }) {
                     <div className="flex items-center gap-2">
                       <span className="font-bold">{pkg.credits.toLocaleString()} Credits</span>
                       {pkg.popular && (
-                        <span className="rounded-md bg-[#b9f42e] px-2 py-0.5 text-[10px] font-black uppercase text-black">
+                        <span className="rounded-md bg-[#b9f42e] px-2 py-0.5 t-caption text-black">
                           Popular
                         </span>
                       )}

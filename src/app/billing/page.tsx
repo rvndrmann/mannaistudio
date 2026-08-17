@@ -268,18 +268,18 @@ export default function BillingPage() {
 
       <section className="px-4 pt-28 md:px-6">
         <div className="mx-auto max-w-[1540px] overflow-hidden rounded-[28px] border border-pink-500/25 bg-[radial-gradient(circle_at_82%_40%,rgba(255,0,102,.34),transparent_28%),linear-gradient(135deg,#33101f,#171010_58%,#260817)] p-8 md:p-12">
-          <div className="inline-flex items-center gap-2 rounded-lg bg-[#ff0a63] px-3 py-1.5 text-xs font-black uppercase italic text-white">
+          <div className="inline-flex items-center gap-2 rounded-lg bg-[#ff0a63] px-3 py-1.5 text-xs font-semibold italic text-white">
             <Sparkles className="h-4 w-4 fill-white" />
             Launch pricing
           </div>
-          <h1 className="mt-8 max-w-5xl text-4xl font-black uppercase leading-tight tracking-tight md:text-6xl">
+          <h1 className="mt-8 max-w-5xl text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
             Hire your AI Director Employee for images, video, storyboard, and full workflow.
           </h1>
           <p className="mt-5 max-w-3xl text-lg font-medium text-white/55">
             Add a dedicated AI Creative Employee to your studio. Let the AI Director manage script writing, asset continuity, storyboard creation, image generation, and video production.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/studio" className="rounded-2xl bg-white px-7 py-4 font-black text-black transition hover:bg-white/90">
+            <Link href="/studio" className="rounded-2xl bg-white px-7 py-4 font-semibold text-black transition hover:bg-white/90">
               Open Studio
             </Link>
           </div>
@@ -293,7 +293,7 @@ export default function BillingPage() {
             <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-primary px-3 py-1 text-xs font-black uppercase text-black">
+                  <span className="rounded-full bg-primary px-3 py-1 text-xs font-semibold text-black">
                     Active Subscription
                   </span>
                   <span className="text-xs font-mono text-white/50">
@@ -301,7 +301,7 @@ export default function BillingPage() {
                   </span>
                 </div>
 
-                <h2 className="mt-4 text-2xl font-black md:text-3xl">Your Monthly AI Director Membership</h2>
+                <h2 className="mt-4 text-2xl font-semibold md:text-3xl">Your Monthly AI Director Membership</h2>
 
                 <div className="mt-4 flex flex-wrap gap-6 text-xs font-bold text-white/70">
                   {subscription.createdAt && (
@@ -324,7 +324,7 @@ export default function BillingPage() {
                   <button
                     disabled={cancelLoading}
                     onClick={handleCancelSubscription}
-                    className="flex items-center gap-2 rounded-2xl border border-red-500/40 bg-red-500/10 px-6 py-3.5 text-xs font-black text-red-300 transition hover:bg-red-500/20 disabled:opacity-50"
+                    className="flex items-center gap-2 rounded-2xl border border-red-500/40 bg-red-500/10 px-6 py-3.5 text-xs font-semibold text-red-300 transition hover:bg-red-500/20 disabled:opacity-50"
                   >
                     {cancelLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin text-red-300" />
@@ -346,7 +346,7 @@ export default function BillingPage() {
       <section className="mx-auto max-w-[1200px] px-4 py-16 md:px-6">
         <div className="mb-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h2 className="text-4xl font-black tracking-tight md:text-6xl">Upgrade your plan</h2>
+            <h2 className="text-4xl font-semibold tracking-tight md:text-6xl">Upgrade your plan</h2>
             <p className="mt-3 text-white/45">Choose the monthly plan that matches your AI production volume.</p>
           </div>
           <div className="flex items-center gap-3">
@@ -393,9 +393,9 @@ export default function BillingPage() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="text-3xl font-black uppercase">{tier.name}</h3>
+                      <h3 className="text-3xl font-semibold">{tier.name}</h3>
                       {badgeText && (
-                        <span className={`rounded px-2 py-1 text-xs font-black uppercase text-white ${isPlus ? "bg-primary text-black" : "bg-[#ff0a63]"}`}>
+                        <span className={`rounded px-2 py-1 text-xs font-semibold  text-white ${isPlus ? "bg-primary text-black" : "bg-[#ff0a63]"}`}>
                           {badgeText}
                         </span>
                       )}
@@ -408,7 +408,7 @@ export default function BillingPage() {
                   <div className="flex items-start gap-3">
                     <Sparkles className="mt-1 h-5 w-5 shrink-0 text-white" />
                     <div>
-                      <p className="text-xl font-black">{tier.credits.toLocaleString()} credits/mo.</p>
+                      <p className="text-xl font-semibold">{tier.credits.toLocaleString()} credits/mo.</p>
                     </div>
                   </div>
                   <div className="mt-5 h-2 rounded-full bg-white/15">
@@ -417,7 +417,7 @@ export default function BillingPage() {
                 </div>
 
                 <div className="mt-7">
-                  <span className="text-5xl font-black">{formatUsd(tier.priceInr)}</span>
+                  <span className="text-5xl font-semibold">{formatUsd(tier.priceInr)}</span>
                   <span className="ml-2 text-white/45">/ month</span>
                   {/* Razorpay charges in rupees, and that is the amount that
                       reaches the card statement — so it is named here rather
@@ -430,7 +430,7 @@ export default function BillingPage() {
                 <button
                   disabled={loadingTier !== null}
                   onClick={() => handleSubscribe(tier.id)}
-                  className={`mt-6 flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-4 text-base font-black shadow-lg transition disabled:opacity-50 ${buttonStyle}`}
+                  className={`mt-6 flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-4 text-base font-semibold shadow-lg transition disabled:opacity-50 ${buttonStyle}`}
                 >
                   {loadingTier === tier.id ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
@@ -441,7 +441,7 @@ export default function BillingPage() {
                 <p className="mt-3 text-center text-xs text-white/35">🔒 Secure monthly payment via Razorpay Subscriptions</p>
 
                 <div className="mt-6 rounded-3xl border border-white/10 bg-black/20 p-5">
-                  <div className="mb-4 flex items-center gap-2 text-sm font-black uppercase">
+                  <div className="mb-4 flex items-center gap-2 text-sm font-semibold">
                     <Lock className="h-4 w-4" />
                     Included features
                   </div>
@@ -465,11 +465,11 @@ export default function BillingPage() {
         <div className="overflow-hidden rounded-[28px] border border-primary/30 bg-[radial-gradient(circle_at_20%_20%,rgba(185,254,46,0.12),transparent_40%),linear-gradient(135deg,#121a14,#0c0e0d)] p-6 md:p-10">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3.5 py-1.5 text-xs font-black uppercase tracking-wider text-primary">
+              <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3.5 py-1.5 t-caption text-primary">
                 <Zap className="h-4 w-4 fill-primary" />
                 Pay-As-You-Go Credits
               </span>
-              <h2 className="mt-4 text-3xl font-black tracking-tight md:text-5xl">
+              <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-5xl">
                 Buy Extra Generation Credits
               </h2>
               <p className="mt-2 max-w-xl text-sm leading-6 text-white/60">
@@ -499,11 +499,11 @@ export default function BillingPage() {
 
           <div className="mt-8 grid gap-4 rounded-2xl border border-white/10 bg-black/40 p-6 md:grid-cols-[1fr_auto]">
             <div className="flex flex-col gap-2">
-              <label htmlFor="custom-credits" className="text-xs font-bold uppercase tracking-wider text-white/70">
+              <label htmlFor="custom-credits" className="t-caption text-white/70">
                 Enter Amount — 1 credit per ₹1, minimum 1,000 (Razorpay bills in ₹)
               </label>
               <div className="relative flex items-center">
-                <span className="absolute left-4 text-lg font-black text-primary">₹</span>
+                <span className="absolute left-4 text-lg font-semibold text-primary">₹</span>
                 <input
                   id="custom-credits"
                   type="number"
@@ -511,7 +511,7 @@ export default function BillingPage() {
                   step={100}
                   value={customCreditAmount}
                   onChange={(e) => setCustomCreditAmount(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-full rounded-xl border border-white/15 bg-white/[.06] py-3.5 pl-9 pr-4 text-xl font-black text-white outline-none focus:border-primary"
+                  className="w-full rounded-xl border border-white/15 bg-white/[.06] py-3.5 pl-9 pr-4 text-xl font-semibold text-white outline-none focus:border-primary"
                   placeholder="1000"
                 />
               </div>
@@ -525,7 +525,7 @@ export default function BillingPage() {
               <button
                 disabled={topUpLoading || customCreditAmount < 1000}
                 onClick={() => handleBuyCustomCredits(customCreditAmount)}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-8 py-4 text-base font-black text-black transition hover:bg-primary/90 disabled:opacity-40 md:w-auto"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-8 py-4 text-base font-semibold text-black transition hover:bg-primary/90 disabled:opacity-40 md:w-auto"
               >
                 {topUpLoading ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -546,11 +546,11 @@ export default function BillingPage() {
         <section className="mx-auto max-w-[1200px] px-4 py-10 md:px-6">
           <div className="mb-6 flex items-center justify-between">
             <div>
-              <div className="flex items-center gap-2 text-primary font-bold text-xs uppercase tracking-wider">
+              <div className="flex items-center gap-2 text-primary font-bold text-xs">
                 <History className="h-4 w-4" />
                 Billing History
               </div>
-              <h2 className="mt-1 text-3xl font-black tracking-tight md:text-4xl">Transaction History</h2>
+              <h2 className="mt-1 text-3xl font-semibold tracking-tight md:text-4xl">Transaction History</h2>
             </div>
             {txLoading && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
           </div>
@@ -559,7 +559,7 @@ export default function BillingPage() {
             {transactions.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="border-b border-white/10 bg-white/[.02] text-xs font-black uppercase text-white/40">
+                  <thead className="border-b border-white/10 bg-white/[.02] text-xs font-semibold text-white/40">
                     <tr>
                       <th className="p-4">Date</th>
                       <th className="p-4">Transaction / Item</th>
@@ -594,11 +594,11 @@ export default function BillingPage() {
                           <td className="p-4 font-mono text-xs text-white/40">
                             {tx.paymentId || tx.txnid || "—"}
                           </td>
-                          <td className="p-4 text-right font-black text-primary">
+                          <td className="p-4 text-right font-semibold text-primary">
                             {tx.amount}
                           </td>
                           <td className="p-4 text-center">
-                            <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase ${badgeStyle}`}>
+                            <span className={`rounded-full border px-2.5 py-0.5 t-caption ${badgeStyle}`}>
                               {tx.status}
                             </span>
                           </td>
@@ -623,10 +623,10 @@ export default function BillingPage() {
       <section id="enterprise" className="mx-auto max-w-[1200px] px-4 py-10 md:px-6">
         <div className="grid gap-8 rounded-[28px] border border-primary/25 bg-[linear-gradient(160deg,rgba(185,255,24,.10),#101211_60%)] p-6 md:grid-cols-[1fr_1.1fr] md:p-10">
           <div>
-            <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-primary">
+            <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 t-caption text-primary">
               Enterprise
             </span>
-            <h2 className="mt-4 text-4xl font-black tracking-tight md:text-5xl">Don&apos;t make it yourself</h2>
+            <h2 className="mt-4 text-4xl font-semibold tracking-tight md:text-5xl">Don&apos;t make it yourself</h2>
             <p className="mt-3 max-w-md text-white/50">
               Hire the AI Director Hub team to produce the whole video for you — script, characters,
               storyboard, generation, and final edit. Billed per finished minute, so you pay for the
@@ -647,23 +647,23 @@ export default function BillingPage() {
 
       {/* FEATURE COMPARISON */}
       <section className="mx-auto max-w-[1200px] px-4 py-10 md:px-6">
-        <h2 className="text-4xl font-black tracking-tight md:text-5xl">Compare features</h2>
+        <h2 className="text-4xl font-semibold tracking-tight md:text-5xl">Compare features</h2>
         <p className="mt-3 text-white/45">See which plan suits your AI video and image workflow.</p>
 
         <div className="mt-8 overflow-hidden rounded-[28px] border border-white/10 bg-[#101211]">
           <div className="grid grid-cols-4 gap-4 border-b border-white/10 p-6 text-left">
-            <div className="flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/10 px-4 py-3 font-black text-primary">
+            <div className="flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/10 px-4 py-3 font-semibold text-primary">
               Razorpay Checkout
             </div>
             {orderedBillingTiers.map((tier) => (
               <div key={tier.id}>
-                <h3 className="text-2xl font-black">{tier.name}</h3>
+                <h3 className="text-2xl font-semibold">{tier.name}</h3>
                 <p className="mt-3 text-white/70">{formatUsd(tier.priceInr)}/mo.</p>
                 <p className="text-xs text-white/40">Billed as {formatInr(tier.priceInr)}</p>
                 <button
                   disabled={loadingTier !== null}
                   onClick={() => handleSubscribe(tier.id)}
-                  className={`mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 font-black transition disabled:opacity-50 ${tier.id === "studio" ? "bg-primary text-black" : "bg-white/15 text-white hover:bg-white/25"}`}
+                  className={`mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 font-semibold transition disabled:opacity-50 ${tier.id === "studio" ? "bg-primary text-black" : "bg-white/15 text-white hover:bg-white/25"}`}
                 >
                   {loadingTier === tier.id ? <Loader2 className="h-4 w-4 animate-spin" /> : `Get ${tier.name}`}
                 </button>
@@ -692,7 +692,7 @@ export default function BillingPage() {
 
       {/* FAQS */}
       <section className="mx-auto max-w-4xl px-4 py-20 md:px-6">
-        <h2 className="text-center text-4xl font-black tracking-tight md:text-5xl">Frequently Asked Questions</h2>
+        <h2 className="text-center text-4xl font-semibold tracking-tight md:text-5xl">Frequently Asked Questions</h2>
         <div className="mt-10 space-y-3">
           {faqs.map(([question, answer], index) => (
             <button
@@ -700,7 +700,7 @@ export default function BillingPage() {
               onClick={() => setOpenFaq(openFaq === index ? -1 : index)}
               className="w-full rounded-2xl border border-white/10 bg-[#101211] p-5 text-left"
             >
-              <span className="flex items-center justify-between gap-4 text-lg font-black">
+              <span className="flex items-center justify-between gap-4 text-lg font-semibold">
                 {question}
                 <ChevronDown className={`h-5 w-5 transition ${openFaq === index ? "rotate-180" : ""}`} />
               </span>

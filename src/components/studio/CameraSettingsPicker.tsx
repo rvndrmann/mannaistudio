@@ -285,7 +285,7 @@ export function CameraSettingsControl({
         >
           <Aperture className={`h-4 w-4 shrink-0 ${enabled ? "text-[#b9f42e]" : "text-zinc-600"}`} aria-hidden />
           <span className="min-w-0 flex-1">
-            <span className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500">Camera</span>
+            <span className="block text-[10px] font-bold text-zinc-500">Camera</span>
             {enabled ? (
               <span className="mt-1 flex flex-wrap items-center gap-1">
                 {chips.map((chip) => (

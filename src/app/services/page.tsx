@@ -399,7 +399,7 @@ export default function ServicesPage() {
                         <motion.div
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full border border-primary/20 text-xs font-bold text-primary uppercase tracking-widest"
+                            className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full border border-primary/20 text-xs font-bold text-primary"
                         >
                             <Bell className="w-3.5 h-3.5" /> New approved jobs appear here
                         </motion.div>
@@ -417,8 +417,8 @@ export default function ServicesPage() {
                             <div className="mt-4 flex flex-wrap items-center gap-3 p-4 bg-amber-400/5 border border-amber-400/20 rounded-xl">
                                 <div className="flex items-center gap-2">
                                     <Coins className="w-5 h-5 text-amber-400" />
-                                    <span className="text-lg font-black">{bids ?? "—"}</span>
-                                    <span className="text-xs text-white/40 font-bold uppercase tracking-widest">Bids</span>
+                                    <span className="text-lg font-semibold">{bids ?? "—"}</span>
+                                    <span className="text-xs text-white/40 font-bold">Bids</span>
                                 </div>
                                 <span className="text-xs text-white/35">Each job bid costs {BID_COST} bids.</span>
                                 <button
@@ -438,16 +438,16 @@ export default function ServicesPage() {
                     </div>
                     <div className="grid grid-cols-3 gap-3 text-center">
                         <div className="glass-card px-5 py-4 rounded-xl border-white/10">
-                            <p className="text-2xl font-black">{jobs.length}</p>
-                            <p className="text-[10px] text-white/35 font-bold uppercase tracking-widest">Live Jobs</p>
+                            <p className="text-2xl font-semibold">{jobs.length}</p>
+                            <p className="text-[10px] text-white/35 font-bold">Live Jobs</p>
                         </div>
                         <div className="glass-card px-5 py-4 rounded-xl border-white/10">
-                            <p className="text-2xl font-black">{jobs.reduce((sum, job) => sum + job.bids.length, 0)}</p>
-                            <p className="text-[10px] text-white/35 font-bold uppercase tracking-widest">Bids</p>
+                            <p className="text-2xl font-semibold">{jobs.reduce((sum, job) => sum + job.bids.length, 0)}</p>
+                            <p className="text-[10px] text-white/35 font-bold">Bids</p>
                         </div>
                         <div className="glass-card px-5 py-4 rounded-xl border-white/10">
-                            <p className="text-2xl font-black">{jobs.filter(job => job.status === "awarded").length}</p>
-                            <p className="text-[10px] text-white/35 font-bold uppercase tracking-widest">Awarded</p>
+                            <p className="text-2xl font-semibold">{jobs.filter(job => job.status === "awarded").length}</p>
+                            <p className="text-[10px] text-white/35 font-bold">Awarded</p>
                         </div>
                     </div>
                 </div>
@@ -533,14 +533,14 @@ export default function ServicesPage() {
                                                 <p className="mb-3 text-xs text-white/35">Posted {new Date(job.createdAt).toLocaleDateString()}</p>
                                                 <div className="flex flex-wrap items-center gap-2 mb-2">
                                                     <span className={cn(
-                                                        "px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider",
+                                                        "px-2.5 py-1 rounded-md text-[10px] font-bold ",
                                                         job.status === "pending" ? "bg-lime-300/10 text-lime-200" :
                                                             job.status === "awarded" ? "bg-emerald-400/10 text-emerald-300" :
                                                                 job.status === "approved" ? "bg-primary/10 text-primary" : "bg-white/5 text-white/40"
                                                     )}>
                                                         {job.status === "awarded" ? "Awarded" : job.status === "approved" ? "Open" : job.status}
                                                     </span>
-                                                    <span className="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-white/5 text-white/40">{job.serviceType}</span>
+                                                    <span className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-white/5 text-white/40">{job.serviceType}</span>
                                                 </div>
                                                 <h3 className="text-2xl font-bold">{job.title}</h3>
                                             </div>
@@ -553,22 +553,22 @@ export default function ServicesPage() {
 
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
-                                                <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1"><DollarSign className="w-3 h-3" /> Budget</p>
+                                                <p className="text-[10px] font-bold text-white/30 mb-2 flex items-center gap-1"><DollarSign className="w-3 h-3" /> Budget</p>
                                                 <p className="font-bold">{job.budgetRange}</p>
                                             </div>
                                             <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
-                                                <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1"><Clock className="w-3 h-3" /> Timeline</p>
+                                                <p className="text-[10px] font-bold text-white/30 mb-2 flex items-center gap-1"><Clock className="w-3 h-3" /> Timeline</p>
                                                 <p className="font-bold">{job.timeline}</p>
                                             </div>
                                             <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
-                                                <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1"><UserCheck className="w-3 h-3" /> Bids</p>
+                                                <p className="text-[10px] font-bold text-white/30 mb-2 flex items-center gap-1"><UserCheck className="w-3 h-3" /> Bids</p>
                                                 <p className="font-bold">{job.bids.length}</p>
                                             </div>
                                         </div>
 
                                         {isOwner && job.bids.length > 0 && (
                                             <div className="pt-5 border-t border-white/5 space-y-3">
-                                                <h4 className="text-xs font-bold text-white/30 uppercase tracking-widest">Creator Bids</h4>
+                                                <h4 className="text-xs font-bold text-white/30">Creator Bids</h4>
                                                 {job.bids.map((bid) => (
                                                     <div key={bid.id} className="p-4 rounded-xl bg-white/[0.03] border border-white/5 space-y-3">
                                                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -628,14 +628,14 @@ export default function ServicesPage() {
                                         <p className="text-sm font-bold">Active proposals</p>
                                         <p className="text-xs text-white/35">Bids you sent</p>
                                     </div>
-                                    <span className="text-2xl font-black">{myBidProposals.length}</span>
+                                    <span className="text-2xl font-semibold">{myBidProposals.length}</span>
                                 </div>
                                 <div className="flex items-center justify-between rounded-xl bg-black/15 p-4">
                                     <div>
                                         <p className="text-sm font-bold">Posted jobs</p>
                                         <p className="text-xs text-white/35">Jobs you created</p>
                                     </div>
-                                    <span className="text-2xl font-black">{myPostedJobs.length}</span>
+                                    <span className="text-2xl font-semibold">{myPostedJobs.length}</span>
                                 </div>
                             </div>
                         </div>
@@ -654,7 +654,7 @@ export default function ServicesPage() {
                                             <div className="mb-2 flex items-start justify-between gap-3">
                                                 <p className="line-clamp-1 text-sm font-bold">{job.title}</p>
                                                 <span className={cn(
-                                                    "shrink-0 rounded-md px-2 py-0.5 text-[9px] font-bold uppercase",
+                                                    "shrink-0 rounded-md px-2 py-0.5 text-[9px] font-bold ",
                                                     bid.status === "selected" ? "bg-emerald-400/10 text-emerald-300" :
                                                         bid.status === "rejected" ? "bg-red-400/10 text-red-300" : "bg-primary/10 text-primary"
                                                 )}>{bid.status}</span>
@@ -687,7 +687,7 @@ export default function ServicesPage() {
                                             <div className="mb-2 flex items-start justify-between gap-3">
                                                 <p className="line-clamp-1 text-sm font-bold">{job.title}</p>
                                                 <span className={cn(
-                                                    "shrink-0 rounded-md px-2 py-0.5 text-[9px] font-bold uppercase",
+                                                    "shrink-0 rounded-md px-2 py-0.5 text-[9px] font-bold ",
                                                     job.status === "pending" ? "bg-lime-300/10 text-lime-200" :
                                                         job.status === "approved" ? "bg-primary/10 text-primary" :
                                                             job.status === "awarded" ? "bg-emerald-400/10 text-emerald-300" :
@@ -713,14 +713,14 @@ export default function ServicesPage() {
                                     <h3 className="text-xl font-bold">Post a Job</h3>
                                     <p className="text-xs text-white/40 mt-1">Jobs stay pending until admin approval.</p>
                                 </div>
-                                <button type="button" onClick={() => setShowJobForm(false)} disabled={isPostingJob} className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition-all disabled:opacity-40">
+                                <button type="button" onClick={() => setShowJobForm(false)} disabled={isPostingJob} className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition disabled:opacity-40">
                                     <X className="w-6 h-6" />
                                 </button>
                             </div>
 
                             <div className="p-6 space-y-5">
                                 <div className="space-y-2">
-                                    <label className="text-xs font-bold text-white/40 uppercase tracking-widest">Job Title</label>
+                                    <label className="text-xs font-bold text-white/40">Job Title</label>
                                     <input required value={jobForm.title} onChange={(e) => setJobForm({ ...jobForm, title: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50" placeholder="30-second AI product launch video" />
                                 </div>
 
@@ -785,7 +785,7 @@ export default function ServicesPage() {
                                     <h3 className="text-xl font-bold">{editingBid ? "Edit Bid Proposal" : "Bid for Job"}</h3>
                                     <p className="text-xs text-white/40 mt-1">{selectedJob.title}</p>
                                 </div>
-                                <button type="button" onClick={() => { setSelectedJob(null); setEditingBid(null) }} disabled={isSubmittingBid} className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition-all disabled:opacity-40">
+                                <button type="button" onClick={() => { setSelectedJob(null); setEditingBid(null) }} disabled={isSubmittingBid} className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition disabled:opacity-40">
                                     <X className="w-6 h-6" />
                                 </button>
                             </div>
@@ -850,8 +850,8 @@ export default function ServicesPage() {
                                     <Minus className="w-4 h-4" />
                                 </button>
                                 <div className="text-center min-w-[120px]">
-                                    <p className="text-4xl font-black">{buyQty}</p>
-                                    <p className="text-xs text-white/40 font-bold uppercase tracking-widest">Bids</p>
+                                    <p className="text-4xl font-semibold">{buyQty}</p>
+                                    <p className="text-xs text-white/40 font-bold">Bids</p>
                                 </div>
                                 <button
                                     onClick={() => setBuyQty((q) => q + 10)}
@@ -878,7 +878,7 @@ export default function ServicesPage() {
 
                             <div className="flex items-center justify-between rounded-xl bg-white/5 border border-white/10 px-4 py-3">
                                 <span className="text-sm text-white/50">Total</span>
-                                <span className="text-2xl font-black">₹{buyQty * PRICE_PER_BID}</span>
+                                <span className="text-2xl font-semibold">₹{buyQty * PRICE_PER_BID}</span>
                             </div>
 
                             <button

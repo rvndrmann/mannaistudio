@@ -221,7 +221,7 @@ export default function TeamTab() {
             <p className="mt-1 text-[11px] text-zinc-500">Move your credits into the pool, then allocate them to members.</p>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-lg font-black text-[#b9f42e]">{(state.team.credits_balance ?? 0).toLocaleString()}</span>
+            <span className="text-lg font-semibold text-[#b9f42e]">{(state.team.credits_balance ?? 0).toLocaleString()}</span>
             {canManage && (
               <button type="button" onClick={() => setTransferOpen((open) => !open)} className="rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-semibold text-zinc-200 hover:border-[#b9f42e]/40 hover:text-[#b9f42e]">
                 Transfer
@@ -277,7 +277,7 @@ export default function TeamTab() {
 
       <div className="overflow-x-auto rounded-xl border border-white/10">
         <table className="w-full min-w-[560px] text-left text-xs">
-          <thead className="bg-white/[0.04] text-[11px] uppercase tracking-wide text-zinc-400">
+          <thead className="bg-white/[0.04] text-[11px] text-zinc-400">
             <tr>
               <th className="px-4 py-3 font-semibold">Member</th>
               <th className="px-4 py-3 font-semibold">Role</th>

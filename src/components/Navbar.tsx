@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { motion } from "framer-motion"
+import { AnimatePresence, motion } from "framer-motion"
+import { springUI, materialize } from "@/lib/motion"
 import { Clapperboard, Play, Zap, User, Menu, X, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, MessageSquare, BookOpen, PlugZap, Sparkles, Users } from "lucide-react"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
@@ -68,21 +69,24 @@ export default function Navbar() {
     return (
         <nav className="fixed top-0 left-0 right-0 z-50 flex justify-center p-4">
             {offerText && (
-                <div className="absolute left-0 right-0 top-0 bg-primary px-4 py-1 text-center text-xs font-bold text-black">
+                <div className="absolute left-0 right-0 top-0 bg-primary px-4 py-1 text-center text-xs font-medium text-black">
                     {offerText}
                 </div>
             )}
             <motion.div
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
+                transition={springUI}
                 className={cn(
-                    "glass flex items-center justify-between w-full max-w-6xl px-6 py-3 rounded-2xl border border-white/10 backdrop-blur-xl bg-white/5",
+                    // A floating island of material, not an opaque bar: the page
+                    // scrolls underneath it and stays partly visible through it.
+                    "material-chrome flex items-center justify-between w-full max-w-6xl px-6 py-3 rounded-lg",
                     offerText && "mt-6"
                 )}
             >
-                <Link href="/" className="flex items-center gap-2.5 group">
-                    <img src="/logo.png" alt="AI Director Hub" className="w-10 h-10 rounded-full group-hover:scale-105 transition-transform" />
-                    <span className="text-xl font-bold tracking-tight text-white">AI Director <span className="text-primary">Hub</span></span>
+                <Link href="/" className="flex min-h-[44px] items-center gap-2.5 group">
+                    <img src="/logo.png" alt="AI Director Hub" className="w-10 h-10 rounded-full transition-transform duration-press ease-out group-active:scale-95" />
+                    <span className="text-xl font-semibold tracking-[-0.02em] text-white">AI Director <span className="text-primary">Hub</span></span>
                 </Link>
 
                 {/* Desktop Nav */}
@@ -100,7 +104,7 @@ export default function Navbar() {
                     {!loading && (
                         <Link
                             href="/studio"
-                            className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition-all hover:bg-primary hover:text-black"
+                            className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"
                         >
                             <Sparkles className="h-4 w-4" />
                             Creator Studio
@@ -108,7 +112,7 @@ export default function Navbar() {
                     )}
 
                     {loading ? (
-                        <div className="flex items-center gap-2 px-4 py-2 bg-white/10 rounded-xl">
+                        <div className="flex items-center gap-2 px-4 py-2 bg-white/10 rounded-md">
                             <Loader2 className="w-4 h-4 animate-spin text-white/70" />
                         </div>
                     ) : user ? (
@@ -117,13 +121,13 @@ export default function Navbar() {
                             <Link
                                 href="/studio/team"
                                 title="Add and manage team members"
-                                className="flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-sm font-medium text-white/70 transition-all hover:bg-white/10 hover:text-white"
+                                className="flex items-center gap-1.5 rounded-md border border-white/10 px-3 py-2 text-sm font-medium text-white/70 transition duration-press ease-out hover:bg-white/10 hover:text-white active:scale-[0.97]"
                             >
                                 <Users className="h-4 w-4" />
                                 <span className="hidden lg:inline">Team</span>
                             </Link>
                             <NotificationBell />
-                            <Link href="/profile" className="flex items-center gap-2 px-4 py-2 bg-white/10 rounded-xl hover:bg-white/20 transition-all group">
+                            <Link href="/profile" className="flex items-center gap-2 px-4 py-2 bg-white/10 rounded-md transition duration-press ease-out hover:bg-white/20 active:scale-[0.97] group">
                                 {user.user_metadata?.avatar_url ? (
                                     <img src={user.user_metadata.avatar_url} alt="Avatar" className="w-5 h-5 rounded-full" />
                                 ) : (
@@ -133,7 +137,7 @@ export default function Navbar() {
                             </Link>
                             <button
                                 onClick={signOut}
-                                className="flex items-center gap-2 px-3 py-2 text-white/50 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+                                className="flex items-center gap-2 px-3 py-2 text-white/50 hover:text-white hover:bg-white/10 rounded-md transition duration-press ease-out active:scale-[0.97]"
                                 title="Sign Out"
                             >
                                 <LogOut className="w-4 h-4" />
@@ -142,32 +146,38 @@ export default function Navbar() {
                     ) : (
                         <Link
                             href="/login"
-                            className="flex items-center gap-2 px-4 py-2 bg-primary/20 border border-primary/30 rounded-xl hover:bg-primary/30 transition-all group"
+                            className="flex items-center gap-2 px-4 py-2 border border-white/15 bg-white/[.04] rounded-md transition duration-press ease-out hover:bg-white/10 active:scale-[0.97] group"
                         >
-                            <LogIn className="w-4 h-4 text-primary group-hover:text-white" />
-                            <span className="text-sm font-medium text-primary group-hover:text-white">Sign In</span>
+                            <LogIn className="w-4 h-4 text-white/70 group-hover:text-white" />
+                            <span className="text-sm font-medium text-white/80 group-hover:text-white">Sign In</span>
                         </Link>
                     )}
                 </div>
 
                 {/* Mobile Toggle */}
-                <button className="md:hidden text-white" onClick={() => setIsOpen(!isOpen)}>
+                <button
+                    aria-label={isOpen ? "Close menu" : "Open menu"}
+                    aria-expanded={isOpen}
+                    className="md:hidden -mr-2.5 grid h-11 w-11 place-items-center text-white transition-transform duration-press ease-out active:scale-90"
+                    onClick={() => setIsOpen(!isOpen)}
+                >
                     {isOpen ? <X /> : <Menu />}
                 </button>
             </motion.div>
 
             {/* Mobile Menu */}
+            <AnimatePresence>
             {isOpen && (
                 <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="md:hidden absolute top-20 left-4 right-4 glass p-6 rounded-2xl border border-white/10 flex flex-col gap-4"
+                    {...materialize}
+                    style={{ transformOrigin: "top right" }}
+                    className="md:hidden absolute top-20 left-4 right-4 material-sheet p-6 rounded-lg flex flex-col gap-4"
                 >
                     {!loading && (
                         <Link
                             href="/studio"
                             onClick={() => setIsOpen(false)}
-                            className="flex items-center gap-3 text-lg font-medium text-primary"
+                            className="flex min-h-[44px] items-center gap-3 text-lg font-medium text-primary"
                         >
                             <Sparkles className="h-5 w-5" />
                             Creator Studio
@@ -178,7 +188,7 @@ export default function Navbar() {
                             key={link.name}
                             href={link.href}
                             onClick={() => setIsOpen(false)}
-                            className="flex items-center gap-3 text-lg font-medium text-white/70"
+                            className="flex min-h-[44px] items-center gap-3 text-lg font-medium text-white/70"
                         >
                             <link.icon className="w-5 h-5 text-primary" />
                             {link.name}
@@ -187,17 +197,17 @@ export default function Navbar() {
                     <div className="border-t border-white/10 pt-4 mt-2">
                         {user ? (
                             <div className="flex flex-col gap-3">
-                                <Link href="/profile" onClick={() => setIsOpen(false)} className="flex items-center gap-3 text-lg font-medium text-white/70">
+                                <Link href="/profile" onClick={() => setIsOpen(false)} className="flex min-h-[44px] items-center gap-3 text-lg font-medium text-white/70">
                                     <User className="w-5 h-5 text-primary" />
                                     Profile
                                 </Link>
-                                <button onClick={() => { signOut(); setIsOpen(false); }} className="flex items-center gap-3 text-lg font-medium text-red-400">
+                                <button onClick={() => { signOut(); setIsOpen(false); }} className="flex min-h-[44px] items-center gap-3 text-lg font-medium text-red-400">
                                     <LogOut className="w-5 h-5" />
                                     Sign Out
                                 </button>
                             </div>
                         ) : (
-                            <Link href="/login" onClick={() => setIsOpen(false)} className="flex items-center gap-3 text-lg font-medium text-primary">
+                            <Link href="/login" onClick={() => setIsOpen(false)} className="flex min-h-[44px] items-center gap-3 text-lg font-medium text-primary">
                                 <LogIn className="w-5 h-5" />
                                 Sign In
                             </Link>
@@ -205,6 +215,7 @@ export default function Navbar() {
                     </div>
                 </motion.div>
             )}
+            </AnimatePresence>
         </nav>
     )
 }

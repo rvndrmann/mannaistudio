@@ -310,7 +310,7 @@ export default function MessagesPage() {
                                         <button
                                             type="button"
                                             onClick={() => scrollToBottom("smooth")}
-                                            className="sticky bottom-3 float-right z-30 flex items-center gap-1.5 rounded-full border border-primary/50 bg-black/95 px-3.5 py-1.5 text-xs font-extrabold text-primary shadow-2xl backdrop-blur-md transition hover:bg-primary hover:text-black hover:scale-105"
+                                            className="sticky bottom-3 float-right z-30 flex items-center gap-1.5 rounded-full border border-primary/50 bg-black/95 px-3.5 py-1.5 text-xs font-extrabold text-primary shadow-2xl backdrop-blur-md transition hover:bg-primary hover:text-black active:scale-[0.98]"
                                             aria-label="Scroll to bottom of chat"
                                         >
                                             <ArrowDown className="w-3.5 h-3.5" />

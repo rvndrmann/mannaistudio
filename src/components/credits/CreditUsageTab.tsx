@@ -59,7 +59,7 @@ export default function CreditUsageTab() {
   return (
     <div className="overflow-x-auto rounded-xl border border-white/10">
       <table className="w-full min-w-[560px] text-left text-xs">
-        <thead className="bg-white/[0.04] text-[11px] uppercase tracking-wide text-zinc-400">
+        <thead className="bg-white/[0.04] text-[11px] text-zinc-400">
           <tr>
             <th className="px-4 py-3 font-semibold">Date</th>
             <th className="px-4 py-3 font-semibold">Type</th>

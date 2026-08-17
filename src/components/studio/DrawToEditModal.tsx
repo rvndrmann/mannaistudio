@@ -572,7 +572,7 @@ export default function DrawToEditModal({
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-[#080908] text-white">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-4 sm:px-6">
-        <p className="text-xs font-black uppercase tracking-[.18em] text-[#b9f42e]">Draw to Edit</p>
+        <p className="t-caption text-[#b9f42e]">Draw to Edit</p>
         <p className="truncate text-sm font-semibold text-zinc-300">{title}</p>
         {naturalSize && (
           <span className="hidden rounded-md border border-white/10 px-2 py-0.5 text-[11px] font-semibold text-zinc-500 sm:inline">
@@ -689,7 +689,7 @@ export default function DrawToEditModal({
         {/* Prompt + palette */}
         <aside className="flex w-full shrink-0 flex-col gap-4 border-t border-white/10 bg-[#151715] p-4 lg:w-[380px] lg:border-l lg:border-t-0 lg:p-6 overflow-y-auto">
           <div>
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Colour</p>
+            <p className="mb-2 text-[10px] font-bold text-zinc-500">Colour</p>
             <div className="flex flex-wrap items-center gap-2">
               {PRESET_COLORS.map((preset) => (
                 <button
@@ -706,7 +706,7 @@ export default function DrawToEditModal({
           </div>
 
           <label className="block">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Brush size · {brushSize}</span>
+            <span className="text-[10px] font-bold text-zinc-500">Brush size · {brushSize}</span>
             <input
               type="range"
               min={1}
@@ -718,7 +718,7 @@ export default function DrawToEditModal({
           </label>
 
           <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-[11px] leading-relaxed text-zinc-400">
-            <p className="mb-1.5 font-bold uppercase tracking-widest text-zinc-500">What the marks mean</p>
+            <p className="mb-1.5 font-bold text-zinc-500">What the marks mean</p>
             <p><span className="font-bold text-zinc-200">Box</span> — change what is inside it.</p>
             <p><span className="font-bold text-zinc-200">Arrow</span> — move this here, or look this way.</p>
             <p><span className="font-bold text-zinc-200">Scribble</span> — remove or replace this.</p>
@@ -727,7 +727,7 @@ export default function DrawToEditModal({
           </div>
 
           <label className="block">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Instruction</span>
+            <span className="text-[10px] font-bold text-zinc-500">Instruction</span>
             <textarea
               value={promptText}
               onChange={(event) => setPromptText(event.target.value)}
@@ -760,7 +760,7 @@ export default function DrawToEditModal({
               type="button"
               onClick={generate}
               disabled={Boolean(busy) || !naturalSize}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-5 py-3 text-sm font-black text-black transition hover:bg-[#a6de25] disabled:opacity-40"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-5 py-3 text-sm font-semibold text-black transition hover:bg-[#a6de25] disabled:opacity-40"
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {busyLabel || "Apply edit"}

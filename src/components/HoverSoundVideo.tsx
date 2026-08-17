@@ -106,7 +106,7 @@ export default function HoverSoundVideo({
             unmute()
           }
         }}
-        className="absolute right-3 top-3 z-10 grid h-9 w-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm transition hover:bg-black/80"
+        className="absolute right-2.5 top-2.5 z-10 grid h-11 w-11 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm transition hover:bg-black/80"
       >
         {audible ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
       </button>

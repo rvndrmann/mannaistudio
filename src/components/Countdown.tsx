@@ -25,10 +25,10 @@ export default function Countdown({ endsAt, className = "" }: { endsAt: string; 
 
     const Box = ({ v, label }: { v: number; label: string }) => (
         <div className="flex flex-col items-center">
-            <span className="min-w-[2.2rem] rounded-lg bg-black/40 border border-primary/30 px-2 py-1 text-lg font-black tabular-nums text-primary">
+            <span className="min-w-[2.2rem] rounded-lg bg-black/40 border border-primary/30 px-2 py-1 text-lg font-semibold tabular-nums text-primary">
                 {String(v).padStart(2, "0")}
             </span>
-            <span className="mt-1 text-[9px] font-bold uppercase tracking-widest text-white/40">{label}</span>
+            <span className="mt-1 text-[9px] font-bold text-white/40">{label}</span>
         </div>
     )
 

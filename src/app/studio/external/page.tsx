@@ -137,13 +137,13 @@ ${mcpConfig}
             <div className="absolute right-8 top-7 grid h-16 w-16 rotate-[10deg] place-items-center rounded-2xl bg-[#df7a54] text-3xl shadow-2xl">✺</div>
           </div>
 
-          <h1 className="mt-8 text-4xl font-black uppercase leading-none tracking-tight text-primary md:text-6xl">
+          <h1 className="mt-8 text-4xl font-semibold leading-none tracking-tight text-primary md:text-6xl">
             AI Director MCP & CLI for any AI
           </h1>
           <p className="mt-5 max-w-2xl text-lg font-medium text-white/45">
             Create images, plan storyboards, update scripts, and prepare videos directly from Claude, ChatGPT-style clients, Cursor, Claude Code, or terminal.
           </p>
-          <button onClick={createToken} disabled={loading} className="mt-7 inline-flex items-center gap-2 rounded-2xl bg-primary/15 px-5 py-3 text-sm font-black text-primary disabled:opacity-60">
+          <button onClick={createToken} disabled={loading} className="mt-7 inline-flex items-center gap-2 rounded-2xl bg-primary/15 px-5 py-3 text-sm font-semibold text-primary disabled:opacity-60">
             <KeyRound className="h-4 w-4" />
             {newToken ? "Access token ready" : loading ? "Creating access token..." : "Connect MCP and create access token"}
             <span className="rounded bg-primary px-2 py-0.5 text-xs text-black">FREE SETUP</span>
@@ -157,7 +157,7 @@ ${mcpConfig}
                 <button
                   key={item.id}
                   onClick={() => setClient(item.id)}
-                  className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-black transition ${client === item.id ? "bg-white text-black" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
+                  className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold transition ${client === item.id ? "bg-white text-black" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
                 >
                   <span>{item.icon}</span>
                   {item.label}
@@ -166,10 +166,10 @@ ${mcpConfig}
             </div>
 
             <div className="flex items-center gap-2 rounded-2xl bg-black/20 p-1">
-              <button onClick={() => setMode("mcp")} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-black ${mode === "mcp" ? "bg-white/15 text-white" : "text-white/45"}`}>
+              <button onClick={() => setMode("mcp")} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold ${mode === "mcp" ? "bg-white/15 text-white" : "text-white/45"}`}>
                 <Plug className="h-4 w-4" /> MCP
               </button>
-              <button onClick={() => setMode("cli")} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-black ${mode === "cli" ? "bg-white/15 text-white" : "text-white/45"}`}>
+              <button onClick={() => setMode("cli")} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold ${mode === "cli" ? "bg-white/15 text-white" : "text-white/45"}`}>
                 <Code2 className="h-4 w-4" /> CLI
               </button>
             </div>
@@ -177,8 +177,8 @@ ${mcpConfig}
 
           <div className="grid gap-px overflow-hidden rounded-[22px] bg-white/5 lg:grid-cols-3">
             <div className="bg-[#111312] p-7">
-              <div className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-lg font-black">1</div>
-              <h2 className="mt-8 text-2xl font-black">
+              <div className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-lg font-semibold">1</div>
+              <h2 className="mt-8 text-2xl font-semibold">
                 {mode === "mcp" ? "Copy the connector config" : "Copy and send this to your AI client"}
               </h2>
               <p className="mt-3 text-sm leading-6 text-white/45">
@@ -186,15 +186,15 @@ ${mcpConfig}
               </p>
               <div className="mt-8 rounded-2xl border border-white/10 bg-white/[.06] p-4">
                 <pre className="max-h-[260px] overflow-auto whitespace-pre-wrap text-left text-xs leading-6 text-white/55">{mode === "mcp" ? mcpConfig : promptText}</pre>
-                <button onClick={() => copy("step1", mode === "mcp" ? mcpConfig : promptText)} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-xs font-black text-white hover:text-primary">
+                <button onClick={() => copy("step1", mode === "mcp" ? mcpConfig : promptText)} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:text-primary">
                   <Copy className="h-4 w-4" /> {copied === "step1" ? "Copied" : "Copy"}
                 </button>
               </div>
             </div>
 
             <div className="bg-[#111312] p-7">
-              <div className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-lg font-black">2</div>
-              <h2 className="mt-8 text-2xl font-black">
+              <div className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-lg font-semibold">2</div>
+              <h2 className="mt-8 text-2xl font-semibold">
                 {mode === "mcp" ? `Go to ${clients.find((item) => item.id === client)?.label || "your client"} settings` : "Run the CLI command"}
               </h2>
               <p className="mt-3 text-sm leading-6 text-white/45">
@@ -202,23 +202,23 @@ ${mcpConfig}
               </p>
               <div className="mt-8 rounded-2xl border border-white/10 bg-white/[.06] p-4">
                 <pre className="whitespace-pre-wrap text-left text-xs leading-6 text-white/55">{mode === "mcp" ? mcpConnectorUrl : cliCommands}</pre>
-                <button onClick={() => copy("step2", mode === "mcp" ? mcpConnectorUrl : cliCommands)} className="mt-4 inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-black hover:border-primary hover:text-primary">
+                <button onClick={() => copy("step2", mode === "mcp" ? mcpConnectorUrl : cliCommands)} className="mt-4 inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-semibold hover:border-primary hover:text-primary">
                   <Copy className="h-4 w-4" /> {copied === "step2" ? "Copied" : "Copy"}
                 </button>
               </div>
             </div>
 
             <div className="bg-[#111312] p-7">
-              <div className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-lg font-black">3</div>
-              <h2 className="mt-8 text-2xl font-black">Connect, sign in, and start creating</h2>
+              <div className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-lg font-semibold">3</div>
+              <h2 className="mt-8 text-2xl font-semibold">Connect, sign in, and start creating</h2>
               <p className="mt-3 text-sm leading-6 text-white/45">
                 Ask the external AI to list your projects, choose an episode, then send requests to the AI Director agent.
               </p>
               <div className="mt-8 rounded-2xl bg-black/25 p-5">
-                <p className="text-sm font-black text-white">Try asking:</p>
+                <p className="text-sm font-semibold text-white">Try asking:</p>
                 <p className="mt-3 text-sm leading-6 text-white/55">“Plan a 20 second product ad, create storyboard images, and prepare video generation for approval.”</p>
               </div>
-              <button onClick={() => copy("try", "Plan a 20 second product ad, create storyboard images, and prepare video generation for approval.")} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#df7a54] px-5 py-3 text-sm font-black text-white hover:bg-[#ef875f]">
+              <button onClick={() => copy("try", "Plan a 20 second product ad, create storyboard images, and prepare video generation for approval.")} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#df7a54] px-5 py-3 text-sm font-semibold text-white hover:bg-[#ef875f]">
                 <Sparkles className="h-4 w-4" /> {copied === "try" ? "Copied" : "Start creating"}
               </button>
             </div>
@@ -236,7 +236,7 @@ ${mcpConfig}
           <div className="rounded-[24px] border border-white/10 bg-white/[.04] p-5">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-xl font-black">Access token</h2>
+                <h2 className="text-xl font-semibold">Access token</h2>
                 <p className="mt-1 text-sm text-white/40">The token is shown once. Store it securely.</p>
               </div>
               <PlugZap className="h-6 w-6 text-primary" />
@@ -252,7 +252,7 @@ ${mcpConfig}
             </button>
             {newToken && (
               <div className="mt-4 rounded-2xl border border-primary/30 bg-primary/10 p-4">
-                <p className="text-xs font-black uppercase tracking-[.18em] text-primary">New token</p>
+                <p className="t-caption text-primary">New token</p>
                 <code className="mt-3 block break-all rounded-xl bg-black/50 p-3 text-xs text-white">{newToken}</code>
                 <button onClick={() => copy("token", newToken)} className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-primary">
                   <Copy className="h-4 w-4" /> {copied === "token" ? "Copied" : "Copy token"}
@@ -262,7 +262,7 @@ ${mcpConfig}
           </div>
 
           <div className="rounded-[24px] border border-white/10 bg-white/[.04] p-5">
-            <h2 className="text-xl font-black">Active tokens</h2>
+            <h2 className="text-xl font-semibold">Active tokens</h2>
             <div className="mt-4 space-y-3">
               {tokens.length === 0 && <p className="text-sm text-white/45">No external tokens yet.</p>}
               {tokens.map((token) => (

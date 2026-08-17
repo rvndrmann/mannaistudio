@@ -157,7 +157,7 @@ export default function BlogKeywords() {
                     const items = topics.filter((t) => (t.cluster || "uncategorized") === cluster)
                     return (
                         <div key={cluster}>
-                            <p className="text-xs font-semibold uppercase tracking-wider text-white/30 mb-2">
+                            <p className="t-caption text-white/30 mb-2">
                                 {cluster} ({items.length})
                             </p>
                             <div className="glass-card rounded-2xl border-white/10 divide-y divide-white/5">

@@ -365,7 +365,7 @@ export default function ProfilePage() {
                                     )}
                                 </div>
                             </div>
-                            <button className="absolute bottom-2 right-2 p-2 bg-primary rounded-xl shadow-lg hover:scale-110 transition-transform">
+                            <button className="absolute bottom-2 right-2 p-2 bg-primary rounded-xl shadow-lg active:scale-95 transition-transform">
                                 <Camera className="w-4 h-4 text-white" />
                             </button>
                         </div>
@@ -451,18 +451,18 @@ export default function ProfilePage() {
                     {/* Sidebar: Badges */}
                     <div className="lg:col-span-1 space-y-6">
                         <div className="glass-card p-6">
-                            <h3 className="font-bold mb-4 flex items-center gap-2 uppercase tracking-widest text-xs text-white/40">
+                            <h3 className="font-bold mb-4 flex items-center gap-2 text-xs text-white/40">
                                 Earned Badges
                             </h3>
                             <div className="flex flex-wrap gap-3">
-                                <div className="px-3 py-1.5 bg-white/5 border border-dashed border-white/10 rounded-lg text-[10px] font-bold text-white/20 flex items-center gap-1.5 uppercase tracking-wider italic">
+                                <div className="px-3 py-1.5 bg-white/5 border border-dashed border-white/10 rounded-lg text-[10px] font-bold text-white/20 flex items-center gap-1.5 italic">
                                     ? Next Badge
                                 </div>
                             </div>
                         </div>
 
                         <div className="glass-card p-6">
-                            <h3 className="font-bold mb-4 uppercase tracking-widest text-xs text-white/40">
+                            <h3 className="font-bold mb-4 text-xs text-white/40">
                                 Completed Courses
                             </h3>
                             <div className="rounded-xl border border-dashed border-white/10 bg-white/5 p-4 text-xs text-white/30">
@@ -489,7 +489,7 @@ export default function ProfilePage() {
                             <button
                                 onClick={() => setIsAddingVideo(true)}
                                 disabled={videos.length >= portfolioLimit}
-                                className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-40 disabled:hover:bg-white/10 rounded-xl transition-all font-bold text-xs"
+                                className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-40 disabled:hover:bg-white/10 rounded-xl transition font-bold text-xs"
                             >
                                 <Plus className="w-4 h-4" /> Add New Video
                             </button>
@@ -521,7 +521,7 @@ export default function ProfilePage() {
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <label className="space-y-2">
-                                        <span className="text-xs font-bold uppercase tracking-widest text-white/40">Title</span>
+                                        <span className="t-caption text-white/40">Title</span>
                                         <input
                                             value={newVideo.title}
                                             onChange={(event) => setNewVideo({ ...newVideo, title: event.target.value })}
@@ -530,7 +530,7 @@ export default function ProfilePage() {
                                         />
                                     </label>
                                     <label className="space-y-2">
-                                        <span className="text-xs font-bold uppercase tracking-widest text-white/40">Video URL</span>
+                                        <span className="t-caption text-white/40">Video URL</span>
                                         <input
                                             value={newVideo.url}
                                             onChange={(event) => setNewVideo({ ...newVideo, url: event.target.value })}
@@ -539,7 +539,7 @@ export default function ProfilePage() {
                                         />
                                     </label>
                                     <label className="space-y-2">
-                                        <span className="text-xs font-bold uppercase tracking-widest text-white/40">Upload Video</span>
+                                        <span className="t-caption text-white/40">Upload Video</span>
                                         <input
                                             type="file"
                                             accept="video/*"
@@ -548,7 +548,7 @@ export default function ProfilePage() {
                                         />
                                     </label>
                                     <label className="space-y-2 md:col-span-2">
-                                        <span className="text-xs font-bold uppercase tracking-widest text-white/40">Thumbnail URL</span>
+                                        <span className="t-caption text-white/40">Thumbnail URL</span>
                                         <input
                                             value={newVideo.thumbnail}
                                             onChange={(event) => setNewVideo({ ...newVideo, thumbnail: event.target.value })}
@@ -557,7 +557,7 @@ export default function ProfilePage() {
                                         />
                                     </label>
                                     <label className="space-y-2 md:col-span-2">
-                                        <span className="text-xs font-bold uppercase tracking-widest text-white/40">Upload Thumbnail</span>
+                                        <span className="t-caption text-white/40">Upload Thumbnail</span>
                                         <input
                                             type="file"
                                             accept="image/*"
@@ -631,7 +631,7 @@ export default function ProfilePage() {
                                             <span className="text-sm font-bold">{video.title}</span>
                                         </div>
                                         <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-4 text-[10px] font-bold text-white/30 uppercase tracking-widest">
+                                            <div className="flex items-center gap-4 text-[10px] font-bold text-white/30">
                                                 <span>{video.views} Views</span>
                                                 <span>{video.likes} Likes</span>
                                                 <span className="text-emerald-500">Active</span>
@@ -651,9 +651,9 @@ export default function ProfilePage() {
                             {videos.length < portfolioLimit && (
                                 <button
                                     onClick={() => setIsAddingVideo(true)}
-                                    className="aspect-video glass border-2 border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center gap-4 hover:bg-white/5 hover:border-white/20 transition-all group"
+                                    className="aspect-video glass border-2 border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center gap-4 hover:bg-white/5 hover:border-white/20 transition group"
                                 >
-                                    <div className="p-4 bg-white/5 rounded-full group-hover:scale-110 transition-transform">
+                                    <div className="p-4 bg-white/5 rounded-full group-active:scale-95 transition-transform">
                                         <Plus className="w-8 h-8 text-white/20 group-hover:text-primary" />
                                     </div>
                                     <p className="text-sm font-bold text-white/20 group-hover:text-white">Upload Your Work</p>
@@ -683,7 +683,7 @@ export default function ProfilePage() {
                         >
                             <div className="p-5 border-b border-white/5 flex items-center justify-between">
                                 <h3 className="text-xl font-bold">{playingVideo.title}</h3>
-                                <button onClick={() => setPlayingVideo(null)} className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition-all">
+                                <button onClick={() => setPlayingVideo(null)} className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition">
                                     <X className="w-7 h-7" />
                                 </button>
                             </div>

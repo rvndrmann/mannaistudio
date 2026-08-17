@@ -91,7 +91,7 @@ export default function CertificatePage({ params }: { params: Promise<{ id: stri
                             </p>
                         </div>
                         <div className="space-y-3 text-left">
-                            <label className="text-xs font-bold text-white/40 uppercase tracking-widest flex items-center gap-2">
+                            <label className="text-xs font-bold text-white/40 flex items-center gap-2">
                                 <User className="w-3 h-3" /> Your Full Name
                             </label>
                             <input

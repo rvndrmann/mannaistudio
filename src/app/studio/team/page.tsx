@@ -28,7 +28,7 @@ export default function StudioTeamPage() {
           <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-[#b9f42e]/30 bg-[#b9f42e]/10 text-[#b9f42e]">
             <Users className="h-7 w-7" />
           </div>
-          <h1 className="text-3xl font-black text-white">Your Team</h1>
+          <h1 className="text-3xl font-semibold text-white">Your Team</h1>
           <p className="mt-2 text-sm text-zinc-400">
             Add members by email, set what they can do, and share credits from a team pool.
           </p>
