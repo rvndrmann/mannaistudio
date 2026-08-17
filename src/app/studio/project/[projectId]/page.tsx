@@ -3223,7 +3223,7 @@ function AssetWorkspace({
     <div className="fixed inset-0 z-50 bg-[#080908] text-white">
       <div className="flex h-full flex-col overflow-y-auto overscroll-contain lg:flex-row lg:overflow-hidden">
         {/* Left Side Thumbnail History List */}
-        <aside className="no-scrollbar order-1 flex max-h-32 w-full shrink-0 gap-3 overflow-x-auto border-b border-white/10 lg:max-h-none lg:order-none bg-[#0b0c0b] p-3 lg:block lg:w-44 lg:overflow-y-auto lg:overflow-x-visible lg:border-b-0 lg:border-r lg:p-4">
+        <aside className="no-scrollbar flex max-h-44 w-full shrink-0 gap-3 overflow-x-auto border-b border-white/10 lg:max-h-none bg-[#0b0c0b] p-3 lg:block lg:w-44 lg:overflow-y-auto lg:overflow-x-visible lg:border-b-0 lg:border-r lg:p-4">
           <button
             onClick={close}
             className="touch-target flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 text-zinc-300 hover:bg-white/10 lg:mb-4"
@@ -3310,7 +3310,7 @@ function AssetWorkspace({
         </aside>
 
         {/* Main Content Area */}
-        <main className="order-3 flex min-w-0 flex-1 flex-col lg:order-none">
+        <main className="flex min-w-0 flex-1 flex-col">
           {/* Top Bar Actions */}
           <header className="flex h-16 items-center gap-3 border-b border-white/10 px-6 bg-[#0b0c0b]">
             {isCurrentlyChosen ? (
@@ -3455,7 +3455,18 @@ function AssetWorkspace({
         </main>
 
         {/* Right Sidebar Controls */}
-        <aside className="order-2 flex w-full shrink-0 flex-col border-t border-white/10 bg-[#151715] lg:order-none lg:w-[420px] lg:border-l lg:border-t-0">
+        {/* The asset is what the screen is for, so it stays on top; this is
+            the way down to the controls without scrolling past it. Mirrors the
+            Director button on the workspace so the two behave alike. */}
+        <button
+          type="button"
+          onClick={() => document.getElementById("asset-generate-controls")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          className="fixed bottom-5 right-5 z-[60] flex h-14 min-h-[44px] items-center gap-2 rounded-full bg-[#b9f42e] px-5 text-[13px] font-semibold text-black shadow-[0_10px_30px_-6px_rgba(185,244,46,0.5)] transition-transform duration-press ease-out active:scale-95 lg:hidden"
+        >
+          <WandSparkles className="h-4 w-4" />
+          Generate
+        </button>
+        <aside id="asset-generate-controls" className="flex w-full shrink-0 scroll-mt-4 flex-col border-t border-white/10 bg-[#151715] lg:w-[420px] lg:border-l lg:border-t-0">
           <div className="flex items-start justify-between p-6 border-b border-white/10">
             <div>
               <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">
@@ -5402,7 +5413,7 @@ function ShotMediaWorkspace({
     <div className="fixed inset-0 z-50 bg-[#080908] text-white">
       <div className="flex h-full flex-col overflow-y-auto overscroll-contain lg:flex-row lg:overflow-hidden">
         {/* Left sidebar — Generation History */}
-        <aside className="relative order-1 flex max-h-32 w-full shrink-0 flex-row border-b border-white/10 lg:order-none bg-[#0b0c0b] lg:max-h-none lg:w-44 lg:flex-col lg:border-b-0 lg:border-r">
+        <aside className="relative flex max-h-44 w-full shrink-0 flex-row border-b border-white/10 bg-[#0b0c0b] lg:max-h-none lg:w-44 lg:flex-col lg:border-b-0 lg:border-r">
           <div className="sticky top-0 left-0 z-20 flex shrink-0 flex-col items-center justify-start gap-1 border-r border-white/10 bg-[#0b0c0b]/95 p-3 backdrop-blur-md lg:flex-row lg:justify-between lg:border-b lg:border-r-0">
             <button
               onClick={close}
@@ -5435,7 +5446,7 @@ function ShotMediaWorkspace({
                         if (gen.status === "failed") setGenerationError(gen.error);
                         else setGenerationError(null);
                       }}
-                      className={`group relative block w-full overflow-hidden rounded-xl border-2 transition text-left ${
+                      className={`group relative block w-20 shrink-0 overflow-hidden rounded-xl border-2 transition text-left lg:w-full ${
                         isGenChosen
                           ? "border-[#b9f42e] ring-2 ring-[#b9f42e]/40"
                           : isActive
@@ -5500,7 +5511,7 @@ function ShotMediaWorkspace({
         </aside>
 
         {/* Main preview area */}
-        <main className="order-3 flex min-w-0 flex-1 flex-col lg:order-none">
+        <main className="flex min-w-0 flex-1 flex-col">
           <header className="flex h-16 items-center gap-3 border-b border-white/10 px-6">
             {isCurrentlyChosen ? (
               <span className="flex items-center gap-1.5 rounded-lg border border-[#b9f42e]/50 bg-[#b9f42e]/20 px-4 py-2 text-xs font-semibold text-[#b9f42e]">
@@ -5690,7 +5701,18 @@ function ShotMediaWorkspace({
             </div>
           </div>
         </main>
-        <aside className="order-2 flex w-full shrink-0 flex-col border-t border-white/10 bg-[#151715] lg:order-none lg:w-[430px] lg:border-l lg:border-t-0">
+        {/* The asset is what the screen is for, so it stays on top; this is
+            the way down to the controls without scrolling past it. Mirrors the
+            Director button on the workspace so the two behave alike. */}
+        <button
+          type="button"
+          onClick={() => document.getElementById("shot-generate-controls")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          className="fixed bottom-5 right-5 z-[60] flex h-14 min-h-[44px] items-center gap-2 rounded-full bg-[#b9f42e] px-5 text-[13px] font-semibold text-black shadow-[0_10px_30px_-6px_rgba(185,244,46,0.5)] transition-transform duration-press ease-out active:scale-95 lg:hidden"
+        >
+          <WandSparkles className="h-4 w-4" />
+          Generate
+        </button>
+        <aside id="shot-generate-controls" className="flex w-full shrink-0 scroll-mt-4 flex-col border-t border-white/10 bg-[#151715] lg:w-[430px] lg:border-l lg:border-t-0">
           <div className="flex items-start justify-between p-6">
             <div>
               <h2 className="text-3xl font-semibold text-white">Scene {shotNumber}</h2>
