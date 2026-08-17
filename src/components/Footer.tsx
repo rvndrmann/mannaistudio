@@ -21,7 +21,7 @@ export default function Footer() {
         <footer className="border-t border-white/10 mt-20">
             <div className="max-w-6xl mx-auto px-6 py-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
                 <div className="sm:col-span-2 lg:col-span-1">
-                    <Link href="/" className="flex items-center gap-2.5 font-bold text-lg mb-3">
+                    <Link href="/" className="flex min-h-[44px] items-center gap-2.5 font-semibold text-lg mb-3">
                         <img src="/logo.png" alt="AI Director Hub" className="w-9 h-9 rounded-full" />
                         <span>AI Director <span className="text-primary">Hub</span></span>
                     </Link>
@@ -29,10 +29,10 @@ export default function Footer() {
 
                 <div>
                     <h3 className="font-bold text-sm text-white/60 mb-4">Explore</h3>
-                    <ul className="space-y-2">
+                    <ul className="sm:space-y-2">
                         {siteLinks.map((link) => (
                             <li key={link.href}>
-                                <Link href={link.href} className="text-sm text-white/40 hover:text-white transition-colors">
+                                <Link href={link.href} className="flex min-h-[44px] items-center text-sm text-white/45 hover:text-white transition-colors sm:min-h-0 sm:py-1">
                                     {link.label}
                                 </Link>
                             </li>
@@ -42,10 +42,10 @@ export default function Footer() {
 
                 <div>
                     <h3 className="font-bold text-sm text-white/60 mb-4">Legal</h3>
-                    <ul className="space-y-2">
+                    <ul className="sm:space-y-2">
                         {legalLinks.map((link) => (
                             <li key={link.href}>
-                                <Link href={link.href} className="text-sm text-white/40 hover:text-white transition-colors">
+                                <Link href={link.href} className="flex min-h-[44px] items-center text-sm text-white/45 hover:text-white transition-colors sm:min-h-0 sm:py-1">
                                     {link.label}
                                 </Link>
                             </li>
@@ -67,7 +67,7 @@ export default function Footer() {
                         <p className="text-xs text-white/30">Udyam Reg: UDYAM-HR-13-0038483</p>
                         <div className="flex items-center gap-2">
                             <Mail className="w-3.5 h-3.5 text-white/30" />
-                            <a href="mailto:rvndr.mann@gmail.com" className="hover:text-white transition-colors">rvndr.mann@gmail.com</a>
+                            <a href="mailto:rvndr.mann@gmail.com" className="flex min-h-[44px] items-center hover:text-white transition-colors">rvndr.mann@gmail.com</a>
                         </div>
                     </div>
                 </div>

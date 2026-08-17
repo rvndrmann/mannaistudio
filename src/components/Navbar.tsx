@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { motion } from "framer-motion"
+import { AnimatePresence, motion } from "framer-motion"
 import { springUI, materialize } from "@/lib/motion"
 import { Clapperboard, Play, Zap, User, Menu, X, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, MessageSquare, BookOpen, PlugZap, Sparkles, Users } from "lucide-react"
 import { useState, useEffect } from "react"
@@ -84,7 +84,7 @@ export default function Navbar() {
                     offerText && "mt-6"
                 )}
             >
-                <Link href="/" className="flex items-center gap-2.5 group">
+                <Link href="/" className="flex min-h-[44px] items-center gap-2.5 group">
                     <img src="/logo.png" alt="AI Director Hub" className="w-10 h-10 rounded-full transition-transform duration-press ease-out group-active:scale-95" />
                     <span className="text-xl font-semibold tracking-[-0.02em] text-white">AI Director <span className="text-primary">Hub</span></span>
                 </Link>
@@ -155,12 +155,18 @@ export default function Navbar() {
                 </div>
 
                 {/* Mobile Toggle */}
-                <button className="md:hidden text-white" onClick={() => setIsOpen(!isOpen)}>
+                <button
+                    aria-label={isOpen ? "Close menu" : "Open menu"}
+                    aria-expanded={isOpen}
+                    className="md:hidden -mr-2.5 grid h-11 w-11 place-items-center text-white transition-transform duration-press ease-out active:scale-90"
+                    onClick={() => setIsOpen(!isOpen)}
+                >
                     {isOpen ? <X /> : <Menu />}
                 </button>
             </motion.div>
 
             {/* Mobile Menu */}
+            <AnimatePresence>
             {isOpen && (
                 <motion.div
                     {...materialize}
@@ -171,7 +177,7 @@ export default function Navbar() {
                         <Link
                             href="/studio"
                             onClick={() => setIsOpen(false)}
-                            className="flex items-center gap-3 text-lg font-medium text-primary"
+                            className="flex min-h-[44px] items-center gap-3 text-lg font-medium text-primary"
                         >
                             <Sparkles className="h-5 w-5" />
                             Creator Studio
@@ -182,7 +188,7 @@ export default function Navbar() {
                             key={link.name}
                             href={link.href}
                             onClick={() => setIsOpen(false)}
-                            className="flex items-center gap-3 text-lg font-medium text-white/70"
+                            className="flex min-h-[44px] items-center gap-3 text-lg font-medium text-white/70"
                         >
                             <link.icon className="w-5 h-5 text-primary" />
                             {link.name}
@@ -191,17 +197,17 @@ export default function Navbar() {
                     <div className="border-t border-white/10 pt-4 mt-2">
                         {user ? (
                             <div className="flex flex-col gap-3">
-                                <Link href="/profile" onClick={() => setIsOpen(false)} className="flex items-center gap-3 text-lg font-medium text-white/70">
+                                <Link href="/profile" onClick={() => setIsOpen(false)} className="flex min-h-[44px] items-center gap-3 text-lg font-medium text-white/70">
                                     <User className="w-5 h-5 text-primary" />
                                     Profile
                                 </Link>
-                                <button onClick={() => { signOut(); setIsOpen(false); }} className="flex items-center gap-3 text-lg font-medium text-red-400">
+                                <button onClick={() => { signOut(); setIsOpen(false); }} className="flex min-h-[44px] items-center gap-3 text-lg font-medium text-red-400">
                                     <LogOut className="w-5 h-5" />
                                     Sign Out
                                 </button>
                             </div>
                         ) : (
-                            <Link href="/login" onClick={() => setIsOpen(false)} className="flex items-center gap-3 text-lg font-medium text-primary">
+                            <Link href="/login" onClick={() => setIsOpen(false)} className="flex min-h-[44px] items-center gap-3 text-lg font-medium text-primary">
                                 <LogIn className="w-5 h-5" />
                                 Sign In
                             </Link>
@@ -209,6 +215,7 @@ export default function Navbar() {
                     </div>
                 </motion.div>
             )}
+            </AnimatePresence>
         </nav>
     )
 }

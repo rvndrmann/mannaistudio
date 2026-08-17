@@ -286,10 +286,10 @@ export default function LandingPage() {
                                             const el = event.currentTarget
                                             setHeroIsVertical(el.videoHeight > el.videoWidth)
                                         }}
-                                        className="h-full w-full object-cover transition duration-700 group-"
+                                        className="h-full w-full object-cover transition-transform duration-700"
                                     />
                                 ) : heroFeatured?.thumbnail ? (
-                                    <img src={heroFeatured.thumbnail} alt="Hero showcase" className="h-full w-full object-cover transition duration-700 group-" />
+                                    <img src={heroFeatured.thumbnail} alt="Hero showcase" className="h-full w-full object-cover transition-transform duration-700" />
                                 ) : (
                                     /* Reserved Video Slot Visual Placeholder */
                                     <div className="relative flex h-full w-full flex-col items-center justify-center bg-[radial-gradient(circle_at_50%_40%,rgba(185,244,46,0.2),transparent_70%),linear-gradient(135deg,#121a14,#0a0c0b)] p-8 text-center">
@@ -313,7 +313,7 @@ export default function LandingPage() {
                                     <button
                                         type="button"
                                         onClick={() => heroFeatured?.videoUrl && setPlayingVideo({ url: heroFeatured.videoUrl, title: heroFeatured.title })}
-                                        className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-primary text-black transition-transform duration-press ease-out active:scale-95"
+                                        className="grid h-12 w-12 min-h-[44px] min-w-[44px] shrink-0 place-items-center rounded-full bg-primary text-black transition-transform duration-press ease-out active:scale-95"
                                     >
                                         <Play className="h-5 w-5 fill-black" />
                                     </button>
@@ -352,7 +352,7 @@ export default function LandingPage() {
                                     >
                                         <span className={`h-2 w-2 rounded-full bg-primary ${m.live ? "animate-pulse" : ""}`} />
                                         <span>{m.name}</span>
-                                        <span className="text-[10px] text-white/40">({m.category})</span>
+                                        <span className="text-[11px] text-white/45">({m.category})</span>
                                         {m.live && (
                                             <span className="rounded-md bg-primary px-1.5 py-0.5 t-caption tracking-wide text-black">
                                                 Live
@@ -364,7 +364,7 @@ export default function LandingPage() {
                         </div>
 
                         <div className="relative z-10 mt-10">
-                            <Link href="/studio" className="inline-flex items-center gap-2 text-sm font-medium text-primary transition group-hover:translate-x-1">
+                            <Link href="/studio" className="inline-flex min-h-[44px] items-center gap-2 text-sm font-medium text-primary transition group-hover:translate-x-1 sm:min-h-0">
                                 Browse Models & Routing <ArrowRight className="h-4 w-4" />
                             </Link>
                         </div>
@@ -389,7 +389,7 @@ export default function LandingPage() {
                                         <Bot className="h-4 w-4" />
                                         <span>Director Agent</span>
                                     </div>
-                                    <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[10px] font-bold text-primary">ACTIVE</span>
+                                    <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[11px] font-medium text-primary">ACTIVE</span>
                                 </div>
 
                                 <div className="mt-3 rounded-xl bg-white/[.04] p-3 text-white/80 italic">
@@ -414,7 +414,7 @@ export default function LandingPage() {
                         </div>
 
                         <div className="relative z-10 mt-10">
-                            <Link href="/studio" className="inline-flex items-center gap-2 text-sm font-bold text-primary transition group-hover:translate-x-1">
+                            <Link href="/studio" className="inline-flex min-h-[44px] items-center gap-2 text-sm font-medium text-primary transition group-hover:translate-x-1 sm:min-h-0">
                                 Meet Your Agent <ArrowRight className="h-4 w-4" />
                             </Link>
                         </div>
@@ -512,10 +512,10 @@ export default function LandingPage() {
                                             loop
                                             autoPlay
                                             preload="metadata"
-                                            className="h-full w-full object-cover transition duration-700 group-"
+                                            className="h-full w-full object-cover transition-transform duration-700"
                                         />
                                     ) : showcaseItem?.thumbnail ? (
-                                        <img src={showcaseItem.thumbnail} alt={slotTitle} className="h-full w-full object-cover transition duration-700 group-" />
+                                        <img src={showcaseItem.thumbnail} alt={slotTitle} className="h-full w-full object-cover transition-transform duration-700" />
                                     ) : (
                                         <div className="flex h-full w-full flex-col items-center justify-center p-6 text-center">
                                             <Smartphone className="h-10 w-10 text-primary/60 mb-3" />
@@ -540,7 +540,7 @@ export default function LandingPage() {
                                         <button
                                             type="button"
                                             onClick={() => setPlayingVideo({ url: showcaseItem.videoUrl, title: slotTitle })}
-                                            className="absolute right-5 top-5 grid h-10 w-10 place-items-center rounded-full bg-primary text-black transition group-"
+                                            className="absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full bg-primary text-black transition"
                                         >
                                             <Play className="h-4 w-4 fill-black" />
                                         </button>

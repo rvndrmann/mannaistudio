@@ -46,12 +46,20 @@ export const fadeIn = {
 } as const
 
 /**
- * A material arriving: blur and scale move together so the surface reads as
- * glass condensing into place rather than a rectangle whose opacity went up.
+ * A material arriving. Scale and opacity only: those are the two properties the
+ * compositor can animate without touching layout or paint.
+ *
+ * An earlier version also animated `filter: blur()` so the surface would
+ * "condense" into place. Two things were wrong with it. A `blur(8px)` string is
+ * not a number, so the spring could not solve it and left the panel stranded on
+ * its initial frame — opacity 0, invisible, with no error to say so. And a
+ * `filter` on the panel blurs the panel's own text, which is not what a
+ * material does; the frosted look belongs to `backdrop-filter`, which blurs
+ * what is *behind* the surface and is already on `.material-sheet`.
  */
 export const materialize = {
-  initial: { opacity: 0, scale: 0.97, filter: "blur(8px)" },
-  animate: { opacity: 1, scale: 1, filter: "blur(0px)" },
-  exit: { opacity: 0, scale: 0.97, filter: "blur(8px)" },
+  initial: { opacity: 0, scale: 0.97 },
+  animate: { opacity: 1, scale: 1 },
+  exit: { opacity: 0, scale: 0.97 },
   transition: springUI,
 } as const
