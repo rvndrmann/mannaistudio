@@ -249,11 +249,18 @@ export function actionMatchesRequestedShots(intent: string, requestedShotNumbers
   const actionShotNumbers = Array.from(intent.matchAll(/\bshots?\s+(?:#\s*)?(\d+)\b/gi)).map((match) => Number(match[1]))
   if (!actionShotNumbers.length) return true
   if (actionShotNumbers.some((number) => requestedShotNumbers.includes(number))) return true
-  // Finishing one shot is the moment the step after it is most worth offering.
-  // The pipeline is read after this turn's work has landed, so a later shot is
-  // the production moving forward — holding it back is why a turn that put a
-  // keyframe on shot 1 ended with no button at all. A step pointing back at an
-  // earlier shot is a different matter: that reads as a jump, and still waits.
+  // Finishing one shot is the moment the step after it is most worth offering,
+  // so the shot immediately following the request is kept — holding it back is
+  // why a turn that put a keyframe on shot 1 ended with no button at all.
+  //
+  // Only the next one. Any later shot was read as "the production moving
+  // forward", but the pipeline reports the first shot that still needs work
+  // anywhere in the episode, which is not necessarily related to this turn at
+  // all. Asking to redo shot 7 offered "generate the keyframe for shot 11" —
+  // an unfinished job from earlier in the session that the request had nothing
+  // to do with — and taking that offer spent credits on the wrong shot. A jump
+  // forward is as much a jump as a jump back; only the step the finished shot
+  // actually leads to survives.
   const furthestRequested = Math.max(...requestedShotNumbers)
-  return actionShotNumbers.every((number) => number > furthestRequested)
+  return actionShotNumbers.every((number) => number === furthestRequested + 1)
 }

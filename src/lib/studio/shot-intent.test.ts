@@ -101,12 +101,22 @@ describe("actionMatchesRequestedShots", () => {
   // pipeline had moved on to shot 2 and a step naming another shot was held.
   it("keeps the step the finished shot leads to", () => {
     expect(actionMatchesRequestedShots("Generate the storyboard keyframe image for shot 2", [1])).toBe(true)
-    expect(actionMatchesRequestedShots("Generate the image for shot 4", [1])).toBe(true)
+    expect(actionMatchesRequestedShots("Generate the image for shot 9", [4, 8])).toBe(true)
   })
 
   it("still holds a step that points back at an earlier shot", () => {
     expect(actionMatchesRequestedShots("Generate the image for shot 3", [8])).toBe(false)
     expect(actionMatchesRequestedShots("Generate the image for shot 3", [4, 8])).toBe(false)
+  })
+
+  // Asking to redo shot 7 offered "generate the keyframe for shot 11", which was
+  // an unfinished job from earlier in the session rather than anything to do
+  // with the request. The pipeline reports the first shot still needing work
+  // anywhere in the episode, so "any later shot" let that unrelated backlog
+  // through, and taking the offer spent credits on the wrong shot.
+  it("holds a step that skips ahead past the next shot", () => {
+    expect(actionMatchesRequestedShots("Generate the storyboard keyframe image for shot 11", [7])).toBe(false)
+    expect(actionMatchesRequestedShots("Generate the image for shot 4", [1])).toBe(false)
   })
 
   it("keeps non-shot pipeline actions and untargeted turns", () => {

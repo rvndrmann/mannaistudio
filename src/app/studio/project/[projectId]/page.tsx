@@ -7205,6 +7205,26 @@ function ProposalCard({
   const isImage = proposal.action_type.includes("image");
   const generationRequest = generationProposalRequest(proposal);
   const destination = proposalDestination(proposal.action_type);
+  // Which shot the card is about is the first thing worth knowing, and "Update
+  // storyboard shot" does not say it. The proposal already carries the shot it
+  // targets — either the ids a generation names or the single id an edit
+  // patches — so the number is resolved from the storyboard already loaded
+  // here. A card that names the wrong shot is the whole reason this matters:
+  // without the number there is nothing on it to catch the mistake against.
+  const targetShotNumbers = (() => {
+    if (generationRequest?.shotNumbers?.length) return generationRequest.shotNumbers;
+    const ids = generationRequest?.shotIds?.length
+      ? generationRequest.shotIds
+      : typeof proposal.payload?.shotId === "string" ? [proposal.payload.shotId as string] : [];
+    if (!ids.length) return [];
+    return (shots || [])
+      .filter((shot) => ids.includes(shot.id))
+      .map((shot) => shot.order_index + 1)
+      .sort((a, b) => a - b);
+  })();
+  const shotLabel = targetShotNumbers.length
+    ? `Shot ${targetShotNumbers.join(", ")}`
+    : null;
 
   if (generationRequest) {
     return (
@@ -7240,6 +7260,11 @@ function ProposalCard({
           <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-zinc-400 capitalize">
             {proposal.action_type.split("_").pop()}
           </span>
+          {shotLabel ? (
+            <span className="shrink-0 rounded bg-[#b9f42e]/15 px-1.5 py-0.5 text-[10px] font-bold text-[#b9f42e]">
+              {shotLabel}
+            </span>
+          ) : null}
         </div>
         <span className="shrink-0 rounded-full border border-[#fff878]/30 px-2 py-0.5 text-[10px] font-bold text-[#fff878]">
           {proposal.status === "pending" ? "Pending confirmation" : proposal.status}
