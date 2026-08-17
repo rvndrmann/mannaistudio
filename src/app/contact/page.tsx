@@ -48,7 +48,7 @@ export default function ContactPage() {
                             <form onSubmit={handleSubmit} className="glass-card p-6 rounded-2xl border-white/10 space-y-4">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
-                                        <label className="text-xs font-bold text-white/50 uppercase tracking-wider">Name</label>
+                                        <label className="text-xs font-bold text-white/50">Name</label>
                                         <input
                                             required
                                             value={form.name}
@@ -57,7 +57,7 @@ export default function ContactPage() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="text-xs font-bold text-white/50 uppercase tracking-wider">Email</label>
+                                        <label className="text-xs font-bold text-white/50">Email</label>
                                         <input
                                             required
                                             type="email"
@@ -68,7 +68,7 @@ export default function ContactPage() {
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="text-xs font-bold text-white/50 uppercase tracking-wider">Subject</label>
+                                    <label className="text-xs font-bold text-white/50">Subject</label>
                                     <input
                                         required
                                         value={form.subject}
@@ -77,7 +77,7 @@ export default function ContactPage() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-bold text-white/50 uppercase tracking-wider">Message</label>
+                                    <label className="text-xs font-bold text-white/50">Message</label>
                                     <textarea
                                         required
                                         rows={5}

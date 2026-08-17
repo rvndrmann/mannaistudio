@@ -51,7 +51,7 @@ const pipelineSteps = [
         label: "Script",
         title: "Autonomous Screenwriting",
         description: "The AI Director writes shoot-ready scenes, character dialogue, and shot descriptions from a single prompt.",
-        accent: "from-primary/20 to-transparent",
+        accent: "from-primary/15 to-transparent",
     },
     {
         id: "role",
@@ -59,7 +59,7 @@ const pipelineSteps = [
         label: "Role & Assets",
         title: "Character Continuity & Turnarounds",
         description: "Generate consistent multi-angle character references, wardrobe sheets, and prop asset memory.",
-        accent: "from-cyan-400/20 to-transparent",
+        accent: "from-primary/15 to-transparent",
     },
     {
         id: "storyboard",
@@ -67,7 +67,7 @@ const pipelineSteps = [
         label: "Storyboard",
         title: "Keyframes & Shot Cards",
         description: "Generate camera-specific keyframe visuals with automated prompt validation and continuity facts.",
-        accent: "from-fuchsia-400/20 to-transparent",
+        accent: "from-primary/15 to-transparent",
     },
     {
         id: "timeline",
@@ -75,7 +75,7 @@ const pipelineSteps = [
         label: "Timeline",
         title: "Video Motion & Assembly",
         description: "Turn keyframe images into fluid motion clips with approval guards and full-auto production control.",
-        accent: "from-amber-400/20 to-transparent",
+        accent: "from-primary/15 to-transparent",
     },
 ]
 
@@ -199,48 +199,47 @@ export default function LandingPage() {
             <Navbar />
 
             {/* Reserved room for top navbar banner */}
-            <div className="h-28" aria-hidden="true" />
+            <div className="h-24 md:h-20" aria-hidden="true" />
 
             {/* SECTION 1: HERO STAGE (AUTONOMOUS AI VIDEO CREATION PLATFORM) */}
             <section className="relative mx-auto max-w-[1540px] px-4 pb-16 pt-6 md:px-6">
-                <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-[#0d0f0e] p-6 md:p-12">
+                <div className="relative overflow-hidden rounded-xl border border-white/10 bg-[#0d0f0e] p-6 md:p-12">
                     {/* Background glow and subtle ambient lighting */}
-                    <div className="pointer-events-none absolute -left-40 -top-40 h-[500px] w-[500px] rounded-full bg-primary/15 blur-[120px]" />
-                    <div className="pointer-events-none absolute -right-40 -bottom-40 h-[500px] w-[500px] rounded-full bg-cyan-500/10 blur-[120px]" />
+                    <div className="pointer-events-none absolute -left-40 -top-40 h-[420px] w-[420px] rounded-full bg-primary/[.07] blur-[140px]" />
 
                     <div className="relative z-10 grid gap-10 lg:grid-cols-[1.1fr_.9fr] lg:items-center">
                         <div>
-                            <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-2 text-xs font-black uppercase tracking-[.2em] text-primary">
-                                <Sparkles className="h-4 w-4" />
-                                AUTONOMOUS AI VIDEO CREATION PLATFORM
+                            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[.04] px-3.5 py-1.5 t-caption text-white/60">
+                                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                                Autonomous AI video creation platform
                             </div>
 
-                            <h1 className="mt-8 text-5xl font-black leading-[.92] tracking-tight md:text-7xl lg:text-8xl">
+                            <h1 className="mt-7 t-display">
                                 AI Creative <span className="text-primary">Employee</span>
                             </h1>
 
-                            <p className="mt-6 max-w-2xl text-lg font-medium leading-8 text-white/60 md:text-xl">
+                            <p className="mt-5 max-w-xl t-body-lg text-white/55">
                                 An all-in-one AI video generator powered by your dedicated AI Director Employee.
                                 It writes scripts, sets up character turnaround assets, builds storyboards, and renders broadcast-ready video clips.
                             </p>
 
                             <div className="mt-10 flex flex-wrap items-center gap-4">
                                 {user ? (
-                                    <Link href="/studio" className="btn-primary flex items-center gap-3 px-8 py-4 text-base font-black">
+                                    <Link href="/studio" className="btn-primary flex items-center gap-2.5 px-7 py-3.5 text-[15px]">
                                         Open Creator Studio <ArrowRight className="h-5 w-5" />
                                     </Link>
                                 ) : (
-                                    <button onClick={signInWithGoogle} className="btn-primary flex items-center gap-3 px-8 py-4 text-base font-black">
+                                    <button onClick={signInWithGoogle} className="btn-primary flex items-center gap-2.5 px-7 py-3.5 text-[15px]">
                                         Start Free Now <ArrowRight className="h-5 w-5" />
                                     </button>
                                 )}
-                                <Link href="/billing" className="flex items-center gap-2 rounded-2xl border border-white/15 bg-white/[.04] px-7 py-4 text-base font-bold text-white transition hover:border-primary/50 hover:text-primary">
+                                <Link href="/billing" className="btn-secondary flex items-center gap-2 px-7 py-3.5 text-[15px]">
                                     View Plans & Credits <ArrowUpRight className="h-5 w-5" />
                                 </Link>
                             </div>
 
                             {/* Key Stats Bar */}
-                            <div className="mt-12 flex flex-wrap items-center gap-8 border-t border-white/10 pt-8 text-xs font-bold uppercase tracking-wider text-white/40">
+                            <div className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-3 border-t border-white/10 pt-7 t-caption text-white/45">
                                 <div className="flex items-center gap-2">
                                     <Zap className="h-4 w-4 text-primary" />
                                     <span>Full-Auto & Guarded Approvals</span>
@@ -257,7 +256,7 @@ export default function LandingPage() {
                         </div>
 
                         {/* HERO FEATURED VIDEO / MEDIA CONTAINER SLOT (USER CAN EMBED VIDEO HERE LATER) */}
-                        <div className="relative group overflow-hidden rounded-[26px] border border-white/15 bg-[#141715] shadow-2xl transition duration-500 hover:border-primary/50">
+                        <div className="relative group overflow-hidden rounded-lg border border-white/15 bg-[#141715] shadow-2xl transition duration-500 hover:border-primary/50">
                             <div className={cn(
                                 "relative w-full bg-[#0a0c0b]",
                                 // Matching the source's shape beats letterboxing it: a vertical
@@ -287,18 +286,18 @@ export default function LandingPage() {
                                             const el = event.currentTarget
                                             setHeroIsVertical(el.videoHeight > el.videoWidth)
                                         }}
-                                        className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
+                                        className="h-full w-full object-cover transition duration-700 group-"
                                     />
                                 ) : heroFeatured?.thumbnail ? (
-                                    <img src={heroFeatured.thumbnail} alt="Hero showcase" className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+                                    <img src={heroFeatured.thumbnail} alt="Hero showcase" className="h-full w-full object-cover transition duration-700 group-" />
                                 ) : (
                                     /* Reserved Video Slot Visual Placeholder */
                                     <div className="relative flex h-full w-full flex-col items-center justify-center bg-[radial-gradient(circle_at_50%_40%,rgba(185,244,46,0.2),transparent_70%),linear-gradient(135deg,#121a14,#0a0c0b)] p-8 text-center">
                                         <div className="mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-primary/20 border border-primary/30 text-primary">
                                             <Play className="h-8 w-8 fill-primary" />
                                         </div>
-                                        <span className="text-xs font-black uppercase tracking-[.2em] text-primary">Featured AI Short Film</span>
-                                        <h3 className="mt-2 text-xl font-black text-white">Reserved Hero Video Container</h3>
+                                        <span className="t-caption text-primary">Featured AI Short Film</span>
+                                        <h3 className="mt-2 text-xl font-semibold text-white">Reserved Hero Video Container</h3>
                                         <p className="mt-2 max-w-sm text-xs text-white/50">Space reserved for your main promotional video drop.</p>
                                     </div>
                                 )}
@@ -307,14 +306,14 @@ export default function LandingPage() {
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
                                 <div className="absolute bottom-6 left-6 right-6 flex items-center justify-between">
                                     <div>
-                                        <span className="rounded-full bg-primary px-3 py-1 text-[11px] font-black text-black uppercase">Featured Production</span>
-                                        <h2 className="mt-2 text-xl font-black">{heroFeatured?.title || "Border Run — 60s AI Short"}</h2>
+                                        <span className="rounded-full bg-primary px-3 py-1 text-[11px] font-semibold text-black">Featured Production</span>
+                                        <h2 className="mt-2 text-xl font-semibold">{heroFeatured?.title || "Border Run — 60s AI Short"}</h2>
                                         <p className="line-clamp-1 text-xs text-white/60">{heroFeatured?.description || "Created with AI Director Employee & Veo 3"}</p>
                                     </div>
                                     <button
                                         type="button"
                                         onClick={() => heroFeatured?.videoUrl && setPlayingVideo({ url: heroFeatured.videoUrl, title: heroFeatured.title })}
-                                        className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-primary text-black transition duration-300 hover:scale-110"
+                                        className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-primary text-black transition-transform duration-press ease-out active:scale-95"
                                     >
                                         <Play className="h-5 w-5 fill-black" />
                                     </button>
@@ -329,13 +328,13 @@ export default function LandingPage() {
             <section className="mx-auto max-w-[1540px] px-4 py-12 md:px-6">
                 <div className="grid gap-6 md:grid-cols-2">
                     {/* PILLAR 1: EVERY AI MODEL UNDER ONE PROMPT */}
-                    <div className="group relative flex flex-col justify-between overflow-hidden rounded-[28px] border border-white/10 bg-[#111312] p-8 transition hover:border-primary/40">
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,rgba(64,202,255,0.08),transparent_50%)]" />
+                    <div className="group relative flex flex-col justify-between overflow-hidden rounded-lg border border-white/10 bg-[#111312] p-8 transition hover:border-primary/40">
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,rgba(185,244,46,0.05),transparent_50%)]" />
                         <div className="relative z-10">
-                            <span className="inline-flex rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-xs font-black uppercase tracking-[.18em] text-cyan-400">
+                            <span className="inline-flex rounded-full border border-white/10 bg-white/[.04] px-3 py-1 t-caption text-white/60">
                                 Models
                             </span>
-                            <h2 className="mt-6 text-3xl font-black tracking-tight md:text-4xl">Every Frontier AI Model</h2>
+                            <h2 className="mt-6 text-3xl font-semibold tracking-tight md:text-4xl">Every Frontier AI Model</h2>
                             <p className="mt-4 text-base leading-7 text-white/60">
                                 All the leading frontier models under one prompt — Seedance 2.5, the most advanced video model available today and live now on AI Director Hub, alongside Kling 3.0, Kling O3, Veo 3.1, GPT Image 2, and Nano Banana 2 Pro. Switch, compare, and combine in seconds.
                             </p>
@@ -347,15 +346,15 @@ export default function LandingPage() {
                                         key={m.name}
                                         className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition ${
                                             m.live
-                                                ? "border-cyan-400/50 bg-cyan-400/[.08] hover:border-cyan-400"
-                                                : "border-white/10 bg-white/[.04] hover:border-cyan-400/40"
+                                                ? "border-primary/40 bg-primary/[.06] hover:border-primary/70"
+                                                : "border-white/10 bg-white/[.04] hover:border-white/25"
                                         }`}
                                     >
-                                        <span className={`h-2 w-2 rounded-full bg-cyan-400 ${m.live ? "animate-pulse" : ""}`} />
+                                        <span className={`h-2 w-2 rounded-full bg-primary ${m.live ? "animate-pulse" : ""}`} />
                                         <span>{m.name}</span>
                                         <span className="text-[10px] text-white/40">({m.category})</span>
                                         {m.live && (
-                                            <span className="rounded-md bg-cyan-400 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-black">
+                                            <span className="rounded-md bg-primary px-1.5 py-0.5 t-caption tracking-wide text-black">
                                                 Live
                                             </span>
                                         )}
@@ -365,20 +364,20 @@ export default function LandingPage() {
                         </div>
 
                         <div className="relative z-10 mt-10">
-                            <Link href="/studio" className="inline-flex items-center gap-2 text-sm font-bold text-cyan-400 transition group-hover:translate-x-1">
+                            <Link href="/studio" className="inline-flex items-center gap-2 text-sm font-medium text-primary transition group-hover:translate-x-1">
                                 Browse Models & Routing <ArrowRight className="h-4 w-4" />
                             </Link>
                         </div>
                     </div>
 
                     {/* PILLAR 2: AUTONOMOUS AI DIRECTOR EMPLOYEE */}
-                    <div className="group relative flex flex-col justify-between overflow-hidden rounded-[28px] border border-white/10 bg-[#111312] p-8 transition hover:border-primary/40">
+                    <div className="group relative flex flex-col justify-between overflow-hidden rounded-lg border border-white/10 bg-[#111312] p-8 transition hover:border-primary/40">
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,rgba(185,244,46,0.08),transparent_50%)]" />
                         <div className="relative z-10">
-                            <span className="inline-flex rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-black uppercase tracking-[.18em] text-primary">
+                            <span className="inline-flex rounded-full border border-primary/30 bg-primary/10 px-3 py-1 t-caption text-primary">
                                 Agent
                             </span>
-                            <h2 className="mt-6 text-3xl font-black tracking-tight md:text-4xl">AI Director Employee</h2>
+                            <h2 className="mt-6 text-3xl font-semibold tracking-tight md:text-4xl">AI Director Employee</h2>
                             <p className="mt-4 text-base leading-7 text-white/60">
                                 One idea, one prompt. Your fully autonomous AI Director Employee handles script editing, character turnaround setup, storyboarding, and final video edits — automatically.
                             </p>
@@ -425,10 +424,10 @@ export default function LandingPage() {
 
             {/* SECTION 3: VISUAL PRODUCTION PIPELINE ("HOW IT WORKS") */}
             <section className="mx-auto max-w-[1540px] px-4 py-16 md:px-6">
-                <div className="rounded-[32px] border border-white/10 bg-[#0d0f0e] p-6 md:p-12">
+                <div className="rounded-xl border border-white/10 bg-[#0d0f0e] p-6 md:p-12">
                     <div className="text-center">
-                        <span className="text-xs font-black uppercase tracking-[.25em] text-primary">HOW IT WORKS</span>
-                        <h2 className="mt-4 text-4xl font-black tracking-tight md:text-6xl">
+                        <span className="t-caption text-primary">HOW IT WORKS</span>
+                        <h2 className="mt-4 text-4xl font-semibold tracking-tight md:text-6xl">
                             Create a highly consistent short film in 10 minutes — fully automated
                         </h2>
                         <p className="mx-auto mt-4 max-w-2xl text-base text-white/60">
@@ -451,10 +450,10 @@ export default function LandingPage() {
                             >
                                 <div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-2xl font-black italic text-primary">{step.num}</span>
+                                        <span className="text-2xl font-semibold italic text-primary">{step.num}</span>
                                         <span className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold text-white/70">{step.label}</span>
                                     </div>
-                                    <h3 className="mt-6 text-xl font-black">{step.title}</h3>
+                                    <h3 className="mt-6 text-xl font-semibold">{step.title}</h3>
                                     <p className="mt-3 text-xs leading-6 text-white/50">{step.description}</p>
                                 </div>
                             </button>
@@ -468,14 +467,14 @@ export default function LandingPage() {
             <section className="mx-auto max-w-[1540px] px-4 py-16 md:px-6">
                 <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-end">
                     <div>
-                        <span className="text-xs font-black uppercase tracking-[.25em] text-primary">COMMERCIAL & SOCIAL CREATIVES</span>
-                        <h2 className="mt-2 text-4xl font-black tracking-tight md:text-6xl">Create the best video ads with AI.</h2>
+                        <span className="t-caption text-primary">COMMERCIAL & SOCIAL CREATIVES</span>
+                        <h2 className="mt-2 text-4xl font-semibold tracking-tight md:text-6xl">Create the best video ads with AI.</h2>
                         <p className="mt-3 max-w-2xl text-base text-white/60">
                             Generate UGC-style ad creatives at scale — test hooks, iterate in hours, and ship to TikTok, Reels, and Shorts the same day.
                         </p>
                     </div>
 
-                    <Link href="/studio" className="btn-primary flex items-center gap-2 px-6 py-3 text-sm font-black">
+                    <Link href="/studio" className="btn-primary flex items-center gap-2 px-6 py-3 text-sm font-semibold">
                         Create Ad Campaign <ArrowRight className="h-4 w-4" />
                     </Link>
                 </div>
@@ -497,7 +496,7 @@ export default function LandingPage() {
                         return (
                             <div
                                 key={ad.id}
-                                className="group relative overflow-hidden rounded-[26px] border border-white/10 bg-[#121413] transition duration-500 hover:border-primary/50"
+                                className="group relative overflow-hidden rounded-lg border border-white/10 bg-[#121413] transition duration-500 hover:border-primary/50"
                             >
                                 <div className={cn("relative w-full overflow-hidden", ad.aspect, ad.gradient)}>
                                     {showcaseItem?.videoUrl && youtubeEmbedUrl(showcaseItem.videoUrl) ? (
@@ -513,15 +512,15 @@ export default function LandingPage() {
                                             loop
                                             autoPlay
                                             preload="metadata"
-                                            className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
+                                            className="h-full w-full object-cover transition duration-700 group-"
                                         />
                                     ) : showcaseItem?.thumbnail ? (
-                                        <img src={showcaseItem.thumbnail} alt={slotTitle} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+                                        <img src={showcaseItem.thumbnail} alt={slotTitle} className="h-full w-full object-cover transition duration-700 group-" />
                                     ) : (
                                         <div className="flex h-full w-full flex-col items-center justify-center p-6 text-center">
                                             <Smartphone className="h-10 w-10 text-primary/60 mb-3" />
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-primary">{ad.tag}</span>
-                                            <h4 className="mt-2 text-lg font-black">{ad.title}</h4>
+                                            <span className="t-caption text-primary">{ad.tag}</span>
+                                            <h4 className="mt-2 text-lg font-semibold">{ad.title}</h4>
                                             <p className="mt-1 text-xs text-white/40">Reserved 9:16 Video Slot</p>
                                         </div>
                                     )}
@@ -529,10 +528,10 @@ export default function LandingPage() {
                                     {/* Overlay details */}
                                     <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
                                     <div className="absolute bottom-5 left-5 right-5">
-                                        <span className="rounded-full bg-primary/20 border border-primary/30 px-3 py-1 text-[10px] font-black uppercase text-primary">
+                                        <span className="rounded-full bg-primary/20 border border-primary/30 px-3 py-1 t-caption text-primary">
                                             {ad.tag}
                                         </span>
-                                        <h3 className="mt-3 text-xl font-black">{slotTitle}</h3>
+                                        <h3 className="mt-3 text-xl font-semibold">{slotTitle}</h3>
                                         <p className="mt-1 text-xs text-white/60 line-clamp-2">{slotSubtitle}</p>
                                     </div>
 
@@ -541,7 +540,7 @@ export default function LandingPage() {
                                         <button
                                             type="button"
                                             onClick={() => setPlayingVideo({ url: showcaseItem.videoUrl, title: slotTitle })}
-                                            className="absolute right-5 top-5 grid h-10 w-10 place-items-center rounded-full bg-primary text-black transition group-hover:scale-110"
+                                            className="absolute right-5 top-5 grid h-10 w-10 place-items-center rounded-full bg-primary text-black transition group-"
                                         >
                                             <Play className="h-4 w-4 fill-black" />
                                         </button>
@@ -555,14 +554,14 @@ export default function LandingPage() {
 
             {/* SECTION 5: FINAL HIGH-CONVERTING STUDIO CTA BANNER */}
             <section className="mx-auto max-w-[1540px] px-4 py-16 md:px-6">
-                <div className="relative overflow-hidden rounded-[32px] border border-primary/30 bg-[linear-gradient(135deg,#152014,#0b0d0c_60%,#1a2a11)] p-8 text-center md:p-16">
+                <div className="relative overflow-hidden rounded-xl border border-primary/30 bg-[linear-gradient(135deg,#152014,#0b0d0c_60%,#1a2a11)] p-8 text-center md:p-16">
                     <div className="pointer-events-none absolute left-1/2 top-1/2 h-[400px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/10 blur-[100px]" />
 
                     <div className="relative z-10 mx-auto max-w-3xl">
                         <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-primary text-black">
                             <Wand2 className="h-8 w-8" />
                         </div>
-                        <h2 className="mt-6 text-4xl font-black tracking-tight text-white md:text-6xl">
+                        <h2 className="mt-6 text-4xl font-semibold tracking-tight text-white md:text-6xl">
                             Build your next AI video with an AI Creative Employee.
                         </h2>
                         <p className="mt-5 text-lg font-medium text-white/60">
@@ -571,11 +570,11 @@ export default function LandingPage() {
 
                         <div className="mt-10 flex flex-col justify-center gap-4 sm:flex-row">
                             {user ? (
-                                <Link href="/studio" className="btn-primary px-9 py-4 text-base font-black">
+                                <Link href="/studio" className="btn-primary px-9 py-4 text-base font-semibold">
                                     Open AI Director Studio <ArrowRight className="ml-2 h-5 w-5 inline" />
                                 </Link>
                             ) : (
-                                <button onClick={signInWithGoogle} className="btn-primary px-9 py-4 text-base font-black">
+                                <button onClick={signInWithGoogle} className="btn-primary px-9 py-4 text-base font-semibold">
                                     Start Free Now <ArrowRight className="ml-2 h-5 w-5 inline" />
                                 </button>
                             )}
@@ -589,7 +588,7 @@ export default function LandingPage() {
 
             {/* Bottom Tag Bar */}
             <section className="border-y border-white/5 bg-white/[0.01] py-8">
-                <div className="mx-auto flex max-w-[1540px] flex-wrap items-center justify-between gap-4 px-6 text-xs font-black uppercase tracking-[.2em] text-white/30">
+                <div className="mx-auto flex max-w-[1540px] flex-wrap items-center justify-between gap-4 px-6 t-caption text-white/30">
                     <span>AI Director Employee</span>
                     <span>Multi-Model Engine</span>
                     <span>Storyboard Workflow</span>

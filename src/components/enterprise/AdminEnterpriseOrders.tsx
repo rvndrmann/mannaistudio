@@ -104,15 +104,15 @@ export default function AdminEnterpriseOrders() {
       <div className="rounded-2xl border border-primary/25 bg-primary/[0.05] p-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Enterprise rate</p>
+            <p className="text-[10px] font-bold text-primary">Enterprise rate</p>
             <p className="mt-1 text-xs text-white/40">Charged per finished minute of delivered video.</p>
             <div className="mt-3 flex items-center gap-2">
-              <span className="text-lg font-black text-white">$</span>
+              <span className="text-lg font-semibold text-white">$</span>
               <input
                 value={rate}
                 onChange={(event) => setRate(event.target.value)}
                 inputMode="numeric"
-                className="w-28 rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-lg font-black text-white outline-none focus:border-primary"
+                className="w-28 rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-lg font-semibold text-white outline-none focus:border-primary"
               />
               <span className="text-xs font-medium text-white/40">USD / minute</span>
             </div>
@@ -186,7 +186,7 @@ export default function AdminEnterpriseOrders() {
             )}
 
             <label className="mt-3 block space-y-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Note to client</span>
+              <span className="text-[10px] font-bold text-white/30">Note to client</span>
               <input
                 defaultValue={order.admin_note}
                 onBlur={(event) => {

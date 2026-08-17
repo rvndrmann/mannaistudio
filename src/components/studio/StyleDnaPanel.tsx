@@ -204,7 +204,7 @@ export function StyleDnaPanel({
       <div className="rounded-xl border border-white/10 bg-[#0b0c0b] p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase text-zinc-500">{heading}</p>
+            <p className="text-[10px] font-bold text-zinc-500">{heading}</p>
             <p className="mt-0.5 truncate text-[11px] text-zinc-400">
               {projectSummary || "No project look set. This image follows the Visual Style setting alone."}
             </p>
@@ -219,7 +219,7 @@ export function StyleDnaPanel({
     <div className="rounded-xl border border-white/10 bg-[#0b0c0b] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-bold uppercase text-zinc-400">{heading}</p>
+          <p className="text-xs font-bold text-zinc-400">{heading}</p>
           <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
             {blurb} The first {MAX_STYLE_REFERENCE_IMAGES} are also sent to the image model as look references.
           </p>
@@ -328,11 +328,11 @@ export function StyleDnaPanel({
             <div className="mt-4 space-y-4">
               {SECTIONS.map((section) => (
                 <div key={section.title}>
-                  <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-zinc-500">{section.title}</p>
+                  <p className="mb-2 text-[10px] font-bold text-zinc-500">{section.title}</p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {section.fields.map((field) => (
                       <label key={field.label} className="block">
-                        <span className="mb-1 block text-[10px] font-bold uppercase text-zinc-500">
+                        <span className="mb-1 block text-[10px] font-bold text-zinc-500">
                           {field.label}
                           {field.hint && <span className="ml-1 font-normal normal-case text-zinc-600">({field.hint})</span>}
                         </span>

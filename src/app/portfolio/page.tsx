@@ -98,7 +98,7 @@ export default function PortfolioPage() {
                         </div>
 
                         <div>
-                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-bold uppercase tracking-widest mb-4">
+                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 t-caption mb-4">
                                 {isLoading ? "Loading Portfolio" : "Public Portfolio"}
                             </div>
                             <h1 className="text-4xl md:text-6xl font-bold tracking-tight">{portfolio.name}</h1>
@@ -135,9 +135,9 @@ export default function PortfolioPage() {
                             <article key={video.id} className="glass-card group overflow-hidden cursor-pointer" onClick={() => setPlayingVideo({ url: video.url, title: video.title })}>
                                 <div className="relative aspect-video bg-black/50">
                                     {video.thumbnail ? (
-                                        <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover opacity-70 group-hover:scale-105 transition-transform duration-500" />
+                                        <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover opacity-70 group-active:scale-[0.98] transition-transform duration-500" />
                                     ) : video.url ? (
-                                        <video src={`${video.url}#t=0.1`} muted preload="metadata" playsInline className="w-full h-full object-cover opacity-70 group-hover:scale-105 transition-transform duration-500" />
+                                        <video src={`${video.url}#t=0.1`} muted preload="metadata" playsInline className="w-full h-full object-cover opacity-70 group-active:scale-[0.98] transition-transform duration-500" />
                                     ) : null}
                                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                         <div className="p-4 rounded-full bg-primary shadow-2xl">
@@ -147,7 +147,7 @@ export default function PortfolioPage() {
                                 </div>
                                 <div className="p-5">
                                     <h2 className="font-bold text-lg group-hover:text-primary transition-colors">{video.title}</h2>
-                                    <div className="flex items-center gap-4 mt-4 text-[10px] font-bold text-white/30 uppercase tracking-widest">
+                                    <div className="flex items-center gap-4 mt-4 text-[10px] font-bold text-white/30">
                                         <span>{video.views} Views</span>
                                         <span>{video.likes} Likes</span>
                                     </div>
@@ -183,7 +183,7 @@ export default function PortfolioPage() {
                         >
                             <div className="p-5 border-b border-white/5 flex items-center justify-between">
                                 <h3 className="text-xl font-bold">{playingVideo.title}</h3>
-                                <button onClick={() => setPlayingVideo(null)} className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition-all">
+                                <button onClick={() => setPlayingVideo(null)} className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition">
                                     <X className="w-7 h-7" />
                                 </button>
                             </div>

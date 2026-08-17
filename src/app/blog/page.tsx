@@ -40,7 +40,7 @@ export default async function BlogIndexPage() {
         <main className="min-h-screen">
             <Navbar />
             <section className="pt-32 pb-20 px-6 max-w-6xl mx-auto">
-                <p className="text-primary font-semibold mb-3 uppercase tracking-wider text-sm">
+                <p className="text-primary font-semibold mb-3 text-sm">
                     The AI Director Blog
                 </p>
                 <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
@@ -65,7 +65,7 @@ export default async function BlogIndexPage() {
                             <Link
                                 key={post.slug}
                                 href={`/blog/${post.slug}`}
-                                className="glass-card rounded-2xl border-white/10 overflow-hidden group hover:border-primary/40 transition-all flex flex-col"
+                                className="glass-card rounded-2xl border-white/10 overflow-hidden group hover:border-primary/40 transition flex flex-col"
                             >
                                 <div className="aspect-video bg-white/5 overflow-hidden">
                                     {post.cover_image ? (
@@ -75,7 +75,7 @@ export default async function BlogIndexPage() {
                                             alt={post.title ?? ""}
                                             loading="lazy"
                                             decoding="async"
-                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                            className="w-full h-full object-cover group-active:scale-[0.98] transition-transform duration-500"
                                         />
                                     ) : (
                                         <div className="w-full h-full flex items-center justify-center text-white/20 text-sm">

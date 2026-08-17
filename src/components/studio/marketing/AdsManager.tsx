@@ -75,16 +75,16 @@ export function AdsManager() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e] uppercase">AI Paid Acquisition</p>
+            <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">AI Paid Acquisition</p>
             <DemoDataBadge />
           </div>
-          <h1 className="mt-1 text-3xl font-black text-white">Ads Manager</h1>
+          <h1 className="mt-1 text-3xl font-semibold text-white">Ads Manager</h1>
         </div>
 
         <button
           type="button"
           onClick={() => setModalOpen(true)}
-          className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition-all shadow-lg"
+          className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition shadow-lg"
         >
           <Plus className="h-4 w-4" /> Create Ad Campaign
         </button>
@@ -115,26 +115,26 @@ export function AdsManager() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-2xl border border-white/10 bg-[#161817] p-5 shadow-xl">
               <span className="text-xs font-semibold text-zinc-400">Total Ad Spend</span>
-              <p className="mt-2 text-2xl font-black text-white">$1,270.50</p>
+              <p className="mt-2 text-2xl font-semibold text-white">$1,270.50</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-[#161817] p-5 shadow-xl">
               <span className="text-xs font-semibold text-zinc-400">Total Leads Generated</span>
-              <p className="mt-2 text-2xl font-black text-[#b9f42e]">82 Leads</p>
+              <p className="mt-2 text-2xl font-semibold text-[#b9f42e]">82 Leads</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-[#161817] p-5 shadow-xl">
               <span className="text-xs font-semibold text-zinc-400">Average Cost Per Lead (CPL)</span>
-              <p className="mt-2 text-2xl font-black text-white">$15.49</p>
+              <p className="mt-2 text-2xl font-semibold text-white">$15.49</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-[#161817] p-5 shadow-xl">
               <span className="text-xs font-semibold text-zinc-400">Blended ROAS</span>
-              <p className="mt-2 text-2xl font-black text-white">3.1x</p>
+              <p className="mt-2 text-2xl font-semibold text-white">3.1x</p>
             </div>
           </div>
 
           <div className="overflow-x-auto rounded-2xl border border-white/10 bg-[#161817] p-6 shadow-2xl">
             <h2 className="mb-4 text-lg font-bold text-white">Ad Campaigns</h2>
             <table className="w-full text-left text-sm text-zinc-300">
-              <thead className="border-b border-white/10 text-xs font-bold uppercase tracking-wider text-zinc-500">
+              <thead className="border-b border-white/10 t-caption text-zinc-500">
                 <tr>
                   <th className="py-3 px-4">Campaign</th>
                   <th className="py-3 px-4">Platform</th>
@@ -181,7 +181,7 @@ export function AdsManager() {
           </div>
 
           <div className="space-y-3">
-            <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Tell your AI Ads Agent your goal:</label>
+            <label className="t-caption text-zinc-400">Tell your AI Ads Agent your goal:</label>
             <textarea
               value={promptText}
               onChange={(e) => setPromptText(e.target.value)}
@@ -190,7 +190,7 @@ export function AdsManager() {
           </div>
 
           <div className="rounded-xl border border-[#b9f42e]/30 bg-[#b9f42e]/5 p-5 space-y-3">
-            <h3 className="text-sm font-bold text-[#b9f42e] uppercase tracking-wider">AI Proposed Campaign Strategy</h3>
+            <h3 className="text-sm font-bold text-[#b9f42e]">AI Proposed Campaign Strategy</h3>
             <div className="grid gap-3 text-xs sm:grid-cols-3">
               <div><span className="text-zinc-500 font-bold block">Objective:</span><span className="text-white font-semibold">Lead Generation</span></div>
               <div><span className="text-zinc-500 font-bold block">Platform:</span><span className="text-white font-semibold">Meta (Facebook + Instagram)</span></div>
@@ -226,21 +226,21 @@ export function AdsManager() {
           <div className="grid gap-4 md:grid-cols-3">
             <button
               onClick={() => setAutomationMode("copilot")}
-              className={`rounded-2xl border p-5 text-left transition-all ${automationMode === "copilot" ? "border-[#b9f42e] bg-[#b9f42e]/10" : "border-white/10 bg-black/40"}`}
+              className={`rounded-2xl border p-5 text-left transition ${automationMode === "copilot" ? "border-[#b9f42e] bg-[#b9f42e]/10" : "border-white/10 bg-black/40"}`}
             >
               <h4 className="font-bold text-white">COPILOT</h4>
               <p className="mt-1 text-xs text-zinc-400">AI only makes recommendations. User manually approves every action.</p>
             </button>
             <button
               onClick={() => setAutomationMode("assisted")}
-              className={`rounded-2xl border p-5 text-left transition-all ${automationMode === "assisted" ? "border-[#b9f42e] bg-[#b9f42e]/10" : "border-white/10 bg-black/40"}`}
+              className={`rounded-2xl border p-5 text-left transition ${automationMode === "assisted" ? "border-[#b9f42e] bg-[#b9f42e]/10" : "border-white/10 bg-black/40"}`}
             >
               <h4 className="font-bold text-white">ASSISTED AUTOPILOT</h4>
               <p className="mt-1 text-xs text-zinc-400">AI may perform pre-approved actions within strict limits (e.g. pause high CPL ads).</p>
             </button>
             <button
               onClick={() => setAutomationMode("full")}
-              className={`rounded-2xl border p-5 text-left transition-all ${automationMode === "full" ? "border-yellow-500 bg-yellow-500/10" : "border-white/10 bg-black/40"}`}
+              className={`rounded-2xl border p-5 text-left transition ${automationMode === "full" ? "border-yellow-500 bg-yellow-500/10" : "border-white/10 bg-black/40"}`}
             >
               <h4 className="font-bold text-white">FULL AUTOPILOT</h4>
               <p className="mt-1 text-xs text-zinc-400">AI manages campaigns within strict guardrails. Hard backend rules enforce limits.</p>
@@ -249,7 +249,7 @@ export function AdsManager() {
 
           <div className="grid gap-6 md:grid-cols-3 pt-4 border-t border-white/10">
             <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Max Daily Budget ($)</label>
+              <label className="t-caption text-zinc-400">Max Daily Budget ($)</label>
               <input
                 type="number"
                 value={maxBudget}
@@ -258,7 +258,7 @@ export function AdsManager() {
               />
             </div>
             <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Max Acceptable CPL ($)</label>
+              <label className="t-caption text-zinc-400">Max Acceptable CPL ($)</label>
               <input
                 type="number"
                 value={maxCpl}
@@ -267,7 +267,7 @@ export function AdsManager() {
               />
             </div>
             <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Min Acceptable ROAS</label>
+              <label className="t-caption text-zinc-400">Min Acceptable ROAS</label>
               <input
                 type="number"
                 step="0.1"

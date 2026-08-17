@@ -84,8 +84,8 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
       {/* Top Bar */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e] uppercase">AI Content Autopilot</p>
-          <h1 className="mt-1 text-3xl font-black text-white">Content Calendar</h1>
+          <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">AI Content Autopilot</p>
+          <h1 className="mt-1 text-3xl font-semibold text-white">Content Calendar</h1>
         </div>
 
         <div className="flex items-center gap-3">
@@ -113,7 +113,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
           <button
             type="button"
             onClick={() => setComposerOpen(true)}
-            className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition-all shadow-lg"
+            className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition shadow-lg"
           >
             <Plus className="h-4 w-4" /> Create Content
           </button>
@@ -123,7 +123,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
       {/* Filter Bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-[#161817] p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Platform:</span>
+          <span className="text-xs font-bold text-zinc-500">Platform:</span>
           {["all", "instagram", "facebook", "x", "linkedin"].map((platform) => (
             <button
               key={platform}
@@ -136,7 +136,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Status:</span>
+          <span className="text-xs font-bold text-zinc-500">Status:</span>
           {["all", "draft", "needs_approval", "approved", "scheduled", "published"].map((status) => (
             <button
               key={status}
@@ -164,7 +164,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
                 )}
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="rounded-md bg-white/10 px-2 py-0.5 text-[10px] font-bold text-zinc-300 uppercase">{post.contentType}</span>
+                    <span className="rounded-md bg-white/10 px-2 py-0.5 text-[10px] font-bold text-zinc-300">{post.contentType}</span>
                     <span className="rounded-md bg-[#b9f42e]/10 px-2 py-0.5 text-[10px] font-bold text-[#b9f42e] capitalize">{post.status.replace("_", " ")}</span>
                   </div>
                   <h3 className="mt-1 text-base font-bold text-white">{post.title}</h3>
@@ -198,7 +198,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
             </div>
           </div>
 
-          <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
+          <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold text-zinc-500 mb-2">
             <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
           </div>
 
@@ -207,7 +207,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
               const day = i + 1
               const dayPosts = mockPosts.filter((p) => new Date(p.scheduledAt).getDate() === day)
               return (
-                <div key={day} className="min-h-[100px] rounded-xl border border-white/5 bg-black/30 p-2 text-left hover:border-white/20 transition-all">
+                <div key={day} className="min-h-[100px] rounded-xl border border-white/5 bg-black/30 p-2 text-left hover:border-white/20 transition">
                   <span className="text-xs font-bold text-zinc-400">{day}</span>
                   {dayPosts.map((post) => (
                     <div key={post.id} className="mt-1.5 rounded-lg border border-[#b9f42e]/30 bg-[#b9f42e]/10 p-1.5 text-[10px] font-bold text-[#b9f42e] truncate">
@@ -232,7 +232,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
 
             <div className="mt-4 space-y-4 max-h-[70vh] overflow-y-auto pr-2">
               <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Select Studio Media Asset</label>
+                <label className="t-caption text-zinc-400">Select Studio Media Asset</label>
                 <div className="mt-2 flex gap-3 overflow-x-auto pb-2">
                   {shots.length > 0 ? shots.map((shot) => (
                     <button
@@ -250,7 +250,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
               </div>
 
               <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Post Caption</label>
+                <label className="t-caption text-zinc-400">Post Caption</label>
                 <textarea
                   value={caption}
                   onChange={(e) => setCaption(e.target.value)}
@@ -261,7 +261,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Hashtags</label>
+                  <label className="t-caption text-zinc-400">Hashtags</label>
                   <input
                     type="text"
                     value={hashtags}
@@ -270,7 +270,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Call to Action (CTA)</label>
+                  <label className="t-caption text-zinc-400">Call to Action (CTA)</label>
                   <input
                     type="text"
                     value={cta}

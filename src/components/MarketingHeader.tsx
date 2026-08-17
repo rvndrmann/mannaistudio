@@ -36,7 +36,7 @@ export function MarketingHeader() {
                     <Link
                         key={item.href}
                         href={item.href}
-                        className={`text-sm font-medium transition-all ${
+                        className={`text-sm font-medium transition ${
                             active
                                 ? "text-primary font-bold border-b-2 border-primary pb-1"
                                 : "text-white/60 hover:text-white"

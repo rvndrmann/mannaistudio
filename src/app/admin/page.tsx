@@ -1237,7 +1237,7 @@ function AdminDashboardContent() {
                             <button
                                 onClick={() => setActiveTab("overview")}
                                 className={cn(
-                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
                                     activeTab === "overview" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
@@ -1246,7 +1246,7 @@ function AdminDashboardContent() {
                             <button
                                 onClick={() => setActiveTab("courses")}
                                 className={cn(
-                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
                                     activeTab === "courses" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
@@ -1255,7 +1255,7 @@ function AdminDashboardContent() {
                             <button
                                 onClick={() => setActiveTab("showcase")}
                                 className={cn(
-                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
                                     activeTab === "showcase" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
@@ -1264,7 +1264,7 @@ function AdminDashboardContent() {
                             <button
                                 onClick={() => setActiveTab("blog")}
                                 className={cn(
-                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
                                     activeTab === "blog" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
@@ -1273,7 +1273,7 @@ function AdminDashboardContent() {
                             <button
                                 onClick={() => setActiveTab("challenges")}
                                 className={cn(
-                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
                                     activeTab === "challenges" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
@@ -1282,7 +1282,7 @@ function AdminDashboardContent() {
                             <button
                                 onClick={() => setActiveTab("service-requests")}
                                 className={cn(
-                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
                                     activeTab === "service-requests" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
@@ -1291,7 +1291,7 @@ function AdminDashboardContent() {
                             <button
                                 onClick={() => { setActiveTab("students"); loadStudents(); }}
                                 className={cn(
-                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
                                     activeTab === "students" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
@@ -1300,7 +1300,7 @@ function AdminDashboardContent() {
                             <button
                                 onClick={() => setActiveTab("billing")}
                                 className={cn(
-                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
                                     activeTab === "billing" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
@@ -1309,7 +1309,7 @@ function AdminDashboardContent() {
                             <button
                                 onClick={() => setActiveTab("ai-models")}
                                 className={cn(
-                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
                                     activeTab === "ai-models" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
@@ -1318,7 +1318,7 @@ function AdminDashboardContent() {
                             <button
                                 onClick={() => setActiveTab("asset-library")}
                                 className={cn(
-                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
                                     activeTab === "asset-library" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
@@ -1327,7 +1327,7 @@ function AdminDashboardContent() {
                             <button
                                 onClick={() => setActiveTab("ai-workflows")}
                                 className={cn(
-                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
                                     activeTab === "ai-workflows" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
@@ -1336,14 +1336,14 @@ function AdminDashboardContent() {
                             <button
                                 onClick={() => setActiveTab("site-features")}
                                 className={cn(
-                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
                                     activeTab === "site-features" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
                                 )}
                             >
                                 <PauseCircle className="w-4 h-4" /> Pause Features
                             </button>
                             <div className="pt-4 mt-4 border-t border-white/5">
-                                <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium text-red-400 hover:bg-red-400/5">
+                                <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium text-red-400 hover:bg-red-400/5">
                                     <LogOut className="w-4 h-4" /> Sign Out
                                 </button>
                             </div>
@@ -1392,7 +1392,7 @@ function AdminDashboardContent() {
                                                         key={mode}
                                                         onClick={() => { setAnalyticsMode(mode); setAnalyticsDate(new Date()) }}
                                                         className={cn(
-                                                            "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
+                                                            "px-3 py-1.5 rounded-lg text-[10px] font-bold  transition",
                                                             analyticsMode === mode ? "bg-primary text-black" : "text-white/40 hover:text-white"
                                                         )}
                                                     >
@@ -1430,19 +1430,19 @@ function AdminDashboardContent() {
                                     {/* Period Summary */}
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                         <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
-                                            <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Period Revenue</p>
+                                            <p className="text-[10px] font-bold text-white/30 mb-1">Period Revenue</p>
                                             <p className="text-xl font-bold text-lime-300">₹{analyticsPeriodRevenue.toLocaleString('en-IN')}</p>
                                         </div>
                                         <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
-                                            <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Enrollments</p>
+                                            <p className="text-[10px] font-bold text-white/30 mb-1">Enrollments</p>
                                             <p className="text-xl font-bold text-emerald-400">{analyticsPeriodEnrollments}</p>
                                         </div>
                                         <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
-                                            <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Avg / {analyticsMode === 'daily' ? 'Day' : analyticsMode === 'weekly' ? 'Week' : 'Month'}</p>
+                                            <p className="text-[10px] font-bold text-white/30 mb-1">Avg / {analyticsMode === 'daily' ? 'Day' : analyticsMode === 'weekly' ? 'Week' : 'Month'}</p>
                                             <p className="text-xl font-bold text-amber-400">₹{Math.round(analyticsPeriodRevenue / analyticsChartData.length || 0).toLocaleString('en-IN')}</p>
                                         </div>
                                         <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
-                                            <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Best {analyticsMode === 'daily' ? 'Day' : analyticsMode === 'weekly' ? 'Week' : 'Month'}</p>
+                                            <p className="text-[10px] font-bold text-white/30 mb-1">Best {analyticsMode === 'daily' ? 'Day' : analyticsMode === 'weekly' ? 'Week' : 'Month'}</p>
                                             <p className="text-xl font-bold text-lime-400">₹{Math.max(...analyticsChartData.map(d => d.revenue), 0).toLocaleString('en-IN')}</p>
                                         </div>
                                     </div>
@@ -1451,7 +1451,7 @@ function AdminDashboardContent() {
                                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                         {/* Revenue Bar Chart */}
                                         <div>
-                                            <p className="text-xs font-bold text-white/30 uppercase tracking-widest mb-4">Revenue</p>
+                                            <p className="text-xs font-bold text-white/30 mb-4">Revenue</p>
                                             <div className="h-[250px] w-full">
                                                 {isChartReady ? (
                                                     <ResponsiveContainer width="100%" height="100%">
@@ -1475,7 +1475,7 @@ function AdminDashboardContent() {
 
                                         {/* Enrollments Area Chart */}
                                         <div>
-                                            <p className="text-xs font-bold text-white/30 uppercase tracking-widest mb-4">Enrollments</p>
+                                            <p className="text-xs font-bold text-white/30 mb-4">Enrollments</p>
                                             <div className="h-[250px] w-full">
                                                 {isChartReady ? (
                                                     <ResponsiveContainer width="100%" height="100%">
@@ -1529,7 +1529,7 @@ function AdminDashboardContent() {
                                             </header>
                                             <button
                                                 onClick={handleAddCourse}
-                                                className="px-5 py-2.5 bg-primary rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-primary/20 hover:scale-105 transition-transform"
+                                                className="px-5 py-2.5 bg-primary rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-primary/20 active:scale-[0.98] transition-transform"
                                             >
                                                 <Plus className="w-4 h-4" /> Create New
                                             </button>
@@ -1569,7 +1569,7 @@ function AdminDashboardContent() {
                                                                     placeholder="Thumbnail Image URL"
                                                                 />
                                                                 <div className="space-y-2">
-                                                                    <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Course Access</p>
+                                                                    <p className="text-[10px] font-bold text-white/30">Course Access</p>
                                                                     <div className="inline-flex rounded-xl border border-white/10 bg-white/5 p-1">
                                                                         {[
                                                                             { label: "Free", value: "Free" },
@@ -1615,18 +1615,18 @@ function AdminDashboardContent() {
                                                                     <div className="flex items-center gap-3 mb-1">
                                                                         <h3 className="text-xl font-bold">{course.title}</h3>
                                                                         {course.is_paused ? (
-                                                                            <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                                                            <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-bold flex items-center gap-1">
                                                                                 <PauseCircle className="w-3 h-3" /> Paused
                                                                             </span>
                                                                         ) : (
-                                                                            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                                                            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1">
                                                                                 <PlayCircle className="w-3 h-3" /> Active
                                                                             </span>
                                                                         )}
                                                                     </div>
                                                                     <p className="text-sm text-white/40 line-clamp-2">{course.description}</p>
                                                                 </div>
-                                                                <div className="flex flex-wrap items-center gap-4 text-[10px] font-bold tracking-widest uppercase text-white/30">
+                                                                <div className="flex flex-wrap items-center gap-4 text-[10px] font-bold tracking-widest text-white/30">
                                                                     <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {adminStats.courseEnrollments[course.id] || 0} Enrolled</span>
                                                                     <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" /> {course.chapters} Chapters</span>
                                                                     <span className={cn(
@@ -1637,7 +1637,7 @@ function AdminDashboardContent() {
                                                                     )}>
                                                                         {course.price === "Free" || course.price === "$0" ? "Free" : "Pro Membership"}
                                                                     </span>
-                                                                    <span className="flex items-center gap-1 text-primary"><FileText className="w-3 h-3 " /> {course.lessons?.length || 0} Lessons with resources</span>
+                                                                    <span className="flex items-center gap-1 text-primary"><FileText className="w-3 h-3" /> {course.lessons?.length || 0} Lessons with resources</span>
                                                                 </div>
                                                                 <div className="flex items-center gap-3 pt-4 border-t border-white/5">
                                                                     <button onClick={() => handleEditCourse(course)} className="p-2 bg-white/5 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors" title="Edit Course Details">
@@ -1696,7 +1696,7 @@ function AdminDashboardContent() {
                                     </header>
                                     <button
                                         onClick={handleAddShowcase}
-                                        className="px-5 py-2.5 bg-primary rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-primary/20 hover:scale-105 transition-transform"
+                                        className="px-5 py-2.5 bg-primary rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-primary/20 active:scale-[0.98] transition-transform"
                                     >
                                         <Plus className="w-4 h-4" /> Add Showcase
                                     </button>
@@ -1713,12 +1713,12 @@ function AdminDashboardContent() {
                                             <input value={showcaseEditForm.title} onChange={(e) => setShowcaseEditForm(prev => prev ? { ...prev, title: e.target.value } : prev)} className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full" placeholder="Video Title" />
                                             <textarea value={showcaseEditForm.description} onChange={(e) => setShowcaseEditForm(prev => prev ? { ...prev, description: e.target.value } : prev)} className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full h-24" placeholder="Short Description" />
                                             <div>
-                                                <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1 block">Upload Video</label>
+                                                <label className="text-[10px] font-bold text-white/30 mb-1 block">Upload Video</label>
                                                 <input type="file" accept="video/*" onChange={(e) => setShowcaseVideoFile(e.target.files?.[0] || null)} className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-primary/20 file:px-3 file:py-1 file:text-primary file:text-xs file:font-bold" />
                                             </div>
                                             <input value={showcaseEditForm.videoUrl} onChange={(e) => setShowcaseEditForm(prev => prev ? { ...prev, videoUrl: e.target.value } : prev)} className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full" placeholder="Or paste Video URL" />
                                             <div>
-                                                <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1 block">Upload Thumbnail</label>
+                                                <label className="text-[10px] font-bold text-white/30 mb-1 block">Upload Thumbnail</label>
                                                 <input type="file" accept="image/*" onChange={(e) => setShowcaseThumbnailFile(e.target.files?.[0] || null)} className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-primary/20 file:px-3 file:py-1 file:text-primary file:text-xs file:font-bold" />
                                             </div>
                                             <input value={showcaseEditForm.thumbnail} onChange={(e) => setShowcaseEditForm(prev => prev ? { ...prev, thumbnail: e.target.value } : prev)} className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full" placeholder="Or paste Thumbnail URL" />
@@ -1765,7 +1765,7 @@ function AdminDashboardContent() {
                                                             placeholder="Short Description"
                                                         />
                                                         <div>
-                                                            <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1 block">Video File</label>
+                                                            <label className="text-[10px] font-bold text-white/30 mb-1 block">Video File</label>
                                                             <input
                                                                 type="file"
                                                                 accept="video/*"
@@ -1777,7 +1777,7 @@ function AdminDashboardContent() {
                                                             )}
                                                         </div>
                                                         <div>
-                                                            <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1 block">Video URL (or use upload above)</label>
+                                                            <label className="text-[10px] font-bold text-white/30 mb-1 block">Video URL (or use upload above)</label>
                                                             <input
                                                                 value={showcaseEditForm?.videoUrl ?? ""}
                                                                 onChange={(e) => setShowcaseEditForm(prev => prev ? { ...prev, videoUrl: e.target.value } : prev)}
@@ -1786,7 +1786,7 @@ function AdminDashboardContent() {
                                                             />
                                                         </div>
                                                         <div>
-                                                            <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1 block">Thumbnail Image</label>
+                                                            <label className="text-[10px] font-bold text-white/30 mb-1 block">Thumbnail Image</label>
                                                             <input
                                                                 type="file"
                                                                 accept="image/*"
@@ -1795,7 +1795,7 @@ function AdminDashboardContent() {
                                                             />
                                                         </div>
                                                         <div>
-                                                            <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1 block">Thumbnail URL (or use upload above)</label>
+                                                            <label className="text-[10px] font-bold text-white/30 mb-1 block">Thumbnail URL (or use upload above)</label>
                                                             <input
                                                                 value={showcaseEditForm?.thumbnail ?? ""}
                                                                 onChange={(e) => setShowcaseEditForm(prev => prev ? { ...prev, thumbnail: e.target.value } : prev)}
@@ -1857,7 +1857,7 @@ function AdminDashboardContent() {
                                                         <h3 className="text-xl font-bold mb-2">{item.title}</h3>
                                                         <p className="text-sm text-white/40 leading-relaxed mb-4">{item.description}</p>
                                                         <div className="flex items-center gap-4 py-3 border-t border-white/5">
-                                                            <div className="text-[10px] font-bold text-white/30 uppercase tracking-widest flex items-center gap-2">
+                                                            <div className="text-[10px] font-bold text-white/30 flex items-center gap-2">
                                                                 <Save className="w-3 h-3 text-emerald-400" /> Published to Homepage
                                                             </div>
                                                         </div>
@@ -1896,7 +1896,7 @@ function AdminDashboardContent() {
                                     </header>
                                     <button
                                         onClick={handleAddChallenge}
-                                        className="px-5 py-2.5 bg-primary rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-primary/20 hover:scale-105 transition-transform"
+                                        className="px-5 py-2.5 bg-primary rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-primary/20 active:scale-[0.98] transition-transform"
                                     >
                                         <Plus className="w-4 h-4" /> New Challenge
                                     </button>
@@ -1966,7 +1966,7 @@ function AdminDashboardContent() {
                                                             <div className="flex items-center gap-3">
                                                                 <h3 className="text-xl font-bold">{challenge.title}</h3>
                                                                 <span className={cn(
-                                                                    "px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider",
+                                                                    "px-2 py-1 rounded-md text-[10px] font-bold ",
                                                                     challenge.difficulty === "Hard" ? "bg-red-400/10 text-red-400" :
                                                                         challenge.difficulty === "Medium" ? "bg-amber-400/10 text-amber-400" : "bg-emerald-400/10 text-emerald-400"
                                                                 )}>
@@ -1976,15 +1976,15 @@ function AdminDashboardContent() {
                                                             <p className="text-sm text-white/40 max-w-2xl">{challenge.description}</p>
                                                             <div className="flex items-center gap-6 pt-2">
                                                                 <div className="space-y-1">
-                                                                    <p className="text-[10px] text-white/20 uppercase font-bold tracking-widest">Prize Fund</p>
+                                                                    <p className="text-[10px] text-white/20 font-bold tracking-widest">Prize Fund</p>
                                                                     <p className="text-emerald-400 font-bold">{challenge.prize}</p>
                                                                 </div>
                                                                 <div className="space-y-1">
-                                                                    <p className="text-[10px] text-white/20 uppercase font-bold tracking-widest">Deadline</p>
+                                                                    <p className="text-[10px] text-white/20 font-bold tracking-widest">Deadline</p>
                                                                     <p className="text-white/80 font-bold text-sm">{challenge.deadline}</p>
                                                                 </div>
                                                                 <div className="space-y-1">
-                                                                    <p className="text-[10px] text-white/20 uppercase font-bold tracking-widest">Participants</p>
+                                                                    <p className="text-[10px] text-white/20 font-bold tracking-widest">Participants</p>
                                                                     <p className="text-white/80 font-bold text-sm">{challenge.participants}</p>
                                                                 </div>
                                                             </div>
@@ -1992,7 +1992,7 @@ function AdminDashboardContent() {
                                                         <div className="flex flex-col gap-2 shrink-0">
                                                             <button
                                                                 onClick={() => setViewingSubmissionsId(viewingSubmissionsId === challenge.id ? null : challenge.id)}
-                                                                className="px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg text-xs font-bold hover:bg-primary/20 transition-all flex items-center justify-center gap-2"
+                                                                className="px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg text-xs font-bold hover:bg-primary/20 transition flex items-center justify-center gap-2"
                                                             >
                                                                 <Users className="w-3.5 h-3.5" /> {viewingSubmissionsId === challenge.id ? "Close Submissions" : "View Submissions"}
                                                             </button>
@@ -2013,11 +2013,11 @@ function AdminDashboardContent() {
                                                             animate={{ height: "auto", opacity: 1 }}
                                                             className="pt-6 border-t border-white/5"
                                                         >
-                                                            <h4 className="text-xs font-bold text-white/20 uppercase tracking-widest mb-4">Student Submissions</h4>
+                                                            <h4 className="text-xs font-bold text-white/20 mb-4">Student Submissions</h4>
                                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                                                 {challenge.submissions.map((sub: any) => (
                                                                     <div key={sub.id} className={cn(
-                                                                        "p-3 rounded-xl border transition-all relative group/sub",
+                                                                        "p-3 rounded-xl border transition relative group/sub",
                                                                         challenge.winnerId === sub.id ? "bg-primary/10 border-primary" : "bg-white/[0.02] border-white/5 hover:border-white/10"
                                                                     )}>
                                                                         {challenge.winnerId === sub.id && (
@@ -2056,7 +2056,7 @@ function AdminDashboardContent() {
                                                                                 <button
                                                                                     onClick={() => handleSelectWinner(challenge.id, sub.id)}
                                                                                     className={cn(
-                                                                                        "mt-2 w-full py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
+                                                                                        "mt-2 w-full py-1.5 rounded-lg text-[10px] font-bold  transition",
                                                                                         challenge.winnerId === sub.id ? "bg-primary text-black" : "bg-white/5 text-white/40 hover:bg-primary hover:text-black"
                                                                                     )}
                                                                                 >
@@ -2127,7 +2127,7 @@ function AdminDashboardContent() {
                                                         <div className="flex flex-wrap items-center gap-3">
                                                             <h3 className="text-xl font-bold">{request.title}</h3>
                                                             <span className={cn(
-                                                                "px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider",
+                                                                "px-2.5 py-1 rounded-md text-[10px] font-bold ",
                                                                 request.status === "pending" ? "bg-lime-300/10 text-lime-200" :
                                                                     request.status === "approved" ? "bg-amber-400/10 text-amber-300" :
                                                                         request.status === "awarded" ? "bg-emerald-400/10 text-emerald-300" : "bg-white/10 text-white/50"
@@ -2162,17 +2162,17 @@ function AdminDashboardContent() {
 
                                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                                                     <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
-                                                        <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2">Service</p>
+                                                        <p className="text-[10px] font-bold text-white/30 mb-2">Service</p>
                                                         <p className="font-bold">{request.serviceType}</p>
                                                     </div>
                                                     <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
-                                                        <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1">
+                                                        <p className="text-[10px] font-bold text-white/30 mb-2 flex items-center gap-1">
                                                             <DollarSign className="w-3 h-3" /> Budget
                                                         </p>
                                                         <p className="font-bold">{request.budgetRange || "Not specified"}</p>
                                                     </div>
                                                     <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
-                                                        <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1">
+                                                        <p className="text-[10px] font-bold text-white/30 mb-2 flex items-center gap-1">
                                                             <Clock className="w-3 h-3" /> Timeline
                                                         </p>
                                                         <p className="font-bold">{request.timeline || "Not specified"}</p>
@@ -2180,12 +2180,12 @@ function AdminDashboardContent() {
                                                 </div>
 
                                                 <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
-                                                    <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2">Project Description</p>
+                                                    <p className="text-[10px] font-bold text-white/30 mb-2">Project Description</p>
                                                     <p className="text-sm text-white/60 leading-relaxed whitespace-pre-wrap">{request.projectDescription}</p>
                                                 </div>
                                                 <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
                                                     <div className="flex items-center justify-between gap-4 mb-4">
-                                                        <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Bids</p>
+                                                        <p className="text-[10px] font-bold text-white/30">Bids</p>
                                                         <span className="text-xs text-white/40">{request.bids.length} offer{request.bids.length === 1 ? "" : "s"}</span>
                                                     </div>
                                                     {request.bids.length === 0 ? (
@@ -2200,7 +2200,7 @@ function AdminDashboardContent() {
                                                                             <p className="text-xs text-white/40">{bid.offerAmount}</p>
                                                                         </div>
                                                                         <span className={cn(
-                                                                            "px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider w-fit",
+                                                                            "px-2.5 py-1 rounded-md text-[10px] font-bold  w-fit",
                                                                             bid.status === "selected" ? "bg-emerald-400/10 text-emerald-300" :
                                                                                 bid.status === "rejected" ? "bg-red-400/10 text-red-300" : "bg-white/5 text-white/40"
                                                                         )}>{bid.status}</span>
@@ -2284,12 +2284,12 @@ function AdminDashboardContent() {
                                                             </div>
                                                             <div className="ml-auto flex items-center gap-2">
                                                                 <span className={cn(
-                                                                    "px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider",
+                                                                    "px-2.5 py-1 rounded-lg text-[10px] font-bold ",
                                                                     memberActive
                                                                         ? (student.is_trial ? "bg-amber-400/10 text-amber-400" : "bg-emerald-400/10 text-emerald-400")
                                                                         : "bg-white/5 text-white/40"
                                                                 )}>{memberLabel}</span>
-                                                                <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-white/5 text-white/50">{student.bids ?? 0} bids</span>
+                                                                <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-white/5 text-white/50">{student.bids ?? 0} bids</span>
                                                                 <span className="text-xs font-bold text-primary">{enrolledCourseCount} course{enrolledCourseCount === 1 ? '' : 's'}</span>
                                                             </div>
                                                         </div>
@@ -2308,7 +2308,7 @@ function AdminDashboardContent() {
                                                                         <BookOpen className="w-3 h-3 text-primary" />
                                                                         <span className="font-medium">{courseName}</span>
                                                                         <span className={cn(
-                                                                            "px-1.5 py-0.5 rounded text-[9px] font-bold uppercase",
+                                                                            "px-1.5 py-0.5 rounded text-[9px] font-bold ",
                                                                             e.status === 'active' ? "bg-emerald-400/10 text-emerald-400" : "bg-white/5 text-white/40"
                                                                         )}>{e.status}</span>
                                                                         <span className="text-white/20">{new Date(e.created_at).toLocaleDateString()}</span>
@@ -2341,7 +2341,7 @@ function AdminDashboardContent() {
                                 <div className="glass-card p-6 rounded-2xl border-white/10 space-y-6 max-w-3xl">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <label className="space-y-2">
-                                            <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Monthly Price (₹)</span>
+                                            <span className="text-[10px] font-bold text-white/30">Monthly Price (₹)</span>
                                             <input
                                                 type="number"
                                                 min={1}
@@ -2351,7 +2351,7 @@ function AdminDashboardContent() {
                                             />
                                         </label>
                                         <label className="space-y-2">
-                                            <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Offer Price (₹)</span>
+                                            <span className="text-[10px] font-bold text-white/30">Offer Price (₹)</span>
                                             <input
                                                 type="number"
                                                 min={1}
@@ -2363,7 +2363,7 @@ function AdminDashboardContent() {
                                     </div>
 
                                     <label className="space-y-2 block">
-                                        <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Offer Banner Text</span>
+                                        <span className="text-[10px] font-bold text-white/30">Offer Banner Text</span>
                                         <input
                                             value={billingSettings.offerText}
                                             onChange={(e) => setBillingSettings(prev => ({ ...prev, offerText: e.target.value }))}
@@ -2399,7 +2399,7 @@ function AdminDashboardContent() {
                                     </label>
 
                                     <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                                        <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2">Current Checkout Price</p>
+                                        <p className="text-[10px] font-bold text-white/30 mb-2">Current Checkout Price</p>
                                         <p className="text-2xl font-bold">₹{pricePerEnrollment}/month</p>
                                         {!billingSettings.paymentsEnabled && (
                                             <p className="text-xs text-amber-400 mt-2">Payments are currently disabled. Users see the free access message.</p>
@@ -2439,7 +2439,7 @@ function AdminDashboardContent() {
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <label className="space-y-2">
-                                            <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Trial Duration (days)</span>
+                                            <span className="text-[10px] font-bold text-white/30">Trial Duration (days)</span>
                                             <input
                                                 type="number"
                                                 min={1}
@@ -2450,7 +2450,7 @@ function AdminDashboardContent() {
                                             />
                                         </label>
                                         <label className="space-y-2">
-                                            <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Promotion End Date</span>
+                                            <span className="text-[10px] font-bold text-white/30">Promotion End Date</span>
                                             <input
                                                 type="date"
                                                 value={trialSettings.promoEndDate}
@@ -2514,7 +2514,7 @@ function AdminDashboardContent() {
                                                 <div>
                                                     <div className="flex flex-wrap items-center gap-3">
                                                         <p className="font-bold">{model.label}</p>
-                                                        <span className={cn("rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wider", isPaused ? "bg-amber-400/10 text-amber-300" : "bg-lime-400/10 text-lime-300")}>
+                                                        <span className={cn("rounded-full px-2 py-1 text-[10px] font-bold ", isPaused ? "bg-amber-400/10 text-amber-300" : "bg-lime-400/10 text-lime-300")}>
                                                             {isPaused ? "Paused" : "Active"}
                                                         </span>
                                                     </div>
@@ -2648,18 +2648,18 @@ function AdminDashboardContent() {
                                     </div>
 
                                     <label className="block space-y-2">
-                                        <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Orchestrator Instructions</span>
+                                        <span className="text-[10px] font-bold text-white/30">Orchestrator Instructions</span>
                                         <textarea value={directorRuntimeSettings.orchestrationInstructions} onChange={(event) => setDirectorRuntimeSettings((settings) => ({ ...settings, orchestrationInstructions: event.target.value }))} rows={6} className="w-full resize-y rounded-xl border border-white/10 bg-black/30 px-4 py-3 font-mono text-sm leading-6 text-white outline-none focus:border-primary" placeholder="Rules for choosing tools, approvals, status reporting, and failure recovery..." />
                                     </label>
 
                                     <div className="grid gap-4 md:grid-cols-2">
                                         <label className="space-y-2">
-                                            <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Maximum Tool Steps Per Reply</span>
+                                            <span className="text-[10px] font-bold text-white/30">Maximum Tool Steps Per Reply</span>
                                             <input type="number" min={1} max={25} value={directorRuntimeSettings.maxToolSteps} onChange={(event) => setDirectorRuntimeSettings((settings) => ({ ...settings, maxToolSteps: Math.max(1, Math.min(25, Number(event.target.value) || 1)) }))} className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-primary" />
                                             <p className="text-xs text-white/35">Higher values allow longer autonomous workflows but increase latency and model usage.</p>
                                         </label>
                                         <label className="space-y-2">
-                                            <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Maximum Next Actions</span>
+                                            <span className="text-[10px] font-bold text-white/30">Maximum Next Actions</span>
                                             <input type="number" min={1} max={5} value={directorRuntimeSettings.nextActionLimit} onChange={(event) => setDirectorRuntimeSettings((settings) => ({ ...settings, nextActionLimit: Math.max(1, Math.min(5, Number(event.target.value) || 1)) }))} className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-primary" />
                                             <p className="text-xs text-white/35">Limits the number of contextual options shown after an agent response.</p>
                                         </label>
@@ -2701,7 +2701,7 @@ function AdminDashboardContent() {
                                                     </label>
                                                 </div>
                                                 <label className="block space-y-1.5">
-                                                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Skills</span>
+                                                    <span className="text-[10px] font-bold text-white/30">Skills</span>
                                                     <input
                                                         value={agent.skills}
                                                         onChange={(event) => setDirectorTeam((team) => ({ ...team, [key]: { ...(team[key] ?? defaultDirectorTeam[key]), skills: event.target.value } }))}
@@ -2710,7 +2710,7 @@ function AdminDashboardContent() {
                                                     />
                                                 </label>
                                                 <label className="block space-y-1.5">
-                                                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Instructions</span>
+                                                    <span className="text-[10px] font-bold text-white/30">Instructions</span>
                                                     <textarea
                                                         value={agent.instructions}
                                                         onChange={(event) => setDirectorTeam((team) => ({ ...team, [key]: { ...(team[key] ?? defaultDirectorTeam[key]), instructions: event.target.value } }))}
@@ -2780,10 +2780,10 @@ function AdminDashboardContent() {
                                                 <div>
                                                     <div className="flex flex-wrap items-center gap-2">
                                                         <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] font-bold text-white/40">#{index + 1}</span>
-                                                        <span className={cn("rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wider", workflow.status === "active" ? "bg-lime-400/10 text-lime-300" : "bg-amber-400/10 text-amber-300")}>
+                                                        <span className={cn("rounded-full px-2 py-1 text-[10px] font-bold ", workflow.status === "active" ? "bg-lime-400/10 text-lime-300" : "bg-amber-400/10 text-amber-300")}>
                                                             {workflow.status}
                                                         </span>
-                                                        <span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
+                                                        <span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-bold text-primary">
                                                             {workflow.appliesTo === "episode" ? "Episode override" : "Project default"}
                                                         </span>
                                                     </div>
@@ -2809,7 +2809,7 @@ function AdminDashboardContent() {
 
                                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                                 <label className="space-y-2">
-                                                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Workflow Title</span>
+                                                    <span className="text-[10px] font-bold text-white/30">Workflow Title</span>
                                                     <input
                                                         value={workflow.title}
                                                         onChange={(event) => updateDirectorWorkflow(workflow.id, { title: event.target.value })}
@@ -2817,7 +2817,7 @@ function AdminDashboardContent() {
                                                     />
                                                 </label>
                                                 <label className="space-y-2">
-                                                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Workflow ID</span>
+                                                    <span className="text-[10px] font-bold text-white/30">Workflow ID</span>
                                                     <input
                                                         value={workflow.id}
                                                         onChange={(event) => updateDirectorWorkflow(workflow.id, { id: event.target.value.toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "") || workflow.id })}
@@ -2825,7 +2825,7 @@ function AdminDashboardContent() {
                                                     />
                                                 </label>
                                                 <label className="space-y-2 md:col-span-2">
-                                                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Short Description</span>
+                                                    <span className="text-[10px] font-bold text-white/30">Short Description</span>
                                                     <textarea
                                                         value={workflow.description}
                                                         onChange={(event) => updateDirectorWorkflow(workflow.id, { description: event.target.value })}
@@ -2834,7 +2834,7 @@ function AdminDashboardContent() {
                                                     />
                                                 </label>
                                                 <label className="space-y-2">
-                                                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Skill Activated</span>
+                                                    <span className="text-[10px] font-bold text-white/30">Skill Activated</span>
                                                     <textarea
                                                         value={workflow.skill}
                                                         onChange={(event) => updateDirectorWorkflow(workflow.id, { skill: event.target.value })}
@@ -2844,7 +2844,7 @@ function AdminDashboardContent() {
                                                     />
                                                 </label>
                                                 <label className="space-y-2">
-                                                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Apply Scope</span>
+                                                    <span className="text-[10px] font-bold text-white/30">Apply Scope</span>
                                                     <select
                                                         value={workflow.appliesTo}
                                                         onChange={(event) => updateDirectorWorkflow(workflow.id, { appliesTo: event.target.value === "episode" ? "episode" : "project_default" })}
@@ -2856,7 +2856,7 @@ function AdminDashboardContent() {
                                                     <p className="text-xs leading-5 text-white/35">Studio settings can change the selected workflow any time. Project defaults carry to other episodes automatically.</p>
                                                 </label>
                                                 <label className="space-y-2 md:col-span-2">
-                                                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Workflow Instructions</span>
+                                                    <span className="text-[10px] font-bold text-white/30">Workflow Instructions</span>
                                                     <textarea
                                                         value={workflow.instructions}
                                                         onChange={(event) => updateDirectorWorkflow(workflow.id, { instructions: event.target.value })}
@@ -2913,7 +2913,7 @@ function AdminDashboardContent() {
                                                 <div>
                                                     <div className="flex items-center gap-3">
                                                         <p className="font-bold text-base">{feat.label}</p>
-                                                        <span className={cn("rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider", isPaused ? "bg-amber-500/15 text-amber-300 border border-amber-500/30" : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30")}>
+                                                        <span className={cn("rounded-full px-2.5 py-0.5 text-[10px] font-bold ", isPaused ? "bg-amber-500/15 text-amber-300 border border-amber-500/30" : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30")}>
                                                             {isPaused ? "Paused" : "Active"}
                                                         </span>
                                                     </div>
@@ -2983,7 +2983,7 @@ function AdminDashboardContent() {
                                         </div>
                                         <button
                                             onClick={() => setWatchingSubmissionId(null)}
-                                            className="p-2 hover:bg-white/10 rounded-xl text-white/40 hover:text-white transition-all"
+                                            className="p-2 hover:bg-white/10 rounded-xl text-white/40 hover:text-white transition"
                                         >
                                             <X className="w-6 h-6" />
                                         </button>
@@ -3004,7 +3004,7 @@ function AdminDashboardContent() {
                                         )}
                                     </div>
                                     <div className="p-4 flex items-center justify-between bg-white/[0.02]">
-                                        <div className="flex items-center gap-4 text-xs font-bold text-white/40 uppercase tracking-widest">
+                                        <div className="flex items-center gap-4 text-xs font-bold text-white/40">
                                             <span>Student: {mockChallenges.find(c => c.id === watchingChallengeId)?.submissions.find(s => s.id === watchingSubmissionId)?.studentName}</span>
                                             <span className="w-1.5 h-1.5 rounded-full bg-white/10" />
                                             <span>Submitted: {mockChallenges.find(c => c.id === watchingChallengeId)?.submissions.find(s => s.id === watchingSubmissionId)?.timestamp}</span>
@@ -3016,7 +3016,7 @@ function AdminDashboardContent() {
                                                     setWatchingSubmissionId(null)
                                                 }
                                             }}
-                                            className="px-4 py-2 bg-primary rounded-xl text-xs font-bold flex items-center gap-2 hover:scale-105 transition-transform"
+                                            className="px-4 py-2 bg-primary rounded-xl text-xs font-bold flex items-center gap-2 active:scale-[0.98] transition-transform"
                                         >
                                             <Trophy className="w-4 h-4" /> Pick as Winner
                                         </button>
@@ -3155,7 +3155,7 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
                                                 />
                                             </div>
                                             <div className="flex items-center gap-1">
-                                                <span className="text-[10px] font-bold text-white/10 uppercase">or</span>
+                                                <span className="text-[10px] font-bold text-white/10">or</span>
                                                 <label className={cn("cursor-pointer group/upload", uploadingLessonId === lesson.id && "pointer-events-none opacity-50")}>
                                                     <input
                                                         type="file"
@@ -3194,7 +3194,7 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
                                                             e.target.value = ''
                                                         }}
                                                     />
-                                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold text-white/40 group-hover/upload:bg-primary/20 group-hover/upload:text-primary transition-all whitespace-nowrap">
+                                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold text-white/40 group-hover/upload:bg-primary/20 group-hover/upload:text-primary transition whitespace-nowrap">
                                                         {uploadingLessonId === lesson.id ? (
                                                             <><Loader2 className="w-3 h-3 animate-spin" /> Uploading...</>
                                                         ) : (
@@ -3236,7 +3236,7 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
                         )}
 
                         <div className="pl-12 space-y-3">
-                            <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Downloadable Resources</p>
+                            <p className="text-[10px] font-bold text-white/20">Downloadable Resources</p>
                             <div className="flex flex-wrap gap-2">
                                 {lesson.resources.map((resource: any, rIndex: number) => (
                                     <div key={rIndex} className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5">
@@ -3277,7 +3277,7 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
                                             e.target.value = ''
                                         }}
                                     />
-                                    <div className="flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-lg px-3 py-1.5 text-[10px] font-bold text-primary hover:bg-primary/20 transition-all">
+                                    <div className="flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-lg px-3 py-1.5 text-[10px] font-bold text-primary hover:bg-primary/20 transition">
                                         {uploadingResourceLessonId === lesson.id ? (
                                             <><Loader2 className="w-3 h-3 animate-spin" /> Uploading...</>
                                         ) : (
@@ -3287,7 +3287,7 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
                                 </label>
                                 <button
                                     onClick={() => handleAddResource(lesson.id)}
-                                    className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] font-bold text-white/40 hover:text-white hover:bg-white/10 transition-all"
+                                    className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] font-bold text-white/40 hover:text-white hover:bg-white/10 transition"
                                 >
                                     <Plus className="w-3 h-3" /> Add link
                                 </button>
@@ -3296,7 +3296,7 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
 
                         {/* About this Lesson */}
                         <div className="pl-12 space-y-2">
-                            <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">About this Lesson</p>
+                            <p className="text-[10px] font-bold text-white/20">About this Lesson</p>
                             <textarea
                                 value={lesson.description || ''}
                                 onChange={(e) => handleUpdateLesson(lesson.id, "description", e.target.value)}
@@ -3308,7 +3308,7 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
 
                         {/* Key Takeaways */}
                         <div className="pl-12 space-y-2">
-                            <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Key Takeaways</p>
+                            <p className="text-[10px] font-bold text-white/20">Key Takeaways</p>
                             <div className="space-y-2">
                                 {(lesson.takeaways || []).map((t: string, tIdx: number) => (
                                     <div key={tIdx} className="flex items-center gap-2">
@@ -3337,7 +3337,7 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
                                 ))}
                                 <button
                                     onClick={() => handleUpdateLesson(lesson.id, "takeaways", [...(lesson.takeaways || []), ""])}
-                                    className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-1.5 text-[10px] font-bold text-emerald-400 hover:bg-emerald-500/20 transition-all"
+                                    className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-1.5 text-[10px] font-bold text-emerald-400 hover:bg-emerald-500/20 transition"
                                 >
                                     <Plus className="w-3 h-3" /> Add Takeaway
                                 </button>
@@ -3348,9 +3348,9 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
 
                 <button
                     onClick={handleAddLesson}
-                    className="w-full py-4 border-2 border-dashed border-white/5 rounded-2xl flex items-center justify-center gap-2 text-white/20 hover:border-primary/40 hover:text-primary transition-all group"
+                    className="w-full py-4 border-2 border-dashed border-white/5 rounded-2xl flex items-center justify-center gap-2 text-white/20 hover:border-primary/40 hover:text-primary transition group"
                 >
-                    <Plus className="w-5 h-5 group-hover:scale-110 transition-transform" /> Add New Chapter
+                    <Plus className="w-5 h-5 group-active:scale-95 transition-transform" /> Add New Chapter
                 </button>
             </div>
         </div>
@@ -3359,7 +3359,7 @@ function ChapterEditor({ course, onBack, onUpdate }: any) {
 
 function StatCard({ label, value, change, icon: Icon, color }: any) {
     return (
-        <div className="glass-card p-6 rounded-2xl border-white/10 hover:border-white/20 transition-all">
+        <div className="glass-card p-6 rounded-2xl border-white/10 hover:border-white/20 transition">
             <div className="flex items-start justify-between mb-4">
                 <div className={cn("p-2 rounded-lg bg-white/5", color)}>
                     <Icon className="w-5 h-5" />
@@ -3369,7 +3369,7 @@ function StatCard({ label, value, change, icon: Icon, color }: any) {
                     {change}
                 </div>
             </div>
-            <p className="text-white/40 text-xs font-medium mb-1 uppercase tracking-wider">{label}</p>
+            <p className="text-white/40 text-xs font-medium mb-1">{label}</p>
             <h4 className="text-2xl font-bold">{value}</h4>
         </div>
     )
@@ -3467,7 +3467,7 @@ function BytePlusAssetLibrary() {
             <div className="glass-card p-6 rounded-2xl border-white/10 max-w-4xl">
                 <div className="flex items-end justify-between gap-4">
                     <div>
-                        <p className="text-[11px] font-bold uppercase tracking-wider text-white/40">Slots used</p>
+                        <p className="text-[11px] font-bold text-white/40">Slots used</p>
                         <p className={cn("mt-1 text-3xl font-bold", full ? "text-red-400" : used > limit * 0.7 ? "text-amber-300" : "text-lime-300")}>
                             {used} <span className="text-white/30 text-xl">/ {limit}</span>
                         </p>
@@ -3492,7 +3492,7 @@ function BytePlusAssetLibrary() {
                     <p className="p-6 text-sm text-white/40">Nothing registered yet. Images register the first time a Seedance generation needs them.</p>
                 ) : (
                     <table className="w-full text-left text-sm">
-                        <thead className="border-b border-white/10 text-[11px] uppercase tracking-wider text-white/40">
+                        <thead className="border-b border-white/10 text-[11px] text-white/40">
                             <tr>
                                 <th className="p-4 font-bold">Image</th>
                                 <th className="p-4 font-bold">Used</th>
@@ -3510,7 +3510,7 @@ function BytePlusAssetLibrary() {
                                     <td className="p-4 text-white/60">{asset.use_count}×</td>
                                     <td className={cn("p-4", isStale(asset) ? "text-amber-300" : "text-white/60")}>
                                         {new Date(asset.last_used_at).toLocaleDateString()}
-                                        {isStale(asset) && <span className="ml-2 text-[10px] uppercase tracking-wider">unused {staleAfterDays}d+</span>}
+                                        {isStale(asset) && <span className="ml-2 text-[10px]">unused {staleAfterDays}d+</span>}
                                     </td>
                                     <td className="p-4 text-right">
                                         <button

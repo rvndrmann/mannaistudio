@@ -15,8 +15,8 @@ export function AutopilotPanel() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e] uppercase">Autonomous Marketing Agent</p>
-        <h1 className="mt-1 text-3xl font-black text-white">AI Content Autopilot</h1>
+        <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">Autonomous Marketing Agent</p>
+        <h1 className="mt-1 text-3xl font-semibold text-white">AI Content Autopilot</h1>
         <p className="mt-1 text-sm text-zinc-400">Configure how autonomously your AI marketing agent generates, plans, and schedules video content.</p>
       </div>
 
@@ -25,7 +25,7 @@ export function AutopilotPanel() {
         <button
           type="button"
           onClick={() => setMode("manual")}
-          className={`flex flex-col justify-between rounded-2xl border p-6 text-left transition-all ${mode === "manual" ? "border-[#b9f42e] bg-[#b9f42e]/10" : "border-white/10 bg-[#161817] hover:border-white/20"}`}
+          className={`flex flex-col justify-between rounded-2xl border p-6 text-left transition ${mode === "manual" ? "border-[#b9f42e] bg-[#b9f42e]/10" : "border-white/10 bg-[#161817] hover:border-white/20"}`}
         >
           <div>
             <div className="flex items-center justify-between">
@@ -43,7 +43,7 @@ export function AutopilotPanel() {
         <button
           type="button"
           onClick={() => setMode("copilot")}
-          className={`flex flex-col justify-between rounded-2xl border p-6 text-left transition-all ${mode === "copilot" ? "border-[#b9f42e] bg-[#b9f42e]/10" : "border-white/10 bg-[#161817] hover:border-white/20"}`}
+          className={`flex flex-col justify-between rounded-2xl border p-6 text-left transition ${mode === "copilot" ? "border-[#b9f42e] bg-[#b9f42e]/10" : "border-white/10 bg-[#161817] hover:border-white/20"}`}
         >
           <div>
             <div className="flex items-center justify-between">
@@ -61,7 +61,7 @@ export function AutopilotPanel() {
         <button
           type="button"
           onClick={() => { setMode("autopilot"); setModalOpen(true); }}
-          className={`relative flex flex-col justify-between rounded-2xl border p-6 text-left transition-all ${mode === "autopilot" ? "border-yellow-500 bg-yellow-500/10" : "border-white/10 bg-[#161817] hover:border-white/20"}`}
+          className={`relative flex flex-col justify-between rounded-2xl border p-6 text-left transition ${mode === "autopilot" ? "border-yellow-500 bg-yellow-500/10" : "border-white/10 bg-[#161817] hover:border-white/20"}`}
         >
           <div>
             <div className="flex items-center justify-between">
@@ -83,7 +83,7 @@ export function AutopilotPanel() {
 
         <div className="grid gap-6 md:grid-cols-2">
           <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Posting Frequency</label>
+            <label className="t-caption text-zinc-400">Posting Frequency</label>
             <select
               value={frequency}
               onChange={(e) => setFrequency(e.target.value)}
@@ -97,7 +97,7 @@ export function AutopilotPanel() {
           </div>
 
           <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Business Objective</label>
+            <label className="t-caption text-zinc-400">Business Objective</label>
             <input
               type="text"
               value={objective}
@@ -107,7 +107,7 @@ export function AutopilotPanel() {
           </div>
 
           <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Target Audience</label>
+            <label className="t-caption text-zinc-400">Target Audience</label>
             <input
               type="text"
               value={audience}
@@ -117,7 +117,7 @@ export function AutopilotPanel() {
           </div>
 
           <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Approval Requirement</label>
+            <label className="t-caption text-zinc-400">Approval Requirement</label>
             <div className="mt-2 flex items-center justify-between rounded-xl border border-white/10 bg-black/40 p-3">
               <span className="text-sm font-semibold text-zinc-300">Require manual approval before publishing</span>
               <input

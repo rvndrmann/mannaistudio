@@ -149,7 +149,7 @@ export default function EnterpriseOrderForm({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="space-y-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Finished minutes</span>
+          <span className="text-[10px] font-bold text-zinc-500">Finished minutes</span>
           <input
             value={minutes}
             onChange={(event) => setMinutes(event.target.value)}
@@ -158,7 +158,7 @@ export default function EnterpriseOrderForm({
           />
         </label>
         <label className="space-y-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Your name</span>
+          <span className="text-[10px] font-bold text-zinc-500">Your name</span>
           <input
             value={contactName}
             onChange={(event) => setContactName(event.target.value)}
@@ -169,7 +169,7 @@ export default function EnterpriseOrderForm({
       </div>
 
       <label className="block space-y-1.5">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Phone (optional)</span>
+        <span className="text-[10px] font-bold text-zinc-500">Phone (optional)</span>
         <input
           value={contactPhone}
           onChange={(event) => setContactPhone(event.target.value)}
@@ -178,7 +178,7 @@ export default function EnterpriseOrderForm({
       </label>
 
       <label className="block space-y-1.5">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">What do you need made?</span>
+        <span className="text-[10px] font-bold text-zinc-500">What do you need made?</span>
         <textarea
           value={brief}
           onChange={(event) => setBrief(event.target.value)}
@@ -190,8 +190,8 @@ export default function EnterpriseOrderForm({
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-4">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Estimate</p>
-          <p className="mt-1 text-2xl font-black text-[#b9f42e]">
+          <p className="text-[10px] font-bold text-zinc-500">Estimate</p>
+          <p className="mt-1 text-2xl font-semibold text-[#b9f42e]">
             ${total.toLocaleString()} <span className="text-xs font-medium text-zinc-500">{rate.currency}</span>
           </p>
           <p className="text-[11px] text-zinc-500">{validMinutes ? `${parsedMinutes} min × $${rate.usdPerMinute}/min` : `$${rate.usdPerMinute} per finished minute`}</p>
@@ -208,7 +208,7 @@ export default function EnterpriseOrderForm({
           type="button"
           onClick={submit}
           disabled={busy || !validMinutes || !rate.enabled}
-          className="rounded-xl bg-[#b9f42e] px-5 py-3 text-sm font-black text-black transition hover:bg-[#a6de25] disabled:opacity-50"
+          className="rounded-xl bg-[#b9f42e] px-5 py-3 text-sm font-semibold text-black transition hover:bg-[#a6de25] disabled:opacity-50"
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Request the team"}
         </button>
@@ -223,7 +223,7 @@ export default function EnterpriseOrderForm({
 
       {projectOrders.length > 0 && (
         <div className="pt-2">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Your requests</p>
+          <p className="text-[10px] font-bold text-zinc-500">Your requests</p>
           <ul className="mt-2 divide-y divide-white/[0.06] rounded-xl border border-white/10">
             {projectOrders.map((order) => (
               <li key={order.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
@@ -234,7 +234,7 @@ export default function EnterpriseOrderForm({
                   </p>
                   <p className="text-[11px] text-zinc-500">{new Date(order.created_at).toLocaleDateString()}{order.admin_note ? ` · ${order.admin_note}` : ""}</p>
                 </div>
-                <span className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-300">
+                <span className="rounded-full border border-white/10 px-2.5 py-1 t-caption text-zinc-300">
                   {statusCopy[order.status] || order.status}
                 </span>
               </li>

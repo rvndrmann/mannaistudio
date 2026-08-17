@@ -32,11 +32,11 @@ export default function AboutPage() {
             <section className="mx-auto max-w-[1200px] px-6 pb-16 pt-32">
                 <div className="grid gap-8 lg:grid-cols-[1.05fr_.95fr] lg:items-end">
                     <div>
-                        <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-black uppercase tracking-[.18em] text-primary">
+                        <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-2 t-caption text-primary">
                             <Sparkles className="h-4 w-4" />
                             About AI Director Hub
                         </div>
-                        <h1 className="mt-6 text-5xl font-black leading-none tracking-tight md:text-7xl">
+                        <h1 className="mt-6 text-5xl font-semibold leading-none tracking-tight md:text-7xl">
                             We are building an AI creative employee for video production.
                         </h1>
                         <p className="mt-6 max-w-3xl text-lg leading-8 text-white/55">
@@ -45,20 +45,20 @@ export default function AboutPage() {
                             The goal is simple: make AI video creation feel like working with a director, not fighting with a prompt box.
                         </p>
                         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                            <Link href="/studio" className="btn-primary px-7 py-4 text-center font-black">
+                            <Link href="/studio" className="btn-primary px-7 py-4 text-center font-semibold">
                                 Open Studio
                             </Link>
-                            <Link href="/billing" className="rounded-2xl border border-white/15 px-7 py-4 text-center font-black transition hover:border-primary hover:text-primary">
+                            <Link href="/billing" className="rounded-2xl border border-white/15 px-7 py-4 text-center font-semibold transition hover:border-primary hover:text-primary">
                                 View Plans
                             </Link>
                         </div>
                     </div>
 
                     <div className="rounded-[28px] border border-primary/25 bg-[radial-gradient(circle_at_70%_18%,rgba(185,255,24,.22),transparent_28%),linear-gradient(145deg,#151815,#0b0d0c)] p-6">
-                        <p className="text-xs font-black uppercase tracking-[.22em] text-primary">What the agent can touch</p>
+                        <p className="t-caption text-primary">What the agent can touch</p>
                         <div className="mt-6 grid grid-cols-2 gap-3">
                             {["Script", "Assets", "Storyboard", "Images", "Video", "References", "Voice", "Workflows"].map((item) => (
-                                <div key={item} className="rounded-2xl border border-white/10 bg-white/[.05] p-4 text-sm font-black">
+                                <div key={item} className="rounded-2xl border border-white/10 bg-white/[.05] p-4 text-sm font-semibold">
                                     {item}
                                 </div>
                             ))}
@@ -76,7 +76,7 @@ export default function AboutPage() {
                     {pillars.map((item) => (
                         <div key={item.title} className="rounded-[24px] border border-white/10 bg-[#111312] p-5">
                             <item.icon className="h-7 w-7 text-primary" />
-                            <h2 className="mt-5 text-xl font-black">{item.title}</h2>
+                            <h2 className="mt-5 text-xl font-semibold">{item.title}</h2>
                             <p className="mt-3 text-sm leading-6 text-white/50">{item.text}</p>
                         </div>
                     ))}
@@ -87,7 +87,7 @@ export default function AboutPage() {
                 <div className="grid gap-5 lg:grid-cols-[.9fr_1.1fr]">
                     <div className="rounded-[28px] border border-white/10 bg-[#111312] p-8">
                         <Wand2 className="h-8 w-8 text-primary" />
-                        <h2 className="mt-5 text-4xl font-black tracking-tight">What we are making</h2>
+                        <h2 className="mt-5 text-4xl font-semibold tracking-tight">What we are making</h2>
                         <p className="mt-4 leading-7 text-white/55">
                             We are building a chat-first AI production system where creators can control a full video
                             workflow from natural language. The Director can read context, suggest edits, prepare
@@ -100,11 +100,11 @@ export default function AboutPage() {
                     </div>
 
                     <div className="rounded-[28px] border border-white/10 bg-white/[.04] p-8">
-                        <h2 className="text-3xl font-black tracking-tight">How the workflow works</h2>
+                        <h2 className="text-3xl font-semibold tracking-tight">How the workflow works</h2>
                         <div className="mt-6 space-y-3">
                             {workflow.map((item, index) => (
                                 <div key={item} className="flex items-start gap-4 rounded-2xl bg-black/25 p-4">
-                                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-black text-black">{index + 1}</div>
+                                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold text-black">{index + 1}</div>
                                     <p className="text-sm font-semibold leading-6 text-white/70">{item}</p>
                                 </div>
                             ))}
@@ -117,8 +117,8 @@ export default function AboutPage() {
                 <div className="rounded-[28px] border border-primary/25 bg-primary p-8 text-black md:p-10">
                     <div className="grid gap-8 lg:grid-cols-[.8fr_1.2fr] lg:items-center">
                         <div>
-                            <p className="text-xs font-black uppercase tracking-[.22em]">External access</p>
-                            <h2 className="mt-4 text-4xl font-black leading-none md:text-5xl">Use the Director from your own AI chat.</h2>
+                            <p className="t-caption">External access</p>
+                            <h2 className="mt-4 text-4xl font-semibold leading-none md:text-5xl">Use the Director from your own AI chat.</h2>
                             <p className="mt-4 font-semibold leading-7 text-black/65">
                                 With MCP and CLI access, users can connect their AI Director Hub project to Claude, ChatGPT-style clients, or terminal workflows.
                             </p>
@@ -131,7 +131,7 @@ export default function AboutPage() {
                             ].map((item) => (
                                 <div key={item.title} className="rounded-2xl bg-black/10 p-5">
                                     <item.icon className="h-6 w-6" />
-                                    <h3 className="mt-5 font-black">{item.title}</h3>
+                                    <h3 className="mt-5 font-semibold">{item.title}</h3>
                                     <p className="mt-2 text-sm font-semibold leading-6 text-black/60">{item.text}</p>
                                 </div>
                             ))}
@@ -149,7 +149,7 @@ export default function AboutPage() {
                     ].map((item) => (
                         <div key={item.title} className="rounded-[24px] border border-white/10 bg-[#111312] p-6">
                             <item.icon className="h-7 w-7 text-primary" />
-                            <h2 className="mt-5 text-2xl font-black">{item.title}</h2>
+                            <h2 className="mt-5 text-2xl font-semibold">{item.title}</h2>
                             <p className="mt-3 text-sm leading-6 text-white/50">{item.text}</p>
                         </div>
                     ))}
@@ -158,7 +158,7 @@ export default function AboutPage() {
 
             <section className="mx-auto max-w-[1200px] px-6 py-12">
                 <div className="rounded-[28px] border border-white/10 bg-[#111312] p-8">
-                    <h2 className="text-3xl font-black tracking-tight">Registered Business Details</h2>
+                    <h2 className="text-3xl font-semibold tracking-tight">Registered Business Details</h2>
                     <div className="mt-6 grid gap-4 text-sm text-white/60 md:grid-cols-2">
                         <p><strong className="text-white">Legal Name:</strong> AIDIRECTORHUB</p>
                         <p><strong className="text-white">Proprietor:</strong> Ravinder Deep Singh</p>

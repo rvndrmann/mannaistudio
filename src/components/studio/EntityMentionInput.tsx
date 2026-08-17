@@ -111,7 +111,7 @@ export function EntityMentionInput({ value, onChange, entities, placeholder, cla
       />
       {options.length > 0 && active && (
         <div className={`absolute z-50 max-h-72 w-full overflow-y-auto rounded-xl border border-white/10 bg-[#171817] p-1.5 shadow-2xl ${menuPlacement === "top" ? "bottom-full mb-2" : "top-full mt-2"}`}>
-          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">Mention a project entity</div>
+          <div className="px-2 py-1 text-[10px] font-bold tracking-[0.16em] text-zinc-500">Mention a project entity</div>
           {options.map((entity, index) => (
             <button
               key={entity.id}
@@ -121,7 +121,7 @@ export function EntityMentionInput({ value, onChange, entities, placeholder, cla
               className={`flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left ${index === activeIndex ? "bg-[#b9f42e]/12 text-white" : "text-zinc-300 hover:bg-white/[0.05]"}`}
             >
               <span className="min-w-0 truncate text-sm"><span className="text-[#b9f42e]">@</span>{entity.name}</span>
-              <span className="shrink-0 rounded-full border border-white/10 px-2 py-0.5 text-[10px] uppercase text-zinc-500">{typeLabel[entity.type]}</span>
+              <span className="shrink-0 rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-zinc-500">{typeLabel[entity.type]}</span>
             </button>
           ))}
         </div>

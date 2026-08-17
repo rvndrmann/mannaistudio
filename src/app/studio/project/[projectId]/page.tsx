@@ -1382,7 +1382,7 @@ export default function WorkspacePage({
               <button
                 type="button"
                 onClick={() => scrollToBottom("smooth")}
-                className="sticky bottom-3 float-right z-30 flex items-center gap-1.5 rounded-full border border-[#b9f42e]/50 bg-[#141514]/95 px-3 py-1.5 text-xs font-extrabold text-[#b9f42e] shadow-2xl backdrop-blur-md transition hover:bg-[#b9f42e] hover:text-black hover:scale-105"
+                className="sticky bottom-3 float-right z-30 flex items-center gap-1.5 rounded-full border border-[#b9f42e]/50 bg-[#141514]/95 px-3 py-1.5 text-xs font-extrabold text-[#b9f42e] shadow-2xl backdrop-blur-md transition hover:bg-[#b9f42e] hover:text-black active:scale-[0.98]"
                 aria-label="Scroll to bottom of chat"
               >
                 <ArrowDown className="h-3.5 w-3.5" />
@@ -1524,12 +1524,12 @@ function ProductionOverview({ data }: { data: Workspace }) {
           </div>
         </div>
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {cards.map(([label, value]) => <div key={label} className="rounded-xl bg-white/[.04] p-4"><p className="text-2xl font-black">{value}</p><p className="mt-1 text-xs uppercase tracking-wider text-zinc-500">{label}</p></div>)}
+          {cards.map(([label, value]) => <div key={label} className="rounded-xl bg-white/[.04] p-4"><p className="text-2xl font-semibold">{value}</p><p className="mt-1 text-xs text-zinc-500">{label}</p></div>)}
         </div>
       </section>
       <div className="grid gap-6 lg:grid-cols-2">
         <DashboardPanel title="Creative brief">
-          {Object.keys(data.project.creative_brief || {}).length ? <dl className="space-y-3">{Object.entries(data.project.creative_brief || {}).filter(([key]) => key !== "confirmedFields").map(([key, value]) => <div key={key}><dt className="text-xs uppercase tracking-wide text-zinc-500">{key.replace(/([A-Z])/g, " $1")}</dt><dd className="mt-1 text-sm text-zinc-200">{value === null || value === "" ? "Not confirmed" : String(value)}</dd></div>)}</dl> : <EmptyState>Start a conversation with the AI Director to build an editable brief.</EmptyState>}
+          {Object.keys(data.project.creative_brief || {}).length ? <dl className="space-y-3">{Object.entries(data.project.creative_brief || {}).filter(([key]) => key !== "confirmedFields").map(([key, value]) => <div key={key}><dt className="text-xs text-zinc-500">{key.replace(/([A-Z])/g, " $1")}</dt><dd className="mt-1 text-sm text-zinc-200">{value === null || value === "" ? "Not confirmed" : String(value)}</dd></div>)}</dl> : <EmptyState>Start a conversation with the AI Director to build an editable brief.</EmptyState>}
         </DashboardPanel>
         <DashboardPanel title="Assets and continuity">
           <div className="grid grid-cols-3 gap-3 text-center"><Metric label="Approved" value={approvedAssets} /><Metric label="Rejected" value={rejectedAssets} /><Metric label="Warnings" value={production.continuityIssues.length} /></div>
@@ -1540,7 +1540,7 @@ function ProductionOverview({ data }: { data: Workspace }) {
           <div className="mt-4 rounded-lg border border-dashed border-white/15 p-4 text-sm text-zinc-500">Export remains unavailable until approved shots have completed provider outputs. No placeholder export will be created.</div>
         </DashboardPanel>
         <DashboardPanel title="Revisions">
-          {production.revisions.length ? <div className="space-y-2">{production.revisions.slice(0, 6).map((revision) => <div key={String(revision.id)} className="rounded-lg bg-white/[.04] p-3"><p className="text-sm text-zinc-200">{String(revision.instruction)}</p><p className="mt-1 text-xs uppercase text-zinc-500">{String(revision.status)}</p></div>)}</div> : <EmptyState>No project revisions have been proposed.</EmptyState>}
+          {production.revisions.length ? <div className="space-y-2">{production.revisions.slice(0, 6).map((revision) => <div key={String(revision.id)} className="rounded-lg bg-white/[.04] p-3"><p className="text-sm text-zinc-200">{String(revision.instruction)}</p><p className="mt-1 text-xs text-zinc-500">{String(revision.status)}</p></div>)}</div> : <EmptyState>No project revisions have been proposed.</EmptyState>}
         </DashboardPanel>
       </div>
       <section className="rounded-2xl border border-white/10 bg-[#121412] p-5">
@@ -1665,7 +1665,7 @@ function Canvas({
                   <p className="text-lg font-bold text-[#b9f42e]">
                     {data.entities.filter((e) => e.type === kind).length}
                   </p>
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-500">
+                  <p className="text-[10px] text-zinc-500">
                     {kind}s
                   </p>
                 </div>
@@ -1852,7 +1852,7 @@ function Script({
           value={content.title}
           onChange={(e) => setContent((c) => ({ ...c, title: e.target.value }))}
           placeholder="Project title"
-          className="w-full bg-transparent text-3xl font-black tracking-tight text-white outline-none placeholder:text-zinc-600 sm:text-5xl"
+          className="w-full bg-transparent text-3xl font-semibold tracking-tight text-white outline-none placeholder:text-zinc-600 sm:text-5xl"
         />
         <textarea
           value={content.overview}
@@ -1863,7 +1863,7 @@ function Script({
           className="mt-7 min-h-36 w-full resize-y bg-transparent text-lg leading-8 text-zinc-300 outline-none placeholder:text-zinc-600"
         />
         <div className="mt-7 border-t border-slate-700/70 pt-7">
-          <label className="text-xs font-bold uppercase tracking-wide text-[#b9f42e]">
+          <label className="t-caption text-[#b9f42e]">
             Full script
           </label>
           <textarea
@@ -2048,7 +2048,7 @@ function AssetCard({
           >
             {entity.name}
           </button>
-          <span className="rounded-full bg-[#b9f42e]/10 px-2 py-1 text-[10px] font-bold uppercase text-[#b9f42e]">
+          <span className="rounded-full bg-[#b9f42e]/10 px-2 py-1 text-[10px] font-bold text-[#b9f42e]">
             {entity.status}
           </span>
         </div>
@@ -2149,7 +2149,7 @@ function DeleteConfirmModal({
             type="button"
             onClick={onConfirm}
             disabled={busy}
-            className="flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-xs font-black text-white hover:bg-red-500 transition shadow-lg disabled:opacity-50"
+            className="flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-xs font-semibold text-white hover:bg-red-500 transition shadow-lg disabled:opacity-50"
           >
             {busy ? "Deleting…" : `✓ ${confirmLabel}`}
           </button>
@@ -2191,7 +2191,7 @@ function ModelMenu({
     ];
   return (
     <div className={`relative ${inline ? "" : "mt-5"}`}>
-      {!inline && <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{type === "image" ? "Image model" : "Video model"}</p>}
+      {!inline && <p className="t-caption text-zinc-500">{type === "image" ? "Image model" : "Video model"}</p>}
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
@@ -2328,7 +2328,7 @@ function CostBar({ data }: { data: Workspace }) {
           <span className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute left-0 top-8 z-50 w-[22rem] rounded-xl border border-white/10 bg-[#141517] p-4 text-left shadow-2xl">
             <div className="flex items-center justify-between border-b border-white/10 pb-2">
-              <p className="text-xs font-bold uppercase tracking-wide text-zinc-300">Estimated cost</p>
+              <p className="t-caption text-zinc-300">Estimated cost</p>
               <p className="text-[11px] text-zinc-500">{estimate.shotCount} shot{estimate.shotCount === 1 ? "" : "s"}</p>
             </div>
 
@@ -2378,7 +2378,7 @@ function CostBar({ data }: { data: Workspace }) {
 
             <div className="mt-3 border-t border-white/10 pt-3">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-wide text-zinc-300">Actual cost</p>
+                <p className="t-caption text-zinc-300">Actual cost</p>
                 <p className="text-[11px] text-zinc-500">this episode</p>
               </div>
               <div className={row}>
@@ -2565,7 +2565,7 @@ function BasicSettingsModal({
 
         <div className="space-y-6">
           <div>
-            <label className="block text-xs font-bold uppercase text-zinc-400 mb-2">Project Name</label>
+            <label className="block text-xs font-bold text-zinc-400 mb-2">Project Name</label>
             <input
               value={projectName}
               onChange={(event) => setProjectName(event.target.value)}
@@ -2578,7 +2578,7 @@ function BasicSettingsModal({
           {/* Row 1: Aspect Ratio, Resolution, Storyboard Image Model */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Aspect Ratio</label>
+              <label className="block text-xs font-bold text-zinc-400 mb-1">Aspect Ratio</label>
               <p className="text-[11px] text-zinc-500 mb-2">Video framing</p>
               <select
                 value={aspectRatio}
@@ -2594,7 +2594,7 @@ function BasicSettingsModal({
             </div>
             
             <div>
-              <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Resolution</label>
+              <label className="block text-xs font-bold text-zinc-400 mb-1">Resolution</label>
               <p className="text-[11px] text-zinc-500 mb-2">Output video quality</p>
               <select
                 value={resolution}
@@ -2609,7 +2609,7 @@ function BasicSettingsModal({
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Storyboard Image Model</label>
+              <label className="block text-xs font-bold text-zinc-400 mb-1">Storyboard Image Model</label>
               <p className="text-[11px] text-zinc-500 mb-2">Used for keyframes & shot continuity</p>
               <select
                 value={storyboardImageModel}
@@ -2626,7 +2626,7 @@ function BasicSettingsModal({
           {/* Row 2: Character/Scene Image Model, Video Generation Model */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Character/Scene Image Model</label>
+              <label className="block text-xs font-bold text-zinc-400 mb-1">Character/Scene Image Model</label>
               <p className="text-[11px] text-zinc-500 mb-2">Used for character & scene concepts</p>
               <select
                 value={characterImageModel}
@@ -2640,7 +2640,7 @@ function BasicSettingsModal({
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Image Quality</label>
+              <label className="block text-xs font-bold text-zinc-400 mb-1">Image Quality</label>
               <p className="text-[11px] text-zinc-500 mb-2">Applies to every image this project generates</p>
               <select
                 value={imageQuality}
@@ -2657,7 +2657,7 @@ function BasicSettingsModal({
           {/* Row 2: Video Model & Generate Audio */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-2">
-              <label className="block text-xs font-bold uppercase text-zinc-400 mb-2">Video Model</label>
+              <label className="block text-xs font-bold text-zinc-400 mb-2">Video Model</label>
               <select
                 value={videoModel}
                 onChange={(e) => setVideoModel(e.target.value)}
@@ -2670,7 +2670,7 @@ function BasicSettingsModal({
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase text-zinc-400 mb-2">Generate Audio</label>
+              <label className="block text-xs font-bold text-zinc-400 mb-2">Generate Audio</label>
               <div className="flex items-center justify-between rounded-xl border border-white/10 bg-[#0b0c0b] p-3">
                 <span className="text-sm font-bold text-zinc-200">{generateAudio ? "Auto" : "Off"}</span>
                 <button
@@ -2687,7 +2687,7 @@ function BasicSettingsModal({
           {/* Row 3: Generation Workflow */}
           <div>
             <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <label className="block text-xs font-bold uppercase text-zinc-400">Generation Workflow (AI Agent Pipeline)</label>
+              <label className="block text-xs font-bold text-zinc-400">Generation Workflow (AI Agent Pipeline)</label>
               <select
                 value={workflowApplyMode}
                 onChange={(event) => setWorkflowApplyMode(event.target.value === "episode" ? "episode" : "project_default")}
@@ -2726,7 +2726,7 @@ function BasicSettingsModal({
           <div>
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <label className="block text-xs font-bold uppercase text-zinc-400">Camera Package</label>
+                <label className="block text-xs font-bold text-zinc-400">Camera Package</label>
                 <p className="text-[11px] text-zinc-500">
                   The optics every character, asset, and shot image inherits. Shots can override it; character and asset art stays locked to it.
                 </p>
@@ -2755,7 +2755,7 @@ function BasicSettingsModal({
 
           {/* Row 4: Visual Style Selector */}
           <div>
-            <label className="block text-xs font-bold uppercase text-zinc-400 mb-2">Visual Style</label>
+            <label className="block text-xs font-bold text-zinc-400 mb-2">Visual Style</label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {visualStyles.map((style) => {
                 const isSelected = visualStyle === style.id;
@@ -2766,10 +2766,10 @@ function BasicSettingsModal({
                     onClick={() => setVisualStyle(style.id)}
                     className={`group relative overflow-hidden rounded-xl border-2 text-left transition aspect-[4/3] ${isSelected ? "border-[#b9f42e] ring-2 ring-[#b9f42e]/40" : "border-white/10 hover:border-white/30"}`}
                   >
-                    <img src={style.img} alt={style.label} className="h-full w-full object-cover transition group-hover:scale-105" />
+                    <img src={style.img} alt={style.label} className="h-full w-full object-cover transition group-active:scale-[0.98]" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
                     {style.hot && (
-                      <span className="absolute right-2 top-2 rounded-md bg-red-500/90 px-1.5 py-0.5 text-[9px] font-black uppercase text-white shadow">
+                      <span className="absolute right-2 top-2 rounded-md bg-red-500/90 px-1.5 py-0.5 t-caption text-white shadow">
                         🔥 Hot
                       </span>
                     )}
@@ -2795,7 +2795,7 @@ function BasicSettingsModal({
           <button
             onClick={confirmSettings}
             disabled={saving}
-            className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-8 py-3 text-sm font-black text-black hover:bg-[#a6de25] transition disabled:opacity-50"
+            className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-8 py-3 text-sm font-semibold text-black hover:bg-[#a6de25] transition disabled:opacity-50"
           >
             {saving ? "Saving…" : "✓ Confirm"}
           </button>
@@ -3194,7 +3194,7 @@ function AssetWorkspace({
             +<br />Upload
             <input type="file" accept="image/*" className="hidden" onChange={(e) => uploadImage(e.target.files?.[0], "library")} />
           </label>
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600">Asset Concept Gallery</p>
+          <p className="mb-2 text-[10px] font-bold text-zinc-600">Asset Concept Gallery</p>
           <div className="space-y-2.5">
             {assetAttempts.map((attempt) => {
               const isSel = selectedAttemptId === attempt.id;
@@ -3258,7 +3258,7 @@ function AssetWorkspace({
                   >
                     <AssetImage src={image} />
                     {isChosen && (
-                      <span className="absolute left-1.5 top-1.5 rounded-md bg-[#b9f42e] px-1.5 py-0.5 text-[9px] font-black uppercase text-black shadow">
+                      <span className="absolute left-1.5 top-1.5 rounded-md bg-[#b9f42e] px-1.5 py-0.5 t-caption text-black shadow">
                         ✓ CHOSEN
                       </span>
                     )}
@@ -3274,7 +3274,7 @@ function AssetWorkspace({
           {/* Top Bar Actions */}
           <header className="flex h-16 items-center gap-3 border-b border-white/10 px-6 bg-[#0b0c0b]">
             {isCurrentlyChosen ? (
-              <span className="flex items-center gap-1.5 rounded-lg border border-[#b9f42e]/50 bg-[#b9f42e]/20 px-4 py-2 text-xs font-black text-[#b9f42e]">
+              <span className="flex items-center gap-1.5 rounded-lg border border-[#b9f42e]/50 bg-[#b9f42e]/20 px-4 py-2 text-xs font-semibold text-[#b9f42e]">
                 ✓ Chosen Concept
               </span>
             ) : (
@@ -3282,7 +3282,7 @@ function AssetWorkspace({
                 type="button"
                 onClick={chooseSelectedImage}
                 disabled={working || !activeImage}
-                className="flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-4 py-2 text-xs font-black text-black hover:bg-[#a6de25] transition shadow-lg disabled:opacity-40"
+                className="flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-4 py-2 text-xs font-semibold text-black hover:bg-[#a6de25] transition shadow-lg disabled:opacity-40"
               >
                 ✓ Choose
               </button>
@@ -3346,14 +3346,14 @@ function AssetWorkspace({
               ↻ {working ? "Generating…" : "Regenerate"}
             </button>
 
-            <span className="ml-auto text-xs font-bold uppercase tracking-wider text-zinc-500">
+            <span className="ml-auto t-caption text-zinc-500">
               {asset.type} Asset Studio
             </span>
           </header>
 
           {/* Central Preview Viewport */}
           <div className="grid flex-1 place-items-center overflow-auto bg-black/40 p-4 sm:p-8">
-            <div className="flex flex-col items-center overflow-hidden rounded-xl bg-[#151715] shadow-2xl transition-all max-w-4xl w-full">
+            <div className="flex flex-col items-center overflow-hidden rounded-xl bg-[#151715] shadow-2xl transition max-w-4xl w-full">
               {activeAttempt?.status === "generating" || (working && !activeImage) ? (
                 <div className={`grid place-items-center p-8 ${aspectRatio === "9:16" ? "aspect-[9/16] h-[55vh] max-h-[580px]" : "aspect-[16/9] w-full max-w-[640px]"}`}>
                   <div className="flex flex-col items-center gap-4">
@@ -3378,7 +3378,7 @@ function AssetWorkspace({
               {(activeImage || activeAttempt) && (
                 <div className="w-full border-t border-white/10 bg-black/60 p-4 rounded-b-xl">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#b9f42e]">
+                    <p className="text-[10px] font-bold text-[#b9f42e]">
                       PROMPT USED
                     </p>
                     <span className="flex flex-wrap items-center gap-2">
@@ -3418,10 +3418,10 @@ function AssetWorkspace({
         <aside className="flex w-[420px] shrink-0 flex-col border-l border-white/10 bg-[#151715]">
           <div className="flex items-start justify-between p-6 border-b border-white/10">
             <div>
-              <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e] uppercase">
+              <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">
                 {asset.type}
               </p>
-              <h2 className="mt-1 text-2xl font-black">{asset.name}</h2>
+              <h2 className="mt-1 text-2xl font-semibold">{asset.name}</h2>
             </div>
             <button
               onClick={close}
@@ -4007,7 +4007,7 @@ function InsertShotDivider({ afterNumber, total, persistent, onAskDirector, onWr
               faster to type than to describe, and one you cannot is faster to
               hand to the Director. */}
           <div className="absolute top-7 z-40 w-56 rounded-xl border border-white/10 bg-[#1a1c1b] p-1 shadow-2xl">
-            <p className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">{label}</p>
+            <p className="px-2.5 py-1.5 text-[10px] font-bold text-zinc-500">{label}</p>
             <button
               type="button"
               onClick={() => { setOpen(false); onWriteMyself(); }}
@@ -4264,7 +4264,7 @@ function Storyboard({
       )}
       <div className="overflow-x-auto">
         <div className="min-w-[830px]">
-          <div className="grid grid-cols-[42px_minmax(210px,1.6fr)_150px_170px_170px] gap-3 px-4 pb-3 text-xs font-bold uppercase tracking-wide text-zinc-400">
+          <div className="grid grid-cols-[42px_minmax(210px,1.6fr)_150px_170px_170px] gap-3 px-4 pb-3 t-caption text-zinc-400">
             <span>#</span>
             <span>Description</span>
             <span>Assets</span>
@@ -4342,7 +4342,7 @@ function Storyboard({
                     {rendering ? (
                       <span className="flex flex-col items-center gap-1 text-[#b9f42e]">
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        <span className="text-[8px] font-bold uppercase tracking-wider">
+                        <span className="text-[8px] font-bold">
                           {renderingImage && renderingVideo ? "Both" : renderingImage ? "Image" : "Video"}
                         </span>
                       </span>
@@ -4521,7 +4521,7 @@ function Storyboard({
                                     onClick={() => toggleShotEntity(shot, castIds, entity.id)}
                                     className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left hover:bg-white/5"
                                   >
-                                    <span className={`grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] font-black ${active ? "border-[#b9f42e] bg-[#b9f42e] text-black" : "border-white/25 text-transparent"}`}>✓</span>
+                                    <span className={`grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] font-semibold ${active ? "border-[#b9f42e] bg-[#b9f42e] text-black" : "border-white/25 text-transparent"}`}>✓</span>
                                     <span className="block h-8 w-8 shrink-0 overflow-hidden rounded">
                                       <AssetThumb src={entityPrimaryReference(entity)} className="block h-full w-full object-cover" />
                                     </span>
@@ -4553,7 +4553,7 @@ function Storyboard({
                         <div className="flex items-center justify-between">
                           <span>{renderingImage ? "Generating…" : "Image reference"}</span>
                           {shot.keyframe_image && (
-                            <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ${shot.is_trusted_provider_asset || (typeof shot.metadata === "object" && shot.metadata !== null && "byteplus_asset_id" in shot.metadata) ? "bg-[#b9f42e]/20 text-[#b9f42e]" : "bg-white/10 text-zinc-400"}`}>
+                            <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold  ${shot.is_trusted_provider_asset || (typeof shot.metadata === "object" && shot.metadata !== null && "byteplus_asset_id" in shot.metadata) ? "bg-[#b9f42e]/20 text-[#b9f42e]" : "bg-white/10 text-zinc-400"}`}>
                               {shot.is_trusted_provider_asset || (typeof shot.metadata === "object" && shot.metadata !== null && "byteplus_asset_id" in shot.metadata) ? "✓ Seedance Verified" : "+ Asset Library"}
                             </span>
                           )}
@@ -5371,14 +5371,14 @@ function ShotMediaWorkspace({
             >
               <X className="h-5 w-5" />
             </button>
-            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Esc</span>
+            <span className="text-[10px] font-bold text-zinc-500">Esc</span>
           </div>
           <div className="flex-1 overflow-y-auto p-3">
             <label className="mb-3 grid aspect-[3/4] cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-xs text-zinc-400 hover:border-[#b9f42e] transition">
               +<br />Upload
               <input type="file" accept="image/*,video/*" className="hidden" onChange={(e) => uploadReference(e.target.files?.[0])} />
             </label>
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600">Generations</p>
+            <p className="mb-2 text-[10px] font-bold text-zinc-600">Generations</p>
             <div className="flex flex-col gap-2">
               {displayGenerations.map((gen) => {
                 const isActive = activeGenId === gen.id;
@@ -5428,7 +5428,7 @@ function ShotMediaWorkspace({
 
                       {/* Chosen Badge */}
                       {isGenChosen && (
-                        <span className="absolute right-1.5 top-1.5 rounded-md bg-[#b9f42e] px-1.5 py-0.5 text-[9px] font-black uppercase text-black shadow-md z-10">
+                        <span className="absolute right-1.5 top-1.5 rounded-md bg-[#b9f42e] px-1.5 py-0.5 t-caption text-black shadow-md z-10">
                           ✓ CHOSEN
                         </span>
                       )}
@@ -5463,7 +5463,7 @@ function ShotMediaWorkspace({
         <main className="flex min-w-0 flex-1 flex-col">
           <header className="flex h-16 items-center gap-3 border-b border-white/10 px-6">
             {isCurrentlyChosen ? (
-              <span className="flex items-center gap-1.5 rounded-lg border border-[#b9f42e]/50 bg-[#b9f42e]/20 px-4 py-2 text-xs font-black text-[#b9f42e]">
+              <span className="flex items-center gap-1.5 rounded-lg border border-[#b9f42e]/50 bg-[#b9f42e]/20 px-4 py-2 text-xs font-semibold text-[#b9f42e]">
                 ✓ Chosen for Storyboard
               </span>
             ) : (
@@ -5471,7 +5471,7 @@ function ShotMediaWorkspace({
                 type="button"
                 onClick={chooseCurrentMedia}
                 disabled={busy || !previewSource}
-                className="flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-4 py-2 text-xs font-black text-black hover:bg-[#a6de25] transition shadow-lg disabled:opacity-40"
+                className="flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-4 py-2 text-xs font-semibold text-black hover:bg-[#a6de25] transition shadow-lg disabled:opacity-40"
               >
                 ✓ Choose
               </button>
@@ -5548,7 +5548,7 @@ function ShotMediaWorkspace({
             </span>
           </header>
           <div className="grid flex-1 place-items-center overflow-auto bg-black/40 p-4 sm:p-8">
-            <div className="flex flex-col items-center overflow-hidden rounded-xl bg-[#151715] shadow-2xl transition-all max-w-4xl w-full">
+            <div className="flex flex-col items-center overflow-hidden rounded-xl bg-[#151715] shadow-2xl transition max-w-4xl w-full">
               {previewGenerating ? (
                 <div className={`grid place-items-center p-8 ${aspectRatio === "9:16" ? "aspect-[9/16] h-[55vh] max-h-[580px]" : "aspect-[16/9] w-full max-w-[640px]"}`}>
                   <div className="flex flex-col items-center gap-4">
@@ -5587,7 +5587,7 @@ function ShotMediaWorkspace({
               {activeGen && (
                 <div className="w-full border-t border-white/10 bg-black/60 p-4 rounded-b-xl">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#b9f42e]">
+                    <p className="text-[10px] font-bold text-[#b9f42e]">
                       PROMPT USED
                     </p>
                     <span className="flex flex-wrap items-center gap-2">
@@ -5633,7 +5633,7 @@ function ShotMediaWorkspace({
                   </div>
                   {activeGen.referenceImages && activeGen.referenceImages.length > 0 && (
                     <>
-                      <p className="mt-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Reference images</p>
+                      <p className="mt-3 text-[10px] font-bold text-zinc-500">Reference images</p>
                       <div className="mt-1.5 flex gap-2">
                         {activeGen.referenceImages.map((img, i) => (
                           <HoverPreviewTile key={`${img}-${i}`} className="group relative h-10 w-10 shrink-0" src={img} kind={isVideoReferencePath(img) ? "video" : "image"} label={referenceLabel(img)}>
@@ -5653,7 +5653,7 @@ function ShotMediaWorkspace({
         <aside className="flex w-[430px] shrink-0 flex-col border-l border-white/10 bg-[#151715]">
           <div className="flex items-start justify-between p-6">
             <div>
-              <h2 className="text-3xl font-black text-white">Scene {shotNumber}</h2>
+              <h2 className="text-3xl font-semibold text-white">Scene {shotNumber}</h2>
               <p className="mt-2 text-sm text-zinc-400">
                 {media.shot.duration_seconds}s ·{" "}
                 {isImage ? "9:16 image" : "9:16 video"}
@@ -5747,7 +5747,7 @@ function ShotMediaWorkspace({
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <Film className="h-3.5 w-3.5 shrink-0 text-[#c084fc]" />
-                          <p className="text-[11px] font-bold uppercase tracking-wide text-[#c084fc]">Motion reference</p>
+                          <p className="text-[11px] font-bold text-[#c084fc]">Motion reference</p>
                         </div>
                         {/* A video dropped on the composition uploader above was
                             registered as an image and failed generation outright.
@@ -5818,7 +5818,7 @@ function ShotMediaWorkspace({
                   ) : null}
                   {entities.some((e) => e.type === "character") && (
                     <div className="mt-2 rounded-2xl bg-white/[0.02] p-3 border border-white/5">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">Project Characters</p>
+                      <p className="text-[10px] font-bold text-zinc-500">Project Characters</p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {entities.filter((e) => e.type === "character").map((character) => {
                           const isSelected = selectedCharacterIds.includes(character.id);
@@ -5982,10 +5982,10 @@ function ShotMediaWorkspace({
                       onClick={generate}
                       disabled={busy}
                       title={busy ? "Generating..." : `Generate (${currentCreditCost} credits)`}
-                      className={`group relative grid h-8 w-8 place-items-center rounded-full transition-all ${
+                      className={`group relative grid h-8 w-8 place-items-center rounded-full transition ${
                         busy
                           ? "bg-zinc-700 text-zinc-400"
-                          : "bg-[#b9f42e] text-black hover:scale-105 hover:bg-[#a6de25] hover:shadow-[0_0_15px_rgba(185,244,46,0.4)]"
+                          : "bg-[#b9f42e] text-black active:scale-[0.98] hover:bg-[#a6de25] hover:shadow-[0_0_15px_rgba(185,244,46,0.4)]"
                       }`}
                     >
                       {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4 text-black" />}
@@ -6098,13 +6098,13 @@ function GenerationPreviewError({
   return (
     <div className="grid aspect-[9/14] place-items-center p-6 text-center">
       <div role="alert" className="max-w-sm rounded-xl border border-red-500/30 bg-red-500/10 p-5 text-left">
-        <p className="text-xs font-bold uppercase tracking-wide text-red-200">Generation Error</p>
+        <p className="t-caption text-red-200">Generation Error</p>
         <p className="mt-2 text-sm leading-6 text-red-100">{message}</p>
         {isRealPersonError && (
           <>
             {rejectedReference ? (
               <div className="mt-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 text-yellow-100">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-yellow-300">Reference needing verification</p>
+                <p className="text-[10px] font-bold text-yellow-300">Reference needing verification</p>
                 <div className="mt-3 flex items-center gap-3">
                   <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-yellow-200/20 bg-black/30">
                     <AssetImage src={rejectedReference.path} className="h-full w-full object-cover" />
@@ -6116,7 +6116,7 @@ function GenerationPreviewError({
                       type="button"
                       onClick={onVerify}
                       disabled={verifying || verified}
-                      className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-3 py-2 text-xs font-black text-black hover:bg-[#a6de25] disabled:cursor-default disabled:opacity-70"
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-3 py-2 text-xs font-semibold text-black hover:bg-[#a6de25] disabled:cursor-default disabled:opacity-70"
                     >
                       {verifying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : verified ? <BadgeCheck className="h-3.5 w-3.5" /> : <BadgeCheck className="h-3.5 w-3.5" />}
                       {verifying ? "Verifying…" : verified ? "Verified for Seedance" : "Verify for Seedance"}
@@ -6191,7 +6191,7 @@ function ChatRunStatus({ run }: { run?: ChatWorkflowRun }) {
     failed: "Failed",
   };
   const alert = run.status === "failed" || run.status === "partially_completed" || run.status === "blocked";
-  return <p className={`mt-2 text-[10px] font-semibold uppercase tracking-wider ${alert ? "text-amber-300" : "text-emerald-300/80"}`}>{labels[run.status] || run.status.replaceAll("_", " ")}</p>;
+  return <p className={`mt-2 t-caption ${alert ? "text-amber-300" : "text-emerald-300/80"}`}>{labels[run.status] || run.status.replaceAll("_", " ")}</p>;
 }
 
 function ThinkingBubble({ reply }: { reply?: { content: string; status: string | null } | null }) {
@@ -6278,10 +6278,10 @@ function ChatTimelineBlock({ block, proposals, awaitingApproval, onAction, disab
         <summary className="flex cursor-pointer list-none items-center gap-2 p-2.5 text-[12px] font-semibold">
           <span className={`grid h-5 w-5 place-items-center rounded-full text-[10px] ${failed ? "bg-red-500/20 text-red-300" : "bg-amber-400/15 text-amber-200"}`}>{failed ? "×" : "…"}</span>
           <span className="min-w-0">
-            {block.agent && <span className="mr-1.5 rounded-full border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#b9f42e]">{block.agent}</span>}
+            {block.agent && <span className="mr-1.5 rounded-full border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-1.5 py-0.5 text-[9px] font-bold text-[#b9f42e]">{block.agent}</span>}
             {block.label}
           </span>
-          <span className="ml-auto shrink-0 text-[9px] uppercase tracking-wider text-zinc-500">{block.status.replaceAll("_", " ")}</span>
+          <span className="ml-auto shrink-0 text-[9px] text-zinc-500">{block.status.replaceAll("_", " ")}</span>
         </summary>
         {(block.detail || block.error) && <p className={`border-t p-2.5 text-[11px] leading-5 ${failed ? "border-red-500/20 text-red-200" : "border-white/[0.06] text-zinc-400"}`}>{block.error || block.detail}</p>}
       </details>
@@ -6353,7 +6353,7 @@ function ChatNextStep({ messages, proposals, shots, sessionId, busy, onAction }:
   if (!actions.length) return null;
   return (
     <div className="mt-3 rounded-xl border border-[#b9f42e]/25 bg-[#b9f42e]/[0.06] p-3">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-[#b9f42e]">Next step</p>
+      <p className="text-[10px] font-bold text-[#b9f42e]">Next step</p>
       <div className="mt-2 flex flex-wrap gap-2">
         {actions.map((action) => (
           <button
@@ -7173,7 +7173,7 @@ function ModelChip({
   const [open, setOpen] = useState(false);
   return (
     <div className="relative rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
-      <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{label}</p>
+      <p className="t-caption text-zinc-500">{label}</p>
       <button type="button" onClick={() => setOpen((current) => !current)} className="mt-2 flex w-full items-center justify-between gap-2 text-sm font-bold text-white">
         <span className="truncate">{value}</span>
         <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition ${open ? "rotate-180" : ""}`} />
@@ -7262,7 +7262,7 @@ function ReferencePicker({
     <div className="fixed inset-0 z-[60] grid place-items-center bg-black/75 p-6 backdrop-blur-sm">
       <section className="flex h-[min(760px,85vh)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#171918] shadow-2xl">
         <header className="flex items-center gap-4 border-b border-white/10 p-5">
-          <h3 className="text-xl font-black">{onlyKind === "video" ? "Select a storyboard video" : "Select from existing assets"}</h3>
+          <h3 className="text-xl font-semibold">{onlyKind === "video" ? "Select a storyboard video" : "Select from existing assets"}</h3>
           {!onlyKind && (
           <div className="flex gap-1 rounded-xl bg-white/5 p-1">
             {(["all", "character", "scene", "prop", "storyboard"] as const).map((item) => (
@@ -7298,7 +7298,7 @@ function ReferencePicker({
               >
                 {item.kind === "video" ? <div className="aspect-[4/3]"><AssetVideo src={image} /></div> : <AssetImage src={image} />}
                 {item.number !== null && (
-                  <span className="absolute left-2 top-2 grid h-5 min-w-5 place-items-center rounded-full bg-black/80 px-1.5 text-[11px] font-black text-[#b9f42e]">
+                  <span className="absolute left-2 top-2 grid h-5 min-w-5 place-items-center rounded-full bg-black/80 px-1.5 text-[11px] font-semibold text-[#b9f42e]">
                     {item.number}
                   </span>
                 )}
@@ -7311,7 +7311,7 @@ function ReferencePicker({
                   {item.name}
                 </span>
                 {active && (
-                  <span className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full bg-[#b9f42e] text-xs font-black text-black">
+                  <span className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full bg-[#b9f42e] text-xs font-semibold text-black">
                     ✓
                   </span>
                 )}
@@ -7337,7 +7337,7 @@ function ReferencePicker({
   );
 }
 function ReferenceSourcePicker({ close, onChooseExisting, onUpload }: { close: () => void; onChooseExisting: () => void; onUpload: (file?: File) => Promise<void> }) {
-  return <div className="fixed inset-0 z-[70] grid place-items-center bg-black/65 p-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Add a reference image"><section className="w-full max-w-md rounded-2xl border border-white/10 bg-[#171918] p-6 shadow-2xl"><div className="flex items-start justify-between"><div><p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">REFERENCE IMAGE</p><h3 className="mt-2 text-2xl font-black">Add a reference</h3><p className="mt-2 text-sm leading-6 text-zinc-400">Choose a project asset or upload an image from your device.</p></div><button type="button" aria-label="Close reference picker" onClick={close} className="rounded-lg p-2 text-zinc-400 hover:bg-white/10"><X /></button></div><div className="mt-6 flex gap-3"><div className="grid h-32 w-32 shrink-0 place-items-center rounded-2xl border-2 border-dashed border-white/15 text-5xl text-zinc-300">+</div><div className="flex-1 overflow-hidden rounded-2xl border border-white/15 bg-[#101110]"><button type="button" onClick={onChooseExisting} className="flex w-full items-center gap-4 px-5 py-5 text-left text-lg font-bold hover:bg-white/5"><ImageIcon className="h-6 w-6" />Select from existing assets</button><label className="flex cursor-pointer items-center gap-4 border-t border-white/10 px-5 py-5 text-lg font-bold hover:bg-white/5"><Upload className="h-6 w-6" />Upload from local device<input type="file" accept="image/*" className="hidden" onChange={async (event) => { const file = event.target.files?.[0]; if (file) await onUpload(file); close(); }} /></label></div></div></section></div>
+  return <div className="fixed inset-0 z-[70] grid place-items-center bg-black/65 p-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Add a reference image"><section className="w-full max-w-md rounded-2xl border border-white/10 bg-[#171918] p-6 shadow-2xl"><div className="flex items-start justify-between"><div><p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">REFERENCE IMAGE</p><h3 className="mt-2 text-2xl font-semibold">Add a reference</h3><p className="mt-2 text-sm leading-6 text-zinc-400">Choose a project asset or upload an image from your device.</p></div><button type="button" aria-label="Close reference picker" onClick={close} className="rounded-lg p-2 text-zinc-400 hover:bg-white/10"><X /></button></div><div className="mt-6 flex gap-3"><div className="grid h-32 w-32 shrink-0 place-items-center rounded-2xl border-2 border-dashed border-white/15 text-5xl text-zinc-300">+</div><div className="flex-1 overflow-hidden rounded-2xl border border-white/15 bg-[#101110]"><button type="button" onClick={onChooseExisting} className="flex w-full items-center gap-4 px-5 py-5 text-left text-lg font-bold hover:bg-white/5"><ImageIcon className="h-6 w-6" />Select from existing assets</button><label className="flex cursor-pointer items-center gap-4 border-t border-white/10 px-5 py-5 text-lg font-bold hover:bg-white/5"><Upload className="h-6 w-6" />Upload from local device<input type="file" accept="image/*" className="hidden" onChange={async (event) => { const file = event.target.files?.[0]; if (file) await onUpload(file); close(); }} /></label></div></div></section></div>
 }
 function ShotForm({
   entities,
@@ -7393,7 +7393,7 @@ function ShotForm({
       }}
       className="rounded-2xl border border-[#b9f42e]/30 bg-[#1b1d1c] p-5"
     >
-      <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#b9f42e]">{position}</p>
+      <p className="mb-3 text-[11px] font-bold text-[#b9f42e]">{position}</p>
       {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
       <input
         required
@@ -7669,7 +7669,7 @@ function RenderExportModal({
         <header className="flex items-center justify-between border-b border-white/10 p-5">
           <div className="flex items-center gap-2">
             <Film className="h-5 w-5 text-[#b9f42e]" />
-            <h3 className="text-lg font-black text-white">Export Video Timeline</h3>
+            <h3 className="text-lg font-semibold text-white">Export Video Timeline</h3>
           </div>
           <button type="button" onClick={close} className="rounded-lg p-1 text-zinc-400 hover:bg-white/10 hover:text-white">
             <X className="h-5 w-5" />
@@ -7700,7 +7700,7 @@ function RenderExportModal({
             <div className="space-y-5">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Quality</label>
+                  <label className="t-caption text-zinc-400">Quality</label>
                   <div className="mt-2 grid grid-cols-3 gap-2">
                     {(["1080p", "720p", "480p"] as const).map((r) => (
                       <button
@@ -7716,14 +7716,14 @@ function RenderExportModal({
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Format</label>
+                  <label className="t-caption text-zinc-400">Format</label>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     {(["mp4", "webm"] as const).map((f) => (
                       <button
                         key={f}
                         type="button"
                         onClick={() => setFormat(f)}
-                        className={`rounded-xl border p-2.5 text-center text-xs font-bold uppercase transition ${format === f ? "border-[#b9f42e] bg-[#b9f42e]/10 text-[#b9f42e]" : "border-white/10 bg-white/5 text-zinc-300 hover:border-white/20"}`}
+                        className={`rounded-xl border p-2.5 text-center text-xs font-bold  transition ${format === f ? "border-[#b9f42e] bg-[#b9f42e]/10 text-[#b9f42e]" : "border-white/10 bg-white/5 text-zinc-300 hover:border-white/20"}`}
                       >
                         .{f}
                       </button>
@@ -7739,7 +7739,7 @@ function RenderExportModal({
                     <span className="text-white">{progress}%</span>
                   </div>
                   <div className="h-2.5 w-full overflow-hidden rounded-full bg-white/10">
-                    <div className="h-full bg-gradient-to-r from-[#b9f42e] to-[#60a5fa] transition-all duration-300" style={{ width: `${progress}%` }} />
+                    <div className="h-full bg-gradient-to-r from-[#b9f42e] to-[#60a5fa] transition duration-state ease-out" style={{ width: `${progress}%` }} />
                   </div>
                 </div>
               )}
@@ -8070,7 +8070,7 @@ function Timeline({
             <Film className="h-5 w-5 text-[#b9f42e]" />
           </div>
           <div>
-            <h2 className="text-sm font-black tracking-wide text-zinc-100">VIDEO TIMELINE STUDIO</h2>
+            <h2 className="text-sm font-semibold tracking-wide text-zinc-100">VIDEO TIMELINE STUDIO</h2>
             <p className="text-[11px] font-mono text-zinc-400">
               {shots.length} Shot Clips • Sequence Total: <span className="text-[#b9f42e] font-bold">{formatTimecode(totalProjectDuration)}</span>
             </p>
@@ -8091,7 +8091,7 @@ function Timeline({
           <button
             type="button"
             onClick={() => setExportModalOpen(true)}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#b9f42e] to-[#a4dc24] px-5 py-2.5 text-xs font-black text-black shadow-lg shadow-[#b9f42e]/20 transition hover:opacity-90"
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#b9f42e] to-[#a4dc24] px-5 py-2.5 text-xs font-semibold text-black shadow-lg shadow-[#b9f42e]/20 transition hover:opacity-90"
           >
             <Download className="h-4 w-4" />
             Render & Export Video
@@ -8163,7 +8163,7 @@ function Timeline({
                 }
                 setIsPlaying((p) => !p);
               }}
-              className="flex h-12 w-12 items-center justify-center rounded-full bg-[#b9f42e] text-black shadow-lg shadow-[#b9f42e]/20 transition hover:scale-105"
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-[#b9f42e] text-black shadow-lg shadow-[#b9f42e]/20 transition active:scale-[0.98]"
             >
               {isPlaying ? <Pause className="h-6 w-6 fill-current" /> : <Play className="h-6 w-6 fill-current translate-x-0.5" />}
             </button>
@@ -8233,7 +8233,7 @@ function Timeline({
               {/* Clip Trimming Editor Controls */}
               <div className="space-y-4 rounded-xl border border-white/10 bg-black/30 p-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Clip Trimming (Cut Range)</p>
+                  <p className="t-caption text-zinc-400">Clip Trimming (Cut Range)</p>
                   <Scissors className="h-4 w-4 text-[#b9f42e]" />
                 </div>
 
@@ -8273,7 +8273,7 @@ function Timeline({
               {/* Prompt Description */}
               <div>
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Prompt / Visual Details</p>
+                  <p className="t-caption text-zinc-400">Prompt / Visual Details</p>
                   {currentShot.prompt && currentShot.prompt.length > 80 && (
                     <button
                       type="button"
@@ -8291,7 +8291,7 @@ function Timeline({
 
               {/* Subject References */}
               <div>
-                <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Linked Assets</p>
+                <p className="t-caption text-zinc-400">Linked Assets</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {entities
                     .filter((e) => currentShot.referenced_entities?.includes(e.id))
@@ -8348,7 +8348,7 @@ function Timeline({
         >
           {/* Draggable Playhead Scrubber Red Line */}
           <div
-            className="absolute top-0 bottom-0 z-30 w-0.5 bg-red-500 shadow-[0_0_8px_#ef4444] pointer-events-none transition-all duration-75"
+            className="absolute top-0 bottom-0 z-30 w-0.5 bg-red-500 shadow-[0_0_8px_#ef4444] pointer-events-none transition duration-75"
             style={{ left: `${totalProjectDuration > 0 ? (globalTime / totalProjectDuration) * 100 : 0}%` }}
           >
             <div className="h-3 w-3 -translate-x-[5px] -translate-y-1.5 rotate-45 bg-red-500" />

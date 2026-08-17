@@ -37,24 +37,24 @@ export function MarketingAgentHome({ onNavigateTab }: { onNavigateTab?: (tab: st
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#b9f42e]">AI Marketing Director Agent</span>
+                <span className="t-caption text-[#b9f42e]">AI Marketing Director Agent</span>
                 <DemoDataBadge />
               </div>
-              <h1 className="text-2xl font-black text-white">Autonomous Marketing Operations</h1>
+              <h1 className="text-2xl font-semibold text-white">Autonomous Marketing Operations</h1>
             </div>
           </div>
 
           <button
             type="button"
             onClick={() => { if (onNavigateTab) onNavigateTab("analytics") }}
-            className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-5 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition-all shadow-lg"
+            className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-5 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition shadow-lg"
           >
             <Sparkles className="h-4 w-4" /> Review Recommendations
           </button>
         </div>
 
         <div className="rounded-xl border border-white/10 bg-black/40 p-4">
-          <p className="text-xs font-bold uppercase tracking-wider text-zinc-500">AI Agent Directive</p>
+          <p className="t-caption text-zinc-500">AI Agent Directive</p>
           <p className="mt-1 text-sm font-semibold text-zinc-200">
             "This week's best-performing content used direct financial-loss hooks. I recommend producing three more presenter-led videos using similar hook structures."
           </p>
@@ -68,7 +68,7 @@ export function MarketingAgentHome({ onNavigateTab }: { onNavigateTab?: (tab: st
             <span>CONTENT</span>
             <Calendar className="h-4 w-4 text-[#b9f42e]" />
           </div>
-          <p className="text-2xl font-black text-white">12 Posts</p>
+          <p className="text-2xl font-semibold text-white">12 Posts</p>
           <div className="flex justify-between text-xs text-zinc-400 pt-1 border-t border-white/5">
             <span>Scheduled: <strong className="text-white">4</strong></span>
             <span>Approval: <strong className="text-white">2</strong></span>
@@ -80,7 +80,7 @@ export function MarketingAgentHome({ onNavigateTab }: { onNavigateTab?: (tab: st
             <span>PERFORMANCE</span>
             <TrendingUp className="h-4 w-4 text-[#b9f42e]" />
           </div>
-          <p className="text-2xl font-black text-white">142.5K Reach</p>
+          <p className="text-2xl font-semibold text-white">142.5K Reach</p>
           <div className="flex justify-between text-xs text-zinc-400 pt-1 border-t border-white/5">
             <span>Views: <strong className="text-white">98.2K</strong></span>
             <span>Leads: <strong className="text-[#b9f42e]">384</strong></span>
@@ -92,7 +92,7 @@ export function MarketingAgentHome({ onNavigateTab }: { onNavigateTab?: (tab: st
             <span>ADS MANAGER</span>
             <Target className="h-4 w-4 text-[#b9f42e]" />
           </div>
-          <p className="text-2xl font-black text-white">$1.27K Spend</p>
+          <p className="text-2xl font-semibold text-white">$1.27K Spend</p>
           <div className="flex justify-between text-xs text-zinc-400 pt-1 border-t border-white/5">
             <span>Leads: <strong className="text-white">82</strong></span>
             <span>ROAS: <strong className="text-[#b9f42e]">3.1x</strong></span>
@@ -104,7 +104,7 @@ export function MarketingAgentHome({ onNavigateTab }: { onNavigateTab?: (tab: st
             <span>COMPETITORS</span>
             <Layers className="h-4 w-4 text-[#b9f42e]" />
           </div>
-          <p className="text-2xl font-black text-white">137 Analyzed</p>
+          <p className="text-2xl font-semibold text-white">137 Analyzed</p>
           <div className="flex justify-between text-xs text-zinc-400 pt-1 border-t border-white/5">
             <span>Tracked: <strong className="text-white">4</strong></span>
             <span>Patterns: <strong className="text-[#b9f42e]">12</strong></span>
@@ -119,14 +119,14 @@ export function MarketingAgentHome({ onNavigateTab }: { onNavigateTab?: (tab: st
             <Activity className="h-5 w-5 text-[#b9f42e]" />
             <h2 className="text-lg font-bold text-white">Agent Audit Activity Feed</h2>
           </div>
-          <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Real-Time Audit Trail</span>
+          <span className="text-xs font-bold text-zinc-500">Real-Time Audit Trail</span>
         </div>
 
         <div className="space-y-3">
           {mockAuditLogs.map((log) => (
             <div key={log.id} className="flex flex-col gap-2 rounded-xl border border-white/5 bg-black/40 p-3.5 text-xs sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
-                <span className={`rounded-md px-2 py-0.5 font-bold uppercase text-[10px] ${log.actor === "ai_agent" ? "bg-[#b9f42e]/20 text-[#b9f42e]" : log.actor === "user" ? "bg-blue-500/20 text-blue-400" : "bg-yellow-500/20 text-yellow-400"}`}>
+                <span className={`rounded-md px-2 py-0.5 font-bold  text-[10px] ${log.actor === "ai_agent" ? "bg-[#b9f42e]/20 text-[#b9f42e]" : log.actor === "user" ? "bg-blue-500/20 text-blue-400" : "bg-yellow-500/20 text-yellow-400"}`}>
                   {log.actor.replace("_", " ")}
                 </span>
                 <span className="font-semibold text-zinc-200">{log.action}</span>

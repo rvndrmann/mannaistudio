@@ -194,7 +194,7 @@ export default function ChallengesPage() {
                         <motion.div
                             initial={{ opacity: 0, scale: 0.9 }}
                             animate={{ opacity: 1, scale: 1 }}
-                            className="inline-flex items-center gap-2 px-3 py-1 bg-amber-400/10 rounded-full border border-amber-400/20 text-xs font-bold text-amber-500 uppercase tracking-widest"
+                            className="inline-flex items-center gap-2 px-3 py-1 bg-amber-400/10 rounded-full border border-amber-400/20 text-xs font-bold text-amber-500"
                         >
                             <Zap className="w-3.5 h-3.5 fill-amber-500" /> Season 1: Genesis
                         </motion.div>
@@ -221,7 +221,7 @@ export default function ChallengesPage() {
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
                                 className={cn(
-                                    "px-6 py-2 rounded-xl text-sm font-medium transition-all capitalize",
+                                    "px-6 py-2 rounded-xl text-sm font-medium transition capitalize",
                                     activeTab === tab ? "bg-primary text-black shadow-lg shadow-primary/20" : "text-white/40 hover:text-white"
                                 )}
                             >
@@ -253,8 +253,8 @@ export default function ChallengesPage() {
                                             </div>
                                         </div>
                                         <div className="px-6 py-3 bg-amber-400/10 rounded-2xl border border-amber-400/20 text-center">
-                                            <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">PRIZE POOL</p>
-                                            <p className="text-2xl font-black text-amber-500">{challenge.prize}</p>
+                                            <p className="text-[10px] font-bold text-amber-500 mb-1">PRIZE POOL</p>
+                                            <p className="text-2xl font-semibold text-amber-500">{challenge.prize}</p>
                                         </div>
                                     </div>
 
@@ -287,12 +287,12 @@ export default function ChallengesPage() {
                                                             <Trophy className="w-6 h-6 text-white fill-white" />
                                                         </div>
                                                     </div>
-                                                    <div className="absolute top-3 left-3 bg-primary text-black font-bold text-[10px] px-3 py-1 rounded-full flex items-center gap-1.5 uppercase tracking-widest shadow-lg">
+                                                    <div className="absolute top-3 left-3 bg-primary text-black font-bold text-[10px] px-3 py-1 rounded-full flex items-center gap-1.5 shadow-lg">
                                                         <Star className="w-3 h-3 fill-white" /> Winner
                                                     </div>
                                                 </div>
                                                 <div className="flex flex-col justify-center">
-                                                    <p className="text-[10px] font-bold text-primary uppercase tracking-widest mb-1">Weekly Champion</p>
+                                                    <p className="text-[10px] font-bold text-primary mb-1">Weekly Champion</p>
                                                     <h4 className="text-xl font-bold mb-2">@{challenge.submissions.find(s => s.id === challenge.winnerId)?.studentName}</h4>
                                                     <p className="text-sm text-white/40 italic mb-4">"Winning this challenge has been an incredible journey. The tools provided in this course are world-class."</p>
                                                     <div className="flex items-center gap-4">
@@ -304,7 +304,7 @@ export default function ChallengesPage() {
                                                                     setWatchingStudentName(winnerSub.studentName);
                                                                 }
                                                             }}
-                                                            className="px-4 py-2 bg-primary text-black text-xs font-bold rounded-xl hover:scale-105 transition-transform"
+                                                            className="px-4 py-2 bg-primary text-black text-xs font-bold rounded-xl active:scale-[0.98] transition-transform"
                                                         >
                                                             Watch Winner Video
                                                         </button>
@@ -317,7 +317,7 @@ export default function ChallengesPage() {
                                     {/* Other Submissions Section */}
                                     {challenge.submissions.length > 0 && (
                                         <div className="mb-8">
-                                            <h4 className="text-xs font-bold text-white/20 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                            <h4 className="text-xs font-bold text-white/20 mb-4 flex items-center gap-2">
                                                 <Users className="w-3 h-3" /> Community Submissions
                                             </h4>
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -347,25 +347,25 @@ export default function ChallengesPage() {
 
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-6 py-6 border-y border-white/5">
                                         <div className="space-y-1">
-                                            <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">DEADLINE</p>
+                                            <p className="text-[10px] font-bold text-white/30">DEADLINE</p>
                                             <div className="flex items-center gap-2 text-sm font-medium">
                                                 <Clock className="w-4 h-4 text-primary" /> {challenge.deadline}
                                             </div>
                                         </div>
                                         <div className="space-y-1">
-                                            <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">ENTRIES</p>
+                                            <p className="text-[10px] font-bold text-white/30">ENTRIES</p>
                                             <div className="flex items-center gap-2 text-sm font-medium">
                                                 <Users className="w-4 h-4 text-lime-300" /> {challenge.participants} Joined
                                             </div>
                                         </div>
                                         <div className="space-y-1">
-                                            <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">FORMAT</p>
+                                            <p className="text-[10px] font-bold text-white/30">FORMAT</p>
                                             <div className="flex items-center gap-2 text-sm font-medium text-white/80">
                                                 16:9 MP4
                                             </div>
                                         </div>
                                         <div className="space-y-1">
-                                            <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">REWARDS</p>
+                                            <p className="text-[10px] font-bold text-white/30">REWARDS</p>
                                             <div className="flex items-center gap-2 text-sm font-medium text-white/80">
                                                 Cash + Badges
                                             </div>
@@ -435,7 +435,7 @@ export default function ChallengesPage() {
                                 <img
                                     src="https://images.unsplash.com/photo-1614728263952-84ea206f99b6?auto=format&fit=crop&q=80&w=800"
                                     alt="Winner"
-                                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                                    className="w-full h-full object-cover group-active:scale-95 transition-transform duration-500"
                                 />
                                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                     <Play className="w-10 h-10 text-white fill-white" />
@@ -478,7 +478,7 @@ export default function ChallengesPage() {
                                     type="button"
                                     onClick={() => setSubmittingChallenge(null)}
                                     disabled={isSubmittingEntry}
-                                    className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition-all disabled:opacity-40"
+                                    className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition disabled:opacity-40"
                                 >
                                     <X className="w-6 h-6" />
                                 </button>
@@ -486,7 +486,7 @@ export default function ChallengesPage() {
 
                             <div className="p-6 space-y-5">
                                 <div>
-                                    <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2 block">Video File</label>
+                                    <label className="text-[10px] font-bold text-white/30 mb-2 block">Video File</label>
                                     <input
                                         type="file"
                                         accept="video/*"
@@ -496,7 +496,7 @@ export default function ChallengesPage() {
                                 </div>
 
                                 <div>
-                                    <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2 block">Video URL</label>
+                                    <label className="text-[10px] font-bold text-white/30 mb-2 block">Video URL</label>
                                     <input
                                         value={entryForm.videoUrl}
                                         onChange={(e) => setEntryForm(prev => ({ ...prev, videoUrl: e.target.value }))}
@@ -507,7 +507,7 @@ export default function ChallengesPage() {
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                     <div>
-                                        <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2 block">Thumbnail File</label>
+                                        <label className="text-[10px] font-bold text-white/30 mb-2 block">Thumbnail File</label>
                                         <input
                                             type="file"
                                             accept="image/*"
@@ -516,7 +516,7 @@ export default function ChallengesPage() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2 block">Thumbnail URL</label>
+                                        <label className="text-[10px] font-bold text-white/30 mb-2 block">Thumbnail URL</label>
                                         <input
                                             value={entryForm.thumbnailUrl}
                                             onChange={(e) => setEntryForm(prev => ({ ...prev, thumbnailUrl: e.target.value }))}
@@ -576,12 +576,12 @@ export default function ChallengesPage() {
                                     <h3 className="text-xl font-bold">Submission by @{watchingStudentName}</h3>
                                     <div className="flex items-center gap-2 mt-1">
                                         <span className="w-2 h-2 rounded-full bg-primary" />
-                                        <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Community Spotlight</p>
+                                        <p className="text-[10px] font-bold text-white/40">Community Spotlight</p>
                                     </div>
                                 </div>
                                 <button
                                     onClick={() => setWatchingVideoUrl(null)}
-                                    className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition-all"
+                                    className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition"
                                 >
                                     <X className="w-7 h-7" />
                                 </button>
@@ -607,10 +607,10 @@ export default function ChallengesPage() {
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3">
-                                    <button className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-bold transition-all border border-white/10">
+                                    <button className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-bold transition border border-white/10">
                                         <Star className="w-3.5 h-3.5" /> Favorite
                                     </button>
-                                    <button className="flex items-center gap-2 px-4 py-2 bg-primary rounded-xl text-xs font-bold transition-all hover:scale-105">
+                                    <button className="flex items-center gap-2 px-4 py-2 bg-primary rounded-xl text-xs font-bold transition active:scale-[0.98]">
                                         Support Creator
                                     </button>
                                 </div>

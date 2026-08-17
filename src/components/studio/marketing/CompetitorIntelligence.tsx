@@ -104,17 +104,17 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e] uppercase">Competitive Market Radar</p>
+            <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">Competitive Market Radar</p>
             <ComingSoonBadge />
             <DemoDataBadge />
           </div>
-          <h1 className="mt-1 text-3xl font-black text-white">Competitor Intelligence</h1>
+          <h1 className="mt-1 text-3xl font-semibold text-white">Competitor Intelligence</h1>
         </div>
 
         <button
           type="button"
           onClick={() => setAddCompetitorOpen(true)}
-          className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition-all shadow-lg"
+          className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition shadow-lg"
         >
           <Plus className="h-4 w-4" /> Add Competitor
         </button>
@@ -172,10 +172,10 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
       {activeTab === "library" && (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {mockCreatives.map((creative) => (
-            <div key={creative.id} className="rounded-2xl border border-white/10 bg-[#161817] overflow-hidden shadow-xl hover:border-white/20 transition-all">
+            <div key={creative.id} className="rounded-2xl border border-white/10 bg-[#161817] overflow-hidden shadow-xl hover:border-white/20 transition">
               <div className="relative aspect-video w-full bg-black/60">
                 <img src={creative.thumbnail} alt={creative.title} className="h-full w-full object-cover" />
-                <span className="absolute top-2 left-2 rounded-md bg-black/80 px-2 py-0.5 text-[10px] font-bold text-[#b9f42e] uppercase">{creative.platform}</span>
+                <span className="absolute top-2 left-2 rounded-md bg-black/80 px-2 py-0.5 text-[10px] font-bold text-[#b9f42e]">{creative.platform}</span>
                 <span className="absolute bottom-2 right-2 rounded-md bg-black/80 px-2 py-0.5 text-[10px] font-bold text-white">{creative.duration}</span>
               </div>
 
@@ -212,15 +212,15 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
 
           <div className="grid gap-4 md:grid-cols-3">
             <div className="rounded-xl border border-white/10 bg-black/40 p-4">
-              <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">Most Common Hook Pattern</span>
+              <span className="t-caption text-zinc-500">Most Common Hook Pattern</span>
               <p className="mt-1 text-base font-bold text-white">Financial-Loss Warning Hook</p>
             </div>
             <div className="rounded-xl border border-white/10 bg-black/40 p-4">
-              <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">Most Common Video Length</span>
+              <span className="t-caption text-zinc-500">Most Common Video Length</span>
               <p className="mt-1 text-base font-bold text-white">20 - 30 Seconds</p>
             </div>
             <div className="rounded-xl border border-white/10 bg-black/40 p-4">
-              <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">Top Performing Format</span>
+              <span className="t-caption text-zinc-500">Top Performing Format</span>
               <p className="mt-1 text-base font-bold text-white">UGC Presenter + B-Roll</p>
             </div>
           </div>
@@ -228,7 +228,7 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
           <div className="rounded-xl border border-[#b9f42e]/30 bg-[#b9f42e]/5 p-5 space-y-3">
             <div className="flex items-center gap-2">
               <Wand2 className="h-5 w-5 text-[#b9f42e]" />
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider">Productive Action: Send Abstracted Pattern to AI Director</h3>
+              <h3 className="text-sm font-bold text-white">Productive Action: Send Abstracted Pattern to AI Director</h3>
             </div>
             <p className="text-xs text-zinc-300">
               Pass this competitor pattern into your existing AI Director Studio workflow to generate 100% original script & video concepts without copying trademarked text.
@@ -249,7 +249,7 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
                     })
                   }
                 }}
-                className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-5 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition-all shadow-lg"
+                className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-5 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition shadow-lg"
               >
                 <Wand2 className="h-4 w-4" /> Send Pattern to AI Director Studio
               </button>
@@ -296,7 +296,7 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
           <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-white/10 bg-[#161817] p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div>
-                <span className="text-xs font-bold text-[#b9f42e] uppercase">{selectedCreative.competitorName}</span>
+                <span className="text-xs font-bold text-[#b9f42e]">{selectedCreative.competitorName}</span>
                 <h3 className="text-xl font-bold text-white">{selectedCreative.title}</h3>
               </div>
               <button onClick={() => setSelectedCreative(null)} className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/10"><X className="h-5 w-5" /></button>
@@ -316,7 +316,7 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
             </div>
 
             <div>
-              <h4 className="text-sm font-bold text-white uppercase tracking-wider mb-2">Video Structure Breakdown</h4>
+              <h4 className="text-sm font-bold text-white mb-2">Video Structure Breakdown</h4>
               <div className="space-y-2">
                 {selectedCreative.structure.map((s) => (
                   <div key={s.time} className="flex items-center justify-between rounded-xl border border-white/5 bg-black/40 p-3 text-xs">

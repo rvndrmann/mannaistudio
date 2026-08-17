@@ -406,7 +406,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                                     href={resource.url}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 hover:border-primary/40 hover:bg-white/10 transition-all group"
+                                                    className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 hover:border-primary/40 hover:bg-white/10 transition group"
                                                 >
                                                     <Download className="w-4 h-4 text-primary shrink-0" />
                                                     <span className="text-white/70 group-hover:text-white transition-colors truncate">{resource.name || resource.url}</span>
@@ -434,7 +434,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     key={lesson.id}
                                     onClick={() => setActiveChapter(lesson.id)}
                                     className={cn(
-                                        "w-full text-left p-4 rounded-xl mb-2 transition-all flex items-center justify-between group",
+                                        "w-full text-left p-4 rounded-xl mb-2 transition flex items-center justify-between group",
                                         activeChapter === lesson.id ? "bg-primary/10 border border-primary/20" : "hover:bg-white/5"
                                     )}
                                 >
@@ -484,7 +484,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                         <div className="p-1.5 bg-white/20 rounded-full">
                             <Sparkles className="w-5 h-5 text-white animate-bounce" />
                         </div>
-                        <span className="font-bold text-white uppercase tracking-widest text-sm">Level Up! +150 XP Earned</span>
+                        <span className="font-bold text-white text-sm">Level Up! +150 XP Earned</span>
                     </motion.div>
                 )}
             </AnimatePresence>

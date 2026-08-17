@@ -24,6 +24,24 @@
   --input: 0 0% 14%;
   --ring: 74 89% 56%;
   --radius: 0.75rem;
+
+  /* Radius scale. Bigger surfaces carry bigger radii, consistently — the site
+     previously used seven ad-hoc pixel values with nothing distinguishing them. */
+  --radius-sm: 8px;   /* chips, badges, inputs */
+  --radius-md: 14px;  /* buttons, small cards */
+  --radius-lg: 22px;  /* cards, panels */
+  --radius-xl: 30px;  /* hero containers, sheets */
+
+  /* Motion. Springs handle anything a user can touch (see src/lib/motion.ts);
+     these three durations cover everything that is not gesture-driven. */
+  --dur-press: 120ms; /* feedback on pointer-down */
+  --dur-state: 240ms; /* hover, focus, colour changes */
+  --dur-surface: 400ms; /* a panel or sheet arriving */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* The one accent. Lime comes from the logo and is the only colour allowed to
+     mean "act on this" — everything else on the page is a neutral. */
+  --accent-glow: 74 89% 56%;
 }
 
 .dark {
@@ -39,20 +57,145 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
+    font-optical-sizing: auto;
+  }
+
+  /* Tracking and leading are size-specific. A single letter-spacing value is
+     wrong somewhere: large text reads too loose as it grows and wants negative
+     tracking, small text wants a touch of positive tracking to stay legible.
+     Headings therefore tighten as they get bigger, and body copy sits at zero. */
+  h1, h2, h3, h4 {
+    font-optical-sizing: auto;
+    text-wrap: balance;
   }
 }
 
 @layer components {
-  .glass {
-    @apply bg-white/5 backdrop-blur-md border border-white/10;
+  /* The type scale. Weight tops out at 600 — presence in the large sizes comes
+     from tight leading and negative tracking, not from bolding everything. */
+  .t-display {
+    font-size: clamp(2.75rem, 6vw, 5rem);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    font-weight: 600;
   }
-  
-  .glass-card {
-    @apply glass rounded-xl shadow-2xl transition-all duration-300 hover:bg-white/10 hover:border-white/20;
+  .t-h1 {
+    font-size: clamp(2rem, 4vw, 3rem);
+    line-height: 1.1;
+    letter-spacing: -0.022em;
+    font-weight: 600;
+  }
+  .t-h2 {
+    font-size: clamp(1.5rem, 2.5vw, 1.875rem);
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+    font-weight: 600;
+  }
+  .t-h3 {
+    font-size: 1.125rem;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+    font-weight: 600;
+  }
+  .t-body-lg {
+    font-size: 1.125rem;
+    line-height: 1.6;
+    letter-spacing: 0;
+    font-weight: 400;
+  }
+  .t-body {
+    font-size: 1rem;
+    line-height: 1.6;
+    letter-spacing: 0;
+    font-weight: 400;
+  }
+  /* Replaces the uppercase + wide-tracking eyebrow. Sentence case, quiet. */
+  .t-caption {
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    letter-spacing: 0.01em;
+    font-weight: 500;
+  }
+}
+
+@layer components {
+  /* Materials. Weight encodes hierarchy: a structural surface is heavier and
+     darker, an interactive one lighter. Never stack a light material on another
+     — two translucent layers in a row and the text stops being legible. */
+  .glass {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.09);
   }
 
+  /* Chrome that content scrolls underneath. The bright top edge is light
+     catching the material, which is what stops it reading as a flat scrim. */
+  .material-chrome {
+    background: rgba(10, 12, 11, 0.62);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+  }
+
+  /* A bigger surface reads as a thicker material: stronger blur, deeper shadow
+     than a chip gets. Used for modals and sheets. */
+  .material-sheet {
+    background: rgba(14, 16, 15, 0.82);
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 32px 80px -12px rgba(0, 0, 0, 0.7);
+  }
+
+  .glass-card {
+    @apply glass shadow-2xl;
+    border-radius: var(--radius-lg);
+    transition: background-color var(--dur-state) var(--ease-out),
+                border-color var(--dur-state) var(--ease-out);
+  }
+  .glass-card:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.16);
+  }
+
+  /* Feedback lives on the press and it is instant. Growing on hover is a web
+     habit; a real control gives way under the finger the moment it is touched. */
   .btn-primary {
-    @apply bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium transition-all hover:opacity-90 active:scale-95;
+    @apply bg-primary text-primary-foreground px-4 py-2 font-medium;
+    border-radius: var(--radius-md);
+    transition: transform var(--dur-press) var(--ease-out),
+                filter var(--dur-state) var(--ease-out);
+  }
+  .btn-primary:hover {
+    filter: brightness(1.06);
+  }
+  .btn-primary:active {
+    transform: scale(0.97);
+  }
+
+  /* The neutral counterpart, so only one control on screen wears the lime. */
+  .btn-secondary {
+    @apply border border-white/15 bg-white/[.04] px-4 py-2 font-medium text-white;
+    border-radius: var(--radius-md);
+    transition: transform var(--dur-press) var(--ease-out),
+                background-color var(--dur-state) var(--ease-out),
+                border-color var(--dur-state) var(--ease-out);
+  }
+  .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.24);
+  }
+  .btn-secondary:active {
+    transform: scale(0.97);
+  }
+
+  /* Where content meets floating chrome, fade it out instead of drawing a 1px
+     rule. A hard divider announces the bar; a mask just lets it float. */
+  .scroll-edge-mask {
+    mask-image: linear-gradient(to bottom, transparent 0, #000 56px);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 56px);
   }
 
   /* The camera-settings dial: a vertical scroll-snap column whose own
@@ -81,6 +224,57 @@
 
 .animate-float {
   animation: float 6s ease-in-out infinite;
+}
+
+/* Accessibility. Reduced motion is not "no feedback" — it is a gentler,
+   non-vestibular equivalent, so opacity and colour changes that aid
+   comprehension stay and only the travel and the overshoot go. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-float,
+  .animate-pulse-slow {
+    animation: none !important;
+  }
+  /* Keep the press feedback — it is the one cue that a control responded. */
+  .btn-primary,
+  .btn-secondary {
+    transition: filter var(--dur-state) linear !important;
+  }
+  .btn-primary:active,
+  .btn-secondary:active {
+    transform: none;
+    filter: brightness(0.88);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass,
+  .material-chrome,
+  .material-sheet {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .glass { background: #161917; }
+  .material-chrome { background: #0a0c0b; }
+  .material-sheet { background: #101210; }
+}
+
+@media (prefers-contrast: more) {
+  .glass,
+  .material-chrome,
+  .material-sheet {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: #0a0c0b;
+    border-color: rgba(255, 255, 255, 0.42);
+  }
 }
 
 /* Blog article body — lightweight prose styles (no typography plugin needed). */

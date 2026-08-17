@@ -179,7 +179,7 @@ export function RevisionNotes({
   if (!loading && !notesActive) {
     return (
       <div className="rounded-xl border border-white/10 bg-[#0b0c0b] p-4">
-        <p className="flex items-center gap-2 text-xs font-bold uppercase text-zinc-500">
+        <p className="flex items-center gap-2 text-xs font-bold text-zinc-500">
           <Lock className="h-3.5 w-3.5" />
           {title} · Enterprise
         </p>
@@ -211,7 +211,7 @@ export function RevisionNotes({
         aria-expanded={open}
         className="flex w-full items-center justify-between gap-2 text-left"
       >
-        <span className="flex items-center gap-2 text-xs font-bold uppercase text-zinc-400">
+        <span className="flex items-center gap-2 text-xs font-bold text-zinc-400">
           <MessageSquare className="h-3.5 w-3.5" />
           {title}
         </span>

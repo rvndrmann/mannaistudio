@@ -80,7 +80,7 @@ export function SocialConnectionCard({ platform }: { platform: PlatformConfig })
 
   return (
     <>
-      <div className="flex flex-col justify-between rounded-2xl border border-white/10 bg-[#161817] p-6 shadow-xl hover:border-white/20 transition-all">
+      <div className="flex flex-col justify-between rounded-2xl border border-white/10 bg-[#161817] p-6 shadow-xl hover:border-white/20 transition">
         <div>
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
@@ -106,7 +106,7 @@ export function SocialConnectionCard({ platform }: { platform: PlatformConfig })
           </div>
 
           <div className="mt-5">
-            <p className="text-xs font-bold uppercase tracking-wider text-zinc-500">Supported AI Features</p>
+            <p className="t-caption text-zinc-500">Supported AI Features</p>
             <ul className="mt-2.5 space-y-2">
               {platform.features.map((feature) => (
                 <li key={feature} className="flex items-center gap-2 text-xs font-medium text-zinc-300">
@@ -122,7 +122,7 @@ export function SocialConnectionCard({ platform }: { platform: PlatformConfig })
           <button
             type="button"
             onClick={() => setModalOpen(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-white/10 py-3 text-sm font-bold text-white hover:bg-white/20 transition-all"
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-white/10 py-3 text-sm font-bold text-white hover:bg-white/20 transition"
           >
             <ExternalLink className="h-4 w-4 text-[#b9f42e]" />
             Connect {platform.name}
@@ -145,8 +145,8 @@ export function SocialAccountsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e] uppercase">Social Media Agent</p>
-          <h1 className="mt-1 text-3xl font-black text-white">Social Accounts</h1>
+          <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">Social Media Agent</p>
+          <h1 className="mt-1 text-3xl font-semibold text-white">Social Accounts</h1>
         </div>
       </div>
       <p className="max-w-2xl text-sm text-zinc-400">

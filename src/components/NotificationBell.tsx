@@ -80,7 +80,7 @@ export default function NotificationBell() {
         <div ref={containerRef} className="relative">
             <button
                 onClick={toggleOpen}
-                className="relative flex items-center justify-center p-2.5 bg-white/10 rounded-xl hover:bg-white/20 transition-all"
+                className="relative flex items-center justify-center p-2.5 bg-white/10 rounded-xl hover:bg-white/20 transition"
                 title="Notifications"
             >
                 <Bell className="w-4 h-4 text-white/70" />

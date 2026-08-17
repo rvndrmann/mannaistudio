@@ -271,7 +271,7 @@ export default function BlogManager() {
                             const Icon = group.icon
                             return (
                                 <div key={group.key}>
-                                    <p className={cn("text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5", group.tone)}>
+                                    <p className={cn("t-caption mb-2 flex items-center gap-1.5", group.tone)}>
                                         <Icon className="w-3.5 h-3.5" /> {group.label} ({items.length})
                                     </p>
                                     <div className="space-y-2">
@@ -300,7 +300,7 @@ export default function BlogManager() {
                     <div className="glass-card p-6 rounded-2xl border-white/10 space-y-4">
                         <div className="flex items-center justify-between">
                             <span className={cn(
-                                "text-xs font-semibold uppercase tracking-wider px-2 py-1 rounded-md",
+                                "t-caption px-2 py-1 rounded-md",
                                 editing.status === "published" ? "bg-primary/20 text-primary" :
                                 editing.status === "pending_review" ? "bg-amber-400/20 text-amber-300" :
                                 editing.status === "scheduled" ? "bg-sky-400/20 text-sky-300" :

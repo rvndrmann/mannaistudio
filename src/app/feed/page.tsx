@@ -49,7 +49,7 @@ export default function FeedPage() {
                         <motion.div
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full border border-primary/20 text-xs font-bold text-primary uppercase tracking-widest"
+                            className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full border border-primary/20 text-xs font-bold text-primary"
                         >
                             <Clapperboard className="w-3.5 h-3.5" /> Creator Feed
                         </motion.div>
@@ -171,14 +171,14 @@ export default function FeedPage() {
                                         <p className="text-sm font-bold">Public videos</p>
                                         <p className="text-xs text-white/35">Latest portfolio uploads</p>
                                     </div>
-                                    <span className="text-2xl font-black">{feedItems.length}</span>
+                                    <span className="text-2xl font-semibold">{feedItems.length}</span>
                                 </div>
                                 <div className="flex items-center justify-between rounded-xl bg-black/15 p-4">
                                     <div>
                                         <p className="text-sm font-bold">Creators</p>
                                         <p className="text-xs text-white/35">Showing in feed</p>
                                     </div>
-                                    <span className="text-2xl font-black">{new Set(feedItems.map(item => item.creator.slug)).size}</span>
+                                    <span className="text-2xl font-semibold">{new Set(feedItems.map(item => item.creator.slug)).size}</span>
                                 </div>
                             </div>
                         </div>
@@ -230,7 +230,7 @@ export default function FeedPage() {
                                     <h3 className="text-xl font-bold">{playingVideo.title}</h3>
                                     <p className="text-xs text-white/40 mt-1">{playingVideo.creator.name}</p>
                                 </div>
-                                <button onClick={() => setPlayingVideo(null)} className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition-all">
+                                <button onClick={() => setPlayingVideo(null)} className="p-2 hover:bg-white/10 rounded-2xl text-white/40 hover:text-white transition">
                                     <X className="w-7 h-7" />
                                 </button>
                             </div>

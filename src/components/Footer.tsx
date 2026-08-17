@@ -28,7 +28,7 @@ export default function Footer() {
                 </div>
 
                 <div>
-                    <h3 className="font-bold text-sm uppercase tracking-wider text-white/60 mb-4">Explore</h3>
+                    <h3 className="font-bold text-sm text-white/60 mb-4">Explore</h3>
                     <ul className="space-y-2">
                         {siteLinks.map((link) => (
                             <li key={link.href}>
@@ -41,7 +41,7 @@ export default function Footer() {
                 </div>
 
                 <div>
-                    <h3 className="font-bold text-sm uppercase tracking-wider text-white/60 mb-4">Legal</h3>
+                    <h3 className="font-bold text-sm text-white/60 mb-4">Legal</h3>
                     <ul className="space-y-2">
                         {legalLinks.map((link) => (
                             <li key={link.href}>
@@ -54,7 +54,7 @@ export default function Footer() {
                 </div>
 
                 <div>
-                    <h3 className="font-bold text-sm uppercase tracking-wider text-white/60 mb-4">Business Info</h3>
+                    <h3 className="font-bold text-sm text-white/60 mb-4">Business Info</h3>
                     <div className="space-y-3 text-sm text-white/40">
                         <p className="font-bold text-white/60">AIDIRECTORHUB</p>
                         <p>Proprietor: Ravinder Deep Singh</p>

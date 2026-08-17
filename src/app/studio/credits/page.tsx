@@ -138,7 +138,7 @@ export default function CreditsPage() {
           <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-[#b9f42e]/30 bg-[#b9f42e]/10 text-[#b9f42e] mb-4">
             <Zap className="h-7 w-7 fill-[#b9f42e]" />
           </div>
-          <h1 className="text-3xl font-black text-white">AI Generation Credits</h1>
+          <h1 className="text-3xl font-semibold text-white">AI Generation Credits</h1>
           <p className="mt-2 text-sm text-zinc-400">
             {tab === "usage"
               ? "Every credit movement on your account, newest first."
@@ -186,7 +186,7 @@ export default function CreditsPage() {
             <div className="mb-8 rounded-2xl border border-[#b9f42e]/30 bg-[#b9f42e]/[0.03] p-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#b9f42e]">Flexible Top-Up</span>
+                  <span className="t-caption text-[#b9f42e]">Flexible Top-Up</span>
                   <h3 className="text-xl font-bold text-white mt-1">Buy Custom Credit Amount</h3>
                   <p className="text-xs text-zinc-400 mt-1">1 credit per ₹1, minimum 1,000 — {formatUsdWithInr(1000)}</p>
                 </div>
@@ -226,7 +226,7 @@ export default function CreditsPage() {
                 <button
                   disabled={loading || customAmount < 1000}
                   onClick={() => handleTopUp(customAmount)}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-8 py-3 text-sm font-black text-black hover:bg-[#a6de25] transition disabled:opacity-40"
+                  className="flex items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-8 py-3 text-sm font-semibold text-black hover:bg-[#a6de25] transition disabled:opacity-40"
                 >
                   {loading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -255,7 +255,7 @@ export default function CreditsPage() {
                   }`}
                 >
                   {pkg.popular && (
-                    <span className="absolute -top-3 right-6 rounded-full bg-[#b9f42e] px-3 py-0.5 text-[10px] font-black uppercase tracking-wider text-black">
+                    <span className="absolute -top-3 right-6 rounded-full bg-[#b9f42e] px-3 py-0.5 t-caption text-black">
                       Most Popular
                     </span>
                   )}
@@ -267,11 +267,11 @@ export default function CreditsPage() {
                   </div>
 
                   <div className="mt-6 flex items-center justify-between border-t border-white/[0.06] pt-4">
-                    <span className="text-lg font-black text-white">{pkg.price}</span>
+                    <span className="text-lg font-semibold text-white">{pkg.price}</span>
                     <button
                       disabled={loading}
                       onClick={() => handleTopUp(pkg.credits)}
-                      className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-5 py-2.5 text-xs font-black text-black hover:bg-[#a6de25] transition disabled:opacity-50"
+                      className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-5 py-2.5 text-xs font-semibold text-black hover:bg-[#a6de25] transition disabled:opacity-50"
                     >
                       {loading ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
