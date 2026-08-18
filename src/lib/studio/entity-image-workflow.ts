@@ -1,34 +1,14 @@
 import type { MentionableEntity } from "./entity-mentions"
+import { forbidsImageGeneration } from "./media-intent"
+import { describesLookChange } from "./revision-phrasing"
+
+// Re-exported because this is the module the entity fast path reads it from.
+export { describesLookChange }
 
 export type BulkEntityImageIntent = {
   types: Array<"character" | "scene" | "prop">
   entityIds?: string[]
   regenerate: boolean
-}
-
-/**
- * Whether the message describes changing what something should be, rather than
- * asking for it to be drawn.
- *
- * The tell is contrast: a new state named against the old one. Someone asking
- * for art describes the subject; someone asking for a revision describes the
- * difference.
- */
-export function describesLookChange(message: string): boolean {
-  const normalized = message.toLowerCase()
-  return [
-    /\binstead of\b/,
-    /\brather than\b/,
-    /\bno longer\b/,
-    /\bnot\s+(?:a|an|the)?\s*\w+\s*,?\s*but\b/,
-    /\bchange\b[^.]*\bto\b/,
-    /\bturn\b[^.]*\binto\b/,
-    /\bswitch\b[^.]*\bto\b/,
-    /\breplace\b[^.]*\bwith\b/,
-    /\bupdate\b[^.]*\bto\b/,
-    /\b(revise|rewrite|reword)\b/,
-    /\bmake (?:it|them|every|all|the)\b[^.]*\binstead\b/,
-  ].some((pattern) => pattern.test(normalized))
 }
 
 export function parseBulkEntityImageIntent(
@@ -84,6 +64,53 @@ export function parseBulkEntityImageIntent(
     entityIds: mentionedEntities && mentionedEntities.length > 0 ? mentionedEntities.map((e) => e.id) : undefined,
     regenerate: /\b(regenerate|redo|replace|refresh|recreate)\b/.test(normalized) || Boolean(mentionedEntities && mentionedEntities.length > 0),
   }
+}
+
+/**
+ * The card that asks "do you have your own photos?" reads its own answers.
+ *
+ * The workspace answers that question with buttons, and the upload button's
+ * message — "I have my own photos. Show me how to upload and match them to the
+ * characters and assets before generating anything." — names having photos, so
+ * the card matched it and posted a second copy of itself. The user clicked,
+ * got the same question back, and had to type the question out in their own
+ * words to get an answer at all.
+ *
+ * Someone asking how to do it has already chosen; the walkthrough is the
+ * agent's to write.
+ */
+export function asksAboutOwnPhotos(message: string) {
+  const normalized = message.toLowerCase()
+  if (/\b(show me how|how do i|how can i|how to upload|walk me through|where do i)\b/.test(normalized)) return false
+  // A message about a shot is about the storyboard, not the asset library.
+  // "shot 13 and 14 doest have there scene location image so regenerate those"
+  // names having and names images, and came back as the photo question.
+  if (/\b(shots?|storyboards?|keyframes?)\b/.test(normalized)) return false
+  return /\b(have|upload|use|own)\b[^.]{0,50}\b(photos?|images?|pictures?|references?)\b/.test(normalized)
+}
+
+/**
+ * "No photos — generate the reference art", in the ways people say it.
+ *
+ * A refusal to generate is not one of them. "Do not generate any images yet"
+ * names a negation and names images, which is the whole shape this looked for,
+ * so the one message that forbade generating images was the message that
+ * started generating them — and charged for them.
+ */
+// The negation has to attach to the photos themselves. Matched loosely, any
+// long instruction containing a "do not" and the word "image" read as the
+// answer — "Do not change any shot's image prompt", inside a request to write
+// video prompts, generated reference art for the whole library.
+const NO_OWN_PHOTOS = /\b(?:no|none|without|do not have|don'?t have|haven'?t|have not)\b(?:\s+(?:own|my|any|the|of|them|their|these|those))*\s*(?:photos?|pictures?|pics?|images?)\b/
+// What the card's own "generate the art instead" button says.
+const CHOOSES_GENERATED_ART = /\bgenerate (?:them|reference art)\b/
+
+export function declinesOwnPhotos(message: string) {
+  const normalized = message.toLowerCase()
+  if (forbidsImageGeneration(normalized)) return false
+  if (CHOOSES_GENERATED_ART.test(normalized)) return true
+  if (/\b(shots?|storyboards?|keyframes?)\b/.test(normalized)) return false
+  return NO_OWN_PHOTOS.test(normalized)
 }
 
 export function visualStyleDirective(style: string) {

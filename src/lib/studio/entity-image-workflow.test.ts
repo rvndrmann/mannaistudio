@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildEntityReferenceImagePrompt, parseBulkEntityImageIntent, projectVisualStyle, visualStyleDirective, describesLookChange } from "./entity-image-workflow"
+import { asksAboutOwnPhotos, buildEntityReferenceImagePrompt, declinesOwnPhotos, parseBulkEntityImageIntent, projectVisualStyle, visualStyleDirective, describesLookChange } from "./entity-image-workflow"
 
 describe("entity image workflow", () => {
   it("routes all-character image requests to character entities", () => {
@@ -124,5 +124,43 @@ describe("describesLookChange", () => {
   it("is quiet for a plain generation request", () => {
     expect(describesLookChange("Generate images for all characters")).toBe(false)
     expect(describesLookChange("Create the location plates")).toBe(false)
+  })
+})
+
+describe("the photo choice card reading its own answers", () => {
+  it("does not answer its own upload button with a second copy of itself", () => {
+    // The workspace's button posts this sentence. The card matched "have ...
+    // photos", posted the same question back, and the user clicked it again.
+    expect(asksAboutOwnPhotos("I have my own photos. Show me how to upload and match them to the characters and assets before generating anything.")).toBe(false)
+    expect(asksAboutOwnPhotos("how do I upload photos for Deepika?")).toBe(false)
+  })
+
+  it("still offers the choice when the photos have not been asked about yet", () => {
+    expect(asksAboutOwnPhotos("do I need to upload photos of the characters first?")).toBe(true)
+    expect(asksAboutOwnPhotos("As the Character & Asset Agent, add the characters the prompt sheet needs. After creating them, ask whether I have my own photos.")).toBe(true)
+  })
+
+  it("does not read a refusal to generate images as having no photos", () => {
+    // This branch generates reference art immediately, so reading "do not
+    // generate any images" as the card's no-photos answer spent credits on the
+    // one instruction that forbade spending them.
+    expect(declinesOwnPhotos("Do not generate any images yet")).toBe(false)
+    expect(declinesOwnPhotos("don't regenerate the reference images")).toBe(false)
+  })
+
+  it("does not read a long storyboard instruction as an answer about photos", () => {
+    // Real messages, both answered with the photo card or with a full run of
+    // reference-art generation while the work they asked for went undone.
+    const videoPrompts = "Read the saved storyboard for Episode 3 and write the video prompts for all 15 shots with write_shot_video_prompts. Name characters and locations by @tag only — never describe their appearance. Do not change any shot's image prompt."
+    expect(declinesOwnPhotos(videoPrompts)).toBe(false)
+    expect(asksAboutOwnPhotos(videoPrompts)).toBe(false)
+    expect(asksAboutOwnPhotos("shot 13 and 14 doest have there scene location image so regenerate those")).toBe(false)
+    expect(asksAboutOwnPhotos("and we need to use shot 5 video as reference for extending from there")).toBe(false)
+  })
+
+  it("still hears the user say they have none", () => {
+    expect(declinesOwnPhotos("NO PHOTO")).toBe(true)
+    expect(declinesOwnPhotos("i don't have photos of them")).toBe(true)
+    expect(declinesOwnPhotos("As the Character & Asset Agent, generate reference art only for the characters and assets that have none yet: Abhijit, Deepika.")).toBe(true)
   })
 })

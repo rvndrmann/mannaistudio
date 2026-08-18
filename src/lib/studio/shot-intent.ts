@@ -9,6 +9,8 @@
 // number that is wrong fails there with a message naming the episode's real
 // shot count, rather than silently targeting the wrong shot.
 
+import { describesReplacementState } from "./revision-phrasing"
+
 const SHOT_RANGE = /\bshots?\s*(?:#\s*)?(\d{1,4})\s*(?:-|–|—|\bto\b|\bthrough\b)\s*(?:#\s*)?(\d{1,4})\b/g
 const SHOT_LIST = /\bshots?\s*(?:#\s*)?(\d{1,4}(?:\s*(?:,|&|\band\b)\s*(?:#\s*)?\d{1,4})*)\b/g
 const FIRST_SHOT = /\bfirst\s+(?:storyboard\s+)?shot\b/
@@ -70,6 +72,12 @@ const BATCH_CHUNK = /\b(?:next|another|first)\s+(\d{1,2})\b|\b(\d{1,2})\s+more\b
 const MAX_CHUNK = 25
 
 export function parseShotImageBatchIntent(message: string): ShotBatchIntent | null {
+  // A batch that says what the frames should become is a revision of the
+  // prompts they render from, not a request to render the prompts as they
+  // stand. "Make all the shot images a rainy New York morning instead of neon
+  // night" was answered with "every shot with a prompt already has a keyframe",
+  // so the look change never reached the agent that would have edited them.
+  if (describesReplacementState(message)) return null
   const all = BATCH_ALL.test(message)
   const chunkMatch = message.match(BATCH_CHUNK)
   const chunkSize = chunkMatch ? Number(chunkMatch[1] || chunkMatch[2]) : 0
@@ -154,7 +162,29 @@ export function namesVideoMedium(message: string) {
  */
 export function isAmbiguousShotRedo(message: string) {
   if (!wantsRedo(message)) return false
+  // "Redo shot 3 as a rainy morning instead of neon night" says which medium is
+  // beside the point: the prompt has to change first, and asking image-or-video
+  // both answers a question nobody asked and loses the change on the way.
+  if (describesReplacementState(message)) return false
   if (namesImageMedium(message) || namesVideoMedium(message)) return false
+  return parseTargetShotNumbers(message).length > 0
+}
+
+/**
+ * "Skip shot 6 and continue with the rest of the production."
+ *
+ * Skipping is passing over a shot, not moving to it. "Skip ahead to shot 5 and
+ * generate its video" names a shot the user wants worked on, and answering it
+ * with "leaving shot 5 as it is" refuses the work while claiming the opposite
+ * of what was asked.
+ */
+const SKIP_FORWARD = /\bskip\s+(?:ahead|forward|straight|right)?\s*to\b/
+const SKIP_NEGATED = /\b(?:do not|don't|never|no need to|instead of|without)\s+skip(?:ping)?\b/
+
+export function wantsShotSkipped(message: string) {
+  const normalized = message.toLowerCase()
+  if (!/\bskip\b/.test(normalized)) return false
+  if (SKIP_FORWARD.test(normalized) || SKIP_NEGATED.test(normalized)) return false
   return parseTargetShotNumbers(message).length > 0
 }
 

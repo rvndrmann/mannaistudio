@@ -1,9 +1,17 @@
 const NEGATION = String.raw`(?:do not|don't|never|without)`
+// "Regenerate" has no word boundary before "generate", so `\bgenerate\b` never
+// fired inside it: "do not regenerate the shot images" read as no refusal at
+// all, and the image batch went ahead and re-rendered them. The message that
+// existed to stop the spend was the one that authorised it.
+const MEDIA_VERB = String.raw`(?:(?:re-?)?(?:generat(?:e|ing)|creat(?:e|ing)|mak(?:e|ing)|draw(?:ing)?|render(?:ing)?|produc(?:e|ing))|re-?do(?:ing)?)`
+// "No more images" and "no further video" are refusals in the same breath as
+// "no new images", and only the last of the three was recognised.
+const MORE = String.raw`(?:new|more|further|additional|extra)`
 
 export function forbidsMediaGeneration(message: string) {
   const value = message.toLowerCase()
-  return new RegExp(String.raw`\b${NEGATION}\s+(?:yet\s+)?(?:generate|generating|create|creating|make|making|draw|drawing|render|rendering|produce|producing)\b`).test(value)
-    || /\bno\s+(?:new\s+)?media\b/.test(value)
+  return new RegExp(String.raw`\b${NEGATION}\s+(?:yet\s+)?${MEDIA_VERB}\b`).test(value)
+    || new RegExp(String.raw`\bno\s+(?:${MORE}\s+)?media\b`).test(value)
     || /\bread[- ]only\b/.test(value)
     || /\binspect only\b/.test(value)
 }
@@ -11,15 +19,15 @@ export function forbidsMediaGeneration(message: string) {
 export function forbidsImageGeneration(message: string) {
   const value = message.toLowerCase()
   return forbidsMediaGeneration(value)
-    || new RegExp(String.raw`\b${NEGATION}\s+(?:yet\s+)?(?:generate|create|make|draw|render)\s+(?:any\s+)?(?:images?|keyframes?|posters?|visuals?)\b`).test(value)
-    || /\bno\s+(?:new\s+)?(?:images?|keyframes?)\b/.test(value)
+    || new RegExp(String.raw`\b${NEGATION}\s+(?:yet\s+)?${MEDIA_VERB}\s+(?:any\s+)?(?:images?|keyframes?|posters?|visuals?)\b`).test(value)
+    || new RegExp(String.raw`\bno\s+(?:${MORE}\s+)?(?:images?|keyframes?)\b`).test(value)
 }
 
 export function forbidsVideoGeneration(message: string) {
   const value = message.toLowerCase()
   return forbidsMediaGeneration(value)
-    || new RegExp(String.raw`\b${NEGATION}\s+(?:yet\s+)?(?:generate|create|make|render|produce)\s+(?:any\s+)?(?:videos?|motion|animation)\b`).test(value)
-    || /\bno\s+(?:new\s+)?(?:videos?|animation)\b/.test(value)
+    || new RegExp(String.raw`\b${NEGATION}\s+(?:yet\s+)?${MEDIA_VERB}\s+(?:any\s+)?(?:videos?|motion|animation)\b`).test(value)
+    || new RegExp(String.raw`\bno\s+(?:${MORE}\s+)?(?:videos?|animation)\b`).test(value)
 }
 
 /**

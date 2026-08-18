@@ -33,3 +33,22 @@ export async function fetchDirectorRuntimeSettings(supabase: SupabaseClient) {
 export function runtimeInstructions(settings: DirectorRuntimeSettings) {
   return [settings.orchestrationInstructions, `Offer no more than ${settings.nextActionLimit} contextual next actions.`].join("\n")
 }
+
+/**
+ * "Turn on full auto."
+ *
+ * Full auto hands the Director a credit budget and a job count and lets it run
+ * without stopping to ask, so the gate on it has to read the sentence rather
+ * than the words in it. "Don't turn on full auto yet" and "what happens if I
+ * start autopilot?" both name the mode and name a start verb, and both used to
+ * be answered with a proposal to enable it.
+ */
+export function requestsFullAutoEnable(message: string) {
+  const normalized = message.toLowerCase()
+  if (!/\b(full auto|full-auto|autopilot)\b/.test(normalized)) return false
+  if (!/\b(enable|turn on|start|activate)\b/.test(normalized)) return false
+  if (/\b(?:do not|don't|never|no need to|without|stop|disable|turn off)\b/.test(normalized)) return false
+  // A question about the mode wants an explanation, not the mode.
+  if (/^\s*(?:what|how|why|when|can|could|should|does|do)\b/.test(normalized) || normalized.includes("?")) return false
+  return true
+}

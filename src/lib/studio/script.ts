@@ -253,3 +253,20 @@ export function normalizeScriptContent(value: unknown): ScriptContent {
 export function parseScript(value: unknown): ScriptContent {
   return normalizeScriptContent(value)
 }
+
+/**
+ * "Yes, replace the current script."
+ *
+ * The confirmation reaches this route on its own, a turn after the script text
+ * it refers to, so the reply is written from the earlier message rather than
+ * from this one. That makes reading the word "no" out of the sentence the
+ * difference between saving what the user wrote and overwriting the script they
+ * asked to keep: "ok, but don't replace the current script" carries both an
+ * agreement word and the word "replace", and used to replace it.
+ */
+export function confirmsScriptReplacement(message: string): boolean {
+  const normalized = message.toLowerCase()
+  if (!/\b(yes|confirm|confirmed|do it|ok|okay)\b/.test(normalized)) return false
+  if (!/\b(replace|current script)\b/.test(normalized)) return false
+  return !/\b(?:do not|don't|never|no need to|instead of|without|rather than)\b/.test(normalized) && !/^\s*no\b/.test(normalized)
+}

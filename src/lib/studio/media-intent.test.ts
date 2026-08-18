@@ -39,3 +39,39 @@ describe("requests for written work", () => {
     expect(requestsWrittenStory(message)).toBe(false)
   })
 })
+
+describe("a refusal written with a re- verb", () => {
+  it.each([
+    "Do not regenerate the shot images",
+    "don't recreate the videos",
+    "never redo the keyframes",
+    "without regenerating anything, tell me what is missing",
+  ])("reads %s as a refusal", (message) => {
+    // "Regenerate" has no word boundary before "generate", so these matched
+    // nothing: the image batch treated the refusal as permission, re-rendered
+    // the frames, and charged for them.
+    expect(forbidsMediaGeneration(message)).toBe(true)
+  })
+
+  it.each([
+    "no more images",
+    "no further keyframes for now",
+  ])("reads %s as a refusal of images", (message) => {
+    expect(forbidsImageGeneration(message)).toBe(true)
+  })
+
+  it("reads no more videos as a refusal of video", () => {
+    expect(forbidsVideoGeneration("no more videos please")).toBe(true)
+  })
+
+  it.each([
+    "Regenerate shot 1 using its saved prompt",
+    "regenerate all",
+    "recreate the shot 6 video",
+    "redo the keyframe for shot 2",
+  ])("leaves %s free to generate", (message) => {
+    expect(forbidsMediaGeneration(message)).toBe(false)
+    expect(forbidsImageGeneration(message)).toBe(false)
+    expect(forbidsVideoGeneration(message)).toBe(false)
+  })
+})

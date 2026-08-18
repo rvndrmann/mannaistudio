@@ -1,3 +1,5 @@
+import { describesReplacementState } from "./revision-phrasing"
+
 /**
  * Strips written identity from a shot prompt before it reaches an image or video
  * model.
@@ -121,4 +123,41 @@ export function stripIdentityDescriptionsFromPrompts(prompts: Record<string, str
   return Object.fromEntries(
     Object.entries(prompts).map(([key, prompt]) => [key, stripIdentityDescriptions(prompt)]),
   )
+}
+
+/**
+ * "Fix the shot prompts and drop the character descriptions."
+ *
+ * The cleanup path rewrites every saved prompt through the identity stripper,
+ * which is destructive and silent: the reply reports how many prompts it
+ * cleaned, and nothing else in the workspace changes. So it must only claim a
+ * message that is asking for exactly that.
+ *
+ * A message that names a new state — "rewrite the shot descriptions as a rainy
+ * New York morning instead of neon night" — matches "rewrite", "shots" and
+ * "descriptions", and used to be answered by stripping the identity text out of
+ * prompts the user never mentioned while the look change went nowhere. When the
+ * message names the identity text outright it is still cleanup, whatever else
+ * it says.
+ */
+export function requestsPromptCleanup(message: string): boolean {
+  const normalized = message.toLowerCase()
+  if (!/\b(fix|clean|cleanup|strip|remove|delete|rewrite)\b/.test(normalized)) return false
+  // Either the message names the identity text directly ("remove the character
+  // lock"), or it names both a target and the descriptions ("fix the prompts,
+  // drop the character descriptions"). Requiring all three at once meant the
+  // ordinary way of asking sailed past this and reached the agent instead.
+  // This path rewrites saved image prompts and nothing else, so a message about
+  // the video prompts is not for it whatever else it says. "Rewrite the video
+  // prompts for all 15 shots ... never describe their appearance. Do not change
+  // any shot's image prompt" was answered by stripping the image prompts it
+  // named as the one thing to leave alone, and the video prompts went unwritten.
+  if (/\bvideo\s+prompts?\b/.test(normalized)) return false
+  if (/\b(?:do not|don'?t|never)\s+(?:change|touch|edit|modify|alter|rewrite|overwrite)\b[^.]*\bimage\s+prompts?\b/.test(normalized)) return false
+  const namesIdentityText = /\b(?:character|asset|cast)\s+(?:lock|descriptions?)\b|\bdescriptions?\s+of\s+(?:the\s+)?characters?\b|\bcharacter\s+description\s+remover\b/.test(normalized)
+  if (namesIdentityText) return true
+  if (describesReplacementState(normalized)) return false
+  const namesTarget = /\b(prompts?|storyboard|shots?|scenes?)\b/.test(normalized)
+  const namesDescriptions = /\b(descriptions?|identity|likeness|appearance)\b/.test(normalized)
+  return namesTarget && namesDescriptions
 }

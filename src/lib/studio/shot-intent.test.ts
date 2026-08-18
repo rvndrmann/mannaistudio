@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { actionMatchesRequestedShots, buildInsertShotDraft, buildVideoContinuationPrompt, isAmbiguousShotRedo, namesImageMedium, namesVideoMedium, parseRequestedShotNumbers, parseShotImageBatchIntent, parseShotInsertionIntent, parseTargetShotNumbers, parseVideoShotReferenceIntent , wantsRedo } from "./shot-intent"
+import { actionMatchesRequestedShots, buildInsertShotDraft, buildVideoContinuationPrompt, isAmbiguousShotRedo, namesImageMedium, namesVideoMedium, parseRequestedShotNumbers, parseShotImageBatchIntent, parseShotInsertionIntent, parseTargetShotNumbers, parseVideoShotReferenceIntent , wantsRedo, wantsShotSkipped } from "./shot-intent"
 
 describe("parseRequestedShotNumbers", () => {
   it("reads a single named shot", () => {
@@ -296,5 +296,63 @@ describe("parseShotImageBatchIntent", () => {
   it("leaves a single-shot request to the path that renders one", () => {
     expect(parseShotImageBatchIntent("generate the image for shot 1")).toBeNull()
     expect(parseShotImageBatchIntent("regenerate shot 6")).toBeNull()
+  })
+})
+
+describe("a batch that describes a change rather than a render", () => {
+  it.each([
+    "Make all the shot images a rainy New York morning instead of neon night.",
+    "Change every shot image to a daylight look",
+    "Turn all the storyboard keyframes into a wet morning",
+  ])("leaves %s for the agent to edit the prompts first", (message) => {
+    // Answered here, this reported "every shot with a prompt already has a
+    // keyframe" and the look change never happened — the same failure the
+    // entity path had.
+    expect(parseShotImageBatchIntent(message)).toBeNull()
+  })
+
+  it.each([
+    "generate the images for all shots",
+    "regenerate all the shot images",
+    "generate the next 3 shot images",
+    "generate images for shots 2, 3 and 4",
+    "render the remaining shots",
+  ])("still batches %s", (message) => {
+    expect(parseShotImageBatchIntent(message)).not.toBeNull()
+  })
+})
+
+describe("a redo that names the change it wants", () => {
+  it("does not ask which medium when the prompt has to change first", () => {
+    // Asking image-or-video answers a question the user did not ask, and the
+    // answer renders the prompt they asked to be rid of.
+    expect(isAmbiguousShotRedo("Redo shot 3 as a rainy morning instead of neon night")).toBe(false)
+  })
+
+  it("still asks when the redo names no medium and no change", () => {
+    expect(isAmbiguousShotRedo("regenerate shot 15")).toBe(true)
+  })
+})
+
+describe("wantsShotSkipped", () => {
+  it("passes over the shot the user named", () => {
+    expect(wantsShotSkipped("Skip shot 1 and continue with the rest of the production.")).toBe(true)
+    expect(wantsShotSkipped("skip shots 4 and 5")).toBe(true)
+  })
+
+  it("does not answer a request to move forward as a request to pass over", () => {
+    // "Leaving shot 5 as it is" both refuses the work and claims the opposite
+    // of what was asked.
+    expect(wantsShotSkipped("skip ahead to shot 5 and generate its video")).toBe(false)
+    expect(wantsShotSkipped("can we skip to shot 3")).toBe(false)
+  })
+
+  it("does not skip a shot the user asked not to skip", () => {
+    expect(wantsShotSkipped("do not skip shot 2")).toBe(false)
+    expect(wantsShotSkipped("don't skip shot 2, render it")).toBe(false)
+  })
+
+  it("needs a shot number, because there is nothing to leave alone without one", () => {
+    expect(wantsShotSkipped("skip the intro music")).toBe(false)
   })
 })

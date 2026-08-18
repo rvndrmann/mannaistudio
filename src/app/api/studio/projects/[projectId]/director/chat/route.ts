@@ -16,10 +16,10 @@ import { fetchDirectorWorkflows, selectedWorkflowId, workflowContinuesFromPrevio
 import { normalizeDirectorGlobalInstructions } from "@/lib/studio/instructions"
 import { loadProjectBrandContext } from "@/lib/studio/brand-server"
 import { runDirectorAgent } from "@/lib/studio/director-agent"
-import { fetchDirectorRuntimeSettings } from "@/lib/studio/director-runtime-settings"
+import { fetchDirectorRuntimeSettings, requestsFullAutoEnable } from "@/lib/studio/director-runtime-settings"
 import { buildEntityMentionContext, chosenReferences, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { collectDirectorVisionAttachments } from "@/lib/studio/director-vision"
-import { buildEntityReferenceImagePrompt, openAIImageQuality, parseBulkEntityImageIntent, projectImageQuality, projectVisualStyle, type BulkEntityImageIntent } from "@/lib/studio/entity-image-workflow"
+import { asksAboutOwnPhotos, buildEntityReferenceImagePrompt, declinesOwnPhotos, openAIImageQuality, parseBulkEntityImageIntent, projectImageQuality, projectVisualStyle, type BulkEntityImageIntent } from "@/lib/studio/entity-image-workflow"
 import { composeLookDirectives, projectStyleDna, styleBlockForEntityType } from "@/lib/studio/style-dna"
 import { applyCameraSettings, cameraBlockForEntityType, projectCameraDefaults, resolveCameraSettings } from "@/lib/studio/camera-settings"
 import { createBytePlusAsset } from "@/lib/studio/byteplus"
@@ -30,8 +30,8 @@ import { buildProjectStateSummary, loadProductionSnapshot } from "@/lib/studio/p
 import { computePipelineStage, withSkippedShots } from "@/lib/studio/pipeline"
 import { buildProductionProgress, levelForXp, stagesReached } from "@/lib/studio/production-progress"
 import type { DirectorTimelineBlock } from "@/lib/studio/timeline"
-import { actionMatchesRequestedShots, buildVideoContinuationPrompt, isAmbiguousShotRedo, parseShotImageBatchIntent, parseTargetShotNumbers, parseVideoShotReferenceIntent, wantsRedo } from "@/lib/studio/shot-intent"
-import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
+import { actionMatchesRequestedShots, buildVideoContinuationPrompt, isAmbiguousShotRedo, parseShotImageBatchIntent, parseTargetShotNumbers, parseVideoShotReferenceIntent, wantsRedo, wantsShotSkipped } from "@/lib/studio/shot-intent"
+import { requestsPromptCleanup, stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 import { addWorkflowStep, createWorkflowRun, finishWorkflowRun } from "@/lib/studio/workflow-runs"
 import { buildGenerationTargetSnapshot, verifyGenerationTarget } from "@/lib/studio/generation-target"
 import { forbidsImageGeneration, forbidsMediaGeneration, forbidsVideoGeneration, requestsWrittenStory } from "@/lib/studio/media-intent"
@@ -39,7 +39,8 @@ import { episodeFootageInstructions, fetchEpisodeFootage, handoffAlias, previous
 import { ensureShotLocations } from "@/lib/studio/shot-location"
 import { resolveShotSeconds } from "@/lib/studio/shot-duration"
 import { beatRuntimeSeconds, videoPromptFor } from "@/lib/studio/shot-video-prompt"
-import { normalizeScriptContent } from "@/lib/studio/script"
+import { confirmsScriptReplacement, normalizeScriptContent } from "@/lib/studio/script"
+import { describesReplacementState } from "@/lib/studio/revision-phrasing"
 
 // A Director run can take minutes, and it must finish even when the browser
 // that started it goes away: the reply and the workflow run are persisted
@@ -244,10 +245,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
  * unrelated shot. Skipping changes nothing in the workspace — it only says which
  * shot not to offer — so there is nothing to propose and nothing to approve.
  */
-async function maybeHandleSkipShot(input: WorkflowRequestInput, normalized: string) {
-  if (!/\bskip\b/.test(normalized)) return null
+async function maybeHandleSkipShot(input: WorkflowRequestInput) {
+  if (!wantsShotSkipped(input.message)) return null
   const numbers = parseTargetShotNumbers(input.message)
-  if (!numbers.length) return null
 
   const snapshot = withSkippedShots(
     await loadProductionSnapshot(input.context.supabase, input.projectId, input.episodeId),
@@ -760,13 +760,13 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
   const forbidsVideoGenerationRequest = forbidsVideoGeneration(input.message)
   const scriptIntent = await maybeHandleScriptWrite(input, normalized)
   if (scriptIntent) return scriptIntent
-  const cleanup = await maybeCleanSavedPrompts(input, normalized)
+  const cleanup = await maybeCleanSavedPrompts(input)
   if (cleanup) return cleanup
-  const skipped = await maybeHandleSkipShot(input, normalized)
+  const skipped = await maybeHandleSkipShot(input)
   if (skipped) return skipped
-  const assetPhotoChoice = await maybeHandleAssetPhotoChoice(input, normalized)
+  const assetPhotoChoice = await maybeHandleAssetPhotoChoice(input)
   if (assetPhotoChoice) return assetPhotoChoice
-  if (/\b(full auto|full-auto|autopilot)\b/.test(normalized) && /\b(enable|turn on|start|activate)\b/.test(normalized)) {
+  if (requestsFullAutoEnable(input.message)) {
     const result = await requestDirectorTool(input.context, {
       tool: "update_full_auto_mode",
       input: { enabled: true, creditCap: 500, maxJobsPerRun: 10, allowDestructiveActions: false },
@@ -783,7 +783,13 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
   // different shot entirely.
   const wantsMediaVerb = /\b(generate|create|make|render|produce)\b/.test(normalized) || wantsRedo(normalized)
   const wantsWritingInstead = requestsWrittenStory(input.message)
-  if (!forbidsAllMediaGeneration && !forbidsVideoGenerationRequest && !wantsWritingInstead && /\b(video|animate|motion)\b/.test(normalized) && wantsMediaVerb) {
+  // A message that says what a shot should become is a revision, and a revision
+  // edits the prompt before anything is rendered. "Make the shot 2 video a
+  // rainy morning instead of neon night" named a shot and a medium, so this
+  // proposed a render of the saved neon prompt — the change never happened and
+  // the credits were spent on the version the user had just asked to be rid of.
+  const revisesExistingLook = describesReplacementState(input.message)
+  if (!forbidsAllMediaGeneration && !forbidsVideoGenerationRequest && !wantsWritingInstead && !revisesExistingLook && /\b(video|animate|motion)\b/.test(normalized) && wantsMediaVerb) {
     const { data: shots, error } = await input.context.supabase.from("creator_shots").select("id,prompt,title,order_index,keyframe_image,video_url,video_status,duration_seconds,metadata").eq("episode_id", input.episodeId).order("order_index")
     if (error) throw error
     // Same 1-based numbering submit_generation resolves against, so a number
@@ -932,7 +938,7 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
   // the question above did.
   const wantsShotRedo = wantsRedo(normalized) && parseTargetShotNumbers(input.message).length > 0
   const namesImage = /\b(image|keyframe|poster|visual)\b/.test(normalized) && /\b(generate|create|make|draw)\b/.test(normalized)
-  if (!forbidsAllMediaGeneration && !forbidsImageGenerationRequest && (namesImage || wantsShotRedo)) {
+  if (!forbidsAllMediaGeneration && !forbidsImageGenerationRequest && !revisesExistingLook && (namesImage || wantsShotRedo)) {
     const shotNumberMatch = normalized.match(/\b(?:storyboard\s+)?shots?\s*(?:#\s*)?(\d+)\b/)
     const requestedShotNumber = shotNumberMatch ? Number(shotNumberMatch[1]) : /\bfirst\s+(?:storyboard\s+)?shot\b/.test(normalized) ? 1 : null
     // A message that says "shot" without saying which one needs the
@@ -1109,20 +1115,17 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
   return null
 }
 
-async function maybeHandleAssetPhotoChoice(input: WorkflowRequestInput, normalized: string) {
+async function maybeHandleAssetPhotoChoice(input: WorkflowRequestInput) {
   const snapshot = await loadProductionSnapshot(input.context.supabase, input.projectId, input.episodeId)
   const stage = computePipelineStage(snapshot)
   if (stage.key !== "entity_images" || !stage.nextAction) return null
 
-  const noPhotos = /\b(no|none|without|don't|do not|haven't|have not)\b[^.]{0,40}\b(photos?|images?|pictures?|references?)\b/.test(normalized)
-    || /\b(no photos?|no images?|generate (?:them|reference art))\b/.test(normalized)
-  if (noPhotos) {
+  if (declinesOwnPhotos(input.message)) {
     const intent = parseBulkEntityImageIntent(stage.nextAction.intent, input.mentionedEntities)
     return intent ? generateBulkEntityReferenceImages(input, intent) : null
   }
 
-  const asksAboutPhotos = /\b(have|upload|use|own)\b[^.]{0,50}\b(photos?|images?|pictures?|references?)\b/.test(normalized)
-  if (!asksAboutPhotos) return null
+  if (!asksAboutOwnPhotos(input.message)) return null
 
   return {
     provider: "workflow",
@@ -1388,17 +1391,8 @@ async function signedMentionReferences(context: Awaited<ReturnType<typeof requir
  * but the saved prompt is what the user reads and edits, so "fix the prompts"
  * has to change what is stored, not only what is sent.
  */
-async function maybeCleanSavedPrompts(input: WorkflowRequestInput, normalized: string) {
-  const wantsFix = /\b(fix|clean|cleanup|strip|remove|delete|rewrite)\b/.test(normalized)
-  if (!wantsFix) return null
-  // Either the message names the identity text directly ("remove the character
-  // lock"), or it names both a target and the descriptions ("fix the prompts,
-  // drop the character descriptions"). Requiring all three at once meant the
-  // ordinary way of asking sailed past this and reached the agent instead.
-  const namesTarget = /\b(prompts?|storyboard|shots?|scenes?)\b/.test(normalized)
-  const namesIdentityText = /\b(?:character|asset|cast)\s+(?:lock|descriptions?)\b|\bdescriptions?\s+of\s+(?:the\s+)?characters?\b|\bcharacter\s+description\s+remover\b/.test(normalized)
-  const namesDescriptions = /\b(descriptions?|identity|likeness|appearance)\b/.test(normalized)
-  if (!namesIdentityText && !(namesTarget && namesDescriptions)) return null
+async function maybeCleanSavedPrompts(input: WorkflowRequestInput) {
+  if (!requestsPromptCleanup(input.message)) return null
 
   const { data: shots, error } = await input.context.supabase
     .from("creator_shots")
@@ -1459,7 +1453,7 @@ async function maybeHandleScriptWrite(input: { context: Awaited<ReturnType<typeo
   const wantsScriptWrite = /\b(script|screenplay|scene|sequence)\b/.test(normalized)
   const wantsAdd = /\b(add|append|put|insert|save)\b/.test(normalized)
   const wantsReplace = /\b(replace|overwrite|supersede)\b/.test(normalized)
-  const confirmsReplace = /\b(yes|confirm|confirmed|do it|ok|okay)\b/.test(normalized) && /\b(replace|current script)\b/.test(normalized)
+  const confirmsReplace = confirmsScriptReplacement(input.message)
   if ((!wantsScriptWrite || (!wantsAdd && !wantsReplace)) && !confirmsReplace) return null
 
   const sourceMessage = confirmsReplace
