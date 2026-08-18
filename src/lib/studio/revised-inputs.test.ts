@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { computePipelineStage, emptySnapshot, entitiesWithStaleArt, shotsWithStaleKeyframe, type ProductionSnapshot } from "./pipeline"
+import { computePipelineStage, emptySnapshot, entitiesWithStaleArt, shotsBehindPromptSheet, shotsWithStaleKeyframe, type ProductionSnapshot } from "./pipeline"
 import { artIsStale, keyframeIsStale } from "./project-state-summary"
 
 const ready: ProductionSnapshot = {
@@ -112,5 +112,54 @@ describe("a prepared change nobody answered", () => {
 
   it("stays out of the way when there is nothing pending", () => {
     expect(computePipelineStage({ ...ready, pendingApprovals: 0 }).title).not.toBe("Waiting on you")
+  })
+})
+
+describe("shots the prompt sheet has moved past", () => {
+  const written = Date.parse("2026-08-18T10:00:00Z")
+  const revised = Date.parse("2026-08-18T11:00:00Z")
+
+  it("catches the plan and the shots disagreeing", () => {
+    // The reported state: the prompt sheet and the locations said rainy New
+    // York morning, the shot prompts still said neon night, and the buttons
+    // offered to generate from the night prompts anyway.
+    const snapshot: ProductionSnapshot = {
+      ...ready,
+      promptSheetRevisedAt: revised,
+      shots: [
+        { number: 1, hasPrompt: true, hasKeyframe: true, hasVideo: false, promptUpdatedAt: written },
+        { number: 2, hasPrompt: true, hasKeyframe: true, hasVideo: false, promptUpdatedAt: written },
+      ],
+    }
+    expect(shotsBehindPromptSheet(snapshot).map((shot) => shot.number)).toEqual([1, 2])
+    const stage = computePipelineStage(snapshot)
+    expect(stage.title).toBe("Shots behind the plan")
+    expect(stage.nextAction?.label).toBe("Bring shot 1, 2 up to the plan")
+    // Bringing the prompts in line must not quietly spend credits.
+    expect(stage.nextAction?.risk).toBe("write")
+    expect(stage.nextAction?.intent).toContain("Do not generate any image or video")
+  })
+
+  it("leaves shots that were written after the revision alone", () => {
+    const snapshot: ProductionSnapshot = {
+      ...ready,
+      promptSheetRevisedAt: revised,
+      shots: [{ number: 1, hasPrompt: true, hasKeyframe: true, hasVideo: false, promptUpdatedAt: revised + 1_000 }],
+    }
+    expect(shotsBehindPromptSheet(snapshot)).toEqual([])
+  })
+
+  it("says nothing when the sheet has never been revised", () => {
+    expect(shotsBehindPromptSheet({ ...ready, promptSheetRevisedAt: 0 })).toEqual([])
+  })
+
+  it("still puts a pending approval first", () => {
+    const stage = computePipelineStage({
+      ...ready,
+      pendingApprovals: 1,
+      promptSheetRevisedAt: revised,
+      shots: [{ number: 1, hasPrompt: true, hasKeyframe: true, hasVideo: false, promptUpdatedAt: written }],
+    })
+    expect(stage.title).toBe("Waiting on you")
   })
 })

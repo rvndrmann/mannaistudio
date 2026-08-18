@@ -11,6 +11,12 @@ const STALE_JOB_AFTER_MS = 20 * 60 * 1000
  * everything that has to agree on where the production stands: the instructions
  * the Director reads, and the next-step button the user presses.
  */
+function timestamp(value: unknown): number {
+  if (typeof value !== "string") return 0
+  const parsed = Date.parse(value)
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
 function imageGeneration(metadata: unknown): Record<string, unknown> | null {
   if (!metadata || typeof metadata !== "object") return null
   const record = (metadata as Record<string, unknown>).image_generation
@@ -74,12 +80,12 @@ export async function loadProductionSnapshot(
     episodeId
       ? supabase
           .from("creator_shots")
-          .select("id, order_index, prompt, keyframe_image, video_url, video_status, metadata")
+          .select("id, order_index, prompt, keyframe_image, video_url, video_status, metadata, updated_at")
           .eq("episode_id", episodeId)
           .order("order_index", { ascending: true })
       : supabase
           .from("creator_shots")
-          .select("id, order_index, prompt, keyframe_image, video_url, video_status, metadata")
+          .select("id, order_index, prompt, keyframe_image, video_url, video_status, metadata, updated_at")
           .eq("project_id", projectId)
           .order("order_index", { ascending: true }),
     // The prompt sheet is per episode; without one selected there is no sheet
@@ -87,7 +93,7 @@ export async function loadProductionSnapshot(
     episodeId
       ? supabase
           .from("creator_script_prompts")
-          .select("order_index, entity_names")
+          .select("order_index, entity_names, updated_at")
           .eq("project_id", projectId)
           .eq("episode_id", episodeId)
           .order("order_index", { ascending: true })
@@ -131,6 +137,9 @@ export async function loadProductionSnapshot(
     pendingApprovals: (proposalsRes.data || []).length,
     hasScript: Boolean(scriptText && scriptText.length > 30),
     promptSheetCount: promptRows.length,
+    // The most recent revision anywhere in the sheet: one entry changing means
+    // the plan moved, and the shots written before it are behind.
+    promptSheetRevisedAt: promptRows.reduce((latest, row) => Math.max(latest, timestamp((row as { updated_at?: string }).updated_at)), 0),
     promptSheetEntityNames: promptRows.flatMap((row) => Array.isArray(row.entity_names) ? row.entity_names.filter((name: unknown): name is string => typeof name === "string" && Boolean(name.trim())) : []),
     entities: (entitiesRes.data || []).map((entity) => ({
       name: entity.name,
@@ -146,6 +155,7 @@ export async function loadProductionSnapshot(
       imageInFlight: imageInFlight.has(shot.id),
       videoInFlight: videoInFlight.has(shot.id),
       keyframeIsStale: keyframeIsStale(shot.prompt, shot.metadata),
+      promptUpdatedAt: timestamp(shot.updated_at),
     })),
   }
 }

@@ -48,6 +48,8 @@ export type SnapshotShot = {
   skipped?: boolean
   /** The shot's prompt was edited after this keyframe was generated. */
   keyframeIsStale?: boolean
+  /** When the shot's own prompt was last written, as an epoch millisecond. */
+  promptUpdatedAt?: number
 }
 
 export type ProductionSnapshot = {
@@ -58,6 +60,8 @@ export type ProductionSnapshot = {
   promptSheetCount: number
   /** Entity names the saved prompt sheet references, in sheet order. */
   promptSheetEntityNames: string[]
+  /** When the prompt sheet was last revised, as an epoch millisecond. */
+  promptSheetRevisedAt?: number
   entities: SnapshotEntity[]
   shots: SnapshotShot[]
 }
@@ -118,6 +122,25 @@ function list(names: string[], limit = 6) {
  * Compared on handles so "Detective Rao" and "detective rao" are one character
  * rather than a duplicate the Character & Asset Agent would go on to create.
  */
+/**
+ * Shots the prompt sheet has moved past.
+ *
+ * The sheet is the plan and the shot prompt is what actually gets generated, so
+ * a sheet revised after the shots were written leaves the two disagreeing: the
+ * plan says one thing, the frame will say another, and generating from the shot
+ * produces the version the user thought they had changed.
+ */
+export function shotsBehindPromptSheet(snapshot: ProductionSnapshot): SnapshotShot[] {
+  const revisedAt = snapshot.promptSheetRevisedAt || 0
+  if (!revisedAt) return []
+  return snapshot.shots.filter((shot) =>
+    !shot.skipped
+    && shot.hasPrompt
+    && !shot.imageInFlight
+    && typeof shot.promptUpdatedAt === "number"
+    && shot.promptUpdatedAt < revisedAt)
+}
+
 /** Entities whose art no longer matches the description it was made from. */
 export function entitiesWithStaleArt(snapshot: ProductionSnapshot): string[] {
   return snapshot.entities.filter((entity) => entity.hasReferenceImage && entity.artIsStale).map((entity) => entity.name)
@@ -262,6 +285,24 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
         label: `Regenerate art for ${list(staleArt)}`,
         intent: `Regenerate the reference art for ${staleArt.join(", ")} from their current saved descriptions, because the descriptions were revised after the existing art was made. Do not change the descriptions; use them exactly as saved.`,
         risk: "costly",
+        recommended: true,
+      },
+      alternatives: [],
+    }
+  }
+
+  const behindSheet = shotsBehindPromptSheet(snapshot)
+  if (behindSheet.length) {
+    const numbers = behindSheet.map((shot) => shot.number)
+    return {
+      key: "storyboard",
+      title: "Shots behind the plan",
+      summary: `The prompt sheet was revised after shot ${numbers.join(", ")} ${plural(numbers.length, "was", "were")} written, so ${plural(numbers.length, "its prompt", "their prompts")} still ${plural(numbers.length, "describes", "describe")} the old version.`,
+      nextAction: {
+        id: "pipeline-shots-behind-sheet",
+        label: `Bring shot ${numbers.join(", ")} up to the plan`,
+        intent: `Rewrite the storyboard prompt for shot ${numbers.join(", ")} so each matches its saved prompt sheet entry, which has been revised since those shots were written. Do not generate any image or video in this turn; only bring the shot prompts in line with the sheet.`,
+        risk: "write",
         recommended: true,
       },
       alternatives: [],
