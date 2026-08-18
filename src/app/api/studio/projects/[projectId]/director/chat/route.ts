@@ -1278,7 +1278,9 @@ async function generateBulkEntityReferenceImages(
       const metadata = {
         ...currentMetadata,
         ...(byteplusAssetId ? { byteplus_asset_id: byteplusAssetId } : {}),
-        image_generation: { provider: image.provider, model: characterModel, prompt, resolved_prompt: framedPrompt, camera_settings_used: cameraSettings, style, target: "entity", entity_id: entity.id, status: "completed", completed_at: completedAt },
+        // The description this art was made from, so a later edit to it is
+        // detectable exactly rather than by guessing at the prompt text.
+        image_generation: { provider: image.provider, model: characterModel, prompt, resolved_prompt: framedPrompt, source_description: entity.description || "", camera_settings_used: cameraSettings, style, target: "entity", entity_id: entity.id, status: "completed", completed_at: completedAt },
       }
       const updates: Record<string, unknown> = { reference_images: referenceImages, metadata, status: entity.status || "draft" }
       if (byteplusAssetId) {

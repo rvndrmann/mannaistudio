@@ -21,6 +21,13 @@ export type SnapshotEntity = {
   name: string
   type: string
   hasReferenceImage: boolean
+  /**
+   * The description was edited after the reference art was made, so the art
+   * shows the old version. A revision that changes a description and then
+   * generates a shot from the unchanged art produces the old look and reads as
+   * the revision having been ignored.
+   */
+  artIsStale?: boolean
 }
 
 export type SnapshotShot = {
@@ -39,10 +46,14 @@ export type SnapshotShot = {
   videoInFlight?: boolean
   /** Passed over at the user's request; not work the pipeline should offer. */
   skipped?: boolean
+  /** The shot's prompt was edited after this keyframe was generated. */
+  keyframeIsStale?: boolean
 }
 
 export type ProductionSnapshot = {
   episodeName: string
+  /** Changes the Director has prepared that are waiting on the user. */
+  pendingApprovals?: number
   hasScript: boolean
   promptSheetCount: number
   /** Entity names the saved prompt sheet references, in sheet order. */
@@ -107,6 +118,16 @@ function list(names: string[], limit = 6) {
  * Compared on handles so "Detective Rao" and "detective rao" are one character
  * rather than a duplicate the Character & Asset Agent would go on to create.
  */
+/** Entities whose art no longer matches the description it was made from. */
+export function entitiesWithStaleArt(snapshot: ProductionSnapshot): string[] {
+  return snapshot.entities.filter((entity) => entity.hasReferenceImage && entity.artIsStale).map((entity) => entity.name)
+}
+
+/** Shots whose keyframe was generated from a prompt that has since changed. */
+export function shotsWithStaleKeyframe(snapshot: ProductionSnapshot): SnapshotShot[] {
+  return snapshot.shots.filter((shot) => !shot.skipped && shot.hasKeyframe && shot.keyframeIsStale && !shot.imageInFlight)
+}
+
 export function missingEntityNames(snapshot: ProductionSnapshot): string[] {
   const existing = new Set(snapshot.entities.map((entity) => entityHandle(entity.name)))
   const missing = new Map<string, string>()
@@ -199,6 +220,66 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
         label: "Write the prompt sheet",
         intent: "Read the saved script and, as the Prompt Agent, write the prompt sheet for the whole script — one shot prompt per shot, in story order, naming the characters and assets each shot needs.",
         risk: "write",
+        recommended: true,
+      },
+      alternatives: [],
+    }
+  }
+
+  // A prepared change the user has not seen is the most stuck a production can
+  // be: the Director reports work done, the workspace shows the old version,
+  // and the reason is a card nobody pointed at. Nothing downstream matters
+  // until it is answered.
+  if ((snapshot.pendingApprovals || 0) > 0) {
+    const count = snapshot.pendingApprovals || 0
+    return {
+      key: "entities",
+      title: "Waiting on you",
+      summary: `${count} prepared ${plural(count, "change")} ${plural(count, "is", "are")} waiting for your approval. Nothing regenerates until ${plural(count, "it is", "they are")} answered.`,
+      nextAction: {
+        id: "pipeline-pending-approvals",
+        label: `Review ${count} pending ${plural(count, "change")}`,
+        intent: "List the changes waiting for my approval, saying for each one exactly what it changes and what it will look like afterwards, then tell me what happens once I approve them.",
+        risk: "read",
+        recommended: true,
+      },
+      alternatives: [],
+    }
+  }
+
+  // Revised inputs come before new work. Generating from art that no longer
+  // matches its description reproduces the look the user just asked to change,
+  // and the reply saying "revise the inputs first" while the button offers the
+  // next shot is how the workspace ends up arguing with itself.
+  const staleArt = entitiesWithStaleArt(snapshot)
+  if (staleArt.length) {
+    return {
+      key: "entity_images",
+      title: "Revised assets",
+      summary: `${list(staleArt)} ${plural(staleArt.length, "was", "were")} changed after ${plural(staleArt.length, "its", "their")} reference art was made, so the art still shows the old version.`,
+      nextAction: {
+        id: "pipeline-stale-entity-art",
+        label: `Regenerate art for ${list(staleArt)}`,
+        intent: `Regenerate the reference art for ${staleArt.join(", ")} from their current saved descriptions, because the descriptions were revised after the existing art was made. Do not change the descriptions; use them exactly as saved.`,
+        risk: "costly",
+        recommended: true,
+      },
+      alternatives: [],
+    }
+  }
+
+  const staleKeyframes = shotsWithStaleKeyframe(snapshot)
+  if (staleKeyframes.length) {
+    const numbers = staleKeyframes.map((shot) => shot.number)
+    return {
+      key: "keyframes",
+      title: "Revised shots",
+      summary: `Shot ${numbers.join(", ")} ${plural(numbers.length, "has", "have")} a keyframe made from a prompt that has since been edited.`,
+      nextAction: {
+        id: "pipeline-stale-keyframes",
+        label: `Regenerate the image for shot ${numbers.join(", ")}`,
+        intent: `Regenerate the keyframe for shot ${numbers.join(", ")} from the shot's current saved image prompt, because the prompt was edited after the existing frame was generated. Use the saved prompt exactly as it is.`,
+        risk: "costly",
         recommended: true,
       },
       alternatives: [],

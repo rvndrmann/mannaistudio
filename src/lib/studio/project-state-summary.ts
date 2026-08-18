@@ -11,12 +11,57 @@ const STALE_JOB_AFTER_MS = 20 * 60 * 1000
  * everything that has to agree on where the production stands: the instructions
  * the Director reads, and the next-step button the user presses.
  */
+function imageGeneration(metadata: unknown): Record<string, unknown> | null {
+  if (!metadata || typeof metadata !== "object") return null
+  const record = (metadata as Record<string, unknown>).image_generation
+  return record && typeof record === "object" ? record as Record<string, unknown> : null
+}
+
+/**
+ * Whether an entity's reference art was made from the description it still has.
+ *
+ * The description recorded at generation time is the exact test. Art made
+ * before that was recorded falls back to asking whether the description still
+ * appears in the prompt it was generated from — imperfect, but it catches the
+ * case that matters: a description rewritten wholesale, where none of the new
+ * wording is in the old prompt.
+ */
+export function artIsStale(description: unknown, metadata: unknown): boolean {
+  const current = typeof description === "string" ? description.trim() : ""
+  if (!current) return false
+  const generation = imageGeneration(metadata)
+  if (!generation) return false
+
+  const recorded = typeof generation.source_description === "string" ? generation.source_description.trim() : ""
+  if (recorded) return recorded !== current
+
+  const prompt = [generation.prompt, generation.resolved_prompt]
+    .filter((value): value is string => typeof value === "string")
+    .join("\n")
+  if (!prompt.trim()) return false
+  // Comparing an opening fragment rather than the whole description: the prompt
+  // wraps it in framing and style text, so it contains the description without
+  // ever equalling it.
+  const fragment = current.slice(0, 60).trim()
+  return fragment.length >= 12 && !prompt.includes(fragment)
+}
+
+/** Whether a keyframe was generated from the prompt the shot still has. */
+export function keyframeIsStale(prompt: unknown, metadata: unknown): boolean {
+  const current = typeof prompt === "string" ? prompt.trim() : ""
+  if (!current) return false
+  const generation = imageGeneration(metadata)
+  const used = generation && typeof generation.prompt === "string" ? generation.prompt.trim() : ""
+  if (!used) return false
+  return used !== current
+}
+
 export async function loadProductionSnapshot(
   supabase: SupabaseClient,
   projectId: string,
   episodeId?: string,
 ): Promise<ProductionSnapshot> {
-  const [episodesRes, entitiesRes, shotsRes, promptsRes, jobsRes] = await Promise.all([
+  const [episodesRes, entitiesRes, shotsRes, promptsRes, jobsRes, proposalsRes] = await Promise.all([
     supabase
       .from("creator_episodes")
       .select("id, name, script_content, order_index")
@@ -24,17 +69,17 @@ export async function loadProductionSnapshot(
       .order("order_index", { ascending: true }),
     supabase
       .from("creator_entities")
-      .select("id, name, type, reference_images")
+      .select("id, name, type, description, reference_images, metadata")
       .eq("project_id", projectId),
     episodeId
       ? supabase
           .from("creator_shots")
-          .select("id, order_index, prompt, keyframe_image, video_url, video_status")
+          .select("id, order_index, prompt, keyframe_image, video_url, video_status, metadata")
           .eq("episode_id", episodeId)
           .order("order_index", { ascending: true })
       : supabase
           .from("creator_shots")
-          .select("id, order_index, prompt, keyframe_image, video_url, video_status")
+          .select("id, order_index, prompt, keyframe_image, video_url, video_status, metadata")
           .eq("project_id", projectId)
           .order("order_index", { ascending: true }),
     // The prompt sheet is per episode; without one selected there is no sheet
@@ -61,6 +106,13 @@ export async function loadProductionSnapshot(
       .eq("project_id", projectId)
       .in("status", ["queued", "approved", "generating", "processing"])
       .gte("created_at", new Date(Date.now() - STALE_JOB_AFTER_MS).toISOString()),
+    // Changes the Director prepared and the user has not answered. Until these
+    // are decided nothing downstream can move, so the pipeline has to see them.
+    supabase
+      .from("creator_action_proposals")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("status", "pending"),
   ])
 
   const episodes = episodesRes.data || []
@@ -76,6 +128,7 @@ export async function loadProductionSnapshot(
 
   return {
     episodeName: activeEpisode?.name || "Episode 1",
+    pendingApprovals: (proposalsRes.data || []).length,
     hasScript: Boolean(scriptText && scriptText.length > 30),
     promptSheetCount: promptRows.length,
     promptSheetEntityNames: promptRows.flatMap((row) => Array.isArray(row.entity_names) ? row.entity_names.filter((name: unknown): name is string => typeof name === "string" && Boolean(name.trim())) : []),
@@ -83,6 +136,7 @@ export async function loadProductionSnapshot(
       name: entity.name,
       type: entity.type,
       hasReferenceImage: Array.isArray(entity.reference_images) && entity.reference_images.length > 0,
+      artIsStale: artIsStale(entity.description, entity.metadata),
     })),
     shots: (shotsRes.data || []).map((shot) => ({
       number: shot.order_index + 1,
@@ -91,6 +145,7 @@ export async function loadProductionSnapshot(
       hasVideo: Boolean(shot.video_url) || shot.video_status === "completed",
       imageInFlight: imageInFlight.has(shot.id),
       videoInFlight: videoInFlight.has(shot.id),
+      keyframeIsStale: keyframeIsStale(shot.prompt, shot.metadata),
     })),
   }
 }
