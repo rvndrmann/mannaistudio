@@ -6,16 +6,58 @@ export type BulkEntityImageIntent = {
   regenerate: boolean
 }
 
+/**
+ * Whether the message describes changing what something should be, rather than
+ * asking for it to be drawn.
+ *
+ * The tell is contrast: a new state named against the old one. Someone asking
+ * for art describes the subject; someone asking for a revision describes the
+ * difference.
+ */
+export function describesLookChange(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return [
+    /\binstead of\b/,
+    /\brather than\b/,
+    /\bno longer\b/,
+    /\bnot\s+(?:a|an|the)?\s*\w+\s*,?\s*but\b/,
+    /\bchange\b[^.]*\bto\b/,
+    /\bturn\b[^.]*\binto\b/,
+    /\bswitch\b[^.]*\bto\b/,
+    /\breplace\b[^.]*\bwith\b/,
+    /\bupdate\b[^.]*\bto\b/,
+    /\b(revise|rewrite|reword)\b/,
+    /\bmake (?:it|them|every|all|the)\b[^.]*\binstead\b/,
+  ].some((pattern) => pattern.test(normalized))
+}
+
 export function parseBulkEntityImageIntent(
   message: string,
   mentionedEntities?: Array<{ id: string; name: string; type: "character" | "scene" | "prop" }>
 ): BulkEntityImageIntent | null {
   const normalized = message.toLowerCase()
-  const wantsGeneration = /\b(generate|create|make|draw|render|turnaround)\b/.test(normalized)
+  // "regenerate" does not contain a word boundary before "generate", so the
+  // escape hatch the workspace advertises — 'Say "regenerate all" if you want
+  // to replace or refresh them' — matched nothing and did nothing.
+  const wantsGeneration = /\b(re)?(generate|create|make|draw|render|turnaround)\b/.test(normalized)
+    || /\b(regenerate|recreate|refresh)\b/.test(normalized)
   const mentionsImages = /\b(images?|portraits?|references?|visuals?|turnarounds?|look)\b/.test(normalized) || Boolean(mentionedEntities && mentionedEntities.length > 0)
-  const mentionsEntities = /\b(characters?|assets?|props?|locations?|scenes?|ghost|monster|entity|entities)\b/.test(normalized) || Boolean(mentionedEntities && mentionedEntities.length > 0)
+  // "regenerate all" is the exact phrase the workspace tells users to say, and
+  // it names no entity noun at all — "them" is the list it was just shown.
+  const regenerateEverything = /\b(regenerate|recreate|refresh|redo)\s+(all|everything|them)\b/.test(normalized)
+  const mentionsEntities = regenerateEverything
+    || /\b(characters?|assets?|props?|locations?|scenes?|ghost|monster|entity|entities)\b/.test(normalized)
+    || Boolean(mentionedEntities && mentionedEntities.length > 0)
   
   if (!wantsGeneration || !mentionsEntities) return null
+  // A request to change how something looks is a revision, not a request for
+  // art. "Make every location a rainy New York morning instead of neon night"
+  // matches "make" and "location", and was answered with "they already have
+  // reference images" — the look change never reached the agent that would
+  // have edited the descriptions. An explicit ask for images still wins,
+  // because "regenerate the character images instead of the old ones" is a
+  // generation request that happens to use contrastive wording.
+  if (describesLookChange(normalized) && !mentionsImages) return null
   // A message about a shot is about the storyboard, not the entity library.
   // "create shot image again with better character consistency" names
   // "character", which used to be enough to route it here — and it answered a

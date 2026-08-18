@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildEntityReferenceImagePrompt, parseBulkEntityImageIntent, projectVisualStyle, visualStyleDirective } from "./entity-image-workflow"
+import { buildEntityReferenceImagePrompt, parseBulkEntityImageIntent, projectVisualStyle, visualStyleDirective, describesLookChange } from "./entity-image-workflow"
 
 describe("entity image workflow", () => {
   it("routes all-character image requests to character entities", () => {
@@ -84,5 +84,45 @@ describe("entity image workflow", () => {
   it("reads the persisted project style used by generation routes", () => {
     expect(projectVisualStyle({ default_style: "Realistic - Photorealistic", metadata: { basic_settings: { visualStyle: "Anime - Ghibli" } } })).toBe("Realistic - Photorealistic")
     expect(projectVisualStyle({ metadata: { basic_settings: { visualStyle: "Anime - Ghibli" } } })).toBe("Anime - Ghibli")
+  })
+})
+
+describe("a look change is a revision, not a request for art", () => {
+  it("lets the reported message reach the agent instead of answering about images", () => {
+    // "Make every location a rainy New York morning instead of neon night."
+    // matched "make" and "location", so it was answered with "they already
+    // have reference images" and the look change never happened.
+    expect(parseBulkEntityImageIntent("Make every location a rainy New York morning instead of neon night.")).toBeNull()
+  })
+
+  it("recognises the other ways a change gets worded", () => {
+    for (const message of [
+      "Change all the scenes to daylight.",
+      "Turn the locations into a snowy street.",
+      "Replace the neon look with overcast morning.",
+      "The characters should no longer wear black.",
+      "Switch every prop to matte packaging.",
+      "Revise the locations to feel warmer.",
+    ]) {
+      expect(parseBulkEntityImageIntent(message), message).toBeNull()
+    }
+  })
+
+  it("still routes a real request for art, however it is phrased", () => {
+    expect(parseBulkEntityImageIntent("Generate reference images for all characters")).not.toBeNull()
+    expect(parseBulkEntityImageIntent("Create turnarounds for every character")).not.toBeNull()
+    expect(parseBulkEntityImageIntent("regenerate all")).not.toBeNull()
+  })
+
+  it("keeps an explicit ask for images even when it is worded as a contrast", () => {
+    // Asking for art and naming what it replaces is still asking for art.
+    expect(parseBulkEntityImageIntent("Regenerate the character images instead of the old ones")).not.toBeNull()
+  })
+})
+
+describe("describesLookChange", () => {
+  it("is quiet for a plain generation request", () => {
+    expect(describesLookChange("Generate images for all characters")).toBe(false)
+    expect(describesLookChange("Create the location plates")).toBe(false)
   })
 })
