@@ -720,12 +720,45 @@ export const updateScriptTool = defineDirectorTool({
   },
 })
 
+/**
+ * Accepts a patch whether it was nested or flattened.
+ *
+ * These tools take `{ shotId, patch: { ... } }`, and a model that puts the
+ * fields at the top level instead — `{ shotId, prompt: "..." }` — produced
+ * "patch: Invalid input" and lost the work. On a six-shot revision that is four
+ * shots silently dropped while the other two go through, which reads as the
+ * revision half-applying for no reason anybody can see. The shape it meant is
+ * unambiguous, so it is accepted rather than refused.
+ */
+function liftPatch(idField: string, fields: readonly string[]) {
+  return (value: unknown) => {
+    if (!value || typeof value !== "object") return value
+    const input = value as Record<string, unknown>
+    const patch = input.patch
+    if (patch && typeof patch === "object" && !Array.isArray(patch)) return input
+    const lifted: Record<string, unknown> = {}
+    for (const field of fields) {
+      if (input[field] !== undefined) lifted[field] = input[field]
+    }
+    if (!Object.keys(lifted).length) return input
+    return { [idField]: input[idField], patch: lifted }
+  }
+}
+
+const shotPatchFields = [
+  "title", "description", "script_text", "prompt", "video_prompt",
+  "duration_seconds", "aspect_ratio", "resolution", "style",
+  "keyframe_image", "video_url",
+] as const
+
+const assetPatchFields = ["name", "description", "status", "voice_id", "metadata"] as const
+
 export const updateShotTool = defineDirectorTool({
   name: "update_shot",
   version: 1,
   risk: "write",
   requiresApproval: true,
-  input: z.object({
+  input: z.preprocess(liftPatch("shotId", shotPatchFields), z.object({
     shotId: z.string().uuid(),
     patch: z.object({
       title: z.string().trim().min(1).max(200).optional(),
@@ -742,7 +775,7 @@ export const updateShotTool = defineDirectorTool({
       keyframe_image: z.string().trim().max(2_000).nullable().optional(),
       video_url: z.string().trim().max(2_000).nullable().optional(),
     }),
-  }),
+  })),
   async execute(context, input) {
     const { data: episodes, error: episodeError } = await context.supabase.from("creator_episodes").select("id").eq("project_id", context.project.id)
     if (episodeError) throw episodeError
@@ -913,7 +946,7 @@ export const updateAssetTool = defineDirectorTool({
   version: 1,
   risk: "write",
   requiresApproval: true,
-  input: z.object({
+  input: z.preprocess(liftPatch("assetId", assetPatchFields), z.object({
     assetId: z.string().uuid(),
     patch: z.object({
       name: z.string().trim().min(1).max(200).optional(),
@@ -922,7 +955,7 @@ export const updateAssetTool = defineDirectorTool({
       voice_id: z.string().trim().max(200).nullable().optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
     }),
-  }),
+  })),
   async execute(context, input) {
     const { data, error } = await context.supabase
       .from("creator_entities")

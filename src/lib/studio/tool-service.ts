@@ -96,7 +96,7 @@ export async function requestDirectorTool(context: AuthenticatedProjectContext, 
   if (executionError) throw executionError
 
   if (tool.requiresApproval) {
-    const proposalCopy = describeProposal(tool.name, input)
+    const proposalCopy = await describeProposal(context, tool.name, input)
     const { data: proposal, error } = await context.supabase.from("creator_action_proposals").insert({
       project_id: context.project.id,
       user_id: context.user.id,
@@ -128,7 +128,7 @@ export async function requestDirectorTool(context: AuthenticatedProjectContext, 
   }
 }
 
-function describeProposal(toolName: string, input: unknown) {
+async function describeProposal(context: AuthenticatedProjectContext, toolName: string, input: unknown) {
   const payload = input && typeof input === "object" ? input as Record<string, unknown> : {}
   if (toolName === "submit_generation") {
     const request = payload.request && typeof payload.request === "object" ? payload.request as { type?: unknown; shotIds?: unknown; shotNumbers?: unknown } : {}
@@ -162,6 +162,33 @@ function describeProposal(toolName: string, input: unknown) {
       summary: `${batchNames.length} ${noun}${batchNames.length === 1 ? "" : "s"}: ${shown}${rest}.`,
       estimatedCredits: 0,
       affectedEntities: [],
+    }
+  }
+
+  // An asset card that says only "Update asset" is unapprovable: the user is
+  // being asked to accept a change to something the card will not name. Three
+  // of them in a row, as a look revision produces, are indistinguishable.
+  const assetId = typeof payload.assetId === "string" ? payload.assetId : ""
+  if (assetId) {
+    const patch = payload.patch && typeof payload.patch === "object" ? payload.patch as Record<string, unknown> : {}
+    const { data: asset } = await context.supabase
+      .from("creator_entities")
+      .select("name")
+      .eq("id", assetId)
+      .eq("project_id", context.project.id)
+      .maybeSingle()
+    const name = typeof patch.name === "string" && patch.name.trim() ? patch.name.trim() : asset?.name || ""
+    const changing = Object.keys(patch).map((field) => field.replace(/_/g, " ")).join(", ")
+    if (name) {
+      const deleting = toolName === "delete_asset"
+      return {
+        title: `${deleting ? "Delete" : "Update"} ${name}`,
+        summary: deleting
+          ? `This will remove ${name} and its reference art after approval.`
+          : `Changes ${changing || "this asset"} on ${name}.`,
+        estimatedCredits: 0,
+        affectedEntities: [{ type: "asset", id: assetId }],
+      }
     }
   }
 
