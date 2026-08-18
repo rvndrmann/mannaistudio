@@ -214,7 +214,7 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
       nextAction: {
         id: "pipeline-entities",
         label: `Create ${missing.length} missing ${plural(missing.length, "asset")}`,
-        intent: `Before adding anything, ask me whether I have my own photos for any of these characters or assets — ${list(missing, 24)} — so their appearance is locked to something real instead of invented from scratch. If I say no or have none, proceed right away. If I upload photos, use them as the art for the matching character or asset when you add it. As the Character & Asset Agent, add the characters and assets the prompt sheet needs that this project does not have yet: ${list(missing, 24)}. List the existing library first and skip everything already there — never duplicate one that exists.`,
+        intent: `As the Character & Asset Agent, add the characters and assets the prompt sheet needs that this project does not have yet: ${list(missing, 24)}. List the existing library first and skip everything already there — never duplicate one that exists. After creating them, ask whether I have my own photos and present the answer as clickable choices rather than requiring a typed reply.`,
         risk: "write",
         recommended: true,
       },
@@ -230,12 +230,18 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
       summary: `${withoutArt.length} ${plural(withoutArt.length, "character or asset", "characters and assets")} still ${plural(withoutArt.length, "has", "have")} no reference image: ${list(withoutArt)}.`,
       nextAction: {
         id: "pipeline-entity-images",
-        label: `Generate reference art for ${withoutArt.length} ${plural(withoutArt.length, "asset")}`,
+        label: `No photos — generate reference art for ${withoutArt.length} ${plural(withoutArt.length, "asset")}`,
         intent: `As the Character & Asset Agent, generate reference art only for the characters and assets that have none yet: ${list(withoutArt, 24)}. Leave every existing reference image alone.`,
         risk: "costly",
         recommended: true,
       },
-      alternatives: [],
+      alternatives: [{
+        id: "pipeline-entity-images-upload",
+        label: "I’ll upload my own photos",
+        intent: "I have my own photos. Show me how to upload and match them to the characters and assets that still have no reference image before generating anything.",
+        risk: "read",
+        recommended: false,
+      }],
     }
   }
 

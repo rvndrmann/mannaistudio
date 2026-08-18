@@ -5,7 +5,10 @@ export const timelineStepStatusSchema = z.enum(["pending", "running", "completed
 const timelineActionSchema = z.object({
   id: z.string().min(1).max(200),
   label: z.string().min(1).max(240),
-  intent: z.string().min(1).max(200),
+  // Pipeline actions carry enough context to execute without another model
+  // guess, including named assets or shots. The old 200-character cap silently
+  // discarded the entire next-step block for normal multi-asset workflows.
+  intent: z.string().min(1).max(4_000),
   payload: z.record(z.string(), z.unknown()).default({}),
   risk: z.enum(["read", "write", "costly", "destructive"]).default("read"),
   recommended: z.boolean().default(false),

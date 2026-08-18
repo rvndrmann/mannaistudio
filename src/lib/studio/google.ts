@@ -22,27 +22,39 @@ export async function generateGoogleImage(input: {
   const apiKey = getGoogleApiKey()
   const ai = new GoogleGenAI({ apiKey })
 
-  // Both arms resolved to the same id, so the ternary was decoration. The Pro
-  // tier is the one real branch: it is a different upstream model, and routing
-  // it to the standard one would sell a Pro render and deliver a standard one.
-  const modelId = input.model === "google-nano-banana-2-pro" ? "imagen-3.0-generate-002" : "imagen-3.0-generate-002"
+  const modelId = input.model === "google-nano-banana-2-pro"
+    ? "gemini-3-pro-image-preview"
+    : "gemini-2.5-flash-image"
+
+  const referenceParts = await Promise.all((input.referenceUrls || []).slice(0, 3).map(async (url) => {
+    const response = await fetch(url)
+    if (!response.ok) throw new GoogleProviderError(`Could not download Google image reference (${response.status}).`)
+    const mimeType = response.headers.get("content-type")?.split(";")[0] || "image/png"
+    const data = Buffer.from(await response.arrayBuffer()).toString("base64")
+    return { inlineData: { mimeType, data } }
+  }))
 
   try {
-    const response = await ai.models.generateImages({
+    const response = await ai.models.generateContent({
       model: modelId,
-      prompt: input.prompt,
+      contents: [{
+        role: "user",
+        parts: [
+          { text: input.prompt },
+          ...referenceParts,
+        ],
+      }],
       config: {
-        numberOfImages: 1,
-        outputMimeType: "image/png",
-        aspectRatio: "1:1",
+        responseModalities: ["IMAGE"],
       },
     })
 
-    const imageBytes = response.generatedImages?.[0]?.image?.imageBytes
+    const imageBytes = response.candidates?.[0]?.content?.parts?.find((part) => part.inlineData?.data)?.inlineData?.data
     if (!imageBytes) throw new GoogleProviderError("Google AI Studio did not return an image.")
 
-    const url = `data:image/png;base64,${imageBytes}`
-    return { url, contentType: "image/png" }
+    const mimeType = response.candidates?.[0]?.content?.parts?.find((part) => part.inlineData?.data)?.inlineData?.mimeType || "image/png"
+    const url = `data:${mimeType};base64,${imageBytes}`
+    return { url, contentType: mimeType }
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Google image generation failed"
     throw new GoogleProviderError(`Google AI Studio request failed: ${msg}`)
@@ -156,6 +168,38 @@ function asJsonObject(value: unknown): Record<string, unknown> {
   }
 }
 
+const DATA_URL = /^data:([^;,]+);base64,(.+)$/i
+
+/**
+ * Maps a Responses-API user turn onto Gemini parts.
+ *
+ * A turn carrying images is an array of content parts, not a string. Coercing
+ * that array with String() produced "[object Object]", so a Gemini run silently
+ * lost every reference picture it was sent and answered about images it could
+ * not see.
+ */
+function textAndImageParts(content: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(content)) return [{ text: String(content || "") }]
+  const parts: Array<Record<string, unknown>> = []
+  for (const entry of content) {
+    if (!entry || typeof entry !== "object") continue
+    const part = entry as Record<string, unknown>
+    if (part.type === "input_text" || part.type === "text") {
+      const text = String(part.text || "")
+      if (text) parts.push({ text })
+      continue
+    }
+    if (part.type === "input_image") {
+      const url = String(part.image_url || "")
+      const inlined = DATA_URL.exec(url)
+      // Gemini takes bytes inline; a remote URL it would have to fetch itself
+      // is skipped rather than sent as a link it cannot open.
+      if (inlined) parts.push({ inlineData: { mimeType: inlined[1], data: inlined[2] } })
+    }
+  }
+  return parts.length ? parts : [{ text: "" }]
+}
+
 export async function createGoogleDirectorToolTurn(input: {
   userId: string
   model: string
@@ -265,7 +309,7 @@ export async function createGoogleDirectorToolTurn(input: {
       contents.push({ role: "model", parts: item.content ? [{ text: String(item.content) }] : [{ text: "..." }] })
       continue
     }
-    contents.push({ role: "user", parts: [{ text: String(item.content || "") }] })
+    contents.push({ role: "user", parts: textAndImageParts(item.content) })
   }
 
   const mergedContents: Array<{ role: string; parts: Array<Record<string, unknown>> }> = []

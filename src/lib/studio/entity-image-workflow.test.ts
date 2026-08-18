@@ -40,16 +40,18 @@ describe("entity image workflow", () => {
     expect(directive).toContain("collage")
   })
 
-  it("renders a character as a multi-view sheet on a plain backdrop", () => {
+  it("renders a character as a three-section photorealistic reference sheet", () => {
     const prompt = buildEntityReferenceImagePrompt({ id: "1", name: "Maya", type: "character", description: "Lead driver in her late twenties" }, "Realistic - Photorealistic")
     expect(prompt).toContain("Maya")
     expect(prompt).toContain("character reference sheet")
-    expect(prompt).toContain("plain, uncluttered neutral backdrop")
-    // Several angles of one identical person is what makes the sheet an
-    // identity lock rather than one lucky portrait.
-    expect(prompt).toContain("three-quarter")
-    expect(prompt).toContain("profile")
-    expect(prompt).toContain("Identical face")
+    expect(prompt).toContain("SECTION 1 (Left)")
+    expect(prompt).toContain("front view, side profile view, and back view")
+    expect(prompt).toContain("SECTION 2 (Top Right)")
+    expect(prompt).toContain("neutral, happy, angry, sad, and surprised")
+    expect(prompt).toContain("SECTION 3 (Bottom)")
+    expect(prompt).toContain("eye texture, hair texture, shoe details, fabric stitching, and accessories")
+    expect(prompt).toContain("Clean white studio background")
+    expect(prompt).toContain("8K detail")
     expect(prompt).toContain("Lead driver in her late twenties")
   })
 

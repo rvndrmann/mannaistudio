@@ -11,6 +11,16 @@ describe("Director timeline", () => {
     expect(blocks[0].type).toBe("tool_execution")
   })
 
+  it("keeps contextual workflow actions longer than a short button label", () => {
+    const intent = `Generate reference art only for these assets: ${"named production asset, ".repeat(20)}`
+    const blocks = parseDirectorTimeline([
+      { type: "suggested_actions", actions: [{ id: "reference-art", label: "Generate reference art", intent, payload: {}, risk: "costly", recommended: true }] },
+    ])
+
+    expect(intent.length).toBeGreaterThan(200)
+    expect(blocks).toHaveLength(1)
+  })
+
   it("drops malformed persisted data instead of breaking chat rendering", () => {
     expect(parseDirectorTimeline([{ type: "tool_execution", status: "unknown" }])).toEqual([])
     expect(parseDirectorTimeline(null)).toEqual([])
