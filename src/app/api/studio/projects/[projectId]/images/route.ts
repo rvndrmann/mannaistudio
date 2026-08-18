@@ -55,6 +55,61 @@ const imageRequestSchema = z.object({
   }).optional(),
 }).strict()
 
+// gpt-image-2 at Medium or High takes well past a default serverless timeout,
+// and a storyboard batch runs several in one request. Without this the platform
+// killed the function mid-generation: the catch below never ran, so the job sat
+// in `processing` for ever, the shot span its generating animation, and the
+// credits were never refunded.
+export const maxDuration = 300
+
+// Longer than the route is allowed to run, so a job past this point cannot
+// still be working — the process that owned it is gone.
+const STALLED_IMAGE_JOB_MS = 6 * 60 * 1000
+
+/**
+ * Reconciles an image job the server never got to finish.
+ *
+ * Image generation is synchronous — there is no provider job to poll — so a
+ * request that dies mid-flight leaves a row nothing will ever resolve. The
+ * workspace asks about such a job here, and a job that has been running longer
+ * than any real generation takes is settled as failed and refunded.
+ */
+export async function GET(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
+  try {
+    const { projectId } = await params
+    const context = await requireAuthenticatedProject(projectId)
+    const jobId = new URL(request.url).searchParams.get("jobId") || ""
+    if (!jobId) return NextResponse.json({ error: "Which job?" }, { status: 400 })
+
+    const { data: job } = await context.supabase
+      .from("creator_generation_jobs")
+      .select("*")
+      .eq("id", jobId)
+      .eq("project_id", projectId)
+      .maybeSingle()
+    if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 })
+    if (job.status !== "processing") return NextResponse.json(job)
+
+    const startedAt = Date.parse(job.started_at || job.created_at || "")
+    const runningMs = Number.isNaN(startedAt) ? 0 : Date.now() - startedAt
+    if (runningMs < STALLED_IMAGE_JOB_MS) return NextResponse.json(job)
+
+    const charged = Number(job.credits_used || job.estimated_credits || 0)
+    const refund = charged > 0
+      ? await refundGenerationCredits(context.user.id, charged, `generation-job:${job.id}`, "Refund: image generation did not finish", job.id, context.supabase)
+      : { refunded: false, newBalance: 0 }
+    const error = "The image generation did not finish. Nothing was produced and the credits have been returned."
+    await context.supabase
+      .from("creator_generation_jobs")
+      .update({ status: "failed", error, completed_at: new Date().toISOString() })
+      .eq("id", job.id)
+
+    return NextResponse.json({ ...job, status: "failed", error, creditsRefunded: refund.refunded ? charged : 0, creditBalance: refund.newBalance })
+  } catch (error) {
+    return NextResponse.json({ error: studioErrorMessage(error, "Could not check the image job") }, { status: studioErrorStatus(error) })
+  }
+}
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   let pendingAssetGeneration: { context: Awaited<ReturnType<typeof requireAuthenticatedProject>>; projectId: string; entityId: string } | null = null
   let pendingRefund: { context: Awaited<ReturnType<typeof requireAuthenticatedProject>>; amount: number; key: string; jobId: string | null } | null = null

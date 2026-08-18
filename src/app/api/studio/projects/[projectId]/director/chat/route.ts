@@ -6,7 +6,8 @@ import { directorChatInputSchema } from "@/lib/studio/domain"
 import { describeError } from "@/lib/studio/errors"
 import { defaultOpenAIDirectorModel, OpenAIProviderError } from "@/lib/studio/openai"
 import { GoogleProviderError } from "@/lib/studio/google"
-import { generateOpenAIImage } from "@/lib/studio/openai"
+import { generateProjectImage, projectCharacterImageModel, projectStoryboardImageModel } from "@/lib/studio/project-image-model"
+import { generationProvider } from "@/lib/studio/generation-models"
 import { buildProjectContext } from "@/lib/studio/project-context"
 import { requireAuthenticatedProject, studioErrorStatus } from "@/lib/studio/server-context"
 import { requireProjectFromRequest } from "@/lib/studio/external-auth"
@@ -27,6 +28,7 @@ import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from 
 import { trackGenerationActivation } from "@/lib/studio/activation"
 import { buildProjectStateSummary, loadProductionSnapshot } from "@/lib/studio/project-state-summary"
 import { computePipelineStage, withSkippedShots } from "@/lib/studio/pipeline"
+import { buildProductionProgress, levelForXp, stagesReached } from "@/lib/studio/production-progress"
 import type { DirectorTimelineBlock } from "@/lib/studio/timeline"
 import { actionMatchesRequestedShots, buildVideoContinuationPrompt, isAmbiguousShotRedo, parseShotImageBatchIntent, parseTargetShotNumbers, parseVideoShotReferenceIntent, wantsRedo } from "@/lib/studio/shot-intent"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
@@ -103,14 +105,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const approvalRequired = Boolean(workflowRecord.approvalRequired || workflowRecord.proposal)
       await addWorkflowStep(context, { runId: workflowRun.id, sequence: 1, specialist: "orchestrator", label: approvalRequired ? "Prepare approval" : "Complete direct workflow", status: approvalRequired ? "awaiting_approval" : "completed", output: workflow.result })
       await finishWorkflowRun(context, workflowRun.id, approvalRequired ? "awaiting_approval" : "completed", { mode: "direct", approvalRequired })
-      const nextStep = await nextStepBlock(context, projectId, episode.id, parseTargetShotNumbers(body.message))
+      const [nextStep, progress] = await Promise.all([
+        nextStepBlock(context, projectId, episode.id, parseTargetShotNumbers(body.message)),
+        progressBlock(context, projectId, episode.id),
+      ])
       // A handler that already worked out its own next step keeps it: it knows
       // things the shared block cannot, such as which shot was being skipped.
       const carriesOwnTimeline = Array.isArray((workflow.message as Record<string, unknown>).timeline_blocks)
       const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({
         ...workflow.message,
         workflow_run_id: workflowRun.id,
-        ...(!carriesOwnTimeline && nextStep ? { timeline_blocks: [nextStep], timeline_version: 1 } : {}),
+        ...(!carriesOwnTimeline && (nextStep || progress) ? { timeline_blocks: [...(progress ? [progress] : []), ...(nextStep ? [nextStep] : [])], timeline_version: 1 } : {}),
       }).select().single()
       if (assistantError) throw assistantError
       const workflowCredits = workflow.result && typeof workflow.result === "object"
@@ -168,8 +173,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const persistAssistantMessage = async (response: Awaited<ReturnType<typeof runDirectorAgent>>) => {
       // Read after the run, so the button offers the step the workspace is on
       // once this run's writes have landed.
-      const nextStep = await nextStepBlock(context, projectId, episode.id, parseTargetShotNumbers(body.message))
-      const timeline = nextStep ? [...response.timeline, nextStep] : response.timeline
+      const [nextStep, progress] = await Promise.all([
+        nextStepBlock(context, projectId, episode.id, parseTargetShotNumbers(body.message)),
+        progressBlock(context, projectId, episode.id),
+      ])
+      const timeline = [...response.timeline, ...(progress ? [progress] : []), ...(nextStep ? [nextStep] : [])]
       const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, workflow_run_id: workflowRun.id, role: "assistant", content: response.content, tool_calls: response.toolCalls, suggested_actions: response.suggestedActions, timeline_blocks: timeline, timeline_version: 1 }).select().single()
       if (assistantError) throw assistantError
       return { sessionId, userMessage, assistantMessage, provider: model.startsWith("gemini") ? "google" : "openai", model, usage: response.usage }
@@ -609,8 +617,68 @@ async function nextStepBlock(
     }
   } catch (error) {
     // A reply that lost its next-step button is still a reply. Failing the whole
-    // run over the button would lose the work the run just did.
+    // run over the button would lose the work the run just did — but it still
+    // ends with something to press, because a user with no button has to guess
+    // what to type, which is what this block exists to prevent.
     console.warn("Could not build the pipeline next step:", error)
+    return {
+      type: "suggested_actions",
+      actions: [{
+        id: "pipeline-unknown",
+        label: "What should we do next?",
+        intent: "Tell me where this production currently stands and what the single next step is.",
+        risk: "read" as const,
+        recommended: true,
+        payload: {},
+      }],
+    }
+  }
+}
+
+/**
+ * The production track shown under the reply.
+ *
+ * Built after the run so it reflects what the run just did, and it awards the
+ * XP for any stage the episode reached on the way — once each, in the database,
+ * so recomputing the stage every turn cannot pay for the same one twice.
+ */
+async function progressBlock(
+  context: Awaited<ReturnType<typeof requireAuthenticatedProject>>,
+  projectId: string,
+  episodeId: string,
+): Promise<DirectorTimelineBlock | null> {
+  try {
+    const snapshot = await loadProductionSnapshot(context.supabase, projectId, episodeId)
+    const progress = buildProductionProgress(snapshot)
+
+    let awardedXp = 0
+    let level = levelForXp(progress.earnedXp).level
+    for (const stage of stagesReached(snapshot)) {
+      const { data, error } = await context.supabase.rpc("award_episode_stage_xp", {
+        p_episode_id: episodeId,
+        p_stage_key: stage.key,
+        p_xp: stage.xp,
+      })
+      if (error) throw error
+      const row = Array.isArray(data) ? data[0] : data
+      awardedXp += Number(row?.awarded || 0)
+      if (row?.level) level = Number(row.level)
+    }
+
+    return {
+      type: "production_progress",
+      headline: progress.headline,
+      percent: progress.percent,
+      completedStages: progress.completedStages,
+      totalStages: progress.totalStages,
+      earnedXp: progress.earnedXp,
+      awardedXp,
+      level,
+      stages: progress.stages.map((stage) => ({ key: stage.key, title: stage.title, status: stage.status, xp: stage.xp })),
+    }
+  } catch (error) {
+    // The track is a garnish on the reply, never a reason to lose it.
+    console.warn("Could not build the production progress block:", error)
     return null
   }
 }
@@ -923,11 +991,14 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
     const referencePaths = chosenReferences(referencedEntities, 16)
     const referenceUrls = await signedMentionReferences(input.context, referencePaths)
     const quality = projectImageQuality(input.context.project)
-    const creditCost = calculateCreditCost("gpt-image-2", "image", 5, { quality, aspectRatio })
+    // The model the project chose, not a hardcoded one. Priced on the same id
+    // that renders it, so the quote matches the bill.
+    const storyboardModel = projectStoryboardImageModel(input.context.project)
+    const creditCost = calculateCreditCost(storyboardModel, "image", 5, { quality, aspectRatio })
     const deduction = await deductUserCredits(
       input.context.user.id,
       creditCost,
-      "gpt-image-2",
+      storyboardModel,
       "AI Director chat image generation",
       input.context.supabase,
     )
@@ -945,8 +1016,8 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
       shot_id: targetShot?.id || null,
       type: "image",
       status: "approved",
-      model: "gpt-image-2",
-      provider: "openai",
+      model: storyboardModel,
+      provider: generationProvider(storyboardModel),
       prompt,
       input_images: referencePaths,
       settings: { target: targetShot ? "shot" : "chat", shotId: targetShot?.id || null, style, aspectRatio, quality },
@@ -961,10 +1032,10 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
     const refundKey = `generation-job:${generationJob.id}`
     try {
     input.onProgress?.(requestedShotNumber ? `Generating the keyframe for shot ${requestedShotNumber}` : "Generating the image")
-    const image = await generateOpenAIImage({ userId: input.context.user.id, model: "gpt-image-2", prompt: resolvedPrompt, referenceUrls, aspectRatio, quality: openAIImageQuality(quality) })
+    const image = await generateProjectImage({ userId: input.context.user.id, model: storyboardModel, prompt: resolvedPrompt, referenceUrls, aspectRatio, quality: openAIImageQuality(quality) })
     input.onProgress?.(requestedShotNumber ? `Saving the keyframe to shot ${requestedShotNumber}` : "Saving the image")
     const path = `${input.context.user.id}/${input.projectId}/chat/${crypto.randomUUID()}.png`
-    const { error: uploadError } = await input.context.supabase.storage.from("creator-studio-media").upload(path, image, { contentType: "image/png", upsert: false })
+    const { error: uploadError } = await input.context.supabase.storage.from("creator-studio-media").upload(path, image.buffer, { contentType: image.contentType, upsert: false })
     if (uploadError) throw uploadError
     if (targetShot) {
       const currentMetadata = targetShot.metadata && typeof targetShot.metadata === "object" ? targetShot.metadata as Record<string, unknown> : {}
@@ -974,7 +1045,7 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
         referenced_entities: Array.from(new Set([...(targetShot.referenced_entities || []), ...referencedEntities.map((entity) => entity.id)])),
         metadata: {
           ...currentMetadata,
-          image_generation: { provider: "openai", model: "gpt-image-2", prompt, resolved_prompt: resolvedPrompt, reference_images: referencePaths, mentioned_entity_ids: input.mentionedEntities.map((entity) => entity.id), status: "completed", completed_at: completedAt },
+          image_generation: { provider: image.provider, model: storyboardModel, prompt, resolved_prompt: resolvedPrompt, reference_images: referencePaths, mentioned_entity_ids: input.mentionedEntities.map((entity) => entity.id), status: "completed", completed_at: completedAt },
         },
       }).eq("id", targetShot.id)
       if (shotUpdateError) throw shotUpdateError
@@ -1022,7 +1093,7 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
           ? `Generated one GPT Image 2 keyframe and attached it to storyboard shot ${requestedShotNumber}.`
           : "Generated the image and attached it here for review.",
         referenced_entity_ids: referencedEntities.map((entity) => entity.id),
-        media: [{ type: "image", path, url: signed?.signedUrl, prompt, referencedEntityIds: referencedEntities.map((entity) => entity.id), provider: "openai", model: "gpt-image-2" }],
+        media: [{ type: "image", path, url: signed?.signedUrl, prompt, referencedEntityIds: referencedEntities.map((entity) => entity.id), provider: image.provider, model: storyboardModel }],
       },
     }
     } catch (error) {
@@ -1113,6 +1184,9 @@ async function generateBulkEntityReferenceImages(
   const style = projectVisualStyle(input.context.project)
   const styleDna = projectStyleDna(input.context.project)
   const quality = projectImageQuality(input.context.project)
+  // Character and asset art follows the project's own choice too, so a brand
+  // that renders its cast on Nano Banana does not get GPT Image reference art.
+  const characterModel = projectCharacterImageModel(input.context.project)
   const completed: Array<{ entityId: string; entityName: string; path: string; url?: string; prompt: string }> = []
   const failed: Array<{ entityName: string; error: string }> = []
   let creditsCharged = 0
@@ -1142,8 +1216,8 @@ async function generateBulkEntityReferenceImages(
         metadata: {
           ...currentMetadata,
           image_generation: {
-            provider: "openai",
-            model: "gpt-image-2",
+            provider: generationProvider(characterModel),
+            model: characterModel,
             prompt,
             target: "entity",
             entity_id: entity.id,
@@ -1152,11 +1226,11 @@ async function generateBulkEntityReferenceImages(
           },
         },
       }).eq("id", entity.id).eq("project_id", input.projectId)
-      const creditCost = calculateCreditCost("gpt-image-2", "image", 5, { quality, aspectRatio: "2:3" })
+      const creditCost = calculateCreditCost(characterModel, "image", 5, { quality, aspectRatio: "2:3" })
       const deduction = await deductUserCredits(
         input.context.user.id,
         creditCost,
-        "gpt-image-2",
+        characterModel,
         `AI Director character/asset reference: ${entity.name}`,
         input.context.supabase,
       )
@@ -1171,8 +1245,8 @@ async function generateBulkEntityReferenceImages(
         workflow_run_id: input.workflowRunId,
         type: "image",
         status: "approved",
-        model: "gpt-image-2",
-        provider: "openai",
+        model: characterModel,
+        provider: generationProvider(characterModel),
         prompt,
         input_images: existingReferences,
         settings: { target: "asset", entityId: entity.id, entityType: entity.type, style, aspectRatio: "2:3", quality, cameraSettingsUsed: cameraSettings, basePrompt: prompt, composedPrompt: framedPrompt },
@@ -1185,9 +1259,9 @@ async function generateBulkEntityReferenceImages(
       await input.context.supabase.from("creator_generation_jobs").update({ status: "processing", credits_used: creditCost, started_at: new Date().toISOString() }).eq("id", generationJob.id)
       const refundKey = `generation-job:${generationJob.id}`
       try {
-      const image = await generateOpenAIImage({ userId: input.context.user.id, model: "gpt-image-2", prompt: framedPrompt, referenceUrls, aspectRatio: "2:3", quality: openAIImageQuality(quality) })
-      const path = `${input.context.user.id}/${input.projectId}/entities/${entity.id}/gpt-image-2-${crypto.randomUUID()}.png`
-      const { error: uploadError } = await input.context.supabase.storage.from("creator-studio-media").upload(path, image, { contentType: "image/png", upsert: false })
+      const image = await generateProjectImage({ userId: input.context.user.id, model: characterModel, prompt: framedPrompt, referenceUrls, aspectRatio: "2:3", quality: openAIImageQuality(quality) })
+      const path = `${input.context.user.id}/${input.projectId}/entities/${entity.id}/${characterModel}-${crypto.randomUUID()}.png`
+      const { error: uploadError } = await input.context.supabase.storage.from("creator-studio-media").upload(path, image.buffer, { contentType: image.contentType, upsert: false })
       if (uploadError) throw uploadError
 
       const completedAt = new Date().toISOString()
@@ -1204,7 +1278,7 @@ async function generateBulkEntityReferenceImages(
       const metadata = {
         ...currentMetadata,
         ...(byteplusAssetId ? { byteplus_asset_id: byteplusAssetId } : {}),
-        image_generation: { provider: "openai", model: "gpt-image-2", prompt, resolved_prompt: framedPrompt, camera_settings_used: cameraSettings, style, target: "entity", entity_id: entity.id, status: "completed", completed_at: completedAt },
+        image_generation: { provider: image.provider, model: characterModel, prompt, resolved_prompt: framedPrompt, camera_settings_used: cameraSettings, style, target: "entity", entity_id: entity.id, status: "completed", completed_at: completedAt },
       }
       const updates: Record<string, unknown> = { reference_images: referenceImages, metadata, status: entity.status || "draft" }
       if (byteplusAssetId) {
@@ -1245,7 +1319,7 @@ async function generateBulkEntityReferenceImages(
             ...currentMetadata,
             image_generation: {
               provider: "openai",
-              model: "gpt-image-2",
+              model: characterModel,
               prompt,
               target: "entity",
               entity_id: entity.id,
@@ -1287,7 +1361,7 @@ async function generateBulkEntityReferenceImages(
       role: "assistant",
       content: details,
       referenced_entity_ids: completed.map((item) => item.entityId),
-      media: completed.map((item) => ({ type: "image", path: item.path, url: item.url, prompt: item.prompt, entityId: item.entityId, entityName: item.entityName, target: "entity", provider: "openai", model: "gpt-image-2" })),
+      media: completed.map((item) => ({ type: "image", path: item.path, url: item.url, prompt: item.prompt, entityId: item.entityId, entityName: item.entityName, target: "entity", provider: generationProvider(characterModel), model: characterModel })),
     },
   }
 }

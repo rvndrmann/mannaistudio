@@ -284,7 +284,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     try {
       let task: { id: string; response?: unknown }
       if (provider === "fal") {
-        const falRes = await submitFalVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 4), ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references })
+        const falRes = await submitFalVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 4), ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references, endReferenceUrl: input.endFrame || undefined })
         task = { id: falRes.id, response: falRes }
       } else if (provider === "google") {
         const gRes = await submitGoogleVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 4), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references })

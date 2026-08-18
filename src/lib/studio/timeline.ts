@@ -29,6 +29,25 @@ export const directorTimelineBlockSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("proposal"), proposalId: z.string().uuid(), title: z.string().max(240).optional() }).strict(),
   z.object({ type: z.literal("media_result"), media: z.array(timelineMediaSchema).min(1).max(50) }).strict(),
   z.object({ type: z.literal("suggested_actions"), actions: z.array(timelineActionSchema).min(1).max(5) }).strict(),
+  // The production track: which stages are done, which is in hand, and the XP
+  // the episode has earned. Shown under the reply so a long production reads as
+  // progress rather than an open-ended conversation.
+  z.object({
+    type: z.literal("production_progress"),
+    headline: z.string().min(1).max(240),
+    percent: z.number().int().min(0).max(100),
+    completedStages: z.number().int().nonnegative(),
+    totalStages: z.number().int().positive(),
+    earnedXp: z.number().int().nonnegative().default(0),
+    awardedXp: z.number().int().nonnegative().default(0),
+    level: z.number().int().positive().default(1),
+    stages: z.array(z.object({
+      key: z.string().min(1).max(60),
+      title: z.string().min(1).max(80),
+      status: z.enum(["done", "current", "todo"]),
+      xp: z.number().int().nonnegative().default(0),
+    }).strict()).min(1).max(12),
+  }).strict(),
   z.object({ type: z.literal("workflow_summary"), title: z.string().min(1).max(240), summary: z.string().min(1).max(8_000), completed: z.number().int().nonnegative().default(0), failed: z.number().int().nonnegative().default(0) }).strict(),
   z.object({ type: z.literal("warning"), code: z.string().min(1).max(120), message: z.string().min(1).max(4_000), recoverable: z.boolean().default(true), actions: z.array(timelineActionSchema).max(5).default([]) }).strict(),
 ])

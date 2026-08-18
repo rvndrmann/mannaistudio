@@ -5002,9 +5002,12 @@ function ShotMediaWorkspace({
   }, [activeGenId]);
 
   // Poll in-progress job until finished or failed
-  const pollJobStatus = async (jobId: string) => {
+  const pollJobStatus = async (jobId: string, generatingModel?: string) => {
     setBusy(true);
-    setGenerationStatus("BytePlus is generating the video…");
+    // Named after the model that is actually rendering. It said BytePlus
+    // whatever the user had picked, so a Veo or fal render looked like it had
+    // been quietly switched to another provider.
+    setGenerationStatus(`${getModelLabel(generatingModel || model) || "The model"} is generating the video…`);
     try {
       let finalJob: Record<string, unknown> = {};
       for (let attempt = 0; attempt < 180; attempt += 1) {
@@ -5053,6 +5056,26 @@ function ShotMediaWorkspace({
         const dbJobs = Array.from(jobsById.values()).sort((a, b) =>
           new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         );
+
+        // An image job whose request died mid-flight has nothing polling it —
+        // image generation is synchronous, so there is no provider job to come
+        // back. Asking the server settles it as failed and returns the credits,
+        // instead of leaving the shot spinning for ever.
+        const stalled = dbJobs.filter((job) =>
+          job.type === "image"
+          && job.status === "processing"
+          && Date.now() - new Date((job as { started_at?: string | null }).started_at || job.created_at || Date.now()).getTime() > 6 * 60 * 1000);
+        if (stalled.length) {
+          await Promise.all(stalled.map((job) =>
+            fetch(`/api/studio/projects/${projectId}/images?jobId=${encodeURIComponent(job.id)}`, { cache: "no-store" })
+              .then((response) => response.json())
+              .then((settled: { status?: string }) => {
+                if (settled?.status === "failed") job.status = "failed";
+              })
+              .catch(() => {
+                // Best effort: a reconcile that fails just leaves the row as it was.
+              })));
+        }
 
         const entityAssetMap = new Map<string, string>();
         for (const entity of entities) {
@@ -5140,7 +5163,7 @@ function ShotMediaWorkspace({
         const pendingJobs = entries.filter((e) => e.status === "generating");
         for (const pJob of pendingJobs) {
           if (pJob.type === "video") {
-            pollJobStatus(pJob.id);
+            pollJobStatus(pJob.id, (pJob as { model?: string }).model);
           }
         }
       } catch (err) {
@@ -6489,6 +6512,39 @@ function ChatTimelineBlock({ block, proposals, awaitingApproval, onAction, disab
     return <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] p-2.5 text-[11px] text-emerald-100"><strong>{block.title}</strong><p className="mt-1 text-emerald-100/75">{block.summary}</p></div>;
   }
   if (block.type === "media_result") return <ChatMedia media={block.media} />;
+  if (block.type === "production_progress") {
+    return (
+      <div className="rounded-lg border border-[#b9f42e]/25 bg-[#b9f42e]/[0.05] p-2.5">
+        <div className="flex items-center gap-2">
+          <p className="min-w-0 flex-1 truncate text-[11px] font-bold text-[#b9f42e]">{block.headline}</p>
+          {block.awardedXp > 0 && (
+            <span className="shrink-0 rounded-full bg-[#b9f42e] px-2 py-0.5 text-[10px] font-bold text-black">+{block.awardedXp} XP</span>
+          )}
+          <span className="shrink-0 text-[10px] font-semibold text-zinc-400">Lv {block.level}</span>
+        </div>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+          <div className="h-full rounded-full bg-[#b9f42e] transition-all duration-500" style={{ width: `${block.percent}%` }} />
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {block.stages.map((stage) => (
+            <span
+              key={stage.key}
+              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                stage.status === "done"
+                  ? "bg-[#b9f42e]/15 text-[#b9f42e]"
+                  : stage.status === "current"
+                    ? "border border-[#b9f42e]/40 text-zinc-100"
+                    : "text-zinc-600"
+              }`}
+            >
+              {stage.status === "done" ? "✓ " : ""}
+              {stage.title}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
   return null;
 }
 

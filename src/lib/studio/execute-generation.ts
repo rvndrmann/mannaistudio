@@ -319,6 +319,7 @@ export async function executeGenerationJobsInBackground(
                       resolution: typeof settings.resolution === "string" ? settings.resolution : "720p",
                       ratio: effectiveAspectRatio,
                       referenceUrls,
+                      endReferenceUrl: typeof settings.endFrame === "string" ? settings.endFrame : undefined,
                     })
                   : await submitBytePlusVideo({
                 model: job.model as VideoGenerationModelId,

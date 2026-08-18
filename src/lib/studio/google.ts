@@ -146,7 +146,22 @@ export async function getGoogleVideoTask(taskId: string) {
       const samples = (genResponse?.generatedSamples || genResponse?.generatedVideos) as Array<{ video?: { uri?: string } }> | undefined
       let videoUri = samples?.[0]?.video?.uri
 
-      if (videoUri && !videoUri.includes("key=")) {
+      // A finished operation with no video is a refusal, not a success. Veo
+      // reports its safety filtering this way, and returning "succeeded" with
+      // an empty url left the job processing for ever and the shot spinning —
+      // the user never learned their prompt had been rejected.
+      if (!videoUri) {
+        const reasons = genResponse?.raiMediaFilteredReasons
+        const filtered = Array.isArray(reasons) && reasons.length ? String(reasons[0]) : ""
+        return {
+          id: taskId,
+          status: "failed" as const,
+          content: undefined,
+          error: { message: filtered || "Google finished this request without returning a video." },
+        }
+      }
+
+      if (!videoUri.includes("key=")) {
         videoUri = `${videoUri}${videoUri.includes("?") ? "&" : "?"}key=${apiKey}`
       }
 

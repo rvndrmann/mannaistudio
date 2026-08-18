@@ -347,7 +347,16 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
       key: "keyframes",
       title: "Generating",
       summary: `Shot ${numbers.join(", ")} ${plural(numbers.length, "is", "are")} generating now. ${remainingWork(snapshot)} Nothing to start until ${plural(numbers.length, "it lands", "they land")}.`,
-      nextAction: null,
+      // Nothing new can be started, but a reply that ends with no button at all
+      // leaves the user guessing what to type. Checking on the render is the
+      // one honest move here, and it spends nothing.
+      nextAction: {
+        id: "pipeline-generating",
+        label: `Check on shot ${numbers.join(", ")}`,
+        intent: `Check the status of the shots that are generating right now and tell me what has landed, what is still running, and what the next step will be once they finish. Do not start any new generation.`,
+        risk: "read",
+        recommended: true,
+      },
       alternatives: lastVideoShot ? [videoRedoAction(lastVideoShot)] : [],
     }
   }

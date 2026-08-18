@@ -53,6 +53,7 @@ export async function submitFalVideo(input: {
   resolution?: string
   ratio?: string
   referenceUrls?: string[]
+  endReferenceUrl?: string
 }) {
   const falKey = getFalKey()
   fal.config({ credentials: falKey })
@@ -77,7 +78,7 @@ export async function submitFalVideo(input: {
       endpoint = hasRef ? "fal-ai/kling-video/v3/pro/image-to-video" : "fal-ai/kling-video/v3/pro/text-to-video"
       break
     case "fal-kling-o3":
-      endpoint = hasRef ? "fal-ai/kling-video/o3/pro/image-to-video" : "fal-ai/kling-video/o3/pro/text-to-video"
+      endpoint = "fal-ai/kling-video/o3/standard/reference-to-video"
       break
     case "fal-kling-1-6-pro":
       endpoint = hasRef ? "fal-ai/kling-video/v1.6/pro/image-to-video" : "fal-ai/kling-video/v1.6/pro/text-to-video"
@@ -95,7 +96,7 @@ export async function submitFalVideo(input: {
 
   try {
     const payload: Record<string, unknown> = {
-      prompt: input.prompt,
+      prompt: trimFalPrompt(input.prompt),
       aspect_ratio: input.ratio || "9:16",
       // 2.5 renders up to 30 seconds; the rest stop at 15. Capping at a flat 15
       // silently shortened every long Seedance 2.5 clip.
@@ -103,7 +104,14 @@ export async function submitFalVideo(input: {
     }
 
     if (hasRef && input.referenceUrls?.length) {
-      payload.image_url = input.referenceUrls[0]
+      if (input.model === "fal-kling-o3") {
+        payload.start_image_url = input.referenceUrls[0]
+        payload.end_image_url = input.endReferenceUrl || input.referenceUrls[1]
+        payload.image_urls = input.referenceUrls.slice(input.endReferenceUrl || input.referenceUrls[1] ? 2 : 1, 5)
+      } else {
+        payload.image_url = input.referenceUrls[0]
+        if (input.endReferenceUrl) payload.end_image_url = input.endReferenceUrl
+      }
       if (input.referenceUrls.length > 1) {
         payload.reference_image_urls = input.referenceUrls
       }
@@ -120,6 +128,41 @@ export async function submitFalVideo(input: {
   }
 }
 
+/**
+ * fal rejects a prompt over 2,500 characters with a 422 the queue still reports
+ * as COMPLETED, so an over-long prompt looked exactly like a video that never
+ * finished. Prompt sheets here run long — a Seedance scene prompt with its
+ * character lock block clears 2,500 easily — so the prompt is trimmed to fit
+ * rather than sent to be refused.
+ */
+export const falPromptLimit = 2_500
+
+export function trimFalPrompt(prompt: string): string {
+  const text = (prompt || "").trim()
+  if (text.length <= falPromptLimit) return text
+  const cut = text.slice(0, falPromptLimit)
+  // Prefer the last sentence end, then the last word, so the prompt does not
+  // stop mid-word and leave the model reading a fragment.
+  const sentence = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "))
+  if (sentence > falPromptLimit * 0.6) return cut.slice(0, sentence + 1).trim()
+  const word = cut.lastIndexOf(" ")
+  return (word > falPromptLimit * 0.6 ? cut.slice(0, word) : cut).trim()
+}
+
+/**
+ * fal addresses its queue by app id — the first two path segments — not by the
+ * full endpoint a request was submitted to.
+ *
+ * Polling the full path returns 405 with an empty body, which this module read
+ * as "not finished", so a video fal had already rendered never landed: the job
+ * sat in `processing` forever and the shot span its generating animation until
+ * someone gave up. Every fal video model was affected; only BytePlus, which
+ * polls a different API entirely, appeared to work.
+ */
+export function falQueueAppId(endpoint: string): string {
+  return endpoint.split("/").filter(Boolean).slice(0, 2).join("/")
+}
+
 // The endpoint a request was submitted to is required to poll it. Defaulting to
 // an unrelated model returns "Not Found" for a job that is running perfectly
 // well, which reads as a failed generation.
@@ -128,7 +171,8 @@ export async function getFalVideoTask(taskId: string, endpoint = "fal-ai/kling-v
   fal.config({ credentials: falKey })
 
   try {
-    const status = await fal.queue.status(endpoint, {
+    const appId = falQueueAppId(endpoint)
+    const status = await fal.queue.status(appId, {
       requestId: taskId,
       logs: true,
     })
@@ -136,10 +180,29 @@ export async function getFalVideoTask(taskId: string, endpoint = "fal-ai/kling-v
     const rawStatus = (status as { status?: string }).status || "UNKNOWN"
 
     if (rawStatus === "COMPLETED") {
-      const result = await fal.queue.result(endpoint, { requestId: taskId })
-      const data = result.data as Record<string, unknown>
-      const videoObj = data?.video as { url?: string } | undefined
-      const videoUrl = videoObj?.url || (data?.video_url as string | undefined)
+      let videoUrl: string | undefined
+      let resultError = ""
+      try {
+        const result = await fal.queue.result(appId, { requestId: taskId })
+        const data = result.data as Record<string, unknown>
+        const videoObj = data?.video as { url?: string } | undefined
+        videoUrl = videoObj?.url || (data?.video_url as string | undefined)
+      } catch (error) {
+        // fal marks a request COMPLETED even when it finished by rejecting the
+        // input, and the reason only appears when the result is fetched.
+        resultError = error instanceof Error ? error.message : "fal.ai returned no result for this request."
+      }
+
+      // Reporting "succeeded" with no url left the job processing for ever,
+      // because the caller waits for a video that is never coming.
+      if (!videoUrl) {
+        return {
+          id: taskId,
+          status: "failed" as const,
+          content: undefined,
+          error: { message: resultError || "fal.ai finished this request without returning a video." },
+        }
+      }
 
       return {
         id: taskId,
