@@ -957,9 +957,27 @@ export const updateAssetTool = defineDirectorTool({
     }),
   })),
   async execute(context, input) {
+    // A patch carrying metadata replaces the whole jsonb column, and the column
+    // holds image_generation — the record of which description the reference
+    // art was made from. Revising a location's description wrote the new look
+    // and erased that record in the same statement, so artIsStale() hit its
+    // "no provenance" branch and reported the art clean. The pipeline then
+    // called the assets done and the revision moved on to the storyboard, while
+    // the location plates still showed the look the user had just replaced.
+    const patch = { ...input.patch } as Record<string, unknown>
+    if (patch.metadata && typeof patch.metadata === "object") {
+      const { data: existing, error: readError } = await context.supabase
+        .from("creator_entities")
+        .select("metadata")
+        .eq("id", input.assetId)
+        .eq("project_id", context.project.id)
+        .single()
+      if (readError) throw readError
+      patch.metadata = mergeAssetMetadata(existing?.metadata, patch.metadata as Record<string, unknown>)
+    }
     const { data, error } = await context.supabase
       .from("creator_entities")
-      .update(input.patch)
+      .update(patch)
       .eq("id", input.assetId)
       .eq("project_id", context.project.id)
       .select("*")
@@ -968,6 +986,19 @@ export const updateAssetTool = defineDirectorTool({
     return data
   },
 })
+
+/**
+ * The saved metadata with the patch laid over it, one key at a time.
+ *
+ * Provenance the agent never names — image_generation above all — has to
+ * survive an edit that only meant to record a palette or a time of day.
+ */
+export function mergeAssetMetadata(existing: unknown, patch: Record<string, unknown>) {
+  const base = existing && typeof existing === "object" && !Array.isArray(existing)
+    ? existing as Record<string, unknown>
+    : {}
+  return { ...base, ...patch }
+}
 
 export const attachMediaToAssetTool = defineDirectorTool({
   name: "attach_media_to_asset",
