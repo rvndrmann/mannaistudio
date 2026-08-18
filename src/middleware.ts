@@ -1,4 +1,4 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 // Routes that require authentication (everything else is public).
@@ -41,18 +41,15 @@ export async function middleware(request: NextRequest) {
         let res = response
         const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
             cookies: {
-                get(name: string) {
-                    return request.cookies.get(name)?.value
+                getAll() {
+                    return request.cookies.getAll()
                 },
-                set(name: string, value: string, options: CookieOptions) {
-                    request.cookies.set({ name, value, ...options })
+                setAll(cookiesToSet) {
+                    cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
                     res = NextResponse.next({ request: { headers: request.headers } })
-                    res.cookies.set({ name, value, ...options })
-                },
-                remove(name: string, options: CookieOptions) {
-                    request.cookies.set({ name, value: '', ...options })
-                    res = NextResponse.next({ request: { headers: request.headers } })
-                    res.cookies.set({ name, value: '', ...options })
+                    cookiesToSet.forEach(({ name, value, options }) =>
+                        res.cookies.set(name, value, options)
+                    )
                 },
             },
         })
