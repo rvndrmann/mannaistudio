@@ -68,6 +68,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { fbTrack } from "@/lib/fbpixel";
 import { claimOnce } from "@/lib/track-once";
 import { creditsToUsd, estimateProjectCost, projectCostSettings, summarizeSpendByEpisode, type SpendBreakdown } from "@/lib/studio/cost-estimate";
+import { parseScript } from "@/lib/studio/script";
 import { VERIFIED_ASSET } from "@/lib/studio/asset-verification";
 import {
   BLOCK_CAMERA_DEFAULTS,
@@ -234,18 +235,6 @@ const marketingTabs = [
   ["competitors", "Competitor Radar", Crosshair],
   ["integrations", "Integrations", Settings2],
 ] as const;
-const blankScript = {
-  title: "Untitled production",
-  overview: "",
-  body: "",
-  scenes: [] as {
-    heading: string;
-    timing: string;
-    direction: string;
-    framing: string;
-    continuity: string;
-  }[],
-};
 
 // The Director model is a per-user preference rather than project data, so it
 // is stored once instead of per project.
@@ -7181,6 +7170,195 @@ function proposalDestination(actionType: string): { tab: string; label: string }
   return null
 }
 
+type ProposedEntity = {
+  kind?: string;
+  name?: string;
+  description?: string;
+  metadata?: Record<string, unknown>;
+  referenceImages?: string[];
+};
+
+/**
+ * The approval card for a batch of new characters and assets.
+ *
+ * The Director proposes the whole list at once and the only open question is
+ * where each one's look comes from. Approving as it stands has every asset
+ * drawn from scratch; attaching a photo to a row locks that asset to something
+ * real instead, and an asset created with art is already past the reference-art
+ * stage, so nothing is generated over the top of it. Both choices live on the
+ * card because asking in chat first spends a turn and leaves the list itself
+ * unanswerable until the user replies.
+ */
+function EntityBatchProposalBlock({
+  proposal,
+  projectId,
+  busy,
+  onDecide,
+  onOpenTab,
+}: {
+  proposal: ChatProposal;
+  projectId: string;
+  busy: boolean;
+  onDecide: (proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) => void;
+  onOpenTab: (tab: string) => void;
+}) {
+  const canDecide = proposal.status === "pending";
+  const destination = proposalDestination(proposal.action_type);
+  const proposed = useMemo<ProposedEntity[]>(() => {
+    const list = (proposal.payload as { entities?: unknown } | undefined)?.entities;
+    return Array.isArray(list) ? (list as ProposedEntity[]) : [];
+  }, [proposal.payload]);
+
+  const [photos, setPhotos] = useState<Record<number, string[]>>({});
+  const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const withPhotos = proposed.filter((_, index) => (photos[index]?.length ?? 0) > 0).length;
+
+  const upload = async (index: number, file?: File) => {
+    if (!file) return;
+    setUploadingIndex(index);
+    setUploadError(null);
+    try {
+      const userId = (await createClient().auth.getUser()).data.user?.id;
+      if (!userId) throw new Error("Please sign in before uploading a photo.");
+      const path = `${userId}/${projectId}/entity-reference-${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+      const { error } = await createClient().storage.from("creator-studio-media").upload(path, file);
+      if (error) throw error;
+      setPhotos((current) => ({ ...current, [index]: [...(current[index] || []), path].slice(0, 4) }));
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Photo upload failed");
+    } finally {
+      setUploadingIndex(null);
+    }
+  };
+
+  const approve = () => {
+    onDecide(proposal.id, "approved", {
+      entities: proposed.map((entity, index) => ({
+        ...entity,
+        referenceImages: photos[index]?.length ? photos[index] : entity.referenceImages ?? [],
+      })),
+    });
+  };
+
+  return (
+    <div className="flex flex-col overflow-hidden rounded-xl border border-white/10 bg-[#161616] text-left">
+      <div className="flex items-center justify-between border-b border-white/5 bg-black/20 p-3">
+        <div className="flex items-center gap-2">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[#c084fc]/20 bg-[#c084fc]/10">
+            <Users className="h-3.5 w-3.5 text-[#c084fc]" />
+          </div>
+          <p className="truncate text-[13px] font-bold text-zinc-100">{proposal.title || "Create production assets"}</p>
+          <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-zinc-400">{proposed.length || "?"} assets</span>
+        </div>
+        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold capitalize ${proposal.status === "rejected" || proposal.status === "expired" ? "border-white/15 text-zinc-400" : "border-[#fff878]/30 text-[#fff878]"}`}>
+          {proposal.status === "pending" ? "Pending confirmation" : proposal.status === "rejected" ? "Cancelled" : proposal.status === "expired" ? "Withdrawn — you replied instead" : proposal.status}
+        </span>
+      </div>
+
+      {canDecide && proposed.length ? (
+        <>
+          <p className="border-b border-white/5 px-3 py-2 text-[11px] leading-relaxed text-zinc-400">
+            Approve as it stands and every asset is generated from scratch. Or attach your own photo to any of
+            them first — those keep your reference art instead.
+          </p>
+
+          <div className="max-h-64 divide-y divide-white/5 overflow-y-auto">
+            {proposed.map((entity, index) => {
+              const attached = photos[index] || [];
+              return (
+                <div key={`${entity.name}-${index}`} className="flex items-center gap-2 px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12px] font-semibold text-zinc-200">{entity.name || "Untitled asset"}</p>
+                    {entity.kind ? (
+                      <span className="text-[10px] capitalize text-zinc-500">{String(entity.kind).replaceAll("_", " ")}</span>
+                    ) : null}
+                  </div>
+
+                  {attached.map((path) => (
+                    <div key={path} className="group/photo relative h-10 w-10 shrink-0 overflow-hidden rounded-md border border-[#b9f42e]/50">
+                      <AssetImage src={path} />
+                      <button
+                        type="button"
+                        onClick={() => setPhotos((current) => ({ ...current, [index]: (current[index] || []).filter((item) => item !== path) }))}
+                        className="absolute right-0.5 top-0.5 hidden rounded bg-black/75 px-1 text-[10px] text-white group-hover/photo:block"
+                        aria-label={`Remove photo from ${entity.name}`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+
+                  {attached.length ? null : (
+                    <span className="shrink-0 text-[10px] text-zinc-600">Will be generated</span>
+                  )}
+
+                  <label className={`flex shrink-0 cursor-pointer items-center gap-1 rounded-full border border-white/15 px-2 py-1 text-[10px] font-semibold text-zinc-300 transition hover:bg-white/5 ${busy || uploadingIndex !== null ? "pointer-events-none opacity-50" : ""}`}>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        upload(index, file);
+                      }}
+                    />
+                    {uploadingIndex === index ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+                    {attached.length ? "Add" : "Photo"}
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+
+          {uploadError ? <p className="px-3 pt-2 text-[11px] text-red-300">{uploadError}</p> : null}
+
+          <div className="flex items-center justify-between gap-2 border-t border-white/5 p-3">
+            <span className="text-[11px] text-zinc-500">
+              {withPhotos ? `${withPhotos} of ${proposed.length} using your photos` : "All generated from scratch"}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onDecide(proposal.id, "rejected")}
+                className="rounded border border-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-400 transition hover:bg-white/5 hover:text-white disabled:opacity-50"
+              >
+                Reject
+              </button>
+              <button
+                type="button"
+                disabled={busy || uploadingIndex !== null}
+                onClick={approve}
+                className="flex items-center gap-1.5 rounded bg-[#fff878] px-3 py-1.5 text-[11px] font-bold text-black transition hover:bg-[#fff878]/90 disabled:opacity-50"
+              >
+                {busy ? "Working..." : withPhotos ? `Create ${proposed.length}` : `Generate all ${proposed.length}`}
+              </button>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="p-3">
+          <p className="text-[12px] font-semibold text-[#fff878]">{proposal.summary || `${proposed.length} assets`}</p>
+          {proposal.status === "executed" && destination ? (
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => onOpenTab(destination.tab)}
+                className="flex items-center gap-1.5 rounded border border-white/20 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-white/10"
+              >
+                <ArrowRight className="h-3.5 w-3.5" />
+                {destination.label}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProposalCard({
   proposal,
   entities,
@@ -7237,6 +7415,18 @@ function ProposalCard({
         busy={busy}
         onDecide={onDecide}
         onAction={onAction}
+      />
+    );
+  }
+
+  if (proposal.action_type === "create_production_entities_batch") {
+    return (
+      <EntityBatchProposalBlock
+        proposal={proposal}
+        projectId={projectId}
+        busy={busy}
+        onDecide={onDecide}
+        onOpenTab={onOpenTab}
       />
     );
   }
@@ -8768,27 +8958,4 @@ function Pill({ children }: { children: React.ReactNode }) {
       {children}
     </span>
   );
-}
-function parseScript(value: unknown) {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    const script = { ...blankScript, ...(value as typeof blankScript) };
-    if (!script.body && script.scenes.length) {
-      script.body = script.scenes
-        .map((scene) =>
-          [
-            scene.heading,
-            scene.timing,
-            scene.direction,
-            scene.framing,
-            scene.continuity,
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        )
-        .join("\n\n");
-    }
-    return script;
-  }
-  if (typeof value === "string") return { ...blankScript, body: value };
-  return blankScript;
 }

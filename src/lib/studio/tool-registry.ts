@@ -15,6 +15,7 @@ import { estimateShotSeconds } from "./shot-duration"
 import { beatRuntimeSeconds, describeBeatProblems, readShotVideoPrompt, writeShotVideoPrompt } from "./shot-video-prompt"
 import { aspectMismatch, restateAspect } from "./shot-aspect"
 import { buildGenerationTargetSnapshot } from "./generation-target"
+import { scriptContentSchema, normalizeScriptContent } from "./script"
 
 export type ToolRisk = "read" | "write" | "costly" | "destructive"
 
@@ -39,7 +40,7 @@ export const inspectCurrentProjectTool = defineDirectorTool({
   version: 1,
   risk: "read",
   requiresApproval: false,
-  input: z.object({}).strict(),
+  input: z.object({}),
   async execute(context) {
     const { id, user_id, name, description, production_mode, project_type, creative_brief, default_style, default_aspect } = context.project
     return { id, userId: user_id, name, description, productionMode: production_mode, projectType: project_type, creativeBrief: creative_brief, defaultStyle: default_style, defaultAspect: default_aspect }
@@ -51,7 +52,7 @@ export const readEpisodeScriptTool = defineDirectorTool({
   version: 1,
   risk: "read",
   requiresApproval: false,
-  input: z.object({ episodeId: z.string().uuid() }).strict(),
+  input: z.object({ episodeId: z.string().uuid() }),
   async execute(context, input) {
     const { data, error } = await context.supabase.from("creator_episodes").select("id,name,description,script_content,script_updated_at").eq("id", input.episodeId).eq("project_id", context.project.id).single()
     if (error) throw error
@@ -78,7 +79,7 @@ export const saveScriptPromptsTool = defineDirectorTool({
       entityNames: z.array(z.string().trim().min(1).max(160)).max(24).default([]),
       notes: z.string().trim().max(2_000).default(""),
     })).min(1).max(200),
-  }).strict(),
+  }),
   async execute(context, input) {
     const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
     if (!episode) throw new Error("Episode not found in this project")
@@ -110,7 +111,7 @@ export const writeEpisodeMasterPromptTool = defineDirectorTool({
   input: z.object({
     episodeId: z.string().uuid(),
     masterPrompt: z.string().trim().min(1).max(60_000),
-  }).strict(),
+  }),
   async execute(context, input) {
     const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
     if (!episode) throw new Error("Episode does not belong to this project")
@@ -132,7 +133,7 @@ export const readEpisodeMasterPromptTool = defineDirectorTool({
   version: 1,
   risk: "read",
   requiresApproval: false,
-  input: z.object({ episodeId: z.string().uuid() }).strict(),
+  input: z.object({ episodeId: z.string().uuid() }),
   async execute(context, input) {
     const { data, error } = await context.supabase
       .from("creator_episodes")
@@ -158,7 +159,7 @@ export const readScriptPromptsTool = defineDirectorTool({
   version: 1,
   risk: "read",
   requiresApproval: false,
-  input: z.object({ episodeId: z.string().uuid() }).strict(),
+  input: z.object({ episodeId: z.string().uuid() }),
   async execute(context, input) {
     const { data, error } = await context.supabase
       .from("creator_script_prompts")
@@ -176,7 +177,7 @@ export const searchEpisodeScriptTool = defineDirectorTool({
   version: 1,
   risk: "read",
   requiresApproval: false,
-  input: z.object({ episodeId: z.string().uuid(), query: z.string().trim().max(200).default(""), startLine: z.number().int().min(1).default(1), endLine: z.number().int().min(1).max(5_000).default(200) }).strict(),
+  input: z.object({ episodeId: z.string().uuid(), query: z.string().trim().max(200).default(""), startLine: z.number().int().min(1).default(1), endLine: z.number().int().min(1).max(5_000).default(200) }),
   async execute(context, input) {
     if (input.endLine < input.startLine || input.endLine - input.startLine > 499) throw new Error("Script ranges may contain at most 500 lines")
     const { data, error } = await context.supabase.from("creator_episodes").select("id,name,script_content").eq("id", input.episodeId).eq("project_id", context.project.id).single()
@@ -199,7 +200,7 @@ export const listProductionEntitiesTool = defineDirectorTool({
     search: z.string().trim().max(200).default(""),
     offset: z.number().int().nonnegative().default(0),
     limit: z.number().int().min(1).max(50).default(25),
-  }).strict(),
+  }),
   async execute(context, input) {
     let query = context.supabase.from("creator_entities").select("id,type,kind,name,handle,description,reference_images,status,approval_status,metadata", { count: "exact" }).eq("project_id", context.project.id).order("created_at").range(input.offset, input.offset + input.limit - 1)
     if (input.types.length) query = query.in("type", input.types)
@@ -215,7 +216,7 @@ export const listStoryboardShotsTool = defineDirectorTool({
   version: 1,
   risk: "read",
   requiresApproval: false,
-  input: z.object({ episodeId: z.string().uuid(), offset: z.number().int().nonnegative().default(0), limit: z.number().int().min(1).max(50).default(25) }).strict(),
+  input: z.object({ episodeId: z.string().uuid(), offset: z.number().int().nonnegative().default(0), limit: z.number().int().min(1).max(50).default(25) }),
   async execute(context, input) {
     const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
     if (!episode) throw new Error("Episode does not belong to this project")
@@ -242,7 +243,7 @@ export const updateCreativeBriefTool = defineDirectorTool({
   input: z.object({
     patch: creativeBriefSchema.partial(),
     confirm: z.array(creativeBriefSchema.keyof()).max(20).default([]),
-  }).strict(),
+  }),
   async execute(context, input) {
     const creativeBrief = mergeCreativeBrief(context.project.creative_brief, input.patch, input.confirm)
     const { data, error } = await context.supabase
@@ -262,7 +263,7 @@ export const createSeriesTool = defineDirectorTool({
   version: 1,
   risk: "write",
   requiresApproval: true,
-  input: z.object({ name: z.string().trim().min(1).max(200), bible: seriesBibleSchema.optional() }).strict(),
+  input: z.object({ name: z.string().trim().min(1).max(200), bible: seriesBibleSchema.optional() }),
   async execute(context, input) {
     const bible = seriesBibleSchema.parse(input.bible ?? {})
     const { data, error } = await context.supabase.from("creator_series").insert({ project_id: context.project.id, name: input.name, premise: bible.premise || null, genre: bible.genre || null, tone: bible.tone || null, audience: bible.audience || null, format: bible.format, bible }).select("*").single()
@@ -276,7 +277,7 @@ export const writeSeriesBibleTool = defineDirectorTool({
   version: 1,
   risk: "write",
   requiresApproval: true,
-  input: z.object({ seriesId: z.string().uuid(), bible: seriesBibleSchema }).strict(),
+  input: z.object({ seriesId: z.string().uuid(), bible: seriesBibleSchema }),
   async execute(context, input) {
     const { data, error } = await context.supabase.from("creator_series").update({ premise: input.bible.premise || null, genre: input.bible.genre || null, tone: input.bible.tone || null, audience: input.bible.audience || null, format: input.bible.format, bible: input.bible }).eq("id", input.seriesId).eq("project_id", context.project.id).select("*").single()
     if (error) throw error
@@ -289,7 +290,7 @@ export const createProductionEntityTool = defineDirectorTool({
   version: 1,
   risk: "write",
   requiresApproval: true,
-  input: z.object({ kind: entityKindSchema, name: z.string().trim().min(1).max(200), description: z.string().trim().max(10_000).default(""), metadata: z.record(z.string(), z.unknown()).default({}), referenceImages: z.array(z.string().max(2_000)).max(30).default([]) }).strict(),
+  input: z.object({ kind: entityKindSchema, name: z.string().trim().min(1).max(200), description: z.string().trim().max(10_000).default(""), metadata: z.record(z.string(), z.unknown()).default({}), referenceImages: z.array(z.string().max(2_000)).max(30).default([]) }),
   async execute(context, input) {
     const { data, error } = await context.supabase.from("creator_entities").insert({ project_id: context.project.id, type: legacyEntityType(input.kind), kind: input.kind, name: input.name, handle: entityHandle(input.name), description: input.description || null, reference_images: input.referenceImages, metadata: input.metadata, status: "draft", approval_status: "pending" }).select("*").single()
     if (error) throw error
@@ -302,14 +303,18 @@ export const createProductionEntitiesBatchTool = defineDirectorTool({
   version: 1,
   risk: "write",
   requiresApproval: true,
-  input: z.object({ entities: z.array(z.object({ kind: entityKindSchema, name: z.string().trim().min(1).max(200), description: z.string().trim().max(10_000).default(""), metadata: z.record(z.string(), z.unknown()).default({}) }).strict()).min(1).max(50), skipExisting: z.boolean().default(true) }).strict(),
+  // `referenceImages` is how a user's own photo reaches an entity at creation
+  // time. The approval card lets them attach one per entity before approving,
+  // and an entity that arrives with art is already past the reference-art stage
+  // — so their photo defines the look instead of a generated one replacing it.
+  input: z.object({ entities: z.array(z.object({ kind: entityKindSchema, name: z.string().trim().min(1).max(200), description: z.string().trim().max(10_000).default(""), metadata: z.record(z.string(), z.unknown()).default({}), referenceImages: z.array(z.string().max(2_000)).max(10).default([]) })).min(1).max(50), skipExisting: z.boolean().default(true) }),
   async execute(context, input) {
     const handles = input.entities.map((entity) => entityHandle(entity.name))
     const { data: existing, error: existingError } = await context.supabase.from("creator_entities").select("id,handle,name").eq("project_id", context.project.id).in("handle", handles)
     if (existingError) throw existingError
     const existingHandles = new Set((existing || []).map((entity) => entity.handle))
     if (!input.skipExisting && existingHandles.size) throw new Error(`Entities already exist: ${(existing || []).map((entity) => entity.name).join(", ")}`)
-    const rows = input.entities.filter((entity) => !existingHandles.has(entityHandle(entity.name))).map((entity) => ({ project_id: context.project.id, type: legacyEntityType(entity.kind), kind: entity.kind, name: entity.name, handle: entityHandle(entity.name), description: entity.description || null, metadata: entity.metadata, status: "draft", approval_status: "pending" }))
+    const rows = input.entities.filter((entity) => !existingHandles.has(entityHandle(entity.name))).map((entity) => ({ project_id: context.project.id, type: legacyEntityType(entity.kind), kind: entity.kind, name: entity.name, handle: entityHandle(entity.name), description: entity.description || null, reference_images: entity.referenceImages, metadata: entity.metadata, status: "draft", approval_status: "pending" }))
     if (!rows.length) return { created: [], skipped: existing || [] }
     const { data, error } = await context.supabase.from("creator_entities").insert(rows).select("*")
     if (error) throw error
@@ -332,8 +337,8 @@ export const createStoryboardBatchTool = defineDirectorTool({
      * storyboard, which is a different scene order than the one requested.
      */
     insertAfterShotNumber: z.number().int().min(0).max(1_000).optional(),
-    shots: z.array(z.object({ title: z.string().trim().min(1).max(200), description: z.string().trim().max(5_000).default(""), scriptText: z.string().trim().max(10_000).default(""), prompt: z.string().trim().min(1).max(20_000), durationSeconds: z.number().positive().max(120).default(4), aspectRatio: z.string().trim().max(20).default("16:9"), referencedEntityIds: z.array(z.string().uuid()).max(30).default([]) }).strict()).min(1).max(100),
-  }).strict(),
+    shots: z.array(z.object({ title: z.string().trim().min(1).max(200), description: z.string().trim().max(5_000).default(""), scriptText: z.string().trim().max(10_000).default(""), prompt: z.string().trim().min(1).max(20_000), durationSeconds: z.number().positive().max(120).default(4), aspectRatio: z.string().trim().max(20).default("16:9"), referencedEntityIds: z.array(z.string().uuid()).max(30).default([]) })).min(1).max(100),
+  }),
   async execute(context, input) {
     const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
     if (!episode) throw new Error("Episode does not belong to this project")
@@ -419,7 +424,7 @@ export const validateProductionTool = defineDirectorTool({
   version: 1,
   risk: "read",
   requiresApproval: false,
-  input: z.object({ episodeId: z.string().uuid() }).strict(),
+  input: z.object({ episodeId: z.string().uuid() }),
   async execute(context, input) {
     const { data: episode } = await context.supabase.from("creator_episodes").select("id,script_content").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
     if (!episode) throw new Error("Episode does not belong to this project")
@@ -464,7 +469,7 @@ export const inspectContinuityTool = defineDirectorTool({
   version: 1,
   risk: "read",
   requiresApproval: false,
-  input: z.object({ entityId: z.string().uuid().optional() }).strict(),
+  input: z.object({ entityId: z.string().uuid().optional() }),
   async execute(context, input) {
     let query = context.supabase.from("creator_continuity_facts").select("*").eq("project_id", context.project.id).eq("status", "approved")
     if (input.entityId) query = query.eq("entity_id", input.entityId)
@@ -492,7 +497,7 @@ export const inspectGenerationJobsTool = defineDirectorTool({
   version: 1,
   risk: "read",
   requiresApproval: false,
-  input: z.object({ episodeId: z.string().uuid().optional(), statuses: z.array(z.enum(["queued", "awaiting_approval", "approved", "processing", "completed", "failed", "cancelled"])).max(7).default([]), limit: z.number().int().min(1).max(100).default(25) }).strict(),
+  input: z.object({ episodeId: z.string().uuid().optional(), statuses: z.array(z.enum(["queued", "awaiting_approval", "approved", "processing", "completed", "failed", "cancelled"])).max(7).default([]), limit: z.number().int().min(1).max(100).default(25) }),
   async execute(context, input) {
     let shotIds: string[] | null = null
     if (input.episodeId) {
@@ -517,7 +522,7 @@ export const submitGenerationTool = defineDirectorTool({
   version: 1,
   risk: "costly",
   requiresApproval: true,
-  input: z.object({ request: generationRequestSchema, prompts: z.record(z.string(), z.string().trim().min(1).max(20_000)), idempotencyKey: z.string().min(8).max(200), workflowRunId: z.string().uuid().optional() }).strict(),
+  input: z.object({ request: generationRequestSchema, prompts: z.record(z.string(), z.string().trim().min(1).max(20_000)), idempotencyKey: z.string().min(8).max(200), workflowRunId: z.string().uuid().optional() }),
   async execute(context, input) {
     // Storyboard numbers are resolved here, against the episode, so a model
     // that only knows "shot 2" cannot target the wrong shot. order_index is
@@ -699,13 +704,13 @@ export const updateScriptTool = defineDirectorTool({
   requiresApproval: true,
   input: z.object({
     episodeId: z.string().uuid(),
-    content: z.unknown(),
+    content: scriptContentSchema,
     summary: z.string().trim().min(1).max(500).default("Update script from AI Director chat"),
-  }).strict(),
+  }),
   async execute(context, input) {
     const { data, error } = await context.supabase
       .from("creator_episodes")
-      .update({ script_content: input.content, script_updated_at: new Date().toISOString() })
+      .update({ script_content: normalizeScriptContent(input.content), script_updated_at: new Date().toISOString() })
       .eq("id", input.episodeId)
       .eq("project_id", context.project.id)
       .select("*")
@@ -736,8 +741,8 @@ export const updateShotTool = defineDirectorTool({
       style: z.string().trim().max(200).optional(),
       keyframe_image: z.string().trim().max(2_000).nullable().optional(),
       video_url: z.string().trim().max(2_000).nullable().optional(),
-    }).strict(),
-  }).strict(),
+    }),
+  }),
   async execute(context, input) {
     const { data: episodes, error: episodeError } = await context.supabase.from("creator_episodes").select("id").eq("project_id", context.project.id)
     if (episodeError) throw episodeError
@@ -806,7 +811,7 @@ export const writeShotVideoPromptsTool = defineDirectorTool({
         "What happens across THIS ONE SHOT, as contiguous timed beats. Each shot is its own self-contained timeline: it starts at 0s, runs to that shot's own length, and never carries a timestamp from the scene it belongs to — shot 4 is `0-4s`, not `12-16s`. One shot is a single continuous camera action of at most 15 seconds; a scene longer than that is already split across the storyboard's shots, so write each shot's slice of it rather than the whole scene. Two beat forms are accepted: `0-4s: <action>` or the timestamped-title form `0-2s — BEAT TITLE` followed by the action lines. Every beat states camera framing, who is present by @tag, the specific physical action, and the environmental reaction. Dialogue goes in braces — @Ethan says: {\"Wait.\"} — and sound in angle brackets — <Door slams>. Roughly three words a second is the ceiling for a speakable line, so a line that will not fit needs a longer shot, not a faster read. Never describe a referenced character's face, hair, build, or wardrobe, and never write a CHARACTER / ASSET LOCK block: reference art defines appearance, and written descriptions are stripped before the prompt reaches the provider.",
       ),
     })).min(1).max(100),
-  }).strict(),
+  }),
   async execute(context, input) {
     const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
     if (!episode) throw new Error("Episode does not belong to this project")
@@ -863,7 +868,7 @@ export const fixShotAspectMismatchTool = defineDirectorTool({
   version: 1,
   risk: "write",
   requiresApproval: true,
-  input: z.object({ episodeId: z.string().uuid() }).strict(),
+  input: z.object({ episodeId: z.string().uuid() }),
   async execute(context, input) {
     const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
     if (!episode) throw new Error("Episode does not belong to this project")
@@ -886,7 +891,7 @@ export const deleteShotTool = defineDirectorTool({
   version: 1,
   risk: "destructive",
   requiresApproval: true,
-  input: z.object({ shotId: z.string().uuid() }).strict(),
+  input: z.object({ shotId: z.string().uuid() }),
   async execute(context, input) {
     const { data: episodes, error: episodeError } = await context.supabase.from("creator_episodes").select("id").eq("project_id", context.project.id)
     if (episodeError) throw episodeError
@@ -916,8 +921,8 @@ export const updateAssetTool = defineDirectorTool({
       status: z.string().trim().max(80).optional(),
       voice_id: z.string().trim().max(200).nullable().optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
-    }).strict(),
-  }).strict(),
+    }),
+  }),
   async execute(context, input) {
     const { data, error } = await context.supabase
       .from("creator_entities")
@@ -936,7 +941,7 @@ export const attachMediaToAssetTool = defineDirectorTool({
   version: 1,
   risk: "write",
   requiresApproval: true,
-  input: z.object({ assetId: z.string().uuid(), storagePath: z.string().trim().min(1).max(2_000) }).strict(),
+  input: z.object({ assetId: z.string().uuid(), storagePath: z.string().trim().min(1).max(2_000) }),
   async execute(context, input) {
     const { data: asset, error: readError } = await context.supabase.from("creator_entities").select("reference_images,metadata").eq("id", input.assetId).eq("project_id", context.project.id).single()
     if (readError) throw readError
@@ -955,7 +960,7 @@ export const deleteAssetTool = defineDirectorTool({
   version: 1,
   risk: "destructive",
   requiresApproval: true,
-  input: z.object({ assetId: z.string().uuid() }).strict(),
+  input: z.object({ assetId: z.string().uuid() }),
   async execute(context, input) {
     const { data, error } = await context.supabase
       .from("creator_entities")
@@ -974,7 +979,7 @@ export const attachMediaToShotTool = defineDirectorTool({
   version: 1,
   risk: "write",
   requiresApproval: true,
-  input: z.object({ shotId: z.string().uuid(), storagePath: z.string().trim().min(1).max(2_000), mediaType: z.enum(["image", "video", "audio"]).default("image") }).strict(),
+  input: z.object({ shotId: z.string().uuid(), storagePath: z.string().trim().min(1).max(2_000), mediaType: z.enum(["image", "video", "audio"]).default("image") }),
   async execute(context, input) {
     const { data: episodes, error: episodeError } = await context.supabase.from("creator_episodes").select("id").eq("project_id", context.project.id)
     if (episodeError) throw episodeError
@@ -1005,7 +1010,7 @@ export const updateFullAutoModeTool = defineDirectorTool({
     creditCap: z.number().int().positive().max(100_000).default(500),
     maxJobsPerRun: z.number().int().positive().max(100).default(10),
     allowDestructiveActions: z.boolean().default(false),
-  }).strict(),
+  }),
   async execute(context, input) {
     const metadata = {
       ...((context.project.metadata as Record<string, unknown> | undefined) ?? {}),

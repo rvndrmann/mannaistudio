@@ -31,11 +31,12 @@ import { actionMatchesRequestedShots, buildVideoContinuationPrompt, isAmbiguousS
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 import { addWorkflowStep, createWorkflowRun, finishWorkflowRun } from "@/lib/studio/workflow-runs"
 import { buildGenerationTargetSnapshot, verifyGenerationTarget } from "@/lib/studio/generation-target"
-import { forbidsImageGeneration, forbidsMediaGeneration, forbidsVideoGeneration } from "@/lib/studio/media-intent"
+import { forbidsImageGeneration, forbidsMediaGeneration, forbidsVideoGeneration, requestsWrittenStory } from "@/lib/studio/media-intent"
 import { episodeFootageInstructions, fetchEpisodeFootage, handoffAlias, previousEpisodeHandoff } from "@/lib/studio/episode-continuity"
 import { ensureShotLocations } from "@/lib/studio/shot-location"
 import { resolveShotSeconds } from "@/lib/studio/shot-duration"
 import { beatRuntimeSeconds, videoPromptFor } from "@/lib/studio/shot-video-prompt"
+import { normalizeScriptContent } from "@/lib/studio/script"
 
 // A Director run can take minutes, and it must finish even when the browser
 // that started it goes away: the reply and the workflow run are persisted
@@ -706,7 +707,8 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
   // "generate". Left to the agent it came back as an inspection report on a
   // different shot entirely.
   const wantsMediaVerb = /\b(generate|create|make|render|produce)\b/.test(normalized) || wantsRedo(normalized)
-  if (!forbidsAllMediaGeneration && !forbidsVideoGenerationRequest && /\b(video|animate|motion)\b/.test(normalized) && wantsMediaVerb) {
+  const wantsWritingInstead = requestsWrittenStory(input.message)
+  if (!forbidsAllMediaGeneration && !forbidsVideoGenerationRequest && !wantsWritingInstead && /\b(video|animate|motion)\b/.test(normalized) && wantsMediaVerb) {
     const { data: shots, error } = await input.context.supabase.from("creator_shots").select("id,prompt,title,order_index,keyframe_image,video_url,video_status,duration_seconds,metadata").eq("episode_id", input.episodeId).order("order_index")
     if (error) throw error
     // Same 1-based numbering submit_generation resolves against, so a number
@@ -727,7 +729,11 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
       return textMessage(input.sessionId, `Shot ${unprompted.join(", ")} has no prompt yet. Add one to the storyboard and I will prepare the video.`)
     }
     const selectedNumbers = named.length ? named : (shots ?? []).filter((shot) => shot.prompt).slice(0, 3).map((shot) => shot.order_index + 1)
-    if (!selectedNumbers.length) return textMessage(input.sessionId, "I need at least one storyboard shot with a prompt before I can prepare video generation.")
+    // Nothing to render yet. Answering with the shortfall strands a user who is
+    // still describing the film they want made — the pipeline knows the episode
+    // is at the script stage, so hand the message to the agent, which starts
+    // there instead of naming a storyboard that does not exist.
+    if (!selectedNumbers.length) return null
     const missingReferenceNumbers = referenceNumbers.filter((number) => {
       const shot = byNumber.get(number)
       return !shot?.video_url || shot.video_status !== "completed"
@@ -1359,10 +1365,7 @@ function looksLikeScript(text: string) {
 }
 
 function parseStoredScript(value: unknown) {
-  const blank = { title: "Untitled production", overview: "", body: "", scenes: [] as Array<{ heading: string; timing: string; direction: string; framing: string; continuity: string }> }
-  if (value && typeof value === "object" && !Array.isArray(value)) return { ...blank, ...(value as typeof blank), scenes: Array.isArray((value as typeof blank).scenes) ? (value as typeof blank).scenes : [] }
-  if (typeof value === "string") return { ...blank, body: value }
-  return blank
+  return normalizeScriptContent(value)
 }
 
 function scriptTextToFullScript(text: string) {

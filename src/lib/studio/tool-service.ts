@@ -22,14 +22,27 @@ export const toolRequestSchema = z.object({
   idempotencyKey: z.string().trim().min(8).max(200),
   sessionId: z.string().uuid().optional(),
   workflowRunId: z.string().uuid().optional(),
-}).strict()
+})
+
+function normalizeToolInput(input: unknown): unknown {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input
+  const rec = { ...(input as Record<string, unknown>) }
+  if ("episode_id" in rec && !("episodeId" in rec)) rec.episodeId = rec.episode_id
+  if ("project_id" in rec && !("projectId" in rec)) rec.projectId = rec.project_id
+  if ("shot_id" in rec && !("shotId" in rec)) rec.shotId = rec.shot_id
+  if ("asset_id" in rec && !("assetId" in rec)) rec.assetId = rec.asset_id
+  if ("series_id" in rec && !("seriesId" in rec)) rec.seriesId = rec.series_id
+  if ("workflow_run_id" in rec && !("workflowRunId" in rec)) rec.workflowRunId = rec.workflow_run_id
+  return rec
+}
 
 export async function requestDirectorTool(context: AuthenticatedProjectContext, raw: unknown) {
   const request = toolRequestSchema.parse(raw)
   const tool = directorTools[request.tool]
-  const rawInput = request.tool === "submit_generation" && request.workflowRunId && request.input && typeof request.input === "object"
+  const preparedInput = request.tool === "submit_generation" && request.workflowRunId && request.input && typeof request.input === "object"
     ? { ...(request.input as Record<string, unknown>), workflowRunId: request.workflowRunId }
     : request.input
+  const rawInput = normalizeToolInput(preparedInput)
   const parsedInput = tool.input.parse(rawInput)
   // Generation execution strips identity prose as a final safety check. Apply
   // the same rule before saving the approval proposal so the UI never shows a
@@ -228,7 +241,7 @@ export async function decideDirectorProposal(context: AuthenticatedProjectContex
   if (!tool) throw new Error("Unknown proposal action")
   try {
     const payload = mergeProposalPayload(proposal.payload, overrides)
-    const input = tool.input.parse(payload)
+    const input = tool.input.parse(normalizeToolInput(payload))
     if (overrides && Object.keys(overrides).length) {
       // Bookkeeping only: execution already uses the merged payload above. A
       // failure here must not block work the user has approved and paid for.

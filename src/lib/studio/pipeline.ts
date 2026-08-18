@@ -181,7 +181,7 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
       nextAction: {
         id: "pipeline-script",
         label: "Confirm the script",
-        intent: "Check whether this episode already has a script. If it does, tell me what is in it and confirm it is ready to work from. If it does not, ask me to paste the script text.",
+        intent: "Check whether this episode already has a script. If it does, tell me what is in it and confirm it is ready to work from. If it does not, ask me to paste the script text, and also offer to write the script for me yourself if I'd rather describe the idea and have you draft it.",
         risk: "write",
         recommended: true,
       },
@@ -214,7 +214,7 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
       nextAction: {
         id: "pipeline-entities",
         label: `Create ${missing.length} missing ${plural(missing.length, "asset")}`,
-        intent: `As the Character & Asset Agent, add the characters and assets the prompt sheet needs that this project does not have yet: ${list(missing, 24)}. List the existing library first and skip everything already there — never duplicate one that exists.`,
+        intent: `Before adding anything, ask me whether I have my own photos for any of these characters or assets — ${list(missing, 24)} — so their appearance is locked to something real instead of invented from scratch. If I say no or have none, proceed right away. If I upload photos, use them as the art for the matching character or asset when you add it. As the Character & Asset Agent, add the characters and assets the prompt sheet needs that this project does not have yet: ${list(missing, 24)}. List the existing library first and skip everything already there — never duplicate one that exists.`,
         risk: "write",
         recommended: true,
       },
