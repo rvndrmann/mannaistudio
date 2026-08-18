@@ -15,6 +15,7 @@ export const videoGenerationModels = [
   { id: "fal-seedance-2-0-fast", label: "Seedance 2.0 Fast", provider: "fal" },
   { id: "fal-seedance-2-0-mini", label: "Seedance 2.0 Mini", provider: "fal" },
   { id: "google-veo-3-1", label: "Veo 3.1 (Google AI Studio)", provider: "google" },
+  { id: "google-omni-flash", label: "Gemini Omni Flash (Google AI Studio)", provider: "google" },
   { id: "dreamina-seedance-2-5-260628", label: "Seedance 2.5 (BytePlus Direct)", provider: "byteplus" },
   { id: "dreamina-seedance-2-0-260128", label: "Seedance 2.0 (BytePlus Direct)", provider: "byteplus" },
   { id: "dreamina-seedance-2-0-fast-260128", label: "Seedance 2.0 Fast (BytePlus Direct)", provider: "byteplus" },

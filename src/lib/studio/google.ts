@@ -70,9 +70,28 @@ export async function submitGoogleVideo(input: {
   referenceUrls?: string[]
 }) {
   const apiKey = getGoogleApiKey()
+  if (input.model === "google-omni-flash") {
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/interactions?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "gemini-omni-flash-preview",
+          input: input.prompt,
+          ...(input.referenceUrls?.length ? { context: input.referenceUrls.slice(0, 3) } : {}),
+        }),
+      })
+      const data = await response.json() as { id?: string; error?: { message?: string } }
+      if (!response.ok || !data.id) throw new GoogleProviderError(data.error?.message || "Google Omni Flash did not return an interaction.")
+      return { id: data.id, response: data }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Google Omni Flash submission failed"
+      throw new GoogleProviderError(`Google AI Studio request failed: ${msg}`)
+    }
+  }
   const ai = new GoogleGenAI({ apiKey })
 
-  const modelId = input.model === "google-veo-3-1" ? "veo-3.1-generate-preview" : "veo-2.0-generate-001"
+  const modelId = "veo-3.1-generate-preview"
 
   try {
     const response = await ai.models.generateVideos({
@@ -97,6 +116,15 @@ export async function getGoogleVideoTask(taskId: string) {
   const apiKey = getGoogleApiKey()
 
   try {
+    if (taskId.startsWith("v1_")) {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/interactions/${taskId}?key=${apiKey}`)
+      const interaction = await res.json() as Record<string, unknown>
+      if (interaction.error) return { id: taskId, status: "failed" as const, content: undefined, error: { message: String((interaction.error as { message?: string }).message || "Google Omni Flash failed") } }
+      if (interaction.status !== "completed") return { id: taskId, status: "running" as const, content: undefined, error: undefined }
+      const outputs = Array.isArray(interaction.outputs) ? interaction.outputs as Array<Record<string, unknown>> : []
+      const video = outputs.find((output) => typeof output.video_url === "string" || typeof output.url === "string")
+      return { id: taskId, status: "succeeded" as const, content: { video_url: String(video?.video_url || video?.url || "") }, error: undefined }
+    }
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${taskId}?key=${apiKey}`)
     const operation = (await res.json()) as Record<string, unknown>
 
