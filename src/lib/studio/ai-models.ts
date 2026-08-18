@@ -1,10 +1,7 @@
-export const defaultDirectorModelId = "gpt-5.6"
+export const defaultDirectorModelId = "gpt-5.6-luna"
 
 export const defaultDirectorModels = [
-  { id: "gpt-5.6", label: "GPT-5.6", status: "active" },
   { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", status: "active" },
-  { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", status: "active" },
-  { id: "gpt-5.5", label: "GPT-5.5", status: "active" },
   { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash", status: "active" },
 ] as const
 
