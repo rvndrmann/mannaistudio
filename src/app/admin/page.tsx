@@ -204,9 +204,9 @@ function AdminDashboardContent() {
     const [billingSettings, setBillingSettings] = useState<BillingSettings>(defaultBillingSettings)
     const [billingMessage, setBillingMessage] = useState("")
     const [isSavingBilling, setIsSavingBilling] = useState(false)
-    const [trialSettings, setTrialSettings] = useState({ enabled: true, trialDays: 4, promoEndDate: "2026-07-01" })
-    const [isSavingTrial, setIsSavingTrial] = useState(false)
-    const [trialMessage, setTrialMessage] = useState("")
+    const [signupCredits, setSignupCredits] = useState({ enabled: true, amount: 100 })
+    const [isSavingSignupCredits, setIsSavingSignupCredits] = useState(false)
+    const [signupCreditsMessage, setSignupCreditsMessage] = useState("")
     const [directorModels, setDirectorModels] = useState<DirectorModelConfig[]>(defaultDirectorModels.map((model) => ({ ...model })))
     const [isSavingDirectorModels, setIsSavingDirectorModels] = useState(false)
     const [directorModelsMessage, setDirectorModelsMessage] = useState("")
@@ -394,36 +394,34 @@ function AdminDashboardContent() {
         }
     }
 
-    const loadTrialSettings = async () => {
+    const loadSignupCredits = async () => {
         const supabase = await getServiceRequestClient()
         if (!supabase) return
-        const { data } = await supabase.from("site_settings").select("value").eq("key", "free_trial").single()
+        const { data } = await supabase.from("site_settings").select("value").eq("key", "signup_credits").maybeSingle()
         if (data?.value) {
-            setTrialSettings({
+            setSignupCredits({
                 enabled: Boolean(data.value.enabled),
-                trialDays: Number(data.value.trial_days) || 4,
-                promoEndDate: data.value.promo_end_date ? data.value.promo_end_date.split("T")[0] : "2026-07-01",
+                amount: Number(data.value.amount) || 0,
             })
         }
     }
 
-    const handleSaveTrialSettings = async () => {
-        setIsSavingTrial(true)
-        setTrialMessage("")
+    const handleSaveSignupCredits = async () => {
+        setIsSavingSignupCredits(true)
+        setSignupCreditsMessage("")
         try {
             const supabase = await getServiceRequestClient()
             if (!supabase) throw new Error("No Supabase client")
-            const { data, error } = await supabase.rpc('admin_update_free_trial', {
-                p_enabled: trialSettings.enabled,
-                p_trial_days: trialSettings.trialDays,
-                p_promo_end_date: trialSettings.promoEndDate + "T23:59:59Z",
+            const { error } = await supabase.rpc('admin_update_signup_credits', {
+                p_enabled: signupCredits.enabled,
+                p_amount: signupCredits.amount,
             })
             if (error) throw error
-            setTrialMessage("Free trial settings saved.")
+            setSignupCreditsMessage("Signup credit settings saved.")
         } catch (err: any) {
-            setTrialMessage(`Could not save: ${err.message || 'Unknown error'}`)
+            setSignupCreditsMessage(`Could not save: ${err.message || 'Unknown error'}`)
         } finally {
-            setIsSavingTrial(false)
+            setIsSavingSignupCredits(false)
         }
     }
 
@@ -1213,7 +1211,7 @@ function AdminDashboardContent() {
         setIsChartReady(true)
         loadServiceRequests()
         loadBillingSettings()
-        loadTrialSettings()
+        loadSignupCredits()
         loadDirectorModels()
         loadDirectorWorkflows()
         loadDirectorGlobalInstructions()
@@ -2419,63 +2417,52 @@ function AdminDashboardContent() {
                                 </div>
 
                                 <header className="pt-4">
-                                    <h2 className="text-2xl font-bold tracking-tight mb-2">Free Trial Settings</h2>
-                                    <p className="text-white/40 text-sm">Control the free Pro trial given to new signups.</p>
+                                    <h2 className="text-2xl font-bold tracking-tight mb-2">Free Signup Credits</h2>
+                                    <p className="text-white/40 text-sm">Control the welcome credits granted to a brand new account.</p>
                                 </header>
 
                                 <div className="glass-card p-6 rounded-2xl border-white/10 space-y-6 max-w-3xl">
                                     <label className="flex items-center justify-between gap-4 rounded-xl bg-white/5 border border-white/10 p-4">
                                         <div>
-                                            <p className="font-bold">Enable Free Trial</p>
-                                            <p className="text-xs text-white/40 mt-1">New signups automatically get Pro access for the trial period.</p>
+                                            <p className="font-bold">Grant Free Credits On Signup</p>
+                                            <p className="text-xs text-white/40 mt-1">Turn this off and new accounts start with a zero balance.</p>
                                         </div>
                                         <input
                                             type="checkbox"
-                                            checked={trialSettings.enabled}
-                                            onChange={(e) => setTrialSettings(prev => ({ ...prev, enabled: e.target.checked }))}
+                                            checked={signupCredits.enabled}
+                                            onChange={(e) => setSignupCredits(prev => ({ ...prev, enabled: e.target.checked }))}
                                             className="h-5 w-5 accent-primary"
                                         />
                                     </label>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <label className="space-y-2">
-                                            <span className="text-[10px] font-bold text-white/30">Trial Duration (days)</span>
-                                            <input
-                                                type="number"
-                                                min={1}
-                                                max={90}
-                                                value={trialSettings.trialDays}
-                                                onChange={(e) => setTrialSettings(prev => ({ ...prev, trialDays: Number(e.target.value) }))}
-                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
-                                            />
-                                        </label>
-                                        <label className="space-y-2">
-                                            <span className="text-[10px] font-bold text-white/30">Promotion End Date</span>
-                                            <input
-                                                type="date"
-                                                value={trialSettings.promoEndDate}
-                                                onChange={(e) => setTrialSettings(prev => ({ ...prev, promoEndDate: e.target.value }))}
-                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
-                                            />
-                                        </label>
-                                    </div>
+                                    <label className="space-y-2 block max-w-xs">
+                                        <span className="text-[10px] font-bold text-white/30">Credits Per New Account</span>
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            max={10000}
+                                            value={signupCredits.amount}
+                                            onChange={(e) => setSignupCredits(prev => ({ ...prev, amount: Number(e.target.value) }))}
+                                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
+                                        />
+                                    </label>
 
                                     <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/50">
-                                        {trialSettings.enabled
-                                            ? <>New users get <strong className="text-white">{trialSettings.trialDays} days</strong> free Pro until <strong className="text-white">{trialSettings.promoEndDate}</strong>. After that date, new signups won&apos;t get a trial.</>
-                                            : <span className="text-amber-400">Free trial is disabled. New signups start on the free plan.</span>
+                                        {signupCredits.enabled && signupCredits.amount > 0
+                                            ? <>Every new account is granted <strong className="text-white">{signupCredits.amount.toLocaleString()} credits</strong> once, the first time they sign in. Existing accounts are not affected.</>
+                                            : <span className="text-amber-400">Free signup credits are off. New accounts start at zero and must buy credits or subscribe.</span>
                                         }
                                     </div>
 
-                                    {trialMessage && <p className="text-sm text-white/50">{trialMessage}</p>}
+                                    {signupCreditsMessage && <p className="text-sm text-white/50">{signupCreditsMessage}</p>}
 
                                     <button
-                                        onClick={handleSaveTrialSettings}
-                                        disabled={isSavingTrial}
+                                        onClick={handleSaveSignupCredits}
+                                        disabled={isSavingSignupCredits}
                                         className="btn-primary flex items-center gap-2 px-6 py-3 disabled:opacity-60"
                                     >
-                                        {isSavingTrial ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                                        {isSavingTrial ? "Saving..." : "Save Trial Settings"}
+                                        {isSavingSignupCredits ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                        {isSavingSignupCredits ? "Saving..." : "Save Credit Settings"}
                                     </button>
                                 </div>
                             </motion.div>
