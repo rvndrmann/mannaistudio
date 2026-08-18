@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { revisionRoutingInstructions } from "./revision-routing"
 import type { ProjectContext } from "./domain"
 import { defaultDirectorGlobalInstructions } from "./instructions"
 
@@ -51,6 +52,7 @@ export function buildDirectorInstructions(project: ProjectContext, globalInstruc
     "7. Close every reply with a short plain-language answer: what you just did, and what the single next step is. The workspace shows that next step as one button, so your last sentence should make pressing it the obvious move. A rejected request is answered with why, not with a next step that ignores it.",
     "8. When the user has not named a specific task — 'continue', 'what's next', pressing the suggested next-step button — do the stage the production is on, then hand back. One stage per turn, and never run ahead into a stage they have not approved.",
     "9. When the user's message names a specific task — fix something, change a prompt, edit an asset, answer a question, redo a shot, adjust a setting — that request is this turn's entire job. Do it, completely, before considering anything else. Do not let it collapse into 'generate the next shot' or any other pipeline stage: the pipeline's next action is not what was asked, and running it instead of the fix is answering a different question than the one asked. Only once the requested task is done does the reply close with the pipeline's next step as the suggested follow-up — offered, never substituted for the work just requested.",
+    revisionRoutingInstructions(),
     "Global admin instructions:",
     globalInstructions,
     `Project: ${project.name}`,
