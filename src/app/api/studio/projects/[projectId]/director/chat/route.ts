@@ -13,6 +13,7 @@ import { requireProjectFromRequest } from "@/lib/studio/external-auth"
 import { requestDirectorTool } from "@/lib/studio/tool-service"
 import { fetchDirectorWorkflows, selectedWorkflowId, workflowContinuesFromPreviousClip } from "@/lib/studio/workflows"
 import { normalizeDirectorGlobalInstructions } from "@/lib/studio/instructions"
+import { loadProjectBrandContext } from "@/lib/studio/brand-server"
 import { runDirectorAgent } from "@/lib/studio/director-agent"
 import { fetchDirectorRuntimeSettings } from "@/lib/studio/director-runtime-settings"
 import { buildEntityMentionContext, chosenReferences, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
@@ -133,6 +134,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const project = await buildProjectContext(context.supabase, context.project)
       const { data: instructionSettings } = await context.supabase.from("site_settings").select("value").eq("key", "ai_director_global_instructions").maybeSingle()
       const globalInstructions = normalizeDirectorGlobalInstructions(instructionSettings?.value)
+      const brandContext = await loadProjectBrandContext(context.supabase, context.project)
       const runtimeSettings = await fetchDirectorRuntimeSettings(context.supabase)
       const visionAttachments = await collectDirectorVisionAttachments({
         supabase: context.supabase,
@@ -145,7 +147,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         context,
         model,
         instructions: [
-          await buildWorkflowInstructions(context, episode.id, sessionId, buildDirectorInstructions(project, globalInstructions)),
+          await buildWorkflowInstructions(context, episode.id, sessionId, buildDirectorInstructions(project, globalInstructions, brandContext)),
           // Otherwise the model keeps waiting on an approval the user has
           // already answered with words, and asks them to press a card that is
           // no longer there.
@@ -595,7 +597,10 @@ async function nextStepBlock(
     // because the headline step moved on to the next shot took the steps for
     // *this* shot down with it. The schema caps this at five.
     const actions = [stage.nextAction, ...stage.alternatives]
-      .filter((action) => actionMatchesRequestedShots(action.intent, requestedShotNumbers))
+      // The pipeline action describes the state left after this turn. It must
+      // survive even when the completed message named a specific shot; only
+      // alternative shot actions need to stay scoped to that request.
+      .filter((action, index) => index === 0 || actionMatchesRequestedShots(action.intent, requestedShotNumbers))
       .slice(0, 5)
     if (!actions.length) return null
     return {
@@ -691,6 +696,8 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
   if (cleanup) return cleanup
   const skipped = await maybeHandleSkipShot(input, normalized)
   if (skipped) return skipped
+  const assetPhotoChoice = await maybeHandleAssetPhotoChoice(input, normalized)
+  if (assetPhotoChoice) return assetPhotoChoice
   if (/\b(full auto|full-auto|autopilot)\b/.test(normalized) && /\b(enable|turn on|start|activate)\b/.test(normalized)) {
     const result = await requestDirectorTool(input.context, {
       tool: "update_full_auto_mode",
@@ -1031,6 +1038,52 @@ async function maybeHandleWorkflowRequest(input: WorkflowRequestInput) {
   return null
 }
 
+async function maybeHandleAssetPhotoChoice(input: WorkflowRequestInput, normalized: string) {
+  const snapshot = await loadProductionSnapshot(input.context.supabase, input.projectId, input.episodeId)
+  const stage = computePipelineStage(snapshot)
+  if (stage.key !== "entity_images" || !stage.nextAction) return null
+
+  const noPhotos = /\b(no|none|without|don't|do not|haven't|have not)\b[^.]{0,40}\b(photos?|images?|pictures?|references?)\b/.test(normalized)
+    || /\b(no photos?|no images?|generate (?:them|reference art))\b/.test(normalized)
+  if (noPhotos) {
+    const intent = parseBulkEntityImageIntent(stage.nextAction.intent, input.mentionedEntities)
+    return intent ? generateBulkEntityReferenceImages(input, intent) : null
+  }
+
+  const asksAboutPhotos = /\b(have|upload|use|own)\b[^.]{0,50}\b(photos?|images?|pictures?|references?)\b/.test(normalized)
+  if (!asksAboutPhotos) return null
+
+  return {
+    provider: "workflow",
+    result: { type: "asset_photo_choice" },
+    message: {
+      session_id: input.sessionId,
+      role: "assistant",
+      content: `${stage.summary} Choose how you want to provide their visual identity.`,
+      timeline_blocks: [{
+        type: "suggested_actions",
+        actions: [
+          {
+            id: "asset-photos-upload",
+            label: "I’ll upload photos",
+            intent: "I have my own photos. Show me how to upload and match them to the characters and assets before generating anything.",
+            risk: "read" as const,
+            recommended: false,
+            payload: { stage: stage.key },
+          },
+          {
+            ...stage.nextAction,
+            id: "asset-photos-generate",
+            label: "No photos — generate reference art",
+            payload: { stage: stage.key, summary: stage.summary },
+          },
+        ],
+      }],
+      timeline_version: 1,
+    },
+  }
+}
+
 async function generateBulkEntityReferenceImages(
   input: WorkflowRequestInput,
   intent: BulkEntityImageIntent,
@@ -1084,6 +1137,21 @@ async function generateBulkEntityReferenceImages(
         : prompt
       const existingReferences = Array.isArray(entity.reference_images) ? entity.reference_images.slice(0, 3) : []
       const referenceUrls = await signedMentionReferences(input.context, existingReferences)
+      const currentMetadata = entity.metadata && typeof entity.metadata === "object" ? entity.metadata as Record<string, unknown> : {}
+      await input.context.supabase.from("creator_entities").update({
+        metadata: {
+          ...currentMetadata,
+          image_generation: {
+            provider: "openai",
+            model: "gpt-image-2",
+            prompt,
+            target: "entity",
+            entity_id: entity.id,
+            status: "generating",
+            requested_at: new Date().toISOString(),
+          },
+        },
+      }).eq("id", entity.id).eq("project_id", input.projectId)
       const creditCost = calculateCreditCost("gpt-image-2", "image", 5, { quality, aspectRatio: "2:3" })
       const deduction = await deductUserCredits(
         input.context.user.id,
@@ -1123,8 +1191,7 @@ async function generateBulkEntityReferenceImages(
       if (uploadError) throw uploadError
 
       const completedAt = new Date().toISOString()
-      const currentMetadata = entity.metadata && typeof entity.metadata === "object" ? entity.metadata as Record<string, unknown> : {}
-      let byteplusAssetId: string | null = null
+       let byteplusAssetId: string | null = null
       const { data: signedOutput } = await input.context.supabase.storage.from("creator-studio-media").createSignedUrl(path, 60 * 60)
       if (signedOutput?.signedUrl && process.env.ARK_ACCESS_KEY && process.env.ARK_SECRET_KEY) {
         try {
@@ -1173,6 +1240,21 @@ async function generateBulkEntityReferenceImages(
           error: error instanceof Error ? error.message : "Image generation failed",
           completed_at: new Date().toISOString(),
         }).eq("id", generationJob.id)
+        await input.context.supabase.from("creator_entities").update({
+          metadata: {
+            ...currentMetadata,
+            image_generation: {
+              provider: "openai",
+              model: "gpt-image-2",
+              prompt,
+              target: "entity",
+              entity_id: entity.id,
+              status: "failed",
+              error: error instanceof Error ? error.message : "Image generation failed",
+              completed_at: new Date().toISOString(),
+            },
+          },
+        }).eq("id", entity.id).eq("project_id", input.projectId)
         throw error
       }
     }))

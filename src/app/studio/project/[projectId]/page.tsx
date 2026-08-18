@@ -364,6 +364,7 @@ export default function WorkspacePage({
   const [justSubmitted, setJustSubmitted] = useState<{ image: string[]; video: string[] }>({ image: [], video: [] });
   const [chatError, setChatError] = useState<string | null>(null);
   const [proposalBusy, setProposalBusy] = useState<string | null>(null);
+  const [selectedChatAction, setSelectedChatAction] = useState<string | null>(null);
   const [chatUploading, setChatUploading] = useState(false);
   const [directorModel, setDirectorModel] = useState<string>(defaultDirectorModelId);
   const [directorModels, setDirectorModels] = useState<DirectorModelConfig[]>(defaultDirectorModels.map((model) => ({ ...model })).filter((model) => model.status === "active"));
@@ -461,6 +462,7 @@ export default function WorkspacePage({
   const [chatSessionMenu, setChatSessionMenu] = useState(false);
   const [showBasicSettings, setShowBasicSettings] = useState(false);
   const openedInitialSettingsRef = useRef(false);
+  const autoStartedRef = useRef(false);
   const [projectMenu, setProjectMenu] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [enterpriseOpen, setEnterpriseOpen] = useState(false);
@@ -633,6 +635,20 @@ export default function WorkspacePage({
     url.searchParams.delete("openSettings");
     window.history.replaceState(null, "", url.toString());
   }, [data]);
+  // Arriving from the website chat, where the user already approved the cost.
+  // The parameter is cleared before the message is sent, so a reload cannot
+  // start the Director a second time on the same production.
+  useEffect(() => {
+    if (!data || autoStartedRef.current || typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("start") !== "production") return;
+    autoStartedRef.current = true;
+    url.searchParams.delete("start");
+    window.history.replaceState(null, "", url.toString());
+    void sendDirectorMessage(
+      "I approved this production from the website chat. Work from the saved script: create the characters and assets it needs, then build the storyboard.",
+    );
+  }, [data]);
   const save = async (body: unknown) => {
     const r = await fetch(`/api/studio/projects/${projectId}/workspace`, {
       method: "POST",
@@ -803,6 +819,11 @@ export default function WorkspacePage({
     } finally {
       setChatSending(false);
     }
+  };
+  const chooseChatAction = (action: { id: string; intent: string }) => {
+    if (chatSending) return;
+    setSelectedChatAction(action.id);
+    void sendDirectorMessage(action.intent).finally(() => setSelectedChatAction(null));
   };
   const sendChat = async (e: FormEvent) => {
     e.preventDefault();
@@ -1249,6 +1270,9 @@ export default function WorkspacePage({
                 projectId={projectId}
                 cameraDefaults={projectCameraDefaults(data.project)}
                 projectStyleDnaValue={projectStyleDna(data.project)}
+                characterImageModel={typeof (data.project.metadata as Record<string, unknown> | null)?.basic_settings === "object"
+                  ? String(((data.project.metadata as Record<string, unknown>).basic_settings as Record<string, unknown>).characterImageModel || imageGenerationModels[0].id)
+                  : imageGenerationModels[0].id}
                 episodeId={episode.id}
                 generationJobs={data.production?.generationJobs || []}
                 save={save}
@@ -1264,6 +1288,12 @@ export default function WorkspacePage({
                 projectId={projectId}
                 cameraDefaults={projectCameraDefaults(data.project)}
                 projectStyleDnaValue={projectStyleDna(data.project)}
+                storyboardImageModel={typeof (data.project.metadata as Record<string, unknown> | null)?.basic_settings === "object"
+                  ? String(((data.project.metadata as Record<string, unknown>).basic_settings as Record<string, unknown>).storyboardImageModel || imageGenerationModels[0].id)
+                  : imageGenerationModels[0].id}
+                videoModel={typeof (data.project.metadata as Record<string, unknown> | null)?.basic_settings === "object"
+                  ? supportedVideoModel(((data.project.metadata as Record<string, unknown>).basic_settings as Record<string, unknown>).videoModel)
+                  : supportedVideoModel(undefined)}
                 save={save}
                 reload={load}
                 pendingJobs={pendingShotJobs}
@@ -1388,6 +1418,9 @@ export default function WorkspacePage({
                 {item.content}
                 {item.role === "assistant" && item.workflow_run_id && <ChatRunStatus run={(data.production?.workflowRuns || []).find((run) => run.id === item.workflow_run_id)} />}
                 <ChatTimeline blocks={item.timeline_blocks} proposals={data.actionProposals} messageProposalIds={proposalIdsFromActions(item.suggested_actions)} onAction={sendDirectorMessage} disabled={chatSending} />
+                {item.role === "assistant" && item.id === data.chatMessages.filter((message) => message.role === "assistant").at(-1)?.id && (
+                  <ChatInlineChoices blocks={item.timeline_blocks} selectedId={selectedChatAction} disabled={chatSending} onChoose={chooseChatAction} />
+                )}
                 <ChatMedia media={item.media} />
                 <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} entities={data.entities} shots={data.shots} projectId={projectId} busyId={proposalBusy} onDecide={decideProposal} onAction={sendDirectorMessage} onOpenTab={setTab} />
               </div>
@@ -1986,6 +2019,7 @@ function Assets({
   projectId,
   cameraDefaults,
   projectStyleDnaValue,
+  characterImageModel,
   episodeId,
   generationJobs,
   save,
@@ -2000,6 +2034,7 @@ function Assets({
   cameraDefaults: CameraSettings | null;
   // The look read off the project's reference images, or null while none is set.
   projectStyleDnaValue: StyleDna | null;
+  characterImageModel: string;
   // Character and asset art is billed to the episode it was requested from;
   // a shot names its own episode, but an entity belongs to the whole project.
   episodeId: string;
@@ -2044,6 +2079,12 @@ function Assets({
                   key={e.id}
                   entity={e}
                   projectId={projectId}
+                  generating={generationJobs.some((job) => {
+                    const settings = job.settings && typeof job.settings === "object" ? job.settings as Record<string, unknown> : null;
+                    return job.type === "image"
+                      && settings?.entityId === e.id
+                      && !["completed", "failed", "cancelled"].includes(job.status);
+                  })}
                   save={save}
                   reload={reload}
                   openWorkspace={() => setSelectedAsset(e)}
@@ -2068,6 +2109,7 @@ function Assets({
           projectId={projectId}
           cameraDefaults={cameraDefaults}
           projectStyleDnaValue={projectStyleDnaValue}
+          characterImageModel={characterImageModel}
           episodeId={episodeId}
           generationJobs={generationJobs}
           close={() => setSelectedAsset(null)}
@@ -2081,18 +2123,20 @@ function Assets({
 function AssetCard({
   entity,
   projectId,
+  generating,
   save,
   reload,
   openWorkspace,
 }: {
   entity: Entity;
   projectId: string;
+  generating?: boolean;
   save: (b: unknown) => Promise<void>;
   reload: () => Promise<void>;
   openWorkspace: () => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const imageGenerationStatus = entityImageGenerationStatus(entity);
+  const imageGenerationStatus = generating ? "generating" : entityImageGenerationStatus(entity);
   return (
     <article className="relative overflow-hidden rounded-xl border border-white/10 bg-[#1b1d1c] transition hover:border-[#b9f42e]/55">
       <button onClick={openWorkspace} className="block w-full text-left">
@@ -2135,7 +2179,8 @@ function AssetCard({
         </div>
       </div>
       {imageGenerationStatus === "generating" && (
-        <div className="absolute inset-0 grid place-items-center bg-black/65 backdrop-blur-[1px]">
+        <div className="absolute inset-0 grid place-items-center overflow-hidden bg-black/65 backdrop-blur-[1px]">
+          <span aria-hidden="true" className="pointer-events-none absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-[#b9f42e]/20 to-transparent" />
           <div className="flex items-center gap-2 rounded-full border border-[#b9f42e]/35 bg-[#151715] px-3 py-2 text-xs font-bold text-[#d9ff84]">
             <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" /><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></svg>
             Generating reference image…
@@ -2869,6 +2914,7 @@ function AssetWorkspace({
   projectId,
   cameraDefaults,
   projectStyleDnaValue,
+  characterImageModel,
   episodeId,
   generationJobs,
   close,
@@ -2880,6 +2926,7 @@ function AssetWorkspace({
   projectId: string;
   cameraDefaults: CameraSettings | null;
   projectStyleDnaValue: StyleDna | null;
+  characterImageModel: string;
   episodeId: string;
   generationJobs: NonNullable<Workspace["production"]>["generationJobs"];
   close: () => void;
@@ -2898,7 +2945,7 @@ function AssetWorkspace({
   const [selected, setSelected] = useState(0);
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState(asset.description || "");
-  const [model, setModel] = useState<string>(imageGenerationModels[0].id);
+  const [model, setModel] = useState<string>(characterImageModel);
   const [aspectRatio, setAspectRatio] = useState<string>("9:16");
   const [quality, setQuality] = useState<"Low" | "Medium" | "High" | "Ultra">("Medium");
   // The camera package is opt-in. Off, the prompt is sent exactly as written —
@@ -2960,7 +3007,7 @@ function AssetWorkspace({
         id: job.id,
         status: job.status === "failed" || job.status === "cancelled" ? "failed" : "generating",
         prompt: job.prompt || asset.description || "",
-        model: job.model || imageGenerationModels[0].id,
+        model: job.model || characterImageModel,
         error: job.error || (job.status === "cancelled" ? "Generation cancelled" : null),
         referenceImages: Array.isArray(job.input_images) ? job.input_images : [],
         createdAt: new Date(job.created_at || 0).getTime(),
@@ -2994,7 +3041,7 @@ function AssetWorkspace({
       const cameraUsed = settings && isCameraSettings(settings.cameraSettingsUsed) ? settings.cameraSettingsUsed : null;
       recipes.set(job.result_url, {
         prompt: job.prompt || "",
-        model: job.model || imageGenerationModels[0].id,
+        model: job.model || characterImageModel,
         references: Array.isArray(job.input_images) ? job.input_images as string[] : [],
         camera: cameraUsed,
         styleDna: normalizeStyleDna(settings?.styleDnaUsed),
@@ -4107,6 +4154,8 @@ function Storyboard({
   projectId,
   cameraDefaults,
   projectStyleDnaValue,
+  storyboardImageModel,
+  videoModel,
   save,
   reload,
   pendingJobs,
@@ -4120,6 +4169,8 @@ function Storyboard({
   projectId: string;
   cameraDefaults: CameraSettings | null;
   projectStyleDnaValue: StyleDna | null;
+  storyboardImageModel: string;
+  videoModel: string;
   save: (b: unknown) => Promise<void>;
   // Silent when true: swaps the data in place instead of blanking the whole
   // workspace to the first-load spinner, which reads as an unexpected page
@@ -4708,11 +4759,14 @@ function Storyboard({
       </div>
       {activeMedia && (
         <ShotMediaWorkspace
+          key={`${activeMedia.shot.id}-${activeMedia.type}`}
           media={activeMedia}
           entities={entities}
           shots={shots}
-          cameraDefaults={cameraDefaults}
-          projectStyleDnaValue={projectStyleDnaValue}
+           cameraDefaults={cameraDefaults}
+           projectStyleDnaValue={projectStyleDnaValue}
+           storyboardImageModel={storyboardImageModel}
+           videoModel={videoModel}
           generationJobs={generationJobs}
           projectId={projectId}
           close={() => setMedia(null)}
@@ -4730,6 +4784,8 @@ function ShotMediaWorkspace({
   shots,
   cameraDefaults,
   projectStyleDnaValue,
+  storyboardImageModel,
+  videoModel,
   generationJobs,
   projectId,
   close,
@@ -4742,6 +4798,8 @@ function ShotMediaWorkspace({
   shots?: Shot[];
   cameraDefaults: CameraSettings | null;
   projectStyleDnaValue: StyleDna | null;
+  storyboardImageModel: string;
+  videoModel: string;
   generationJobs: NonNullable<Workspace["production"]>["generationJobs"];
   projectId: string;
   close: () => void;
@@ -4761,7 +4819,7 @@ function ShotMediaWorkspace({
   );
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [model, setModel] = useState<string>(
-    media.type === "image" ? imageGenerationModels[0].id : videoGenerationModels[0].id,
+    media.type === "image" ? storyboardImageModel : supportedVideoModel(videoModel),
   );
   const savedVideoMode = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "generation_mode" in media.shot.metadata.video_generation ? (media.shot.metadata.video_generation as { generation_mode?: string }).generation_mode : null;
   const [videoInputMode, setVideoInputMode] = useState<"keyframe" | "multi_image">(savedVideoMode === "multi_image" ? "multi_image" : "keyframe");
@@ -4896,7 +4954,7 @@ function ShotMediaWorkspace({
         type: media.type,
         status: "completed",
         prompt: media.shot.prompt || "",
-        model: media.type === "image" ? imageGenerationModels[0].id : videoGenerationModels[0].id,
+        model: media.type === "image" ? storyboardImageModel : supportedVideoModel(videoModel),
         referenceImages: [],
         videoUrl: source,
         error: null,
@@ -5043,7 +5101,7 @@ function ShotMediaWorkspace({
             type: media.type,
             status: "completed",
             prompt: media.shot.prompt || "",
-            model: media.type === "image" ? imageGenerationModels[0].id : videoGenerationModels[0].id,
+            model: media.type === "image" ? storyboardImageModel : supportedVideoModel(videoModel),
             referenceImages: [],
             videoUrl: source,
             error: null,
@@ -6434,6 +6492,34 @@ function ChatTimelineBlock({ block, proposals, awaitingApproval, onAction, disab
   return null;
 }
 
+function ChatInlineChoices({ blocks, selectedId, disabled, onChoose }: {
+  blocks: unknown;
+  selectedId: string | null;
+  disabled: boolean;
+  onChoose: (action: { id: string; intent: string }) => void;
+}) {
+  const block = parseDirectorTimeline(blocks).filter((item) => item.type === "suggested_actions").at(-1);
+  if (!block || block.type !== "suggested_actions" || block.actions.length < 2) return null;
+  return (
+    <div className="mt-3 flex flex-wrap gap-2 border-t border-white/[0.08] pt-3">
+      {block.actions.map((action) => {
+        const selected = selectedId === action.id;
+        return (
+          <button
+            key={action.id}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChoose(action)}
+            className={`rounded-lg px-3 py-1.5 text-[12px] font-bold transition ${selected ? "bg-[#b9f42e] text-black" : "border border-white/[0.14] text-zinc-200 hover:border-[#b9f42e]/50"} disabled:opacity-50`}
+          >
+            {selected ? "✓ " : ""}{action.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * The one step the production is waiting on, pinned to the end of the chat.
  *
@@ -6462,6 +6548,9 @@ function ChatNextStep({ messages, proposals, shots, sessionId, busy, onAction }:
   if (awaitingThisReply) return null;
   const block = parseDirectorTimeline(latest.timeline_blocks).filter((item) => item.type === "suggested_actions").at(-1);
   if (!block || block.type !== "suggested_actions") return null;
+  // Multi-option questions stay attached to the assistant message that asked
+  // them. Repeating them at the bottom detached the choice from its context.
+  if (block.actions.length > 1) return null;
   // The button text was written into this message before its own proposal was
   // approved, so approving it does not refresh the wording — pressing "Generate
   // the video for shot 3" is what put shot 3 into the state that made offering

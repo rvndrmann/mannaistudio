@@ -4,6 +4,7 @@ import { buildDirectorInstructions } from "@/lib/studio/conversation"
 import { directorFunctionDefinitions } from "@/lib/studio/director-agent"
 import { createOpenAIRealtimeClientSecret, OpenAIProviderError } from "@/lib/studio/openai"
 import { buildProjectContext } from "@/lib/studio/project-context"
+import { loadProjectBrandContext } from "@/lib/studio/brand-server"
 import { requireAuthenticatedProject, studioErrorStatus } from "@/lib/studio/server-context"
 import { voiceSessionRequestSchema, voiceToolInstructions } from "@/lib/studio/voice"
 import { fetchDirectorWorkflows } from "@/lib/studio/workflows"
@@ -21,6 +22,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const project = await buildProjectContext(context.supabase, context.project)
     const { data: instructionSettings } = await context.supabase.from("site_settings").select("value").eq("key", "ai_director_global_instructions").maybeSingle()
     const globalInstructions = normalizeDirectorGlobalInstructions(instructionSettings?.value)
+    const brandContext = await loadProjectBrandContext(context.supabase, context.project)
     const [runtimeSettings, team, voiceInstructions, projectStateSummary] = await Promise.all([
       fetchDirectorRuntimeSettings(context.supabase),
       fetchDirectorTeam(context.supabase),
@@ -48,7 +50,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const instructions = [
-      await buildVoiceWorkflowInstructions(context, buildDirectorInstructions(project, globalInstructions)),
+      await buildVoiceWorkflowInstructions(context, buildDirectorInstructions(project, globalInstructions, brandContext)),
       projectStateSummary,
       teamInstructions(team),
       runtimeInstructions(runtimeSettings),

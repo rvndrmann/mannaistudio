@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
+  Building2,
   Clapperboard,
   FolderKanban,
   Image,
@@ -307,6 +308,14 @@ function TopBar({ onOpenCreate, creating }: { onOpenCreate: () => void; creating
           </button>
           <CreditBadge />
           <Link
+            href="/studio/brand"
+            title="Your brand rooms: goals, knowledge base, asset library, and the agents that write your scripts"
+            className="touch-target hidden items-center gap-1.5 rounded-md border border-white/10 px-3 py-2 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white md:flex"
+          >
+            <Building2 className="h-4 w-4" />
+            Brands
+          </Link>
+          <Link
             href="/studio/team"
             title="Add and manage team members"
             className="touch-target hidden items-center gap-1.5 rounded-md border border-white/10 px-3 py-2 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white md:flex"
@@ -341,6 +350,16 @@ function StudioRail() {
             {label}
           </button>
         ))}
+        {/* The one rail entry that leaves this page, so it is a link rather
+            than a tab: the brand room is where a production's brief, assets,
+            and script come from before a project exists. */}
+        <Link
+          href="/studio/brand"
+          className="flex w-full flex-col items-center gap-2 rounded-xl py-4 text-xs font-semibold text-zinc-500 transition hover:bg-white/5 hover:text-white"
+        >
+          <Building2 className="h-6 w-6" />
+          Brand Room
+        </Link>
       </nav>
     </aside>
   );

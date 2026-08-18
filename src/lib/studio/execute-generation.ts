@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { generateOpenAIImage, type OpenAIImageModel } from "./openai"
 import { submitBytePlusVideo, generateBytePlusImage, createBytePlusAsset } from "./byteplus"
+import { generateFalImage, submitFalVideo } from "./fal"
+import { generateGoogleImage, submitGoogleVideo } from "./google"
 import type { VideoGenerationModelId, ImageGenerationModelId } from "./generation-models"
 import { buildEntityMentionContext, chosenReferences, entityPrimaryReference, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
 import { openAIImageQuality, projectImageQuality, projectVisualStyle } from "./entity-image-workflow"
@@ -256,17 +258,18 @@ export async function executeGenerationJobsInBackground(
             }).eq("id", job.id)
             await settleWorkflowRun(context, job.workflow_run_id)
 
-          } else if (job.type === "image" && job.provider === "byteplus") {
+          } else if (job.type === "image" && ["byteplus", "fal", "google"].includes(job.provider)) {
             const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
-            const generated = await withGenerationRetry(context, job, () => generateBytePlusImage({
-              model: job.model as ImageGenerationModelId,
-              prompt: resolvedPrompt,
-              referenceUrls,
-            }))
+            const generated = await withGenerationRetry(context, job, () => job.provider === "google"
+              ? generateGoogleImage({ model: job.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls })
+              : job.provider === "fal"
+                ? generateFalImage({ model: job.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls })
+                : generateBytePlusImage({ model: job.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls }))
             
             let byteplusAssetId: string | null = null
             let byteplusAssetUri: string | null = null
             try {
+              if (job.provider !== "byteplus") throw new Error("Registration is only needed for BytePlus outputs")
               const assetRes = await createBytePlusAsset({ imageUrl: generated.url, name: job.prompt.slice(0, 50) })
               byteplusAssetId = assetRes.assetId
               byteplusAssetUri = `asset://${assetRes.assetId}`
@@ -296,10 +299,28 @@ export async function executeGenerationJobsInBackground(
             }).eq("id", job.id)
             await settleWorkflowRun(context, job.workflow_run_id)
 
-          } else if (job.type === "video" && job.provider === "byteplus") {
+          } else if (job.type === "video" && ["byteplus", "fal", "google"].includes(job.provider)) {
             let task: { id: string; response?: unknown }
             try {
-              task = await submitBytePlusVideo({
+              task = job.provider === "google"
+                ? await submitGoogleVideo({
+                    model: job.model as VideoGenerationModelId,
+                    prompt: job.prompt || "",
+                    duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 4,
+                    resolution: typeof settings.resolution === "string" ? settings.resolution : "720p",
+                    ratio: effectiveAspectRatio,
+                    referenceUrls,
+                  })
+                : job.provider === "fal"
+                  ? await submitFalVideo({
+                      model: job.model as VideoGenerationModelId,
+                      prompt: job.prompt || "",
+                      duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 4,
+                      resolution: typeof settings.resolution === "string" ? settings.resolution : "720p",
+                      ratio: effectiveAspectRatio,
+                      referenceUrls,
+                    })
+                  : await submitBytePlusVideo({
                 model: job.model as VideoGenerationModelId,
                 prompt: job.prompt || "",
                 duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 4,
@@ -310,11 +331,11 @@ export async function executeGenerationJobsInBackground(
                 videoReferenceUrls,
                 generationMode: settings.generationMode === "multi_image" ? "multi_image" : "keyframe",
                 audioEnabled: typeof settings.audioEnabled === "boolean" ? settings.audioEnabled : true,
-              })
+                  })
             } catch (videoErr) {
               const errMsg = videoErr instanceof Error ? videoErr.message : "Video submission failed"
               const missingAsset = parseSeedanceMissingAssetError(errMsg)
-              if (missingAsset?.assetId) {
+              if (job.provider === "byteplus" && missingAsset?.assetId) {
                 await purgeStaleBytePlusAsset(context.supabase, missingAsset.assetId, context.project.id)
                 // Re-resolve reference URLs with fresh active registration
                 const freshRefUrls: string[] = []
@@ -359,7 +380,7 @@ export async function executeGenerationJobsInBackground(
             await context.supabase.from("creator_generation_jobs").update({
               status: "processing",
               provider_job_id: task.id,
-              provider_response: task,
+              provider_response: task.response || task,
             }).eq("id", job.id)
             
           } else {

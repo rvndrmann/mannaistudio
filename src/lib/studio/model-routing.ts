@@ -1,4 +1,6 @@
 import { z } from "zod"
+import { calculateCreditCost } from "./credits"
+import { generationProvider, imageGenerationModels, videoGenerationModels } from "./generation-models"
 
 export const generationRequestSchema = z.object({
   type: z.enum(["image", "video"]),
@@ -67,13 +69,8 @@ export type GenerationModel = {
 }
 
 export const generationModels: GenerationModel[] = [
-  { provider: "openai", model: "gpt-image-2", types: ["image"], sources: ["text", "image"], referenceImages: true, dialogue: false, quality: 4, speed: 4, costPerSecond: 0, baseCredits: 8 },
-  { provider: "openai", model: "gpt-image-1.5", types: ["image"], sources: ["text", "image"], referenceImages: true, dialogue: false, quality: 3, speed: 5, costPerSecond: 0, baseCredits: 6 },
-  { provider: "byteplus", model: "dola-seedream-5-0-pro-260628", types: ["image"], sources: ["text", "image"], referenceImages: true, dialogue: false, quality: 5, speed: 3, costPerSecond: 0, baseCredits: 4 },
-  { provider: "byteplus", model: "dreamina-seedance-2-5-260628", types: ["video"], sources: ["text", "image"], referenceImages: true, dialogue: true, quality: 5, speed: 2, costPerSecond: 50, baseCredits: 0 },
-  { provider: "byteplus", model: "dreamina-seedance-2-0-260128", types: ["video"], sources: ["text", "image"], referenceImages: true, dialogue: true, quality: 5, speed: 2, costPerSecond: 4, baseCredits: 8 },
-  { provider: "byteplus", model: "dreamina-seedance-2-0-fast-260128", types: ["video"], sources: ["text", "image"], referenceImages: true, dialogue: true, quality: 4, speed: 4, costPerSecond: 3, baseCredits: 6 },
-  { provider: "byteplus", model: "dreamina-seedance-2-0-mini-260615", types: ["video"], sources: ["text", "image"], referenceImages: true, dialogue: true, quality: 3, speed: 5, costPerSecond: 2, baseCredits: 4 },
+  ...imageGenerationModels.map((item, index) => ({ provider: generationProvider(item.id), model: item.id, types: ["image"] as Array<"image" | "video">, sources: ["text", "image"] as Array<"text" | "image">, referenceImages: true, dialogue: false, quality: Math.max(2, 5 - index / 3), speed: 3, costPerSecond: 0, baseCredits: calculateCreditCost(item.id, "image") })),
+  ...videoGenerationModels.map((item, index) => ({ provider: generationProvider(item.id), model: item.id, types: ["video"] as Array<"image" | "video">, sources: ["text", "image"] as Array<"text" | "image">, referenceImages: true, dialogue: true, quality: Math.max(2, 5 - index / 6), speed: 3, costPerSecond: 0, baseCredits: 0 })),
 ]
 
 export function routeGeneration(raw: unknown, models: GenerationModel[] = generationModels) {
@@ -87,6 +84,9 @@ export function routeGeneration(raw: unknown, models: GenerationModel[] = genera
   const chosen = request.model ? candidates.find((model) => model.model === request.model) : undefined
   if (request.model && !chosen) throw new Error(`Model ${request.model} does not support this ${request.type} request`)
   const selected = chosen ?? [...candidates].sort((a, b) => score(b) - score(a))[0]
-  const creditsPerShot = Math.ceil(selected.baseCredits + selected.costPerSecond * request.durationSeconds)
+  const creditsPerShot = calculateCreditCost(selected.model, request.type, request.durationSeconds, {
+    resolution: request.resolution,
+    aspectRatio: request.aspectRatio,
+  })
   return { request, selected, creditsPerShot, estimatedCredits: creditsPerShot * Math.max(1, generationShotCount(request)), reason: chosen ? "Selected explicitly in the generation block" : `Selected for ${request.preference} preference and requested capabilities` }
 }

@@ -118,6 +118,36 @@ export async function createDirectorResponse(input: { userId: string; model?: Op
   return { id: data.id || "", content, usage: data.usage || {} }
 }
 
+/**
+ * A plain conversational turn that can also look at pictures.
+ *
+ * createDirectorResponse takes strings, which is enough for the Director's own
+ * chat but loses the product shot or character reference a brand agent is being
+ * asked about. This one takes the provider's own input items, so the caller can
+ * hand it multimodal content, and it exposes no tools: these agents advise and
+ * write, they do not spend credits.
+ */
+export async function createVisionResponse(input: {
+  userId: string
+  model?: OpenAIDirectorModel
+  instructions: string
+  items: Array<Record<string, unknown>>
+}) {
+  const model = input.model || defaultOpenAIDirectorModel()
+  const response = await openAIRequest("/v1/responses", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model, instructions: input.instructions, input: input.items }),
+  }, input.userId)
+  const data = await response.json() as Parameters<typeof parseDirectorResponse>[0]
+  const parsed = parseDirectorResponse(data)
+  if (!parsed.content) {
+    console.error("OpenAI vision response did not contain text", JSON.stringify(data).slice(0, 4_000))
+    throw new OpenAIProviderError("OpenAI returned no response.")
+  }
+  return { id: parsed.id, content: parsed.content, usage: parsed.usage }
+}
+
 export type OpenAIDirectorFunction = {
   name: string
   description: string

@@ -15,8 +15,6 @@ export const videoGenerationModels = [
   { id: "fal-seedance-2-0-fast", label: "Seedance 2.0 Fast", provider: "fal" },
   { id: "fal-seedance-2-0-mini", label: "Seedance 2.0 Mini", provider: "fal" },
   { id: "google-veo-3-1", label: "Veo 3.1 (Google AI Studio)", provider: "google" },
-  { id: "google-gemini-2-5-pro", label: "Gemini 2.5 Pro (Google AI Studio)", provider: "google" },
-  { id: "google-omni-flash", label: "Omni Flash (Google AI Studio)", provider: "google" },
   { id: "dreamina-seedance-2-5-260628", label: "Seedance 2.5 (BytePlus Direct)", provider: "byteplus" },
   { id: "dreamina-seedance-2-0-260128", label: "Seedance 2.0 (BytePlus Direct)", provider: "byteplus" },
   { id: "dreamina-seedance-2-0-fast-260128", label: "Seedance 2.0 Fast (BytePlus Direct)", provider: "byteplus" },
@@ -56,7 +54,7 @@ export function projectDirectorVideoModel(project: Record<string, unknown>): Vid
   const metadata = project.metadata && typeof project.metadata === "object" ? project.metadata as Record<string, unknown> : {}
   const settings = metadata.basic_settings && typeof metadata.basic_settings === "object" ? metadata.basic_settings as Record<string, unknown> : {}
   const configured = typeof settings.videoModel === "string" ? settings.videoModel : ""
-  const supported = videoGenerationModels.find((model) => model.id === configured && model.provider === "byteplus")
+  const supported = videoGenerationModels.find((model) => model.id === configured)
   return supported?.id || defaultDirectorVideoModel
 }
 

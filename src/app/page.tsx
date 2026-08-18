@@ -1,6 +1,7 @@
 "use client"
 
 import Footer from "@/components/Footer"
+import LeadChatWidget from "@/components/LeadChatWidget"
 import Navbar from "@/components/Navbar"
 import HoverSoundVideo from "@/components/HoverSoundVideo"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -654,6 +655,7 @@ export default function LandingPage() {
             </AnimatePresence>
 
             <Footer />
+            <LeadChatWidget />
         </main>
     )
 }

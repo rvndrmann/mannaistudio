@@ -44,6 +44,16 @@ describe("explicit model selection", () => {
     expect(routing.reason).toContain("explicitly")
   })
 
+  it("routes Google and fal models explicitly", () => {
+    expect(routeGeneration({ type: "image", shotIds: [shotId], model: "google-nano-banana-2" }).selected.provider).toBe("google")
+    expect(routeGeneration({ type: "video", shotIds: [shotId], model: "fal-seedance-2-5" }).selected.provider).toBe("fal")
+  })
+
+  it("uses the shared rate card for the chosen variant", () => {
+    expect(routeGeneration({ type: "video", shotIds: [shotId], model: "fal-seedance-2-5", durationSeconds: 4 }).creditsPerShot).toBe(348)
+    expect(routeGeneration({ type: "image", shotIds: [shotId], model: "google-nano-banana-2", resolution: "1080p" }).creditsPerShot).toBe(22)
+  })
+
   it("refuses a model that cannot serve the request", () => {
     expect(() => routeGeneration({ type: "video", shotIds: [shotId], model: "gpt-image-2" })).toThrow(/does not support/)
   })

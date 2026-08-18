@@ -108,13 +108,13 @@ describe("estimateProjectCost", () => {
     expect(failed.video.credits).toBeGreaterThan(0)
   })
 
-  it("quotes a per-video model as a five-second clip", () => {
-    const perVideo = projectCostSettings({
+  it("quotes every video model by the second", () => {
+    const perSecond = projectCostSettings({
       metadata: { basic_settings: { videoModel: "fal-seedance-2-0-fast", storyboardImageModel: "gpt-image-2" } },
     })
-    const estimate = estimateProjectCost([shot()], perVideo)
-    expect(estimate.video.unit).toBe("per 5s clip")
-    expect(estimate.video.unitCredits).toBe(calculateCreditCost("fal-seedance-2-0-fast", "video", 5, { aspectRatio: "9:16", resolution: "720p" }))
+    const estimate = estimateProjectCost([shot()], perSecond)
+    expect(estimate.video.unit).toBe("per second")
+    expect(estimate.video.unitCredits).toBe(calculateCreditCost("fal-seedance-2-0-fast", "video", 1, { aspectRatio: "9:16", resolution: "720p" }))
   })
 
   it("is zero for an empty storyboard", () => {

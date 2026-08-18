@@ -1,6 +1,6 @@
 import { calculateCreditCost } from "./credits"
 import { describe, expect, it } from "vitest"
-import { defaultDirectorVideoModel, generationProvider, imageGenerationModels, isImageGenerationModel, isVideoGenerationModel, projectDirectorVideoModel, supportedVideoModel, videoGenerationModels, videoDurationOptions, videoModelMaxDuration } from "./generation-models"
+import { generationProvider, imageGenerationModels, isImageGenerationModel, isVideoGenerationModel, projectDirectorVideoModel, supportedVideoModel, videoGenerationModels, videoDurationOptions, videoModelMaxDuration } from "./generation-models"
 
 describe("studio generation model registry", () => {
   it("exposes Seedream 5.0 Pro through BytePlus", () => {
@@ -46,17 +46,68 @@ describe("studio generation model registry", () => {
   })
 })
 
-describe("Seedance 2.5 pricing", () => {
-  it("bills fifty credits for every second of the clip", () => {
-    expect(calculateCreditCost("fal-seedance-2-5", "video", 3)).toBe(150)
-    expect(calculateCreditCost("fal-seedance-2-5", "video", 4)).toBe(200)
-    expect(calculateCreditCost("dreamina-seedance-2-5-260628", "video", 10)).toBe(500)
+describe("video pricing on the 2.2x rate card", () => {
+  it("bills Seedance 2.5 at eighty-seven credits for every second", () => {
+    expect(calculateCreditCost("fal-seedance-2-5", "video", 3)).toBe(261)
+    expect(calculateCreditCost("fal-seedance-2-5", "video", 8)).toBe(696)
+    expect(calculateCreditCost("dreamina-seedance-2-5-260628", "video", 10)).toBe(870)
   })
 
-  it("leaves per-video models on their own scale", () => {
-    // Seedance 2.0 stays flat to five seconds, so the per-second rule must not
-    // leak into models that are not priced that way.
-    expect(calculateCreditCost("fal-seedance-2-0", "video", 4)).toBe(calculateCreditCost("fal-seedance-2-0", "video", 5))
+  it("prices Seedance 2.0 by resolution, not by a flat multiplier", () => {
+    expect(calculateCreditCost("fal-seedance-2-0", "video", 5, { resolution: "480p" })).toBe(75)
+    expect(calculateCreditCost("fal-seedance-2-0", "video", 5, { resolution: "720p" })).toBe(160)
+    expect(calculateCreditCost("fal-seedance-2-0", "video", 5, { resolution: "1080p" })).toBe(390)
+    expect(calculateCreditCost("fal-seedance-2-0", "video", 5, { resolution: "4K" })).toBe(825)
+  })
+
+  it("charges a longer clip for the seconds it actually renders", () => {
+    // The old card quoted a flat five-second clip, so a four-second and a
+    // five-second render cost the same and every second past five was free.
+    expect(calculateCreditCost("fal-seedance-2-0", "video", 4, { resolution: "720p" })).toBe(128)
+    expect(calculateCreditCost("fal-seedance-2-0", "video", 8, { resolution: "720p" })).toBe(256)
+  })
+
+  it("keeps a fractional per-second rate unrounded until the total", () => {
+    // Veo 3.1 is 674 credits for eight seconds. Rounding its 84.25 rate up
+    // first would bill 680 for the same clip.
+    expect(calculateCreditCost("google-veo-3-1", "video", 8)).toBe(674)
+    expect(calculateCreditCost("google-omni-flash", "video", 8)).toBe(169)
+    expect(calculateCreditCost("fal-minimax-h3", "video", 8, { resolution: "720p" })).toBe(135)
+    expect(calculateCreditCost("fal-minimax-h3", "video", 8, { resolution: "4K" })).toBe(220)
+  })
+
+  it("scales a variant the card does not quote off the Seedance 2.0 curve", () => {
+    // Fast is quoted at 480p and 720p only; 4K must still cost more than 1080p,
+    // or a 4K render bills at a fraction of what it costs to produce.
+    const fast1080 = calculateCreditCost("fal-seedance-2-0-fast", "video", 1, { resolution: "1080p" })
+    const fast4k = calculateCreditCost("fal-seedance-2-0-fast", "video", 1, { resolution: "4K" })
+    expect(fast1080).toBe(64)
+    expect(fast4k).toBeGreaterThan(fast1080)
+    expect(fast4k).toBeLessThan(calculateCreditCost("fal-seedance-2-0", "video", 1, { resolution: "4K" }))
+  })
+})
+
+describe("image pricing on the 2.2x rate card", () => {
+  it("bills GPT Image 2 by its quality tier", () => {
+    expect(calculateCreditCost("gpt-image-2", "image", 5, { quality: "Low" })).toBe(2)
+    expect(calculateCreditCost("gpt-image-2", "image", 5, { quality: "Medium" })).toBe(12)
+    expect(calculateCreditCost("gpt-image-2", "image", 5, { quality: "High" })).toBe(45)
+  })
+
+  it("bills Nano Banana by resolution and ignores the video duration", () => {
+    expect(calculateCreditCost("google-nano-banana-2", "image", 30, { resolution: "720p" })).toBe(15)
+    expect(calculateCreditCost("google-nano-banana-2", "image", 30, { resolution: "1080p" })).toBe(22)
+    expect(calculateCreditCost("google-nano-banana-2", "image", 30, { resolution: "4K" })).toBe(32)
+    expect(calculateCreditCost("google-nano-banana-2-pro", "image", 5, { resolution: "4K" })).toBe(51)
+  })
+
+  it("prices Seedream at its flat rate whatever the settings say", () => {
+    expect(calculateCreditCost("dola-seedream-5-0-pro-260628", "image", 5, { quality: "Ultra", resolution: "4K" })).toBe(10)
+  })
+
+  it("falls back to the cheapest quoted tier for a model with no card entry", () => {
+    expect(calculateCreditCost("some-unlisted-model", "image")).toBe(7)
+    expect(calculateCreditCost("some-unlisted-model", "video", 8)).toBe(135)
   })
 })
 
@@ -65,8 +116,8 @@ describe("AI Director video provider", () => {
     expect(projectDirectorVideoModel({ metadata: { basic_settings: { videoModel: "dreamina-seedance-2-0-fast-260128" } } })).toBe("dreamina-seedance-2-0-fast-260128")
   })
 
-  it("falls back to BytePlus Seedance 2.5 instead of fal", () => {
-    expect(projectDirectorVideoModel({ metadata: { basic_settings: { videoModel: "fal-seedance-2-5" } } })).toBe(defaultDirectorVideoModel)
+  it("keeps a saved fal model now that Director execution supports it", () => {
+    expect(projectDirectorVideoModel({ metadata: { basic_settings: { videoModel: "fal-seedance-2-5" } } })).toBe("fal-seedance-2-5")
     expect(projectDirectorVideoModel({})).toBe("dreamina-seedance-2-5-260628")
   })
 })

@@ -42,3 +42,16 @@ describe("AI Director conversation context", () => {
     expect(selectConversationWindow(messages, 5).map((message) => message.content)).toEqual(["35", "36", "37", "38", "39"])
   })
 })
+
+describe("buildDirectorInstructions with a brand", () => {
+  it("carries the brand briefing and marks its rules as binding", () => {
+    const instructions = buildDirectorInstructions(project, undefined, "BRAND RECORD\nName: Aurora Coffee\nVoice: Warm, unhurried.")
+    expect(instructions).toContain("Aurora Coffee")
+    expect(instructions).toContain("Its rules are binding")
+  })
+
+  it("says nothing about a brand for a project that has none", () => {
+    expect(buildDirectorInstructions(project)).not.toContain("This production is made for the following brand")
+    expect(buildDirectorInstructions(project, undefined, "   ")).not.toContain("This production is made for the following brand")
+  })
+})

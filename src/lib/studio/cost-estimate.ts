@@ -1,4 +1,4 @@
-import { calculateCreditCost, MODEL_CREDIT_COSTS } from "./credits"
+import { calculateCreditCost, creditRateFor } from "./credits"
 import { getModelLabel, imageGenerationModels, supportedVideoModel } from "./generation-models"
 import { resolveShotSeconds } from "./shot-duration"
 
@@ -104,9 +104,6 @@ export function shotHasVideo(shot: ShotCostInput) {
 }
 
 export function estimateProjectCost(shots: ShotCostInput[], settings: ProjectCostSettings): ProjectCostEstimate {
-  const videoConfig = MODEL_CREDIT_COSTS[settings.videoModel]
-  const perSecond = videoConfig?.unit === "per second"
-
   let imageCredits = 0
   let imageCreditsAll = 0
   let imagePending = 0
@@ -160,12 +157,10 @@ export function estimateProjectCost(shots: ShotCostInput[], settings: ProjectCos
     video: {
       model: settings.videoModel,
       label: getModelLabel(settings.videoModel),
-      // Per-second models quote a second; per-video models quote their
-      // five-second clip, so the caption has to say which is being shown.
-      unitCredits: perSecond
-        ? calculateCreditCost(settings.videoModel, "video", 1, { aspectRatio: settings.aspectRatio, resolution: settings.resolution })
-        : calculateCreditCost(settings.videoModel, "video", 5, { aspectRatio: settings.aspectRatio, resolution: settings.resolution }),
-      unit: perSecond ? "per second" : "per 5s clip",
+      // Every video model on the rate card is billed by the second, so the
+      // caption quotes a second rather than a nominal clip length.
+      unitCredits: calculateCreditCost(settings.videoModel, "video", 1, { aspectRatio: settings.aspectRatio, resolution: settings.resolution }),
+      unit: creditRateFor(settings.videoModel, "video").unit,
       pendingShots: videoPending,
       completedShots: shotCount - videoPending,
       credits: videoCredits,

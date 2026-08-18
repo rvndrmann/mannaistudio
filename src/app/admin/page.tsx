@@ -10,12 +10,13 @@ import {
     Save, X, Download, FileText, Video, Trophy,
     Inbox, Mail, Clock, DollarSign, Loader2, Phone,
     ChevronLeft, ChevronRight, Calendar, Pause, PauseCircle, PlayCircle,
-    Image as ImageIcon, RefreshCw
+    Image as ImageIcon, RefreshCw, FolderKanban
 } from "lucide-react"
 import { courses, adminShowcase, challenges } from "@/lib/data"
 import { useEffect, useState } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
 import { cn } from "@/lib/utils"
+import AdminProjects from "@/components/admin/AdminProjects"
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid,
     Tooltip, ResponsiveContainer, AreaChart, Area
@@ -1287,6 +1288,15 @@ function AdminDashboardContent() {
                                 <Inbox className="w-4 h-4" /> Job Posts
                             </button>
                             <button
+                                onClick={() => setActiveTab("projects")}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
+                                    activeTab === "projects" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                )}
+                            >
+                                <FolderKanban className="w-4 h-4" /> Productions
+                            </button>
+                            <button
                                 onClick={() => { setActiveTab("students"); loadStudents(); }}
                                 className={cn(
                                     "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
@@ -2220,6 +2230,19 @@ function AdminDashboardContent() {
                                     )}
                                 </div>
                             </motion.div>
+                        )}
+
+                        {activeTab === "projects" && (
+                            <div className="space-y-6">
+                                <div>
+                                    <h2 className="text-xl font-bold text-white">Productions</h2>
+                                    <p className="mt-1 text-sm text-white/40">
+                                        Every project, who owns it, and the credits it has spent. Granting yourself access adds you to the
+                                        project the same way team sharing does, so the owner can see it.
+                                    </p>
+                                </div>
+                                <AdminProjects />
+                            </div>
                         )}
 
                         {activeTab === "students" && (

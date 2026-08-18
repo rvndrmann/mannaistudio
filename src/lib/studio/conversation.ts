@@ -37,7 +37,7 @@ export class DirectorProviderUnavailableError extends Error {
   }
 }
 
-export function buildDirectorInstructions(project: ProjectContext, globalInstructions = defaultDirectorGlobalInstructions): string {
+export function buildDirectorInstructions(project: ProjectContext, globalInstructions = defaultDirectorGlobalInstructions, brandContext = ""): string {
   const brief = project.creativeBrief
   return [
     "You are the Lead AI Film & Commercial Director Employee inside AI Director Hub.",
@@ -62,6 +62,10 @@ export function buildDirectorInstructions(project: ProjectContext, globalInstruc
     `Aspect ratio: ${brief.aspectRatio || project.defaultAspect}`,
     `Style: ${brief.style || project.defaultStyle}`,
     `Language: ${brief.language || "Not confirmed"}`,
+    // A project produced for a brand inherits that brand's voice, rules, and
+    // asset library. Without it the Director would invent a look per project
+    // and the same product would render differently in every episode.
+    ...(brandContext.trim() ? ["", "This production is made for the following brand. Its rules are binding, and its asset library is the look to keep.", brandContext.trim()] : []),
   ].join("\n")
 }
 
