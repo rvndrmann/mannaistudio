@@ -14,6 +14,9 @@ import { randomUUID } from "node:crypto"
 import { verifyGenerationTarget } from "./generation-target"
 import { refundGenerationCredits } from "./credits"
 import { refundableCredits } from "@/lib/byok/billing"
+import { withCredential } from "@/lib/byok/credential-service"
+import { runWithCredential } from "@/lib/byok/active-credential"
+import { isByokProvider } from "@/lib/byok/providers"
 import { parseSeedanceMissingAssetError, purgeStaleBytePlusAsset } from "./seedance-reference-error"
 import { isVideoReferencePath } from "./media-reference"
 
@@ -130,8 +133,14 @@ export async function executeGenerationJobsInBackground(
       if (jobsError || !jobs?.length) return
 
       for (const job of jobs) {
+        // A job the customer's own key is paying for runs inside that
+        // credential's scope, so every provider call it makes — generation and
+        // the Asset Library registration alike — authenticates as them. Outside
+        // the scope the provider modules read the platform environment exactly
+        // as before, which is what leaves the credit-paid path untouched.
+        const runJob = async () => {
         try {
-          if (job.status !== "approved") continue
+          if (job.status !== "approved") return
 
           // Mark as generating
           await context.supabase
@@ -477,6 +486,25 @@ export async function executeGenerationJobsInBackground(
             }
           }
           await settleWorkflowRun(context, job.workflow_run_id)
+        }
+        }
+
+        const provider = typeof job.provider === "string" ? job.provider : ""
+        if (job.billing_mode === "byok" && isByokProvider(provider)) {
+          const ran = await withCredential({ userId: context.user.id, provider }, (parts) =>
+            runWithCredential(provider, parts, runJob))
+          if (ran === null) {
+            // The credential was disconnected between approval and execution.
+            // Failing here is right: silently finishing on the platform's key
+            // would bill us for work the customer chose to pay for themselves.
+            await context.supabase.from("creator_generation_jobs").update({
+              status: "failed",
+              error: "The provider key this generation was queued against is no longer connected.",
+            }).eq("id", job.id)
+            await settleWorkflowRun(context, job.workflow_run_id)
+          }
+        } else {
+          await runJob()
         }
       }
     } catch (err) {

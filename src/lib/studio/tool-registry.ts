@@ -7,6 +7,9 @@ import { entityHandle, entityKindSchema, legacyEntityType, seriesBibleSchema } f
 import { generationRequestSchema, routeGeneration } from "./model-routing"
 import { revisionRequestSchema } from "./revisions"
 import { deductUserCredits } from "./credits"
+import { decideBilling } from "@/lib/byok/billing"
+import { hasCredential } from "@/lib/byok/credential-service"
+import { isByokProvider } from "@/lib/byok/providers"
 import { executeGenerationJobsInBackground } from "./execute-generation"
 import { findMentionedEntityIds, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
 import { sceneNotFrameReason, stripIdentityDescriptions } from "./prompt-sanitizer"
@@ -705,13 +708,25 @@ export const submitGenerationTool = defineDirectorTool({
       }
       return savedPrompts.get(shotId) || ""
     }
+    // Who pays for this. A customer who has connected their own key for the
+    // provider that will actually serve these shots is billed by that provider
+    // directly, so no credits are taken — and the decision is written onto each
+    // job, because a job that charged nothing has to stay recognisable for the
+    // rest of its life or the failure path refunds a charge that never happened.
+    const servingProvider = routing.selected.provider
+    const billing = decideBilling({
+      hasCredential: isByokProvider(servingProvider)
+        ? await hasCredential(context.user.id, servingProvider)
+        : false,
+      platformCredits: routing.creditsPerShot,
+    })
     const shotNumberById = new Map(Array.from(promptsByNumber.entries()).map(([number, id]) => [id, number]))
     const jobs = request.shotIds.map((shotId, index) => {
       const prompt = promptFor(shotId)
       const shot = (generationShots || []).find((item) => item.id === shotId)
       const entityReferenceIds = Array.from(new Set([...(shot?.referenced_entities || []), ...request.mentionedEntityIds]))
       const targetSnapshot = buildGenerationTargetSnapshot({ projectId: context.project.id, episodeId: request.episodeId || null, shotId, shotNumber: shotNumberById.get(shotId) || null, type: request.type, prompt, entityReferenceIds })
-      return { user_id: context.user.id, project_id: context.project.id, workflow_run_id: input.workflowRunId || null, shot_id: shotId, type: request.type, status: "approved", model: routing.selected.model, provider: routing.selected.provider, prompt, settings: request, target_snapshot: targetSnapshot, ...((): Record<string, unknown> => { const images = inputImagesFor(shotId); return images ? { input_images: images } : {} })(), estimated_credits: routing.creditsPerShot, requires_approval: true, approved_at: new Date().toISOString(), operation: request.type === "video" ? "submit_video_generation" : "submit_image_generation", idempotency_key: `${input.idempotencyKey}:${index}`, routing_decision: routing, cost_estimate: { credits: routing.creditsPerShot } }
+      return { user_id: context.user.id, project_id: context.project.id, workflow_run_id: input.workflowRunId || null, shot_id: shotId, type: request.type, status: "approved", model: routing.selected.model, provider: routing.selected.provider, prompt, settings: request, target_snapshot: targetSnapshot, ...((): Record<string, unknown> => { const images = inputImagesFor(shotId); return images ? { input_images: images } : {} })(), estimated_credits: billing.credits, billing_mode: billing.mode, requires_approval: true, approved_at: new Date().toISOString(), operation: request.type === "video" ? "submit_video_generation" : "submit_image_generation", idempotency_key: `${input.idempotencyKey}:${index}`, routing_decision: routing, cost_estimate: { credits: billing.credits, billingMode: billing.mode } }
     })
     const unprompted = jobs.filter((job) => !job.prompt).map((job) => job.shot_id)
     if (unprompted.length) throw new Error(`No prompt available for ${unprompted.length} shot(s). Add a prompt to the storyboard shot, or pass one in prompts.`)
@@ -722,7 +737,8 @@ export const submitGenerationTool = defineDirectorTool({
     // credit badge and direct image/video endpoints. The legacy reservation
     // table is a separate ledger and therefore could leave the visible balance
     // unchanged after an approved Director generation.
-    const deduction = await deductUserCredits(
+    // Nothing to deduct when the customer's own provider account is paying.
+    const deduction = billing.mode === "byok" ? { success: true, newBalance: 0, errorMessage: null } : await deductUserCredits(
       context.user.id,
       routing.estimatedCredits,
       routing.selected.model,
@@ -733,15 +749,21 @@ export const submitGenerationTool = defineDirectorTool({
       await context.supabase.rpc("creator_cancel_unreserved_jobs", { p_job_ids: jobIds })
       throw new Error(deduction.errorMessage || "Insufficient credits")
     }
-    await context.supabase.from("creator_generation_jobs").update({ credits_used: routing.creditsPerShot }).in("id", jobIds)
+    if (billing.mode !== "byok") {
+      await context.supabase.from("creator_generation_jobs").update({ credits_used: routing.creditsPerShot }).in("id", jobIds)
+    }
     // Trigger background generation for the approved jobs
     executeGenerationJobsInBackground(context, jobIds)
 
     return {
       jobs: data,
-      estimatedCredits: routing.estimatedCredits,
-      creditsCharged: routing.estimatedCredits,
-      creditBalance: deduction.newBalance,
+      billingMode: billing.mode,
+      estimatedCredits: billing.mode === "byok" ? 0 : routing.estimatedCredits,
+      creditsCharged: billing.mode === "byok" ? 0 : routing.estimatedCredits,
+      // Omitted rather than reported as zero when nothing was charged: the
+      // Studio broadcasts this straight onto the credit badge, and a BYOK
+      // generation would have shown the user a balance of nought.
+      ...(billing.mode === "byok" ? {} : { creditBalance: deduction.newBalance }),
     }
   },
 })

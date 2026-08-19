@@ -1,5 +1,7 @@
 import { videoModelMaxDuration, type ImageGenerationModelId, type VideoGenerationModelId } from "@/lib/studio/generation-models"
 
+import { activeCredentialPart, isRunningOnCustomerKey } from "@/lib/byok/active-credential"
+
 const defaultBaseUrl = "https://ark.ap-southeast.bytepluses.com/api/v3"
 
 export class BytePlusProviderError extends Error {
@@ -9,10 +11,52 @@ export class BytePlusProviderError extends Error {
   }
 }
 
+/**
+ * The credentials this call runs on.
+ *
+ * A customer's own key when one is in force for this job, the platform's
+ * otherwise. Every read of an ARK secret goes through these three functions, so
+ * no path can reach a provider with a key the caller did not intend — the
+ * mistake worth preventing is a missed call site quietly falling back to the
+ * platform key and billing us for a customer's generation.
+ */
 function apiKey() {
+  const own = activeCredentialPart("byteplus", "arkApiKey")
+  if (own) return own
   const key = process.env.ARK_API_KEY || process.env.BYTEPLUS_ARK_API_KEY
   if (!key) throw new BytePlusProviderError("BytePlus ModelArk is not configured. Add ARK_API_KEY to the server environment.", 503)
   return key
+}
+
+/**
+ * The Asset Library signing pair, always returned together.
+ *
+ * Never mixed: signing with the platform's access key and a customer's secret
+ * fails authentication in a way that reads like a bad customer key.
+ */
+function assetSigningKeys(): { ak?: string; sk?: string } {
+  const ownAccess = activeCredentialPart("byteplus", "accessKey")
+  const ownSecret = activeCredentialPart("byteplus", "secretKey")
+  if (ownAccess && ownSecret) return { ak: ownAccess, sk: ownSecret }
+  if (isRunningOnCustomerKey("byteplus")) {
+    // Their ARK key is serving generation, so registering reference art onto
+    // our Asset Library would put their pictures on our account and hand them
+    // an asset id their own key cannot resolve.
+    throw new BytePlusProviderError(
+      "Your BytePlus key is missing the access key and secret needed to register reference images. Add them under Integrations to generate character shots.",
+      400,
+    )
+  }
+  return { ak: process.env.ARK_ACCESS_KEY, sk: process.env.ARK_SECRET_KEY }
+}
+
+function assetGroupIdFor(): string | undefined {
+  const own = activeCredentialPart("byteplus", "assetGroupId")
+  if (own) return own
+  // A customer's group must never fall back to the platform's: that id does not
+  // exist on their account.
+  if (isRunningOnCustomerKey("byteplus")) return undefined
+  return process.env.ARK_ASSET_GROUP_ID?.trim() || cachedAssetGroupId
 }
 
 export function formatBytePlusError(data: Record<string, unknown>, status: number) {
@@ -77,7 +121,8 @@ export async function resolveBytePlusReferenceUrl(rawUrl: string, registerFace =
 
   // If HTTP/HTTPS URL, register image to Asset Library to avoid PrivacyInformation real-person error
   if (/^https?:\/\//i.test(formatted)) {
-    if (!process.env.ARK_ACCESS_KEY || !process.env.ARK_SECRET_KEY) {
+    const signing = assetSigningKeys()
+    if (!signing.ak || !signing.sk) {
       throw new BytePlusProviderError(
         "BytePlus Direct requires ARK_ACCESS_KEY and ARK_SECRET_KEY in .env.local to register real-person face photos to the Asset Library. Please add ARK_ACCESS_KEY and ARK_SECRET_KEY to .env.local, or use the fal.ai Seedance model (Seedance 2.0 Mini via fal.ai).",
         400
@@ -248,8 +293,7 @@ const sharedAssetGroupName = "aidirector_character_references"
 let cachedAssetGroupId: string | undefined
 
 export async function createBytePlusAssetGroup(name = "portrait_group", description = "Portraits for Seedance") {
-  const ak = process.env.ARK_ACCESS_KEY
-  const sk = process.env.ARK_SECRET_KEY
+  const { ak, sk } = assetSigningKeys()
   if (!ak || !sk) throw new BytePlusProviderError("ARK_ACCESS_KEY and ARK_SECRET_KEY are required for CreateAssetGroup.")
 
   const query = { Action: "CreateAssetGroup", Version: "2024-01-01" }
@@ -273,8 +317,7 @@ export async function createBytePlusAssetGroup(name = "portrait_group", descript
 }
 
 export async function createBytePlusAsset(input: { imageUrl: string; name?: string; groupId?: string }) {
-  const ak = process.env.ARK_ACCESS_KEY
-  const sk = process.env.ARK_SECRET_KEY
+  const { ak, sk } = assetSigningKeys()
 
   if (!ak || !sk) {
     throw new BytePlusProviderError(
@@ -286,7 +329,7 @@ export async function createBytePlusAsset(input: { imageUrl: string; name?: stri
   // GroupId is required by CreateAsset, so there is no "attempt without it".
   // Swallowing a failed group creation here only moved the error one step later
   // and reported it as a missing parameter, hiding why the group was never made.
-  let groupId = input.groupId || process.env.ARK_ASSET_GROUP_ID?.trim() || cachedAssetGroupId
+  let groupId = input.groupId || assetGroupIdFor()
   if (!groupId) {
     try {
       // One group for the whole studio. Naming it after each asset created a
@@ -333,8 +376,7 @@ export async function createBytePlusAsset(input: { imageUrl: string; name?: stri
 }
 
 export async function getBytePlusAsset(assetId: string) {
-  const ak = process.env.ARK_ACCESS_KEY
-  const sk = process.env.ARK_SECRET_KEY
+  const { ak, sk } = assetSigningKeys()
 
   if (!ak || !sk) {
     return { id: assetId, status: "Active", assetUri: `asset://${assetId}` }
@@ -364,8 +406,7 @@ export async function getBytePlusAsset(assetId: string) {
  * row without this would only hide the problem.
  */
 export async function deleteBytePlusAsset(assetId: string) {
-  const ak = process.env.ARK_ACCESS_KEY
-  const sk = process.env.ARK_SECRET_KEY
+  const { ak, sk } = assetSigningKeys()
   if (!ak || !sk) throw new BytePlusProviderError("ARK_ACCESS_KEY and ARK_SECRET_KEY are required to delete an asset.")
 
   const query = { Action: "DeleteAsset", Version: "2024-01-01" }
