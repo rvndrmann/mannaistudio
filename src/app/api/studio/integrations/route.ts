@@ -18,11 +18,23 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    const saved = await listCredentials(user.id)
+    // Which providers exist is static configuration; which are connected comes
+    // from the vault. Losing the second must not hide the first — an opaque
+    // failure here showed a page with no providers at all, which reads as "this
+    // studio supports nothing" rather than "we could not reach the vault".
+    let saved: Awaited<ReturnType<typeof listCredentials>> = []
+    let vaultReadable = true
+    try {
+      saved = await listCredentials(user.id)
+    } catch (error) {
+      vaultReadable = false
+      console.error("Could not read the credential vault:", error instanceof Error ? error.message : "unknown")
+    }
     const byProvider = new Map(saved.map((entry) => [entry.provider, entry]))
 
     return NextResponse.json({
       configured: byokIsConfigured(),
+      vaultReadable,
       providers: byokProviders.map((provider) => {
         const spec = providerSpecs[provider]
         const credential = byProvider.get(provider)

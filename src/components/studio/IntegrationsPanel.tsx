@@ -29,6 +29,7 @@ type ProviderRow = {
 export function IntegrationsPanel() {
   const [rows, setRows] = useState<ProviderRow[]>([]);
   const [configured, setConfigured] = useState(true);
+  const [vaultReadable, setVaultReadable] = useState(true);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -42,6 +43,7 @@ export function IntegrationsPanel() {
       const data = await response.json();
       setRows(data.providers || []);
       setConfigured(Boolean(data.configured));
+      setVaultReadable(data.vaultReadable !== false);
     } finally {
       setLoading(false);
     }
@@ -128,6 +130,13 @@ export function IntegrationsPanel() {
           Create a key dedicated to this studio, and set a spending limit with your provider.
         </p>
       </div>
+
+      {!vaultReadable && (
+        <div className="rounded-xl border border-red-400/30 bg-red-500/5 p-5 text-sm text-red-200">
+          Connected keys could not be read just now, so every provider below shows as not
+          connected. Nothing has been changed or disconnected — try again shortly.
+        </div>
+      )}
 
       {rows.map((row) => (
         <div key={row.provider} className="rounded-xl border border-white/10 bg-[#1d1f1e] p-5">
