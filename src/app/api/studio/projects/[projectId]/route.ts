@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { ensureShotLocations } from "@/lib/studio/shot-location"
 import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/service"
 import { fetchStudioFeatureFlags } from "@/lib/studio/feature-flags"
@@ -41,6 +42,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const requestedEpisodeId = request.nextUrl.searchParams.get("episodeId"); const activeEpisode = episodes?.find((episode) => episode.id === requestedEpisodeId) || episodes?.[0]; if (!activeEpisode) return NextResponse.json({ error: "Project has no episodes" }, { status: 400 })
     const [features, directorWorkflows] = await Promise.all([fetchStudioFeatureFlags(supabase), fetchDirectorWorkflows(supabase)])
     const [{ data: entities }, { data: shots }, { data: chatSessions }, { data: scriptSuggestions }] = await Promise.all([supabase.from("creator_entities").select("*").eq("project_id", projectId).order("created_at"), supabase.from("creator_shots").select("*").eq("episode_id", activeEpisode.id).order("order_index"), supabase.from("creator_chat_sessions").select("*").eq("episode_id", activeEpisode.id).eq("user_id", user.id).order("updated_at", { ascending: false }), supabase.from("creator_script_suggestions").select("*").eq("episode_id", activeEpisode.id).order("created_at", { ascending: false })])
+    // Every shot happens somewhere, and a prompt names the location only where
+    // it changes — so the shots between two exteriors carry no scene. The
+    // inheritance used to run once, inside create_storyboard_batch, and the
+    // entities here are made from the finished prompt sheet, which is after the
+    // shots exist: at the only moment it ran there was no location to inherit.
+    //
+    // Repairing on the read is what makes the assets column right for a
+    // storyboard already in that state, rather than only for the ones written
+    // from now on. It writes nothing when there is nothing to repair, and
+    // updates the rows in place so this response already carries the fix.
+    if (shots?.length && entities?.length) {
+      await ensureShotLocations(supabase, { shots, entities: entities as { id: string; type: string }[] })
+        .catch((error) => console.warn("Could not carry shot locations forward:", error))
+    }
     const requestedSessionId = request.nextUrl.searchParams.get("sessionId")
     const activeSessionId = chatSessions?.find((session) => session.id === requestedSessionId)?.id || chatSessions?.[0]?.id; const [{ data: chatMessages }, { data: actionProposals }] = await Promise.all([
       activeSessionId ? supabase.from("creator_chat_messages").select("*").eq("session_id", activeSessionId).order("created_at") : Promise.resolve({ data: [] }),

@@ -10,7 +10,7 @@ import { deductUserCredits } from "./credits"
 import { executeGenerationJobsInBackground } from "./execute-generation"
 import { findMentionedEntityIds, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
 import { sceneNotFrameReason, stripIdentityDescriptions } from "./prompt-sanitizer"
-import { inheritedShotLocations } from "./shot-location"
+import { ensureProjectShotLocations, ensureShotLocations, inheritedShotLocations } from "./shot-location"
 import { estimateShotSeconds } from "./shot-duration"
 import { beatRuntimeSeconds, describeBeatProblems, readShotVideoPrompt, writeShotVideoPrompt } from "./shot-video-prompt"
 import { aspectMismatch, restateAspect } from "./shot-aspect"
@@ -300,6 +300,9 @@ export const createProductionEntityTool = defineDirectorTool({
   async execute(context, input) {
     const { data, error } = await context.supabase.from("creator_entities").insert({ project_id: context.project.id, type: legacyEntityType(input.kind), kind: input.kind, name: input.name, handle: entityHandle(input.name), description: input.description || null, reference_images: input.referenceImages, metadata: input.metadata, status: "draft", approval_status: "pending" }).select("*").single()
     if (error) throw error
+    // Same as the batch: a location made after the shots were written has to be
+    // carried back onto them, or they stay set nowhere.
+    await ensureProjectShotLocations(context.supabase, { projectId: context.project.id, entities: [data as { id: string; type: string }] })
     return data
   },
 })
@@ -324,7 +327,12 @@ export const createProductionEntitiesBatchTool = defineDirectorTool({
     if (!rows.length) return { created: [], skipped: existing || [] }
     const { data, error } = await context.supabase.from("creator_entities").insert(rows).select("*")
     if (error) throw error
-    return { created: data || [], skipped: existing || [] }
+    // A location created after the storyboard is the ordinary case here — the
+    // entities are made from the finished prompt sheet, so the shots already
+    // exist. Repairing now is what gives those shots the scene they were
+    // written in; nothing else would ever revisit them.
+    const locatedShots = await ensureProjectShotLocations(context.supabase, { projectId: context.project.id, entities: (data || []) as { id: string; type: string }[] })
+    return { created: data || [], skipped: existing || [], shotsGivenLocation: locatedShots }
   },
 })
 
@@ -596,10 +604,28 @@ export const submitGenerationTool = defineDirectorTool({
     const { data: shots, error: shotError } = episodeIds.length ? await context.supabase.from("creator_shots").select("id").in("episode_id", episodeIds).in("id", request.shotIds) : { data: [], error: null }
     if (shotError) throw shotError
     if ((shots ?? []).length !== request.shotIds.length) throw new Error("One or more shots do not belong to this project")
-    const { data: generationShots, error: validationError } = await context.supabase.from("creator_shots").select("id,prompt,referenced_entities,keyframe_image,video_url").in("id", request.shotIds)
-    if (validationError) throw validationError
     const { data: projectEntityRows } = await context.supabase.from("creator_entities").select("id,name,type").eq("project_id", context.project.id)
     const entityIndex = (projectEntityRows || []) as MentionableEntity[]
+    // Every shot happens somewhere, and a prompt names the location only where
+    // it changes — so the interior shots between two exteriors carry no scene
+    // and would render with no location reference at all.
+    //
+    // ensureShotLocations was written for exactly this and nothing called it:
+    // the inheritance ran once, inside create_storyboard_batch, over the batch
+    // being written. A storyboard built before its location entity existed —
+    // which is the ordinary order here, since the entities are created from the
+    // finished sheet — therefore had nothing to inherit and was never revisited.
+    // Repairing at generation is what makes it true whenever it matters, and
+    // the repair is saved, so the assets column agrees with what was rendered.
+    const repairEpisodeId = request.episodeId || (await context.supabase.from("creator_shots").select("episode_id").in("id", request.shotIds).limit(1).maybeSingle()).data?.episode_id
+    if (repairEpisodeId) {
+      const { data: episodeShots } = await context.supabase.from("creator_shots").select("id,order_index,referenced_entities,metadata").eq("episode_id", repairEpisodeId).order("order_index")
+      if (episodeShots?.length) {
+        await ensureShotLocations(context.supabase, { shots: episodeShots, entities: (projectEntityRows || []) as { id: string; type: string }[] })
+      }
+    }
+    const { data: generationShots, error: validationError } = await context.supabase.from("creator_shots").select("id,prompt,referenced_entities,keyframe_image,video_url").in("id", request.shotIds)
+    if (validationError) throw validationError
     const referencedIds = Array.from(new Set([...(generationShots || []).flatMap((shot) => shot.referenced_entities || []), ...request.mentionedEntityIds]))
     if (referencedIds.length) {
       const { data: references, error: referenceError } = await context.supabase.from("creator_entities").select("id").eq("project_id", context.project.id).in("id", referencedIds)

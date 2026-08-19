@@ -94,6 +94,7 @@ import ConvertToEnterpriseDialog from "@/components/enterprise/ConvertToEnterpri
 import ProjectActivityDialog from "@/components/studio/ProjectActivityDialog";
 import DrawToEditModal from "@/components/studio/DrawToEditModal";
 import { entityPrimaryReference, findMentionedEntityIds, findShotCastEntityIds } from "@/lib/studio/entity-mentions";
+import { inheritedShotLocations } from "@/lib/studio/shot-location";
 import { parseSeedanceRejectedReference } from "@/lib/studio/seedance-reference-error";
 
 import {
@@ -486,20 +487,37 @@ export default function WorkspacePage({
 
   // Once a shot's job reaches a terminal state, the optimistic mark has done its
   // job and must not outlive it.
+  //
+  // A shot that now holds the media is settled too, whether or not its job row
+  // is in the fifty this response carried. Without that the mark could outlive
+  // the work it stood for: the keyframe was saved and visible in the database
+  // while the cell still read "Generating…" until the page was reloaded by hand.
   useEffect(() => {
     const settled = new Set((data?.production?.generationJobs || [])
       .filter((job) => ["completed", "failed", "cancelled"].includes(job.status) && job.shot_id)
       .map((job) => job.shot_id as string));
+    for (const shot of data?.shots || []) {
+      if (shot.keyframe_image && justSubmitted.image.includes(shot.id)) settled.add(shot.id);
+      if (shot.video_url && justSubmitted.video.includes(shot.id)) settled.add(shot.id);
+    }
     if (!settled.size) return;
     setJustSubmitted((current) => {
       const image = current.image.filter((id) => !settled.has(id));
       const video = current.video.filter((id) => !settled.has(id));
       return image.length === current.image.length && video.length === current.video.length ? current : { image, video };
     });
-  }, [data?.production?.generationJobs]);
+  }, [data?.production?.generationJobs, data?.shots, justSubmitted]);
+
+  // Polling ran only while a job row was already known to be in flight, so it
+  // depended on a refetch happening to catch the job mid-run. Approving from
+  // the chat generation block marks the shot optimistically and returns; if no
+  // refetch landed before the job finished, nothing ever started the poll and
+  // the spinner sat there until the user reloaded. An optimistic mark is a
+  // claim that something is running, so it starts the poll on its own.
+  const awaitingGeneration = jobsInFlight.length > 0 || justSubmitted.image.length > 0 || justSubmitted.video.length > 0;
 
   useEffect(() => {
-    if (!jobsInFlight.length) return;
+    if (!awaitingGeneration) return;
     let cancelled = false;
     const tick = async () => {
       await Promise.all(jobsInFlight.map((job) => {
@@ -516,7 +534,7 @@ export default function WorkspacePage({
     const timer = setInterval(() => { void tick(); }, 5000);
     return () => { cancelled = true; clearInterval(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobsInFlight.map((job) => job.id).join(","), projectId]);
+  }, [awaitingGeneration, jobsInFlight.map((job) => job.id).join(","), justSubmitted.image.join(","), justSubmitted.video.join(","), projectId]);
 
   // A Director run is server-side work tracked in creator_workflow_runs, so it
   // outlives the page that started it. After a reload the browser has no
@@ -6893,10 +6911,26 @@ function VideoGenerationProposalBlock({
     const targetShots = shots.filter((shot) =>
       (request.shotIds || []).includes(shot.id)
       || (request.shotNumbers || []).includes(shot.order_index + 1));
-    const shotCast = Array.from(new Set(targetShots.flatMap((shot) => shot.referenced_entities || [])));
+    // A shot that never named its location inherits the scene it is in, the
+    // same repair generation performs before it renders. Without it the card
+    // would promise two references and send three — the card has to show what
+    // will actually be used, before the user pays for it.
+    const inheritedLocations = inheritedShotLocations(
+      shots.map((shot) => ({ id: shot.id, order_index: shot.order_index, referenced_entities: shot.referenced_entities || [], metadata: shot.metadata })),
+      entities.map((entity) => ({ id: entity.id, type: entity.type })),
+    );
+    const shotCast = Array.from(new Set(targetShots.flatMap((shot) => [
+      ...(shot.referenced_entities || []),
+      ...(inheritedLocations.has(shot.id) ? [inheritedLocations.get(shot.id) as string] : []),
+    ])));
     const declared = Array.from(new Set([...(request.mentionedEntityIds || []), ...shotCast]));
+    // The same rule execution applies: the shot's own cast is the floor, and
+    // what the prompt names is added to it. Letting a partial prompt match win
+    // outright hid a linked asset the generation was in fact going to skip —
+    // the card said two references, the shot listed three, and the third was
+    // the one whose approved art nobody could see was being ignored.
     const ids = findShotCastEntityIds(prompt, entities, declared);
-    const resolved = ids.length ? ids : shotCast;
+    const resolved = Array.from(new Set([...ids, ...shotCast]));
     return resolved
       .map((id) => entities.find((entity) => entity.id === id))
       .filter((entity): entity is Entity => Boolean(entity))
@@ -7172,7 +7206,7 @@ function VideoGenerationProposalBlock({
 
         {entityReferences.length > 0 && (
           <p className="text-[11px] text-zinc-500">
-            {entityReferences.length} entity reference{entityReferences.length === 1 ? "" : "s"} come from the prompt&apos;s @mentions. Edit the prompt to change them.
+            {entityReferences.length} entity reference{entityReferences.length === 1 ? "" : "s"} come from this shot&apos;s cast and the prompt&apos;s @mentions. Remove one to leave it out of this generation.
           </p>
         )}
         {uploadError && <p className="text-[11px] text-red-300">{uploadError}</p>}

@@ -54,7 +54,19 @@ export function inheritedShotLocations(shots: LocatableShot[], entities: Locatab
       for (const earlier of awaitingFirst.splice(0)) repairs.set(earlier.id, own)
       continue
     }
-    if (isCurated(shot)) continue
+    // A curated cast used to stop here, and this branch is only ever reached
+    // for a shot carrying no location at all — so the exemption did not protect
+    // a hand-picked cast, it allowed a shot to be set nowhere. Curating shot 2
+    // to Sara and the car left it with no street, and the generation card
+    // offered two references while the shot plainly happens on the road every
+    // other shot happens on.
+    //
+    // Curation decides which characters and props are in frame. It is not a way
+    // to say the shot happens nowhere, because no shot does. A location that
+    // genuinely does not belong is removed from the strip on the generation
+    // card, which is a per-render choice rather than a permanent hole in the
+    // storyboard.
+    if (isCurated(shot) && !locationIds.size) continue
     if (carried) repairs.set(shot.id, carried)
     else awaitingFirst.push(shot)
   }
@@ -82,4 +94,44 @@ export async function ensureShotLocations(
     shot.referenced_entities = cast
   }))
   return repairs
+}
+
+/**
+ * Repairs every episode in a project.
+ *
+ * The inheritance ran once, while a storyboard batch was being written, over
+ * that batch alone. But the ordinary order of work here is script → prompt
+ * sheet → shots → entities: the characters and locations are created *from* the
+ * finished sheet, which is after the shots exist. So at the only moment the
+ * repair ran there was no location entity to inherit, and nothing revisited the
+ * storyboard once one appeared. Shots sat with no scene from the day they were
+ * written.
+ *
+ * Running it when a location is created is what closes that window. Shots are
+ * grouped by episode because a scene carries forward within an episode and not
+ * across one.
+ */
+export async function ensureProjectShotLocations(
+  supabase: SupabaseClient,
+  input: { projectId: string; entities: LocatableEntity[] },
+): Promise<number> {
+  if (!input.entities.some((entity) => entity.type === "scene")) return 0
+  const { data: episodes } = await supabase.from("creator_episodes").select("id").eq("project_id", input.projectId)
+  const episodeIds = (episodes || []).map((episode) => episode.id as string)
+  if (!episodeIds.length) return 0
+  const { data: shots } = await supabase
+    .from("creator_shots")
+    .select("id,order_index,referenced_entities,metadata,episode_id")
+    .in("episode_id", episodeIds)
+    .order("order_index")
+  if (!shots?.length) return 0
+
+  let repaired = 0
+  for (const episodeId of episodeIds) {
+    const episodeShots = shots.filter((shot) => shot.episode_id === episodeId)
+    if (!episodeShots.length) continue
+    const repairs = await ensureShotLocations(supabase, { shots: episodeShots, entities: input.entities })
+    repaired += repairs.size
+  }
+  return repaired
 }

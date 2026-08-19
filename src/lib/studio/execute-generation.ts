@@ -173,7 +173,21 @@ export async function executeGenerationJobsInBackground(
             ? shotCastIds
             : findShotCastEntityIds(job.prompt || "", (projectEntities || []) as MentionableEntity[], declaredIds)
           // An empty picked list means "no entity references", not "fall back".
-          const activeIds = pickedIds ? pickedIds : promptMentionIds.length ? promptMentionIds : declaredIds
+          //
+          // The shot's own cast is the floor rather than a fallback. The prompt
+          // used to win outright whenever it named anything, so a partial match
+          // dropped the rest: shot 1 listed Sara, the road and the car, and the
+          // car — written as "a dark sleek modern car" instead of by name —
+          // was silently left out of the references while the other two went.
+          // The approved reference art then had no say in how the car looked,
+          // which is the drift the whole reference system exists to stop. The
+          // cast is already per-shot, so adding it back cannot pull in a prop
+          // from an unrelated frame. A hand-curated strip still overrides it.
+          const activeIds = pickedIds
+            ? pickedIds
+            : curated
+            ? shotCastIds
+            : Array.from(new Set([...promptMentionIds, ...declaredIds]))
           const mentionedEntities = (projectEntities || []).filter((entity) => activeIds.includes(entity.id))
 
           // GPT Image takes up to 16 references, so a large cast no longer loses

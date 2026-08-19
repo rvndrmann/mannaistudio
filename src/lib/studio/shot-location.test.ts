@@ -45,13 +45,21 @@ describe("inheritedShotLocations", () => {
     expect(Object.fromEntries(repairs)).toEqual({ "shot-1": "hallway", "shot-2": "hallway" })
   })
 
-  it("never overrules a cast the user set by hand", () => {
+  it("gives a hand-picked cast its location too, because no shot happens nowhere", () => {
+    // This used to exempt a curated cast entirely. But the exemption is only
+    // ever reached for a shot carrying no location at all, so it did not
+    // protect a hand-picked cast — it let a shot be set nowhere, and the model
+    // then filled the gap from whatever background a reference photo had.
+    //
+    // Curation decides which characters and props are in frame. A location that
+    // genuinely does not belong is removed on the generation card, which is a
+    // per-render choice rather than a permanent hole in the storyboard.
     const repairs = inheritedShotLocations([
       shot(1, ["bathroom", "ethan"]),
       shot(2, ["ethan"], { cast_curated: true }),
       shot(3, ["ethan"]),
     ], entities)
-    expect(repairs.has("shot-2")).toBe(false)
+    expect(repairs.get("shot-2")).toBe("bathroom")
     expect(repairs.get("shot-3")).toBe("bathroom")
   })
 
