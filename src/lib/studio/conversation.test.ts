@@ -18,11 +18,16 @@ const project = projectContextSchema.parse({
 describe("AI Director conversation context", () => {
   // The old assertion required the Director to announce itself as an AI, which
   // rule 1 now forbids outright: the reply opens on the work, not on a preamble.
-  it("opens on directorial work and requires approval before generation", () => {
+  it("opens on directorial work and puts generation behind an approval card", () => {
     const instructions = buildDirectorInstructions(project)
     expect(instructions).toContain("NEVER give generic AI greetings")
-    expect(instructions).toContain("explicit user approval")
     expect(instructions).toContain("Roommate skincare series")
+    // Not "wait for approval before generating": the tool call is what creates
+    // the card, so an instruction to wait first is a deadlock, and both models
+    // resolved it by telling the user to press a button nothing had rendered.
+    expect(instructions).toContain("Calling submit_generation IS the structured proposal")
+    expect(instructions).toContain("spends no credits")
+    expect(instructions).not.toContain("Do not trigger costly generation without")
   })
 
   it("ends a turn on one next step rather than on click-through directions", () => {

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 import { directorTools } from "./tool-registry"
+import { agentForStage, agentForTool } from "./director-team"
 
 const chatRoute = readFileSync("src/app/api/studio/projects/[projectId]/director/chat/route.ts", "utf8")
 
@@ -78,5 +79,29 @@ describe("the chat route does not guess what the user meant", () => {
     // the reply.
     expect(chatRoute).toContain("parseTargetShotNumbers")
     expect(chatRoute).toContain("nextStepBlock")
+  })
+})
+
+describe("every stage can render what that stage produces", () => {
+  // toolsForAgent hands an agent the read-only tools, the tools it owns, and
+  // the tools nobody owns. So a tool every specialist needs must stay unowned:
+  // the keyframes stage opens as the storyboard agent, and while the video
+  // agent owned submit_generation that agent was handed a tool set without the
+  // only tool that renders a keyframe. It said so — "the required
+  // submit_generation execution tool is not available in the current tool set"
+  // — and the production could not pass the storyboard.
+  const stageAgents = ["storyboard", "keyframes", "videos", "entity_images"].map(agentForStage)
+
+  it("keeps rendering unowned, so no specialist is excluded from it", () => {
+    expect(agentForTool("submit_generation")).toBeNull()
+    expect(agentForTool("estimate_generation_cost")).toBeNull()
+  })
+
+  it("covers the stages that actually render something", () => {
+    expect(stageAgents).toEqual(["storyboard", "storyboard", "video_prompt", "character_asset"])
+    for (const active of stageAgents) {
+      const owner = agentForTool("submit_generation")
+      expect(owner === null || owner === active, `${active} cannot reach submit_generation`).toBe(true)
+    }
   })
 })

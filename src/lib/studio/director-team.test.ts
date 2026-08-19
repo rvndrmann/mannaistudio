@@ -17,7 +17,9 @@ describe("director agent team", () => {
   it("attributes tools to their owning agent", () => {
     expect(agentForTool("create_production_entities_batch")).toBe("character_asset")
     expect(agentForTool("create_storyboard_batch")).toBe("storyboard")
-    expect(agentForTool("submit_generation")).toBe("video_prompt")
+    // Rendering is deliberately unowned: it makes keyframes as well as clips,
+    // and an owner is an exclusion for every other specialist.
+    expect(agentForTool("submit_generation")).toBeNull()
     expect(agentForTool("update_script")).toBe("script")
     expect(agentForTool("inspect_continuity")).toBe("continuity")
     expect(agentForTool("inspect_current_project")).toBeNull()

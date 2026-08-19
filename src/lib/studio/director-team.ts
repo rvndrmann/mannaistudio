@@ -121,8 +121,14 @@ export const toolAgentOwnership: Partial<Record<DirectorToolName, DirectorAgentK
   delete_shot: "storyboard",
   attach_media_to_shot: "storyboard",
   list_storyboard_shots: "storyboard",
-  submit_generation: "video_prompt",
-  estimate_generation_cost: "video_prompt",
+  // Rendering is not one specialist's job. submit_generation makes keyframes
+  // as well as clips, and toolsForAgent only hands an agent the tools it owns
+  // — so owning this made the storyboard agent, the one the keyframes stage
+  // opens as, unable to render a keyframe. It answered "the required
+  // submit_generation execution tool is not available in the current tool set"
+  // and the production could not pass the storyboard. Left unowned, every
+  // specialist can render its own stage's output, and the approval card is
+  // still what gates the cost.
   inspect_generation_jobs: "video_prompt",
   save_script_prompts: "prompt",
   read_script_prompts: "prompt",
