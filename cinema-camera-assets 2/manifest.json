@@ -1,0 +1,34 @@
+{
+  "description": "Thumbnail assets for the Camera Settings picker. Keys match CAMERA_MAP / LENS_MAP / APERTURE_EFFECT exactly. Focal lengths have no image - render them as text inside the tile.",
+  "sourceSize": "1080x1080 webp (alpha)",
+  "optimizedSize": "224x224 png (alpha) - 4x of the 56px render size, for retina",
+  "camera": {
+    "Modular 8K Digital": "modular_8k_digital",
+    "Full-Frame Cine Digital": "full_frame_cine_digital",
+    "Grand Format 70mm Film": "grand_format_70mm_film",
+    "Studio Digital S35": "studio_digital_s35",
+    "Classic 16mm Film": "classic_16mm_film",
+    "Premium Large Format Digital": "premium_large_format_digital"
+  },
+  "lens": {
+    "Creative Tilt Lens": "creative_tilt_lens",
+    "Compact Anamorphic": "compact_anamorphic",
+    "Extreme Macro": "extreme_macro",
+    "70s Cinema Prime": "70s_cinema_prime",
+    "Classic Anamorphic": "classic_anamorphic",
+    "Premium Modern Prime": "premium_modern_prime",
+    "Warm Cinema Prime": "warm_cinema_prime",
+    "Swirl Bokeh Portrait": "swirl_bokeh_portrait",
+    "Vintage Prime": "vintage_prime",
+    "Halation Diffusion": "halation_diffusion",
+    "Clinical Sharp Prime": "clinical_sharp_prime"
+  },
+  "aperture": {
+    "f/1.4": "f_1_4",
+    "f/4": "f_4",
+    "f/11": "f_11"
+  },
+  "focalLength": {
+    "note": "No images. Render 8 / 14 / 24 / 35 / 50 / 85 as text (e.g. '35mm') inside the tile."
+  }
+}

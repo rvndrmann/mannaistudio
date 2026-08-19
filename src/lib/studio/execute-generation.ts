@@ -13,6 +13,7 @@ import type { AuthenticatedProjectContext } from "./server-context"
 import { randomUUID } from "node:crypto"
 import { verifyGenerationTarget } from "./generation-target"
 import { refundGenerationCredits } from "./credits"
+import { refundableCredits } from "@/lib/byok/billing"
 import { parseSeedanceMissingAssetError, purgeStaleBytePlusAsset } from "./seedance-reference-error"
 import { isVideoReferencePath } from "./media-reference"
 
@@ -464,7 +465,10 @@ export async function executeGenerationJobsInBackground(
             status: "failed",
             error: err instanceof Error ? err.message : "Unknown error",
           }).eq("id", job.id)
-          const charged = Number(job.credits_used || job.estimated_credits || 0)
+          // Reads the recorded billing mode, not whichever of two numbers is
+          // non-zero: a BYOK job charges nothing, so the old fallback refunded
+          // its estimate and a repeatedly failing one minted credits.
+          const charged = refundableCredits(job as { billing_mode?: string | null; credits_used?: number | null; estimated_credits?: number | null })
           if (charged > 0) {
             try {
               await refundGenerationCredits(context.user.id, charged, `generation-job:${job.id}`, "Refund: failed AI Director generation", job.id, context.supabase)
