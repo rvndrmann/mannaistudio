@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai"
 import type { ImageGenerationModelId, VideoGenerationModelId } from "@/lib/studio/generation-models"
+import { activeCredentialPart } from "@/lib/byok/active-credential"
 
 export class GoogleProviderError extends Error {
   constructor(message: string, public readonly status = 502) {
@@ -8,7 +9,10 @@ export class GoogleProviderError extends Error {
   }
 }
 
+/** The customer's Gemini key when one is in force, the platform's otherwise. */
 function getGoogleApiKey() {
+  const own = activeCredentialPart("gemini", "apiKey")
+  if (own) return own
   const key = process.env.GOOGLE_AI_STUDIO_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
   if (!key) throw new GoogleProviderError("Google AI Studio API key is not configured. Add GOOGLE_AI_STUDIO_API_KEY to the server environment.", 503)
   return key

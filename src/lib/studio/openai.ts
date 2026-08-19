@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 import { defaultDirectorModelId, defaultDirectorModels } from "@/lib/studio/ai-models"
+import { activeCredentialPart } from "@/lib/byok/active-credential"
 
 export const openAIImageModels = ["gpt-image-2", "gpt-image-1.5"] as const
 export type OpenAIImageModel = (typeof openAIImageModels)[number]
@@ -23,7 +24,15 @@ export class OpenAIProviderError extends Error {
   }
 }
 
+/**
+ * The customer's own key when one is serving this job, the platform's
+ * otherwise. Same single choke point as the other providers: if this read fell
+ * back silently, a customer who connected a key would have their generation
+ * billed to us while their credits went untouched.
+ */
 function apiKey() {
+  const own = activeCredentialPart("openai", "apiKey")
+  if (own) return own
   const key = process.env.OPENAI_API_KEY
   if (!key) throw new OpenAIProviderError("OpenAI is not configured. Add OPENAI_API_KEY to the server environment.", 503)
   return key
