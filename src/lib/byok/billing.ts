@@ -21,13 +21,30 @@ export type BillingDecision = {
   credits: number
 }
 
+export class OwnKeysOnlyError extends Error {
+  constructor(provider: string) {
+    super(`You have chosen to run everything on your own provider keys, and no ${provider} key is connected. Connect one under Integrations, or turn off "only my own keys" to let this run on studio credits.`)
+    this.name = "OwnKeysOnlyError"
+  }
+}
+
 export function decideBilling(input: {
   /** Whether the user has an active credential for the serving provider. */
   hasCredential: boolean
   /** What the platform would charge if it were paying the provider. */
   platformCredits: number
+  /**
+   * The user has asked never to spend studio credits. With it on, a provider
+   * they have not connected is refused outright rather than quietly billed —
+   * which is the point of the setting: the studio becomes the interface and
+   * their own accounts pay for everything that runs.
+   */
+  ownKeysOnly?: boolean
+  /** Named only so the refusal can say which key is missing. */
+  provider?: string
 }): BillingDecision {
   if (input.hasCredential) return { mode: "byok", credits: 0 }
+  if (input.ownKeysOnly) throw new OwnKeysOnlyError(input.provider || "provider")
   return { mode: "credits", credits: input.platformCredits }
 }
 

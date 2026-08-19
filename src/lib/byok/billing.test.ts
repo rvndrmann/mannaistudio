@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { decideBilling, failureNoteFor, isProviderOutOfCredit, outOfCreditOffer, refundableCredits } from "./billing"
+import { decideBilling, failureNoteFor, isProviderOutOfCredit, outOfCreditOffer, OwnKeysOnlyError, refundableCredits } from "./billing"
 
 describe("who pays for a generation", () => {
   it("charges credits when the user has no key for the serving provider", () => {
@@ -75,5 +75,34 @@ describe("telling a spent provider account apart from a broken request", () => {
   it("names the provider in the offer, because that is where the top-up happens", () => {
     expect(outOfCreditOffer("byteplus")).toMatch(/byteplus/i)
     expect(outOfCreditOffer("byteplus")).toMatch(/studio credits instead/i)
+  })
+})
+
+describe("running on your own keys only", () => {
+  it("still uses a connected key, as it always did", () => {
+    expect(decideBilling({ hasCredential: true, platformCredits: 12, ownKeysOnly: true, provider: "byteplus" }))
+      .toEqual({ mode: "byok", credits: 0 })
+  })
+
+  it("refuses rather than quietly spending credits on a provider you have not connected", () => {
+    // The whole point of the setting: the studio is the interface, and the
+    // user's own accounts pay for everything that runs. Falling back to credits
+    // here would be the one thing they asked it never to do.
+    expect(() => decideBilling({ hasCredential: false, platformCredits: 12, ownKeysOnly: true, provider: "openai" }))
+      .toThrow(OwnKeysOnlyError)
+  })
+
+  it("names the missing key and how to proceed", () => {
+    try {
+      decideBilling({ hasCredential: false, platformCredits: 12, ownKeysOnly: true, provider: "openai" })
+    } catch (error) {
+      expect((error as Error).message).toContain("openai")
+      expect((error as Error).message).toMatch(/connect one|turn off/i)
+    }
+  })
+
+  it("falls back to credits as normal when the setting is off", () => {
+    expect(decideBilling({ hasCredential: false, platformCredits: 12, provider: "openai" }))
+      .toEqual({ mode: "credits", credits: 12 })
   })
 })

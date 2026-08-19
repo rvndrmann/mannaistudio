@@ -9,6 +9,7 @@ import { revisionRequestSchema } from "./revisions"
 import { deductUserCredits } from "./credits"
 import { decideBilling } from "@/lib/byok/billing"
 import { hasCredential } from "@/lib/byok/credential-service"
+import { ownKeysOnly } from "@/lib/byok/preferences"
 import { isByokProvider } from "@/lib/byok/providers"
 import { executeGenerationJobsInBackground } from "./execute-generation"
 import { findMentionedEntityIds, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
@@ -719,6 +720,8 @@ export const submitGenerationTool = defineDirectorTool({
         ? await hasCredential(context.user.id, servingProvider)
         : false,
       platformCredits: routing.creditsPerShot,
+      ownKeysOnly: await ownKeysOnly(context.user.id).catch(() => false),
+      provider: servingProvider,
     })
     const shotNumberById = new Map(Array.from(promptsByNumber.entries()).map(([number, id]) => [id, number]))
     const jobs = request.shotIds.map((shotId, index) => {

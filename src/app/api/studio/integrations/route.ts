@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { listCredentials } from "@/lib/byok/credential-service"
 import { byokIsConfigured } from "@/lib/byok/kms"
 import { byokProviders, providerSpecs } from "@/lib/byok/providers"
+import { ownKeysOnly, setOwnKeysOnly } from "@/lib/byok/preferences"
 
 /**
  * What the browser is allowed to know about connected credentials.
@@ -35,6 +36,7 @@ export async function GET() {
     return NextResponse.json({
       configured: byokIsConfigured(),
       vaultReadable,
+      ownKeysOnly: await ownKeysOnly(user.id).catch(() => false),
       providers: byokProviders.map((provider) => {
         const spec = providerSpecs[provider]
         const credential = byProvider.get(provider)
@@ -55,5 +57,30 @@ export async function GET() {
   } catch (error) {
     console.error("Could not list integrations:", error instanceof Error ? error.message : "unknown")
     return NextResponse.json({ error: "Could not load integrations" }, { status: 500 })
+  }
+}
+
+/**
+ * Turns "only my own keys" on or off.
+ *
+ * With it on the studio refuses a provider the user has not connected rather
+ * than spending credits for them, so it is a deliberate act with a clear
+ * consequence — hence its own call rather than a side effect of saving a key.
+ */
+export async function PATCH(request: Request) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const body = await request.json().catch(() => null) as { ownKeysOnly?: unknown } | null
+    if (typeof body?.ownKeysOnly !== "boolean") {
+      return NextResponse.json({ error: "ownKeysOnly must be true or false" }, { status: 400 })
+    }
+    await setOwnKeysOnly(user.id, body.ownKeysOnly)
+    return NextResponse.json({ ownKeysOnly: body.ownKeysOnly })
+  } catch (error) {
+    console.error("Could not update the own-keys setting:", error instanceof Error ? error.message : "unknown")
+    return NextResponse.json({ error: "Could not save that setting" }, { status: 500 })
   }
 }

@@ -30,6 +30,7 @@ export function IntegrationsPanel() {
   const [rows, setRows] = useState<ProviderRow[]>([]);
   const [configured, setConfigured] = useState(true);
   const [vaultReadable, setVaultReadable] = useState(true);
+  const [ownKeysOnly, setOwnKeysOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -44,6 +45,7 @@ export function IntegrationsPanel() {
       setRows(data.providers || []);
       setConfigured(Boolean(data.configured));
       setVaultReadable(data.vaultReadable !== false);
+      setOwnKeysOnly(Boolean(data.ownKeysOnly));
     } finally {
       setLoading(false);
     }
@@ -129,6 +131,36 @@ export function IntegrationsPanel() {
         <p className="mt-2 text-xs text-zinc-500">
           Create a key dedicated to this studio, and set a spending limit with your provider.
         </p>
+      </div>
+
+      <div className="rounded-xl border border-white/10 bg-[#1d1f1e] p-5">
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={ownKeysOnly}
+            onChange={async (event) => {
+              const next = event.target.checked;
+              setOwnKeysOnly(next);
+              const response = await fetch("/api/studio/integrations", {
+                method: "PATCH",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ ownKeysOnly: next }),
+              });
+              // Put the switch back if it did not save, rather than showing a
+              // setting that is not in force.
+              if (!response.ok) setOwnKeysOnly(!next);
+            }}
+            className="mt-1 h-4 w-4 accent-[#b9f42e]"
+          />
+          <span>
+            <span className="block font-semibold text-zinc-100">Only ever use my own keys</span>
+            <span className="mt-1 block text-sm leading-6 text-zinc-400">
+              Never spend studio credits on my behalf. A provider I have not connected is
+              refused instead of billed, so nothing runs unless one of my own accounts pays
+              for it.
+            </span>
+          </span>
+        </label>
       </div>
 
       {!vaultReadable && (
