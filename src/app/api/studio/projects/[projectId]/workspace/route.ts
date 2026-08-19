@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { describeError } from "@/lib/studio/errors"
 import { assetVerificationFor } from "@/lib/studio/asset-verification"
+import { assertShotPromptShape, normalizeShotColumns } from "@/lib/studio/shot-writes"
 
 async function context(projectId: string) {
   const supabase = await createClient()
@@ -77,10 +78,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     if (body.action === "deleteAsset") { const { error } = await supabase.from("creator_entities").delete().eq("id", body.id).eq("project_id", projectId); if (error) throw error; return NextResponse.json({ success: true }) }
     if (body.action === "saveShot") {
-      const payload: Record<string, unknown> = { title: body.shot.title, prompt: body.shot.prompt || null, duration_seconds: body.shot.duration_seconds || 4, aspect_ratio: body.shot.aspect_ratio || "9:16", resolution: body.shot.resolution || "720p", model: body.shot.model || "Cinematic", referenced_entities: body.shot.entityIds || [] }
+      const draft: Record<string, unknown> = { title: body.shot.title, prompt: body.shot.prompt || null, duration_seconds: body.shot.duration_seconds || 4, aspect_ratio: body.shot.aspect_ratio || "9:16", resolution: body.shot.resolution || "720p", model: body.shot.model || "Cinematic", referenced_entities: body.shot.entityIds || [] }
+      if (typeof body.shot.video_prompt === "string") draft.video_prompt = body.shot.video_prompt
+      // The editor writes through the same guards as the Director's update_shot
+      // tool: a scene written into a frame is rejected, the identity block is
+      // stripped so reference art outranks typed description, and timed beats
+      // fold into metadata rather than over it.
+      assertShotPromptShape(draft)
       // Carries cast_curated, which marks a shot whose asset list the user set
       // by hand so it is never re-derived from the prompt underneath them.
-      if (body.shot.metadata) payload.metadata = body.shot.metadata
+      const baseMetadata = body.shot.metadata ?? (body.shot.id ? (await supabase.from("creator_shots").select("metadata").eq("id", body.shot.id).maybeSingle()).data?.metadata : undefined)
+      const payload = normalizeShotColumns(draft, baseMetadata)
+      if (body.shot.metadata && !("metadata" in payload)) payload.metadata = body.shot.metadata
       const query = body.shot.id ? supabase.from("creator_shots").update(payload).eq("id", body.shot.id).eq("episode_id", body.episodeId) : supabase.from("creator_shots").insert({ ...payload, episode_id: body.episodeId, order_index: body.orderIndex || 0 })
       const { data, error } = await query.select().single(); if (error) throw error
       await supabase.from("creator_shot_assets").delete().eq("shot_id", data.id)

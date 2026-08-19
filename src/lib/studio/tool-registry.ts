@@ -14,6 +14,8 @@ import { inheritedShotLocations } from "./shot-location"
 import { estimateShotSeconds } from "./shot-duration"
 import { beatRuntimeSeconds, describeBeatProblems, readShotVideoPrompt, writeShotVideoPrompt } from "./shot-video-prompt"
 import { aspectMismatch, restateAspect } from "./shot-aspect"
+import { assertShotPromptShape, normalizeShotColumns } from "./shot-writes"
+import { withCandidateNumbers } from "./generation-candidates"
 import { buildGenerationTargetSnapshot } from "./generation-target"
 import { scriptContentSchema, normalizeScriptContent } from "./script"
 import { buildEntityReferenceImagePrompt, projectVisualStyle } from "./entity-image-workflow"
@@ -499,15 +501,32 @@ export const inspectGenerationJobsTool = defineDirectorTool({
   version: 1,
   risk: "read",
   requiresApproval: false,
-  input: z.object({ episodeId: z.string().uuid().optional(), statuses: z.array(z.enum(["queued", "awaiting_approval", "approved", "processing", "completed", "failed", "cancelled"])).max(7).default([]), limit: z.number().int().min(1).max(100).default(25) }),
+  // Shots are named by their storyboard number in conversation, so the filter
+  // takes numbers as well as ids. Without it, picking between the images for
+  // one shot meant reading the newest 25 jobs in the whole project and joining
+  // uuids by hand — and a shot generated a while ago had no candidates in the
+  // window at all.
+  input: z.object({ episodeId: z.string().uuid().optional(), shotIds: z.array(z.string().uuid()).max(50).default([]), shotNumbers: z.array(z.number().int().positive().max(10_000)).max(50).default([]), statuses: z.array(z.enum(["queued", "awaiting_approval", "approved", "processing", "completed", "failed", "cancelled"])).max(7).default([]), limit: z.number().int().min(1).max(100).default(25) }),
   async execute(context, input) {
     let shotIds: string[] | null = null
+    const shotNumberById = new Map<string, number>()
     if (input.episodeId) {
       const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
       if (!episode) throw new Error("Episode does not belong to this project")
-      const { data: shots, error } = await context.supabase.from("creator_shots").select("id").eq("episode_id", input.episodeId)
+      const { data: shots, error } = await context.supabase.from("creator_shots").select("id,order_index").eq("episode_id", input.episodeId)
       if (error) throw error
-      shotIds = (shots || []).map((shot) => shot.id)
+      for (const shot of shots || []) shotNumberById.set(shot.id, shot.order_index + 1)
+      const requested = new Set(input.shotIds)
+      for (const number of input.shotNumbers) {
+        const match = (shots || []).find((shot) => shot.order_index + 1 === number)
+        if (!match) throw new Error(`This episode has no shot ${number}.`)
+        requested.add(match.id)
+      }
+      shotIds = requested.size ? Array.from(requested) : (shots || []).map((shot) => shot.id)
+    } else if (input.shotIds.length) {
+      shotIds = input.shotIds
+    } else if (input.shotNumbers.length) {
+      throw new Error("Naming shots by number needs an episodeId, because the numbers are per episode.")
     }
     let query = context.supabase.from("creator_generation_jobs").select("id,shot_id,type,status,model,provider,prompt,estimated_credits,credits_used,result_url,result_thumbnail,error,created_at,started_at,completed_at").eq("project_id", context.project.id).order("created_at", { ascending: false }).limit(input.limit)
     if (input.statuses.length) query = query.in("status", input.statuses)
@@ -515,7 +534,7 @@ export const inspectGenerationJobsTool = defineDirectorTool({
     const { data, error } = await query
     if (error) throw error
     const jobs = data || []
-    return { jobs, counts: jobs.reduce((counts: Record<string, number>, job) => ({ ...counts, [job.status]: (counts[job.status] || 0) + 1 }), {}) }
+    return { jobs: withCandidateNumbers(jobs, shotNumberById), counts: jobs.reduce((counts: Record<string, number>, job) => ({ ...counts, [job.status]: (counts[job.status] || 0) + 1 }), {}) }
   },
 })
 
@@ -892,30 +911,11 @@ export const updateShotTool = defineDirectorTool({
     // Same rule as create_storyboard_batch: this shot's image prompt is one
     // frame, and the master prompt it may have been extracted from is a whole
     // scene in named sections. The two are not to be confused.
-    if (typeof input.patch.prompt === "string") {
-      const reason = sceneNotFrameReason(input.patch.prompt)
-      if (reason) throw new Error(reason)
-    }
-    // A patched prompt is stored without its written identity block.
-    const patch = typeof input.patch.prompt === "string"
-      ? { ...input.patch, prompt: stripIdentityDescriptions(input.patch.prompt) }
-      : input.patch
-    // The video prompt lives on metadata beside the shot's other extras, so it
-    // is folded in against the row as it stands rather than written as a
-    // column — patching metadata wholesale would drop the rest of it.
-    let columns: Record<string, unknown> = patch
-    if ("video_prompt" in patch) {
-      const { video_prompt: videoPrompt, ...rest } = patch
-      const { data: current } = await context.supabase.from("creator_shots").select("metadata").eq("id", input.shotId).maybeSingle()
-      const written = typeof videoPrompt === "string" ? stripIdentityDescriptions(videoPrompt) : ""
-      const runtime = written ? beatRuntimeSeconds(written) : null
-      columns = {
-        ...rest,
-        metadata: writeShotVideoPrompt(current?.metadata, written),
-        // The beats are the runtime, unless this same patch sets one outright.
-        ...(runtime && rest.duration_seconds === undefined ? { duration_seconds: runtime } : {}),
-      }
-    }
+    assertShotPromptShape(input.patch)
+    const currentMetadata = "video_prompt" in input.patch
+      ? (await context.supabase.from("creator_shots").select("metadata").eq("id", input.shotId).maybeSingle()).data?.metadata
+      : undefined
+    const columns = normalizeShotColumns(input.patch, currentMetadata)
     const { data, error } = await context.supabase
       .from("creator_shots")
       .update(columns)
