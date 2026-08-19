@@ -208,11 +208,16 @@ async function describeProposal(context: AuthenticatedProjectContext, toolName: 
     delete_asset: "Delete asset",
     attach_media_to_shot: "Attach uploaded media to storyboard shot",
     update_full_auto_mode: "Update full-auto mode",
+    accept_existing_art: "Keep the existing art",
+    generate_entity_reference_art: "Generate reference art",
+    submit_generation: "Generate images or video",
     create_revision_request: "Create revision request",
   }
   return {
     title: titles[toolName] || `Approve ${toolName}`,
-    summary: toolName.includes("delete") ? "This will remove saved project content after approval." : "Review this proposed project change before it is applied.",
+    summary: toolName === "accept_existing_art"
+      ? "Records the art already saved as matching its current description. Nothing is generated and no credits are spent."
+      : toolName.includes("delete") ? "This will remove saved project content after approval." : "Review this proposed project change before it is applied.",
     estimatedCredits: 0,
     affectedEntities: [],
   }
