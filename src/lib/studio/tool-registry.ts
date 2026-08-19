@@ -16,6 +16,7 @@ import { beatRuntimeSeconds, describeBeatProblems, readShotVideoPrompt, writeSho
 import { aspectMismatch, restateAspect } from "./shot-aspect"
 import { assertShotPromptShape, normalizeShotColumns } from "./shot-writes"
 import { withCandidateNumbers } from "./generation-candidates"
+import { mergeEntityMetadata } from "./entity-writes"
 import { buildGenerationTargetSnapshot } from "./generation-target"
 import { scriptContentSchema, normalizeScriptContent } from "./script"
 import { buildEntityReferenceImagePrompt, projectVisualStyle } from "./entity-image-workflow"
@@ -1102,12 +1103,8 @@ export const updateAssetTool = defineDirectorTool({
  * Provenance the agent never names — image_generation above all — has to
  * survive an edit that only meant to record a palette or a time of day.
  */
-export function mergeAssetMetadata(existing: unknown, patch: Record<string, unknown>) {
-  const base = existing && typeof existing === "object" && !Array.isArray(existing)
-    ? existing as Record<string, unknown>
-    : {}
-  return { ...base, ...patch }
-}
+/** Kept as a named export for existing callers; the merge itself is shared. */
+export const mergeAssetMetadata = mergeEntityMetadata
 
 export const attachMediaToAssetTool = defineDirectorTool({
   name: "attach_media_to_asset",

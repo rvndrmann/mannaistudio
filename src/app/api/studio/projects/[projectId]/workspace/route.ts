@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { describeError } from "@/lib/studio/errors"
 import { assetVerificationFor } from "@/lib/studio/asset-verification"
 import { assertShotPromptShape, normalizeShotColumns } from "@/lib/studio/shot-writes"
+import { normalizeEntityColumns } from "@/lib/studio/entity-writes"
 
 async function context(projectId: string) {
   const supabase = await createClient()
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json(suggestion)
     }
     if (body.action === "saveAsset") {
-      const payload = {
+      const draftAsset: Record<string, unknown> = {
         type: body.asset.type,
         name: body.asset.name,
         handle: body.asset.handle || body.asset.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""),
@@ -60,8 +61,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         byteplus_asset_uri: body.asset.byteplus_asset_uri || (body.asset.byteplus_asset_id ? `asset://${body.asset.byteplus_asset_id}` : null),
         verification_status: body.asset.verification_status || assetVerificationFor(body.asset.byteplus_asset_id).verification_status,
         provenance: body.asset.provenance || {},
-        metadata: body.asset.metadata || {},
+        ...(body.asset.metadata === undefined ? {} : { metadata: body.asset.metadata }),
       }
+      // The editor writes through the same merge as the Director's update_asset
+      // tool. Replacing metadata wholesale erased image_generation — the record
+      // of which description the art was made from — so a look changed by hand
+      // read back as art that was never stale.
+      const currentMetadata = body.asset.id
+        ? (await supabase.from("creator_entities").select("metadata").eq("id", body.asset.id).eq("project_id", projectId).maybeSingle()).data?.metadata
+        : undefined
+      const payload = normalizeEntityColumns(draftAsset, currentMetadata)
       const writeAsset = (values: Record<string, unknown>) => body.asset.id
         ? supabase.from("creator_entities").update(values).eq("id", body.asset.id).eq("project_id", projectId).select().single()
         : supabase.from("creator_entities").insert({ ...values, project_id: projectId }).select().single()
