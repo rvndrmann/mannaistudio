@@ -177,9 +177,9 @@ npm run build
 
 Full lint currently exposes pre-existing errors outside the Studio work. Scoped Studio lint should remain error-free while those are addressed separately.
 
-## Script and pipeline gating
+## Script status
 
-Episode script state is explicit. Saving or updating a script sets `creator_episodes.status` to `draft`; accepting a script suggestion sets it to `approved`. `loadProductionSnapshot()` exposes `scriptNeedsApproval` whenever a saved script is not approved, and `computePipelineStage()` returns the Script stage with a single **Review and approve the script** action. Prompt sheets, entities, entity reference art, storyboard shots, and media generation cannot be offered by the pipeline until approval is complete.
+Saving or updating a script sets `creator_episodes.status` to `draft`; accepting a script suggestion sets it to `approved`. The status is recorded but the pipeline does not gate on it — `computePipelineStage()` moves from Script to the prompt sheet as soon as a script is saved. A blocking approval stage was tried and removed: the only code that could set `approved` was the suggestion-accept path, so a script written by the Director or pasted by the user had no way to clear the gate and the production wedged on Script.
 
 ## Migration rollout
 

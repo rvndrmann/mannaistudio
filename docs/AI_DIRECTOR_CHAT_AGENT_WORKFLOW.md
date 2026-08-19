@@ -26,8 +26,7 @@ Project ownership, feature, model, and entity validation
         v
 Deterministic fast paths, run inside the SSE stream so progress is visible
         |
-        +-- Script write/append/replace ------------------> Saved as a draft in the Script tab
-        |                                      Script approval required before downstream work
+        +-- Script write/append/replace ------------------> Saved to the Script tab
         |
         +-- "Fix the character descriptions in the prompts"
         |                                                  |
@@ -113,8 +112,7 @@ These paths run **inside** the SSE stream and report progress as they work (`Gen
 | Stage | Condition | Action offered |
 | :--- | :--- | :--- |
 | `script` | No script saved | Write or paste the script |
-| `script` | Script draft saved but not approved | Review and approve the script |
-| `prompt_sheet` | Approved script saved, no prompt sheet | Write the prompt sheet |
+| `prompt_sheet` | Script saved, no prompt sheet | Write the prompt sheet |
 | `entities` | The sheet names characters or assets the project does not have | Create only the missing ones |
 | `entity_images` | Entities exist without reference art | Generate art only for those |
 | `storyboard` | Sheet complete, storyboard empty | Build the storyboard |
@@ -126,7 +124,7 @@ Rules that fall out of this design:
 
 - **One stage per turn.** The Director does the stage it is on and hands back. Keyframes and clips go one shot at a time, lowest-numbered first, so the user sees each shot before the next is paid for.
 - **Nothing is re-created.** The missing-entity set is a diff of the prompt sheet's names against the entity library, compared on handles, so "Detective Rao" and "detective rao" are one character. Entities that already have art are never regenerated unless the user asks by name.
-- **Script approval is a real gate.** Script writes and accepted script suggestions save the episode as `draft`. The pipeline remains on Script until the approval action marks the episode `approved`; it must not create prompts, entities, reference art, or storyboard shots before that transition.
+- **A saved script is enough to move on.** A script write saves the episode as `draft` and an accepted suggestion as `approved`, but the pipeline does not read that status. There is no separate approve-the-script step: every downstream stage is already a button the user presses, so gating the script only added a click in front of a chain that is consent-gated at every link.
 - **The user stays in the loop by pressing the button.** Full-auto, when it lands, is the same chain with the pressing done for it.
 - **Nothing already running is offered.** A shot mid-render still has no keyframe, so on stored state alone it reads as the obvious next step — and pressing it pays for the same frame twice. Generations in flight are excluded from the step and from the batch. When everything outstanding is rendering there is no button, only what is rendering, which also stops the stage falling through to *Review* over shots that are not finished.
 - **Asset generation has the same visible lifecycle as storyboard generation.** Director-approved entity image jobs are included in workspace polling. Character and asset cards show a generating shimmer/spinner while queued or processing, update when the reference image is saved, and retain a failed state with the provider error so the user can retry.

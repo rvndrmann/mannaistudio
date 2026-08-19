@@ -136,7 +136,6 @@ export async function loadProductionSnapshot(
     episodeName: activeEpisode?.name || "Episode 1",
     pendingApprovals: (proposalsRes.data || []).length,
     hasScript: Boolean(scriptText && scriptText.length > 30),
-    scriptNeedsApproval: Boolean(activeEpisode?.script_content && activeEpisode.status !== "approved"),
     promptSheetCount: promptRows.length,
     // The most recent revision anywhere in the sheet: one entry changing means
     // the plan moved, and the shots written before it are behind.
