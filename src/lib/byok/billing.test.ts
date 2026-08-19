@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { decideBilling, failureNoteFor, refundableCredits } from "./billing"
+import { decideBilling, failureNoteFor, isProviderOutOfCredit, outOfCreditOffer, refundableCredits } from "./billing"
 
 describe("who pays for a generation", () => {
   it("charges credits when the user has no key for the serving provider", () => {
@@ -53,5 +53,27 @@ describe("what the user is told when their own key fails", () => {
 
   it("says nothing extra when the platform paid, because the refund speaks for itself", () => {
     expect(failureNoteFor("credits")).toBeNull()
+  })
+})
+
+describe("telling a spent provider account apart from a broken request", () => {
+  it("recognises the shapes providers actually use", () => {
+    expect(isProviderOutOfCredit(402, "Payment Required")).toBe(true)
+    expect(isProviderOutOfCredit(429, "You exceeded your current quota, please check your plan and billing details")).toBe(true)
+    expect(isProviderOutOfCredit(400, "Insufficient balance in your account")).toBe(true)
+    expect(isProviderOutOfCredit(403, "insufficient_quota")).toBe(true)
+  })
+
+  it("leaves an ordinary failure alone", () => {
+    // Offering to spend studio credits over an unrelated error would charge for
+    // a generation that was going to fail either way.
+    expect(isProviderOutOfCredit(400, "prompt contains a disallowed term")).toBe(false)
+    expect(isProviderOutOfCredit(500, "internal error")).toBe(false)
+    expect(isProviderOutOfCredit(null, "")).toBe(false)
+  })
+
+  it("names the provider in the offer, because that is where the top-up happens", () => {
+    expect(outOfCreditOffer("byteplus")).toMatch(/byteplus/i)
+    expect(outOfCreditOffer("byteplus")).toMatch(/studio credits instead/i)
   })
 })

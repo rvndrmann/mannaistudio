@@ -61,3 +61,40 @@ export function failureNoteFor(mode: BillingMode): string | null {
   if (mode !== "byok") return null
   return "This ran on your own provider key, so no credits were taken and none can be returned. Any charge for the attempt is on your provider account."
 }
+
+/**
+ * Whether a provider refused because the customer's own account is out of
+ * money, rather than because anything is wrong with the request.
+ *
+ * Worth telling apart, because the answer to it is not "try again" — it is
+ * "top up with your provider, or let the studio pay for this one". A generic
+ * failure message sends the user hunting through their prompt for a fault that
+ * is not there.
+ *
+ * Matched on the shapes providers actually use. Anything unrecognised is
+ * treated as an ordinary failure, which is the safe way round: offering to
+ * spend studio credits over an unrelated error would charge for a generation
+ * that was going to fail anyway.
+ */
+export function isProviderOutOfCredit(status: number | null, message: string): boolean {
+  const text = (message || "").toLowerCase()
+  if (status === 402) return true
+  return [
+    "insufficient balance",
+    "insufficient_quota",
+    "insufficient funds",
+    "quota exceeded",
+    "exceeded your current quota",
+    "billing hard limit",
+    "account balance",
+    "not enough balance",
+    "no credit",
+    "out of credits",
+    "payment required",
+  ].some((phrase) => text.includes(phrase))
+}
+
+/** What to offer when the customer's own provider account has run dry. */
+export function outOfCreditOffer(provider: string): string {
+  return `Your ${provider} account has no credit left, so this generation could not run on your key. Top up with ${provider}, or generate this one with studio credits instead.`
+}

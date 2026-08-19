@@ -13,7 +13,7 @@ import type { AuthenticatedProjectContext } from "./server-context"
 import { randomUUID } from "node:crypto"
 import { verifyGenerationTarget } from "./generation-target"
 import { refundGenerationCredits } from "./credits"
-import { refundableCredits } from "@/lib/byok/billing"
+import { isProviderOutOfCredit, outOfCreditOffer, refundableCredits } from "@/lib/byok/billing"
 import { withCredential } from "@/lib/byok/credential-service"
 import { runWithCredential } from "@/lib/byok/active-credential"
 import { isByokProvider } from "@/lib/byok/providers"
@@ -470,9 +470,16 @@ export async function executeGenerationJobsInBackground(
           }
         } catch (err) {
           console.error(`Failed to process generation job ${job.id}:`, err)
+          const rawMessage = err instanceof Error ? err.message : "Unknown error"
+          const failureStatus = typeof (err as { status?: unknown })?.status === "number" ? (err as { status: number }).status : null
+          // A customer's own account running dry is not a broken request, and
+          // the answer to it is not "try again" — it is top up, or let the
+          // studio pay for this one. Said plainly, or the user goes hunting
+          // through their prompt for a fault that is not there.
+          const spentOwnAccount = job.billing_mode === "byok" && isProviderOutOfCredit(failureStatus, rawMessage)
           await context.supabase.from("creator_generation_jobs").update({
             status: "failed",
-            error: err instanceof Error ? err.message : "Unknown error",
+            error: spentOwnAccount ? outOfCreditOffer(String(job.provider || "your provider")) : rawMessage,
           }).eq("id", job.id)
           // Reads the recorded billing mode, not whichever of two numbers is
           // non-zero: a BYOK job charges nothing, so the old fallback refunded

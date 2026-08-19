@@ -56,13 +56,15 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models";
-import { getModelLabel, imageGenerationModels, supportedVideoModel, videoDurationOptions, videoGenerationModels, videoModelMaxDuration } from "@/lib/studio/generation-models";
+import { getModelLabel, imageGenerationModels, supportedVideoModel, videoDurationOptions, videoGenerationModels, videoModelMaxDuration, type ImageGenerationModelId } from "@/lib/studio/generation-models";
 import { defaultDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows";
 import { abandonedRunSilentAfterMs } from "@/lib/studio/workflow-runs";
 import { videoPromptFor } from "@/lib/studio/shot-video-prompt";
 import { buildInsertShotDraft } from "@/lib/studio/shot-intent";
 import { isVideoReferencePath } from "@/lib/studio/media-reference";
 import { calculateCreditCost, getUserCredits } from "@/lib/studio/credits";
+import { blockedByCredits, resolveGenerationSource } from "@/lib/byok/generation-source";
+import { useConnectedProviders } from "@/lib/byok/use-connected-providers";
 import { useAuth } from "@/components/auth/auth-provider";
 import { fbTrack } from "@/lib/fbpixel";
 import { claimOnce } from "@/lib/track-once";
@@ -3002,6 +3004,7 @@ function AssetWorkspace({
   const [working, setWorking] = useState(persistedGenerationStatus === "generating");
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
+  const connectedProviders = useConnectedProviders();
   useEffect(() => {
     // getUser touches the auth lock, which supabase may steal from a stalled
     // refresh; an unhandled rejection here would crash the workspace.
@@ -3313,7 +3316,14 @@ function AssetWorkspace({
     }
   };
 
-  const currentCreditCost = calculateCreditCost(model, "image", 4, { quality, aspectRatio });
+  const platformCreditCost = calculateCreditCost(model, "image", 4, { quality, aspectRatio });
+  // What this generation will actually cost, which is nothing when the user's
+  // own provider key serves it. The card used to price itself from the credit
+  // table alone and so disagreed with the server twice: it showed a cost that
+  // was never charged, and disabled itself over a balance never to be spent.
+  const generationSource = resolveGenerationSource({ model: model as ImageGenerationModelId, connectedProviders, platformCredits: platformCreditCost });
+  const currentCreditCost = generationSource.credits;
+  const creditsBlocked = blockedByCredits(generationSource, creditBalance);
 
   return (
     <div className="fixed inset-0 z-50 bg-[#080908] text-white">
@@ -3685,10 +3695,17 @@ function AssetWorkspace({
                 </div>
 
                 <div className="flex items-center gap-3 pl-2">
-                  <span className="text-xs font-semibold text-zinc-400">
-                    <Sparkles className="mb-0.5 inline h-3 w-3" /> {currentCreditCost}
+                  <span
+                    className={`text-xs font-semibold ${generationSource.ownKey ? "text-[#b9f42e]" : "text-zinc-400"}`}
+                    title={generationSource.ownKey
+                      ? `Runs on your own ${generationSource.provider} key. Billed by them, no studio credits.`
+                      : "Runs on studio credits."}
+                  >
+                    {generationSource.ownKey
+                      ? "\u{1F511} Your key"
+                      : <><Sparkles className="mb-0.5 inline h-3 w-3" /> {currentCreditCost}</>}
                   </span>
-                  {creditBalance !== null && creditBalance < currentCreditCost ? (
+                  {creditsBlocked ? (
                     <button
                       disabled
                       className="grid h-8 w-8 place-items-center rounded-full bg-zinc-700 text-zinc-400 opacity-50"
@@ -3716,7 +3733,7 @@ function AssetWorkspace({
               </p>
             )}
             
-            {creditBalance !== null && creditBalance < currentCreditCost && (
+            {creditsBlocked && (
               <p className="mt-4 text-center text-xs text-amber-300">
                 Insufficient credits (⚡ {currentCreditCost} needed). <a href="/studio/credits" className="font-bold underline hover:text-[#b9f42e]">Buy more</a>
               </p>

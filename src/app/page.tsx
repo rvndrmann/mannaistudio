@@ -237,6 +237,14 @@ export default function LandingPage() {
                                 <Link href="/billing" className="btn-secondary flex items-center gap-2 px-7 py-3.5 text-[15px]">
                                     View Plans & Credits <ArrowUpRight className="h-5 w-5" />
                                 </Link>
+                                {/* Shown to signed-in users only: connecting a key is
+                                    something you do to an account, and it is the
+                                    alternative to the credits offered beside it. */}
+                                {user && (
+                                    <Link href="/studio/integrations" className="btn-secondary flex items-center gap-2 px-7 py-3.5 text-[15px]">
+                                        Use Your Own API Keys <ArrowUpRight className="h-5 w-5" />
+                                    </Link>
+                                )}
                             </div>
 
                             {/* Key Stats Bar */}
