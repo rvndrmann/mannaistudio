@@ -14,8 +14,7 @@ import {
   Plus,
   Sparkles,
   Trash2,
-  Users,
-} from "lucide-react";
+  Users, KeyRound,} from "lucide-react";
 import CreditBadge from "@/components/CreditBadge";
 import { useAuth } from "@/components/auth/auth-provider";
 
@@ -322,6 +321,16 @@ function TopBar({ onOpenCreate, creating }: { onOpenCreate: () => void; creating
           >
             <Users className="h-4 w-4" />
             Team
+          </Link>
+          {/* Beside the credit badge, because this is the switch that decides
+              whether generations spend credits at all. */}
+          <Link
+            href="/studio/integrations"
+            title="Use your own provider API keys instead of studio credits"
+            className="touch-target hidden items-center gap-1.5 rounded-md border border-white/10 px-3 py-2 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white md:flex"
+          >
+            <KeyRound className="h-4 w-4" />
+            API keys
           </Link>
         </div>
       </header>

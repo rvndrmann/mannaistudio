@@ -52,6 +52,32 @@ export async function validateCredential(provider: ByokProvider, parts: Credenti
         const response = await get(url, { "x-goog-api-key": parts.apiKey })
         return response.ok ? { ok: true } : { ok: false, reason: describeStatus(response.status), status: response.status }
       }
+      case "fal": {
+        // The cheapest authenticated read fal exposes. A key that cannot list
+        // its own queue cannot run anything either.
+        const url = "https://rest.alpha.fal.ai/tokens/"
+        assertAllowedProviderUrl(provider, url)
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+        let response: Response
+        try {
+          response = await fetch(url, {
+            method: "POST",
+            headers: { Authorization: `Key ${parts.apiKey}`, "content-type": "application/json" },
+            body: JSON.stringify({ allowed_apps: ["fal-ai/flux/dev"], token_expiration: 60 }),
+            signal: controller.signal,
+          })
+        } finally {
+          clearTimeout(timer)
+        }
+        // Anything that is not an authentication refusal proves the key was
+        // accepted; fal answers 4xx for plenty of reasons that are not "bad key".
+        if (response.status === 401 || response.status === 403) {
+          return { ok: false, reason: describeStatus(response.status), status: response.status }
+        }
+        if (response.status >= 500) return { ok: false, reason: describeStatus(response.status), status: response.status }
+        return { ok: true }
+      }
       case "byteplus": {
         const url = "https://ark.ap-southeast.bytepluses.com/api/v3/models"
         assertAllowedProviderUrl(provider, url)

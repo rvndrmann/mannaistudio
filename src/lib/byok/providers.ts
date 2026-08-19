@@ -11,7 +11,7 @@ import { z } from "zod"
  * beside the credential it authenticates.
  */
 
-export const byokProviders = ["byteplus", "openai", "gemini"] as const
+export const byokProviders = ["byteplus", "fal", "openai", "gemini"] as const
 export type ByokProvider = (typeof byokProviders)[number]
 
 export function isByokProvider(value: string): value is ByokProvider {
@@ -54,6 +54,14 @@ export const providerSpecs: Record<ByokProvider, ProviderSpec> = {
       { key: "assetGroupId", label: "Asset group ID", optional: true, hint: "Left blank, one is created on your account the first time it is needed." },
     ],
     helpUrl: "https://console.byteplus.com/ark",
+  },
+  fal: {
+    id: "fal",
+    label: "fal.ai",
+    // The SDK talks to the queue and the REST surface; both carry the key.
+    allowedHosts: ["fal.run", "queue.fal.run", "rest.alpha.fal.ai", "fal.media", "v3.fal.media"],
+    parts: [{ key: "apiKey", label: "API key", primary: true, secret: true, hint: "The key id and secret joined by a colon, as fal.ai issues it." }],
+    helpUrl: "https://fal.ai/dashboard/keys",
   },
   openai: {
     id: "openai",

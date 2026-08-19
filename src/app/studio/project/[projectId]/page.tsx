@@ -35,6 +35,7 @@ import {
   Trash2,
   Upload,
   Users,
+  KeyRound,
   WandSparkles,
   X,
   Zap,
@@ -1212,6 +1213,14 @@ export default function WorkspacePage({
           <Link href="/studio/team" className="hidden items-center gap-1 rounded-full bg-[#141414] px-2.5 py-1.5 text-[11px] font-semibold text-zinc-300 hover:bg-[#1e1e1e] hover:text-white transition sm:flex" title="Add and manage team members">
             <Users className="h-3 w-3" />
             <span>Team</span>
+          </Link>
+
+          {/* Your own provider keys. Sits beside Credits because that is the
+              choice it changes: connect a key and that provider stops spending
+              them. */}
+          <Link href="/studio/integrations" className="hidden items-center gap-1 rounded-full bg-[#141414] px-2.5 py-1.5 text-[11px] font-semibold text-zinc-300 hover:bg-[#1e1e1e] hover:text-white transition sm:flex" title="Use your own provider API keys instead of studio credits">
+            <KeyRound className="h-3 w-3" />
+            <span>API keys</span>
           </Link>
 
           {/* Credits badge */}

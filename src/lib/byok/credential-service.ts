@@ -17,13 +17,19 @@ import { primaryPartKey, providerSpecs, type ByokProvider } from "./providers"
  * outside this file's own use flow. Replacement is supported; retrieval is not.
  */
 
-const CREDENTIALS = "provider_credentials"
-const EVENTS = "credential_events"
-
+/**
+ * The vault is reached through SECURITY DEFINER functions, not through the
+ * table.
+ *
+ * supabase-js speaks PostgREST, and PostgREST exposes only the schemas it is
+ * configured for — `byok` is deliberately not one of them, which is what makes
+ * the tables unreachable from a browser. That applies to the service role too.
+ * Exposing the schema would have fixed the symptom and given away the property.
+ * These functions are the whole surface instead, and execute on them is granted
+ * to service_role alone.
+ */
 function vault() {
-  // `db: { schema }` keeps the private schema off the default search path used
-  // by every other query in the app.
-  return createServiceClient().schema("byok")
+  return createServiceClient()
 }
 
 /** What the UI is allowed to know. Never any part of the secret. */
@@ -56,14 +62,14 @@ export async function recordCredentialEvent(input: {
   detail?: Record<string, unknown>
 }) {
   try {
-    await vault().from(EVENTS).insert({
-      actor_user_id: input.userId,
-      provider: input.provider ?? null,
-      credential_id: input.credentialId ?? null,
-      event: input.event,
+    await vault().rpc("byok_record_event", {
+      p_user: input.userId,
+      p_provider: input.provider ?? null,
+      p_credential_id: input.credentialId ?? null,
+      p_event: input.event,
       // Callers pass counts, reasons and ids. Never a secret, and never a raw
       // provider response, which can echo the request that carried one.
-      detail: input.detail ?? {},
+      p_detail: input.detail ?? {},
     })
   } catch (error) {
     // An audit write must never take down the operation it is describing.
@@ -73,12 +79,10 @@ export async function recordCredentialEvent(input: {
 
 export async function listCredentials(userId: string): Promise<CredentialSummary[]> {
   if (!byokIsConfigured()) return []
-  const { data, error } = await vault()
-    .from(CREDENTIALS)
-    .select("provider,key_label,key_last4,status,created_at,updated_at,last_used_at")
-    .eq("owner_user_id", userId)
+  const { data, error } = await vault().rpc("byok_list_credentials", { p_user: userId })
   if (error) throw error
-  return (data || []).map((row) => ({
+  type SummaryRow = { provider: string; key_label: string | null; key_last4: string | null; status: string; created_at: string; updated_at: string; last_used_at: string | null }
+  return ((data || []) as SummaryRow[]).map((row) => ({
     provider: row.provider as ByokProvider,
     connected: true as const,
     label: row.key_label,
@@ -93,13 +97,7 @@ export async function listCredentials(userId: string): Promise<CredentialSummary
 /** Whether this user has a usable credential for a provider. No secret involved. */
 export async function hasCredential(userId: string, provider: ByokProvider): Promise<boolean> {
   if (!byokIsConfigured()) return false
-  const { data, error } = await vault()
-    .from(CREDENTIALS)
-    .select("id")
-    .eq("owner_user_id", userId)
-    .eq("provider", provider)
-    .eq("status", "active")
-    .maybeSingle()
+  const { data, error } = await vault().rpc("byok_has_credential", { p_user: userId, p_provider: provider })
   if (error) throw error
   return Boolean(data)
 }
@@ -114,53 +112,37 @@ export async function saveCredential(input: {
   const sealed = await sealCredential(input.parts, kmsKeyWrapper())
   const primary = input.parts[primaryPartKey(input.provider)] || ""
 
-  const { data: existing } = await vault()
-    .from(CREDENTIALS)
-    .select("id")
-    .eq("owner_user_id", input.userId)
-    .eq("provider", input.provider)
-    .is("team_id", null)
-    .maybeSingle()
-
-  const row = {
-    owner_user_id: input.userId,
-    team_id: null,
-    provider: input.provider,
-    encrypted_secret: sealed.encryptedSecret,
-    encrypted_dek: sealed.encryptedDek,
-    nonce: sealed.nonce,
-    auth_tag: sealed.authTag,
-    encryption_version: sealed.encryptionVersion,
-    kms_key_version: sealed.kmsKeyVersion ?? null,
-    key_last4: keyLast4(primary),
-    key_label: input.label?.trim()?.slice(0, 120) || providerSpecs[input.provider].label,
-    status: "active",
-    last_error: null,
-  }
-
-  if (existing) {
-    const { error } = await vault().from(CREDENTIALS).update(row).eq("id", existing.id)
-    if (error) throw error
-    await recordCredentialEvent({ userId: input.userId, provider: input.provider, credentialId: existing.id, event: "credential_replaced" })
-    return { replaced: true }
-  }
-
-  const { data: inserted, error } = await vault().from(CREDENTIALS).insert(row).select("id").single()
+  const { data, error } = await vault().rpc("byok_save_credential", {
+    p_user: input.userId,
+    p_provider: input.provider,
+    // bytea travels as the hex form Postgres accepts; sending a raw array would
+    // arrive as a JSON list of numbers and store the digits, not the bytes.
+    p_encrypted_secret: toPostgresBytea(sealed.encryptedSecret),
+    p_encrypted_dek: toPostgresBytea(sealed.encryptedDek),
+    p_nonce: toPostgresBytea(sealed.nonce),
+    p_auth_tag: toPostgresBytea(sealed.authTag),
+    p_encryption_version: sealed.encryptionVersion,
+    p_kms_key_version: sealed.kmsKeyVersion ?? null,
+    p_key_last4: keyLast4(primary),
+    p_key_label: input.label?.trim()?.slice(0, 120) || providerSpecs[input.provider].label,
+  })
   if (error) throw error
-  await recordCredentialEvent({ userId: input.userId, provider: input.provider, credentialId: inserted.id, event: "credential_connected" })
-  return { replaced: false }
+  const row = Array.isArray(data) ? data[0] : data
+  const replaced = Boolean(row?.replaced)
+  await recordCredentialEvent({
+    userId: input.userId,
+    provider: input.provider,
+    credentialId: row?.credential_id ?? null,
+    event: replaced ? "credential_replaced" : "credential_connected",
+  })
+  return { replaced }
 }
 
 export async function deleteCredential(userId: string, provider: ByokProvider): Promise<boolean> {
   if (!byokIsConfigured()) return false
-  const { data, error } = await vault()
-    .from(CREDENTIALS)
-    .delete()
-    .eq("owner_user_id", userId)
-    .eq("provider", provider)
-    .select("id")
+  const { data, error } = await vault().rpc("byok_delete_credential", { p_user: userId, p_provider: provider })
   if (error) throw error
-  const removed = (data || []).length > 0
+  const removed = Number(data || 0) > 0
   if (removed) {
     await recordCredentialEvent({ userId, provider, event: "credential_deleted" })
   }
@@ -180,14 +162,9 @@ export async function withCredential<T>(
   use: (parts: CredentialParts) => Promise<T>,
 ): Promise<T | null> {
   if (!byokIsConfigured()) return null
-  const { data, error } = await vault()
-    .from(CREDENTIALS)
-    .select("id,encrypted_secret,encrypted_dek,nonce,auth_tag,encryption_version")
-    .eq("owner_user_id", input.userId)
-    .eq("provider", input.provider)
-    .eq("status", "active")
-    .maybeSingle()
+  const { data: rows, error } = await vault().rpc("byok_read_credential", { p_user: input.userId, p_provider: input.provider })
   if (error) throw error
+  const data = Array.isArray(rows) ? rows[0] : rows
   if (!data) return null
 
   const parts = await openCredential({
@@ -200,12 +177,17 @@ export async function withCredential<T>(
 
   try {
     const result = await use(parts)
-    await vault().from(CREDENTIALS).update({ last_used_at: new Date().toISOString() }).eq("id", data.id)
+    await vault().rpc("byok_touch_credential", { p_credential_id: data.id })
     await recordCredentialEvent({ userId: input.userId, provider: input.provider, credentialId: data.id, event: "credential_used" })
     return result
   } finally {
     for (const key of Object.keys(parts)) parts[key] = ""
   }
+}
+
+/** Postgres accepts bytea as `\\xdeadbeef`; a JSON array would store digits. */
+function toPostgresBytea(value: Buffer): string {
+  return `\\x${value.toString("hex")}`
 }
 
 /**

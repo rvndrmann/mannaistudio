@@ -1,5 +1,6 @@
 import { fal } from "@fal-ai/client"
 import { videoModelMaxDuration, type ImageGenerationModelId, type VideoGenerationModelId } from "@/lib/studio/generation-models"
+import { activeCredentialPart } from "@/lib/byok/active-credential"
 
 export class FalProviderError extends Error {
   constructor(message: string, public readonly status = 502) {
@@ -8,7 +9,10 @@ export class FalProviderError extends Error {
   }
 }
 
+/** The customer's own fal key when one is serving this job, the platform's otherwise. */
 function getFalKey() {
+  const own = activeCredentialPart("fal", "apiKey")
+  if (own) return own
   const key = process.env.FAL_KEY || process.env.FAL_API_KEY
   if (!key) throw new FalProviderError("fal.ai API key is not configured. Add FAL_KEY to the server environment.", 503)
   return key
