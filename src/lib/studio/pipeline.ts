@@ -216,20 +216,81 @@ export function withSkippedShots(snapshot: ProductionSnapshot, numbers: number[]
   return { ...snapshot, shots: snapshot.shots.map((shot) => skip.has(shot.number) ? { ...shot, skipped: true } : shot) }
 }
 
+/**
+ * The work the user has already started, offered beside the stage they are on.
+ *
+ * The pipeline is a straight line, so early on it only ever offered the line's
+ * own next step: someone who had just created a character and asked for her
+ * portrait was shown "Confirm the script" and nothing else, because reference
+ * art is a later stage than the script. The line is still the recommendation —
+ * it just no longer hides the thing the user is plainly in the middle of.
+ */
+function earlyAssetArtActions(snapshot: ProductionSnapshot): PipelineAction[] {
+  const withoutArt = entitiesWithoutArt(snapshot)
+  if (!withoutArt.length) return []
+  return [{
+    id: "pipeline-early-entity-art",
+    label: `Generate reference art for ${list(withoutArt, 2)}`,
+    intent: `As the Character & Asset Agent, generate reference art for the characters and assets that have none yet: ${list(withoutArt, 24)}. Leave every existing reference image alone. When the art comes back, show it to me and ask whether to keep it or redo it, and offer to revise the saved description first if I want a different look.`,
+    risk: "costly",
+    recommended: false,
+  }]
+}
+
 export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStage {
-  if (!snapshot.hasScript) {
+  // A prepared change the user has not seen is the most stuck a production can
+  // be: the Director reports work done, the workspace shows the old version,
+  // and the reason is a card nobody pointed at. Nothing downstream matters
+  // until it is answered — which is why this is asked before anything else.
+  //
+  // It used to sit below the script and prompt-sheet checks, so on a production
+  // that had neither, an approval blocking everything was never mentioned at
+  // all: the pipeline reported "no script yet" while the agent refused to work
+  // because of a card the user had never been shown.
+  if ((snapshot.pendingApprovals || 0) > 0) {
+    const count = snapshot.pendingApprovals || 0
     return {
-      key: "script",
-      title: "Script",
-      summary: "No script is saved for this episode yet.",
+      key: "entities",
+      title: "Waiting on you",
+      summary: `${count} prepared ${plural(count, "change")} ${plural(count, "is", "are")} waiting for your approval. Nothing regenerates until ${plural(count, "it is", "they are")} answered.`,
       nextAction: {
-        id: "pipeline-script",
-        label: "Confirm the script",
-        intent: "Check whether this episode already has a script. If it does, tell me what is in it and confirm it is ready to work from. If it does not, ask me to paste the script text, and also offer to write the script for me yourself if I'd rather describe the idea and have you draft it.",
-        risk: "write",
+        id: "pipeline-pending-approvals",
+        label: `Review ${count} pending ${plural(count, "change")}`,
+        intent: "List the changes waiting for my approval, saying for each one exactly what it changes and what it will look like afterwards, then tell me what happens once I approve them.",
+        risk: "read",
         recommended: true,
       },
       alternatives: [],
+    }
+  }
+
+  if (!snapshot.hasScript) {
+    // The button used to read "Confirm the script" here, which is the one thing
+    // that cannot be done when no script exists — there is nothing to confirm.
+    // A button has to name what pressing it does, so the two real ways to get a
+    // script are offered as the two buttons, and the reference art the user has
+    // already started on stays reachable beside them.
+    return {
+      key: "script",
+      title: "Script",
+      summary: "No script is saved for this episode yet. It can be written from your idea, or pasted in if you already have one.",
+      nextAction: {
+        id: "pipeline-script-write",
+        label: "Write the script from my idea",
+        intent: "This episode has no script yet. Ask me for the idea in one or two sentences — what happens, who is in it, and how long it should run — then draft the script yourself and save it. Do not ask me to paste anything.",
+        risk: "write",
+        recommended: true,
+      },
+      alternatives: [
+        {
+          id: "pipeline-script-paste",
+          label: "I'll paste my own script",
+          intent: "I already have a script. Ask me to paste the full script text, then save it to this episode exactly as written without rewriting it, and tell me what you read back.",
+          risk: "write",
+          recommended: false,
+        },
+        ...earlyAssetArtActions(snapshot),
+      ],
     }
   }
 
@@ -245,28 +306,7 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
         risk: "write",
         recommended: true,
       },
-      alternatives: [],
-    }
-  }
-
-  // A prepared change the user has not seen is the most stuck a production can
-  // be: the Director reports work done, the workspace shows the old version,
-  // and the reason is a card nobody pointed at. Nothing downstream matters
-  // until it is answered.
-  if ((snapshot.pendingApprovals || 0) > 0) {
-    const count = snapshot.pendingApprovals || 0
-    return {
-      key: "entities",
-      title: "Waiting on you",
-      summary: `${count} prepared ${plural(count, "change")} ${plural(count, "is", "are")} waiting for your approval. Nothing regenerates until ${plural(count, "it is", "they are")} answered.`,
-      nextAction: {
-        id: "pipeline-pending-approvals",
-        label: `Review ${count} pending ${plural(count, "change")}`,
-        intent: "List the changes waiting for my approval, saying for each one exactly what it changes and what it will look like afterwards, then tell me what happens once I approve them.",
-        risk: "read",
-        recommended: true,
-      },
-      alternatives: [],
+      alternatives: earlyAssetArtActions(snapshot),
     }
   }
 
@@ -419,6 +459,18 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
     recommended: false,
   })
 
+  // Redoing from the same prompt produces the same picture, so a frame that came
+  // back wrong had only one button and it was the one that could not fix it.
+  // Changing the prompt first is the move someone actually wants when they do
+  // not like what they are looking at, and it costs nothing until they approve.
+  const keyframeRefineAction = (shot: SnapshotShot): PipelineAction => ({
+    id: `pipeline-keyframe-refine-${shot.number}`,
+    label: `Change shot ${shot.number}'s prompt first`,
+    intent: `I want shot ${shot.number}'s image to come out differently. Show me the shot's saved image prompt, ask me what to change about it, and revise the saved prompt from my answer. Do not regenerate the image until I have approved the new prompt.`,
+    risk: "write",
+    recommended: false,
+  })
+
   if (nextKeyframe) {
     const nextKeyframeSubsequent = awaitingKeyframe[1] || null
     return {
@@ -434,7 +486,7 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
       },
       alternatives: [
         ...(nextVideo ? [videoAction(nextVideo)] : []),
-        ...(lastKeyframeShot ? [keyframeRedoAction(lastKeyframeShot)] : nextKeyframeSubsequent ? [{
+        ...(lastKeyframeShot ? [keyframeRedoAction(lastKeyframeShot), keyframeRefineAction(lastKeyframeShot)] : nextKeyframeSubsequent ? [{
           id: `pipeline-keyframe-${nextKeyframeSubsequent.number}`,
           label: `Generate the image for shot ${nextKeyframeSubsequent.number}`,
           intent: `Generate the storyboard keyframe image for shot ${nextKeyframeSubsequent.number} from its saved prompt, using the reference art that shot already links to.`,

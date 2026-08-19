@@ -55,7 +55,26 @@ export const directorTimelineBlockSchema = z.discriminatedUnion("type", [
 export const directorTimelineSchema = z.array(directorTimelineBlockSchema).max(100)
 export type DirectorTimelineBlock = z.infer<typeof directorTimelineBlockSchema>
 
+/**
+ * Parsed a block at a time, keeping whatever validates.
+ *
+ * Validating the array as a whole made every block depend on every other one:
+ * a single label longer than its cap, one batch of more than fifty media, or a
+ * block type written by a newer deploy than the page reading it, and the reply
+ * lost its entire timeline — the production track and the next-step button
+ * included. The button is how the user moves the production forward, so the
+ * replies that dropped it were the long ones, on the biggest projects, where
+ * losing it costs the most.
+ *
+ * A block that cannot be read is dropped on its own now. Whatever else the run
+ * produced still reaches the user.
+ */
 export function parseDirectorTimeline(value: unknown): DirectorTimelineBlock[] {
-  const parsed = directorTimelineSchema.safeParse(value)
-  return parsed.success ? parsed.data : []
+  if (!Array.isArray(value)) return []
+  const blocks: DirectorTimelineBlock[] = []
+  for (const entry of value.slice(0, 100)) {
+    const parsed = directorTimelineBlockSchema.safeParse(entry)
+    if (parsed.success) blocks.push(parsed.data)
+  }
+  return blocks
 }

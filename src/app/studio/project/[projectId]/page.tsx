@@ -25,8 +25,6 @@ import {
   Image as ImageIcon,
   LayoutPanelTop,
   Loader2,
-  Mic,
-  MicOff,
   Download,
   MoreVertical,
   Pencil,
@@ -1552,9 +1550,9 @@ export default function WorkspacePage({
                 </select>
               </div>
               <div className="flex items-center gap-1.5">
-                <button type="button" onClick={startVoice} disabled={voiceState === "connecting"} aria-label={voiceState === "connected" ? "Stop AI Voice Director" : "Start AI Voice Director"} className={`rounded-full border p-2 ${voiceState === "connected" ? "border-red-400 bg-red-500/15 text-red-200" : "border-white/[0.08] text-zinc-400 hover:border-[#b9f42e] hover:text-[#b9f42e]"}`}>
-                  {voiceState === "connected" ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
-                </button>
+                {/* The Voice Director is hidden for now. The button, its state, and
+                    the WebRTC session it opens are all still here — putting it back
+                    is restoring this one element, not rebuilding the feature. */}
                 <button type="submit" disabled={chatSending} aria-label="Send message to AI Director" className="rounded-full bg-[#b9f42e] p-2 text-black disabled:opacity-50">
                   {chatSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                 </button>

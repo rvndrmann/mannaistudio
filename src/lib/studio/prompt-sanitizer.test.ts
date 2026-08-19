@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { hasIdentityDescriptions, sceneNotFrameReason, stripIdentityDescriptions, stripIdentityDescriptionsFromPrompts, requestsPromptCleanup } from "./prompt-sanitizer"
+import { sceneNotFrameReason, stripIdentityDescriptions, stripIdentityDescriptionsFromPrompts } from "./prompt-sanitizer"
 
 const shotPrompt = `🎬 SEEDANCE 2.0 SCENE PROMPT — "Ethan Wakes to Lena Watching"
 
@@ -40,7 +40,6 @@ describe("shot prompt identity stripping", () => {
   it("leaves a prompt that never described anyone untouched", () => {
     const plain = "Wide shot of @Ethan crossing the empty hallway, handheld, cold morning light. No text, no subtitles."
     expect(stripIdentityDescriptions(plain)).toBe(plain)
-    expect(hasIdentityDescriptions(plain)).toBe(false)
   })
 
   it("drops a stray identity line even without the heading", () => {
@@ -113,36 +112,3 @@ Runtime: 4 seconds`
   })
 })
 
-describe("requestsPromptCleanup", () => {
-  it.each([
-    "fix the prompts and drop the character descriptions",
-    "remove the character lock from the storyboard prompts",
-    "strip the descriptions of the characters out of every shot",
-    "clean up the shot prompts, the appearance text is fighting the reference art",
-    "rewrite the prompts without the cast descriptions",
-  ])("cleans the saved prompts for %s", (message) => {
-    expect(requestsPromptCleanup(message)).toBe(true)
-  })
-
-  it.each([
-    "rewrite the shot descriptions as a rainy New York morning instead of neon night",
-    "change the shot prompts to a daylight look",
-    "replace the neon description with a wet morning one",
-  ])("leaves %s for the agent, because it names a new state rather than asking for a strip", (message) => {
-    // Cleanup is destructive and silent: it rewrites every saved prompt and
-    // reports a count. Claiming a look change here threw away identity text the
-    // user never mentioned while the change they asked for never happened.
-    expect(requestsPromptCleanup(message)).toBe(false)
-  })
-
-  it("does not strip the image prompts a video-prompt request told it to leave alone", () => {
-    // A real message: it names "rewrite", "shots", "prompts" and "appearance",
-    // and it says outright not to touch the image prompts — which is the only
-    // thing this path does. The video prompts went unwritten.
-    expect(requestsPromptCleanup("Read the saved storyboard for Episode 3 and rewrite the video prompts for all 15 shots with write_shot_video_prompts. Name characters and locations by @tag only — never describe their appearance. Do not change any shot's image prompt.")).toBe(false)
-  })
-
-  it("still cleans when the message names the identity text outright, however else it is worded", () => {
-    expect(requestsPromptCleanup("change the prompts to remove the character descriptions")).toBe(true)
-  })
-})

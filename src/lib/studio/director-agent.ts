@@ -7,9 +7,8 @@ import type { AuthenticatedProjectContext } from "./server-context"
 import type { DirectorTimelineBlock } from "./timeline"
 import { defaultDirectorRuntimeSettings, runtimeInstructions, type DirectorRuntimeSettings } from "./director-runtime-settings"
 import { buildVisionUserContent, type DirectorVisionAttachment } from "./director-vision"
-import { agentForTool, fetchDirectorTeam, teamInstructions, type DirectorTeam } from "./director-team"
+import { activeAgentInstructions, agentBriefFor, agentForStage, agentForTool, fetchDirectorTeam, type DirectorAgentKey, type DirectorTeam } from "./director-team"
 import { addWorkflowStep, createWorkflowRun, finishWorkflowRun } from "./workflow-runs"
-import { parseShotInsertionIntent, parseTargetShotNumbers } from "./shot-intent"
 import { directorRecovery } from "./recovery"
 
 export type DirectorStreamEvent =
@@ -38,6 +37,7 @@ const toolDescriptions: Record<DirectorToolName, string> = {
   inspect_continuity: "Read approved continuity facts and conflicts.",
   estimate_generation_cost: "Estimate image or video generation credits and routing.",
   inspect_generation_jobs: "Read recent generation job states, results, and failures for this project or episode.",
+  generate_entity_reference_art: "Generate reference art for named characters, locations, or props. Use this whenever the subject is an entity in the library rather than a storyboard shot — a character portrait or turnaround, a prop image, a location plate. Pass the entity ids from list_production_entities. It does not need a script or a prompt sheet: an entity's saved description is enough to draw it. Costly, so it raises an approval card before anything is charged.",
   submit_generation: "Propose image or video generation jobs. This always requires user approval. When the user names shots or scenes by number, pass those numbers as `request.shotNumbers` with `request.episodeId` and key `prompts` by the same numbers; the server resolves them to the correct shots. Use `request.shotIds` only for ids you read from a tool result. Include only the shots the user actually asked for, and never widen the request to neighbouring shots or to every shot missing media. Do not attach a shot's existing keyframe as a reference: a regenerate should build from the entity references and the prompt, not re-derive the picture it is replacing. Set `request.useExistingFrame` to true only when the user asks to keep the current composition, framing, or layout. Before submitting, check the prompt's @mentions against `list_production_entities`: if one names an asset the project does not have, do not submit with the dangling reference. Offer to create it with `create_production_entity` and generate its reference image, using existing characters and assets as visual reference, then submit once it exists — or ask the user which existing asset to use instead.",
   update_script: "Propose replacing or updating the saved episode script. Provide content as an object { title, overview, body, scenes?: [...] } where body contains the complete script text with scene headings, action, dialogue, and timestamps so it displays directly in the Script tab.",
   fix_shot_aspect_mismatch: "Fix every shot in an episode whose prompt states an aspect ratio (e.g. '16:9 cinematic shot') that disagrees with the shot's own aspect_ratio setting — the usual cause is the project's aspect being changed after the storyboard was written. One proposal corrects the whole episode. Use this whenever the user reports the wrong aspect being generated, or a prompt that names a different ratio than the shot is set to; it rewrites the stored prompt text itself, not just what is sent to the provider, so the storyboard shows the corrected wording.",
@@ -76,6 +76,7 @@ const toolLabels: Record<DirectorToolName, string> = {
   inspect_continuity: "Read continuity facts",
   estimate_generation_cost: "Estimate generation cost",
   inspect_generation_jobs: "Check generation jobs",
+  generate_entity_reference_art: "Generate reference art",
   submit_generation: "Generate media",
   update_script: "Update the script",
   update_shot: "Update a shot",
@@ -105,18 +106,81 @@ function toolLabel(name: DirectorToolName, args: unknown) {
   return label
 }
 
-export function directorFunctionDefinitions(): OpenAIDirectorFunction[] {
-  return (Object.keys(directorTools) as DirectorToolName[]).map((name) => ({
+export function directorFunctionDefinitions(only?: readonly DirectorToolName[]): OpenAIDirectorFunction[] {
+  const names = only ?? (Object.keys(directorTools) as DirectorToolName[])
+  return names.map((name) => ({
     name,
     description: toolDescriptions[name],
     parameters: z.toJSONSchema(directorTools[name].input, { target: "draft-7" }) as Record<string, unknown>,
   }))
 }
 
+export const HAND_OFF_TOOL = "hand_off_to_agent"
+export const ASK_AGENT_TOOL = "ask_agent"
+
+/**
+ * The two tools that move work between agents rather than changing the
+ * workspace. They are answered inside the loop, so they never reach the tool
+ * service: no execution row, no approval card, nothing to spend.
+ */
+const controlToolDefinitions: OpenAIDirectorFunction[] = [
+  {
+    name: HAND_OFF_TOOL,
+    description: "Hand this turn to another agent on the team when the work belongs to them and they should answer the user. They take over in this same reply, so hand over rather than describing what they would do. Pass a brief saying what they are being asked for and what has already been decided. Do not hand over work you can do yourself, and do not hand back and forth.",
+    parameters: {
+      type: "object",
+      properties: {
+        agent_key: { type: "string", description: "The key of the agent taking over, from the team list in your instructions." },
+        brief: { type: "string", description: "What they are being asked for, and the decisions already made." },
+      },
+      required: ["agent_key"],
+    },
+  },
+  {
+    name: ASK_AGENT_TOOL,
+    description: "Ask another agent on the team a question when you need something they would know and the work stays yours. They answer from their own brief and can read the workspace, but cannot change it. Use this instead of handing over when you only need an answer. Say everything they need in the question — they cannot see this conversation.",
+    parameters: {
+      type: "object",
+      properties: {
+        agent_key: { type: "string", description: "The key of the agent being asked, from the team list in your instructions." },
+        question: { type: "string", description: "The question, stated so it can be answered without seeing this conversation." },
+        context: { type: "string", description: "Anything they need to know to answer it." },
+      },
+      required: ["agent_key", "question"],
+    },
+  },
+]
+
+/** Read-only tools: the whole surface a consulted agent is allowed to touch. */
+const readOnlyToolNames = (Object.keys(directorTools) as DirectorToolName[]).filter((name) => directorTools[name].risk === "read")
+
+/**
+ * What the agent holding this turn can reach: everything read-only, whatever
+ * its own role owns, and the tools no role claims. Sending all thirty-odd on
+ * every step cost ten thousand tokens a call and offered the Script Agent the
+ * video renderer.
+ */
+function toolsForAgent(active: DirectorAgentKey | null): DirectorToolName[] {
+  const all = Object.keys(directorTools) as DirectorToolName[]
+  if (!active) return all
+  return all.filter((name) => {
+    if (directorTools[name].risk === "read") return true
+    const owner = agentForTool(name)
+    return !owner || owner === active
+  })
+}
+
 export async function runDirectorAgent(input: {
   context: AuthenticatedProjectContext
   model: string
+  /** The half that is identical on every turn, so the provider can cache it. */
   instructions: string
+  /**
+   * The half that changes as the production does — the state summary, the other
+   * episodes' footage, this session's uploads. Kept apart from `instructions`
+   * and placed after it so a workspace write invalidates only this block.
+   */
+  projectState?: string
   messages: Array<{ role: "user" | "assistant" | "system" | "tool"; content: string }>
   sessionId: string
   idempotencyKey: string
@@ -125,6 +189,11 @@ export async function runDirectorAgent(input: {
   objective: string
   visionAttachments?: DirectorVisionAttachment[]
   team?: DirectorTeam
+  /**
+   * The pipeline stage the workspace is on, used to pick which specialist opens
+   * the turn. Read from the database, not from the user's wording.
+   */
+  stageKey?: string
   workflowRunId?: string
   // Reports progress while the run is still in flight so the chat can show text
   // and tool activity as they happen instead of after the whole loop finishes.
@@ -161,24 +230,47 @@ export async function runDirectorAgent(input: {
   // The named agent team is the single source of specialist guidance. It travels
   // on every run, so behavior never depends on keywords in the user's message.
   const team = input.team || await fetchDirectorTeam(input.context.supabase)
-  const teamBlock = teamInstructions(team)
-  // "Create one more shot after shot 15" names shot 15, but as an anchor. Read
-  // as a target, the constraint below forbade the one thing being asked for —
-  // a new shot is by definition a different shot — and the run answered with a
-  // continuity review of the shots that already existed.
-  const insertion = parseShotInsertionIntent(input.objective)
-  const requestedShotNumbers = insertion ? [] : parseTargetShotNumbers(input.objective)
-  const targetConstraint = insertion
-    ? `This turn asks for a NEW storyboard shot to be added ${insertion.position} shot ${insertion.anchorShotNumber}. Shot ${insertion.anchorShotNumber} is the anchor, not the target: do not re-render, review, or modify it. Write the new shot from the script text in the user's message and create it with create_storyboard_batch, passing replaceExisting false and insertAfterShotNumber ${insertion.position === "after" ? insertion.anchorShotNumber : Math.max(0, insertion.anchorShotNumber - 1)} so it lands in the right place instead of at the end of the storyboard. The shots after it move down by one, which is intended. Do not generate an image or video for it in this turn unless the user asked for one.`
-    : requestedShotNumbers.length
-    ? `This turn explicitly targets storyboard shot ${requestedShotNumbers.join(", ")}. Do not recommend, label, or describe a different shot as the next step in this reply. Keep every tool call and concluding sentence scoped to the requested shot unless the user explicitly asks for broader pipeline guidance.`
-    : ""
+  // The turn opens as the specialist whose stage the workspace is actually on,
+  // read from the database rather than from the user's wording. It is a
+  // starting point: hand_off_to_agent moves it, and the model decides when.
+  let activeAgent: DirectorAgentKey | null = agentForStage(input.stageKey || "")
+  if (activeAgent && !team[activeAgent].enabled) activeAgent = null
+  let handoffs = 0
+  let consultations = 0
+  // Stable first, volatile last.
+  //
+  // Everything down to the project brief is the same on every turn of every
+  // session, and the provider caches on a prefix match — so putting the project
+  // state, which changes the moment a shot or an asset is written, ahead of the
+  // team block meant each write threw away the cache for all six agent briefs
+  // behind it. That is the largest fixed cost in the run, re-paid on every step
+  // of the tool loop.
+  //
+  // There used to be a third block here, built by reading shot numbers out of
+  // the user's message with a regex and forbidding the model to touch anything
+  // else. It guessed, and when it guessed wrong it forbade the very thing being
+  // asked for. The model reads the request itself now.
+  // Rebuilt each step because the agent holding the turn can change mid-loop,
+  // and its brief and its tools change with it — the same shape the brand chat
+  // already uses for its handovers.
+  const instructionsFor = () => [
+    activeAgentInstructions(team, activeAgent),
+    runtimeInstructions(runtimeSettings),
+    "Executable workspace proposals must be created by calling the appropriate tool; never represent an executable proposal only as assistant text. Tool calls that require approval create the UI approval card and do not apply the change until the user approves it.",
+    input.instructions,
+    `Current episode ID: ${input.episodeId || "No episode selected"}`,
+    `Current project ID: ${input.context.project.id}`,
+    input.projectState || "",
+  ].filter(Boolean).join("\n\n")
 
   for (let step = 0; step < runtimeSettings.maxToolSteps; step += 1) {
     let turn: Awaited<ReturnType<typeof createDirectorToolTurn>>
     try {
-      const fullInstructions = `${input.instructions}\nCurrent episode ID: ${input.episodeId || "No episode selected"}\nCurrent project ID: ${input.context.project.id}\n${targetConstraint}\nExecutable workspace proposals must be created by calling the appropriate tool; never represent an executable proposal only as assistant text. Tool calls that require approval create the UI approval card and do not apply the change until the user approves it.\n\n${teamBlock}\n\n${runtimeInstructions(runtimeSettings)}`
-      const toolDefs = directorFunctionDefinitions()
+      const fullInstructions = instructionsFor()
+      const toolDefs = [
+        ...directorFunctionDefinitions(toolsForAgent(activeAgent)),
+        ...controlToolDefinitions.filter((tool) => tool.name !== HAND_OFF_TOOL || handoffs < runtimeSettings.maxHandoffs),
+      ]
 
       turn = input.model.startsWith("gemini")
         ? await createGoogleDirectorToolTurn({
@@ -224,6 +316,80 @@ export async function runDirectorAgent(input: {
 
     for (const call of turn.calls) {
       stepSequence += 1
+
+      // Moving work between agents is loop control, not a workspace change, so
+      // it is answered here: no execution row, no approval card, nothing spent.
+      if (call.name === HAND_OFF_TOOL || call.name === ASK_AGENT_TOOL) {
+        const args = (call.arguments || {}) as Record<string, unknown>
+        const targetKey = typeof args.agent_key === "string" ? args.agent_key as DirectorAgentKey : null
+        const target = targetKey && team[targetKey]?.enabled ? targetKey : null
+        const reply = (output: Record<string, unknown>) =>
+          items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify(output), thoughtSignature: call.thoughtSignature })
+
+        // A key nobody answers to is the model inventing a colleague. Told
+        // plainly, it does the work itself; thrown, it would lose the turn.
+        if (!target || target === activeAgent) {
+          reply({ error: `There is no other agent called "${String(args.agent_key ?? "")}" on this team. Do the work yourself.` })
+          continue
+        }
+
+        if (call.name === HAND_OFF_TOOL) {
+          if (handoffs >= runtimeSettings.maxHandoffs) {
+            reply({ error: "You have handed this turn over as many times as it allows. Finish the work yourself and hand back to the user." })
+            continue
+          }
+          handoffs += 1
+          const from = activeAgent ? team[activeAgent].name : "The Director"
+          activeAgent = target
+          const brief = typeof args.brief === "string" ? args.brief : ""
+          emit({ type: "tool", tool: call.name, label: `${from} → ${team[target].name}`, status: "completed", agent: team[target].name })
+          timeline.push({ type: "tool_execution", tool: call.name, label: `${from} handed this to ${team[target].name}`, status: "completed", agent: team[target].name })
+          // The brief is replayed as the instruction the new agent answers, so
+          // it starts from what was decided rather than from nothing.
+          reply({ from, to: team[target].name, brief, note: `You are now the ${team[target].name}. Answer the user directly from the brief. Do not introduce yourself or restate the handover.` })
+          continue
+        }
+
+        if (consultations >= runtimeSettings.maxConsultations) {
+          reply({ error: "You have asked your colleagues as many questions as this turn allows. Answer from what you already have." })
+          continue
+        }
+        consultations += 1
+        const question = typeof args.question === "string" ? args.question : ""
+        const extra = typeof args.context === "string" ? args.context : ""
+        emit({ type: "tool", tool: call.name, label: `Asked ${team[target].name}`, status: "running", agent: team[target].name })
+        try {
+          // A separate call with the colleague's own brief and read-only tools.
+          // Control stays here — the asking agent carries on with its own
+          // context intact — and read-only is the boundary that makes a
+          // consultation safe to run without asking the user anything.
+          const consulted = await createDirectorToolTurn({
+            userId: input.context.user.id,
+            model: input.model,
+            instructions: [
+              agentBriefFor(team, target),
+              "A colleague has asked you a question about this production. Answer it from your own expertise and from what you can read in the workspace. You may read, but you cannot change anything and must not offer to. Answer only what was asked, in a few sentences.",
+              `Current episode ID: ${input.episodeId || "No episode selected"}`,
+              `Current project ID: ${input.context.project.id}`,
+              input.projectState || "",
+            ].filter(Boolean).join("\n\n"),
+            items: [{ role: "user", content: [question, extra].filter(Boolean).join("\n\n") }],
+            tools: directorFunctionDefinitions(readOnlyToolNames),
+          })
+          const answer = consulted.content?.trim() || "They had no answer to add."
+          timeline.push({ type: "tool_execution", tool: call.name, label: `Asked ${team[target].name}`, status: "completed", agent: team[target].name, detail: answer.slice(0, 4_000) })
+          emit({ type: "tool", tool: call.name, label: `Asked ${team[target].name}`, status: "completed", agent: team[target].name })
+          reply({ from: team[target].name, answer })
+        } catch (error) {
+          // A colleague who cannot answer must not lose the turn: the agent
+          // that asked still has its own work to finish.
+          const message = directorRecovery(error).message
+          emit({ type: "tool", tool: call.name, label: `Asked ${team[target].name}`, status: "failed", agent: team[target].name })
+          reply({ error: `${team[target].name} could not answer: ${message}. Carry on without them.` })
+        }
+        continue
+      }
+
       const tool = directorTools[call.name as DirectorToolName]
       if (!tool) {
         items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify({ error: "Unknown Director tool" }), thoughtSignature: call.thoughtSignature })
@@ -256,7 +422,7 @@ export async function runDirectorAgent(input: {
           // card is most of the delay between asking and being able to act.
           emit({ type: "proposal", proposalId: result.proposal.id, title: result.proposal.title })
         }
-        await addWorkflowStep(input.context, { runId: workflowRun.id, sequence: stepSequence, specialist: specialistForTool(call.name), label, status: block.status, toolExecutionId: block.executionId, toolInput: call.arguments, output: result })
+        await addWorkflowStep(input.context, { runId: workflowRun.id, sequence: stepSequence, specialist: activeAgent || specialistForTool(call.name), label, status: block.status, toolExecutionId: block.executionId, toolInput: call.arguments, output: result })
         if (block.status === "completed") completedSteps += 1
         if (block.status === "awaiting_approval") awaitingApproval += 1
         emit({ type: "tool", tool: call.name, label, status: block.status, agent: agentName })
@@ -267,7 +433,7 @@ export async function runDirectorAgent(input: {
         block.status = "failed"
         block.error = message
         failedSteps += 1
-        await addWorkflowStep(input.context, { runId: workflowRun.id, sequence: stepSequence, specialist: specialistForTool(call.name), label, status: "failed", toolInput: call.arguments, error: { message } })
+        await addWorkflowStep(input.context, { runId: workflowRun.id, sequence: stepSequence, specialist: activeAgent || specialistForTool(call.name), label, status: "failed", toolInput: call.arguments, error: { message } })
         emit({ type: "tool", tool: call.name, label, status: "failed", agent: agentName })
         items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify({ error: message }), thoughtSignature: call.thoughtSignature })
         timeline.push({ type: "warning", code: recovery.code, message: recovery.message, recoverable: recovery.recoverable, actions: recovery.suggestedIntent && recovery.suggestedLabel ? [{ id: `recover-${stepSequence}`, label: recovery.suggestedLabel, intent: recovery.suggestedIntent, payload: {}, risk: "read", recommended: true }] : [] })

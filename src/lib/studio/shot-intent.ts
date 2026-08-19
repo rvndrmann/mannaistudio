@@ -1,7 +1,15 @@
-// Storyboard numbers as the user writes them. The fast path answers a direct
-// "generate shot 2 video" without the agent loop, which it can only do if it
-// reads the same number the user typed — proposing the first three shots
-// instead was the one reason this path could not serve a named request.
+// Storyboard numbers as the user writes them.
+//
+// This file used to be the Director's router: a dozen readers that decided,
+// from the words in a message, whether the user wanted a keyframe or a clip, a
+// redo or a skip, one shot or the whole storyboard — and then acted on the
+// answer before the model was ever called. Each reader was added to fix one
+// wrong reply, each of them guessed, and a guess that spent credits was a
+// guess the user paid for. The model reads its own requests now.
+//
+// What is left never decides anything. It reads shot numbers so a finished turn
+// can offer the buttons that belong to the shots it was about, and it writes the
+// half-finished sentence the storyboard's insert button puts in the composer.
 //
 // Numbers are 1-based, matching the storyboard and the number
 // list_storyboard_shots reports. Resolution to shot ids is deliberately not
@@ -9,15 +17,12 @@
 // number that is wrong fails there with a message naming the episode's real
 // shot count, rather than silently targeting the wrong shot.
 
-import { describesReplacementState } from "./revision-phrasing"
-
 const SHOT_RANGE = /\bshots?\s*(?:#\s*)?(\d{1,4})\s*(?:-|–|—|\bto\b|\bthrough\b)\s*(?:#\s*)?(\d{1,4})\b/g
 const SHOT_LIST = /\bshots?\s*(?:#\s*)?(\d{1,4}(?:\s*(?:,|&|\band\b)\s*(?:#\s*)?\d{1,4})*)\b/g
 const FIRST_SHOT = /\bfirst\s+(?:storyboard\s+)?shot\b/
 
-// A range wider than this is a phrasing accident ("shots 2-900"), not a
-// request; the agent handles those rather than the fast path proposing a
-// hundred jobs the user never asked to pay for.
+// A range wider than this is a phrasing accident ("shots 2-900") rather than a
+// request, and reading it as one would scope a reply to a hundred shots.
 const MAX_RANGE_SPAN = 20
 
 export function parseRequestedShotNumbers(message: string): number[] {
@@ -46,232 +51,41 @@ export function parseRequestedShotNumbers(message: string): number[] {
   return Array.from(new Set(found)).sort((a, b) => a - b)
 }
 
-/**
- * "Generate all the shot images."
- *
- * One shot at a time is the only thing the image path could answer, so a
- * request covering the whole storyboard fell through to the agent, which
- * proposed them one by one with no total in front of the user. A batch is a
- * single decision — how many frames, at what total cost — and it is worth
- * answering as one.
- */
-export type ShotBatchIntent = {
-  /** Every shot that still needs a frame. */
-  all: boolean
-  /** "the next 3", "3 more", "first 3" — take this many from the front. */
-  chunk: number | null
-  /** Shots named outright, when the user listed them. */
-  numbers: number[]
-}
-
-const BATCH_ALL = /\b(?:all|every|each)\b(?:\s+(?:the|of\s+the|remaining|rest\s+of\s+the))?\s*(?:storyboard\s+)?shots?\b|\ball\s+(?:the\s+)?(?:storyboard\s+)?shot\s+(?:image|keyframe)s?\b|\b(?:remaining|rest\s+of\s+the)\s+(?:storyboard\s+)?shots?\b|\bfor\s+all\s+shots?\b/i
-// "the next 3", "3 more", "another 3", "first 3" — the size of one helping.
-const BATCH_CHUNK = /\b(?:next|another|first)\s+(\d{1,2})\b|\b(\d{1,2})\s+more\b/i
-// A chunk this large is the whole batch by another name, and a number this
-// small is almost always a shot number rather than a helping size.
-const MAX_CHUNK = 25
-
-export function parseShotImageBatchIntent(message: string): ShotBatchIntent | null {
-  // A batch that says what the frames should become is a revision of the
-  // prompts they render from, not a request to render the prompts as they
-  // stand. "Make all the shot images a rainy New York morning instead of neon
-  // night" was answered with "every shot with a prompt already has a keyframe",
-  // so the look change never reached the agent that would have edited them.
-  if (describesReplacementState(message)) return null
-  const all = BATCH_ALL.test(message)
-  const chunkMatch = message.match(BATCH_CHUNK)
-  const chunkSize = chunkMatch ? Number(chunkMatch[1] || chunkMatch[2]) : 0
-  const chunk = chunkSize > 0 && chunkSize <= MAX_CHUNK ? chunkSize : null
-  // A helping is counted in shots, not named by shot number, so the digits it
-  // consumed must not be read a second time as a list of targets.
-  const numbers = chunk ? [] : parseRequestedShotNumbers(message)
-  if (!all && !chunk && numbers.length < 2) return null
-  return { all, chunk, numbers }
-}
-
-export type VideoShotReferenceIntent = {
-  targetShotNumbers: number[]
-  referenceShotNumbers: number[]
-}
-
 // A continuation request contains two different kinds of shot number:
 // "create shot 2" is the output, while "using shot 1 video as reference" is
-// an input. Keeping those roles separate prevents one continuation request
-// from becoming an accidental two-video batch.
+// an input. Keeping the roles apart is what stops a reply about shot 2 from
+// also offering the buttons that belong to shot 1.
 const VIDEO_REFERENCE_SHOT = /\b(?:using|use|with|from)\s+(?:the\s+)?(?:(?:existing|completed|previous)\s+)?(?:video|clip)\s+(?:from|of)\s+(?:the\s+)?shots?\s*(?:#\s*)?(\d{1,4})\b|\b(?:using|use|with|from)\s+(?:the\s+)?(?:(?:existing|completed|previous)\s+)?shots?\s*(?:#\s*)?(\d{1,4})(?:'s)?(?:\s+(?:existing|completed|previous))?\s*(?:video|clip)?(?:\s+as\s+(?:a\s+)?ref(?:erence|rence))?/gi
 
-export function parseVideoShotReferenceIntent(message: string): VideoShotReferenceIntent {
+/**
+ * The shots a message is *about*, ignoring the ones it only cites as
+ * references. Used to scope the next-step buttons a finished turn offers —
+ * never to decide what the turn does.
+ */
+export function parseTargetShotNumbers(message: string): number[] {
   const referenceShotNumbers: number[] = []
   const withoutReferences = message.replace(VIDEO_REFERENCE_SHOT, (match, videoFirst, shotFirst) => {
     const number = Number(videoFirst || shotFirst)
     if (Number.isInteger(number) && number > 0) referenceShotNumbers.push(number)
     return " ".repeat(match.length)
   })
-  const allNumbers = parseRequestedShotNumbers(message)
-  const references = Array.from(new Set(referenceShotNumbers)).sort((a, b) => a - b)
-  const referenceSet = new Set(references)
-  const explicitTargets = parseRequestedShotNumbers(withoutReferences).filter((number) => !referenceSet.has(number))
-  const inferredNextTarget = !explicitTargets.length && references.length === 1 && /\bnext\s+(?:shot|scene|video)\b|\binto\s+the\s+next\s+scene\b/i.test(message)
-    ? [references[0] + 1]
-    : []
-
-  return {
-    // If no reference clause was recognized, retain the existing parser's
-    // behavior. This keeps ordinary requests such as "generate shots 1, 2"
-    // untouched.
-    targetShotNumbers: references.length ? (explicitTargets.length ? explicitTargets : inferredNextTarget) : allNumbers,
-    referenceShotNumbers: references,
-  }
-}
-
-/**
- * Asking for the same thing again, in the ways people actually write it.
- *
- * "recreate the shot 6 video" matched nothing before: \bcreate\b does not fire
- * inside "recreate", so the request fell past both media paths to the agent,
- * which answered it with an inspection report on a different shot.
- */
-const REDO_VERB = /\b(regenerate|re-generate|recreate|re-create|redo|re-do|remake|re-make|rerender|re-render|rerun|re-run|again)\b/i
-
-export function wantsRedo(message: string) {
-  return REDO_VERB.test(message)
-}
-
-// Which medium a request names, if it names one at all.
-const NAMES_IMAGE = /\b(image|images|keyframe|keyframes|frame|poster|visual|visuals|still|photo|picture)\b/i
-const NAMES_VIDEO = /\b(video|videos|clip|clips|animate|animation|motion|render|footage|shot\s+film)\b/i
-
-export function namesImageMedium(message: string) {
-  return NAMES_IMAGE.test(message)
-}
-
-export function namesVideoMedium(message: string) {
-  return NAMES_VIDEO.test(message)
-}
-
-/**
- * "Regenerate shot 15" — a shot the user wants redone, without saying which of
- * its two halves.
- *
- * A shot is a keyframe and a clip, and they cost very differently: a Seedance
- * 2.5 render is fifty credits a second where the keyframe is eight. This used
- * to resolve silently to the image, which is the cheaper guess but still a
- * guess, and a user who meant the clip paid for a frame they did not ask for
- * and had to ask again. Nothing in the sentence says which, so nothing should
- * be assumed — the reply asks.
- */
-export function isAmbiguousShotRedo(message: string) {
-  if (!wantsRedo(message)) return false
-  // "Redo shot 3 as a rainy morning instead of neon night" says which medium is
-  // beside the point: the prompt has to change first, and asking image-or-video
-  // both answers a question nobody asked and loses the change on the way.
-  if (describesReplacementState(message)) return false
-  if (namesImageMedium(message) || namesVideoMedium(message)) return false
-  return parseTargetShotNumbers(message).length > 0
-}
-
-/**
- * "Skip shot 6 and continue with the rest of the production."
- *
- * Skipping is passing over a shot, not moving to it. "Skip ahead to shot 5 and
- * generate its video" names a shot the user wants worked on, and answering it
- * with "leaving shot 5 as it is" refuses the work while claiming the opposite
- * of what was asked.
- */
-const SKIP_FORWARD = /\bskip\s+(?:ahead|forward|straight|right)?\s*to\b/
-const SKIP_NEGATED = /\b(?:do not|don't|never|no need to|instead of|without)\s+skip(?:ping)?\b/
-
-export function wantsShotSkipped(message: string) {
-  const normalized = message.toLowerCase()
-  if (!/\bskip\b/.test(normalized)) return false
-  if (SKIP_FORWARD.test(normalized) || SKIP_NEGATED.test(normalized)) return false
-  return parseTargetShotNumbers(message).length > 0
-}
-
-export function parseTargetShotNumbers(message: string) {
-  return parseVideoShotReferenceIntent(message).targetShotNumbers
-}
-
-/**
- * "Create one more shot after shot 15."
- *
- * The number in a request like this is an anchor, not a target: the shot being
- * asked for is the one that does not exist yet. Read as a target it did real
- * damage — the run was told to keep everything scoped to shot 15, so the one
- * thing it could not do was add a shot after it, and the reply came back as a
- * continuity review of the fifteen shots that were already finished.
- */
-export type ShotInsertionIntent = {
-  anchorShotNumber: number
-  position: "after" | "before"
-}
-
-const ADD_VERB = /\b(add|create|insert|append|write|need|want|make)\b/i
-// "one more shot", "another shot", "a new shot", "an extra shot", "1 more shot"
-const NEW_SHOT = /\b(?:one|1|a|an|another|extra|additional|new|more)\s+(?:more\s+|new\s+|extra\s+|additional\s+)?(?:storyboard\s+)?shots?\b|\banother\s+(?:storyboard\s+)?shots?\b/i
-const ANCHOR = /\b(after|following|before|ahead\s+of|prior\s+to)\s+(?:the\s+)?(?:storyboard\s+)?shots?\s*(?:#\s*)?(\d{1,4})\b/i
-// "between shot 10 and shot 11" — the way a gap is named when it has a shot on
-// both sides, which is how the storyboard's own insert button words it.
-const BETWEEN = /\bbetween\s+(?:the\s+)?(?:storyboard\s+)?shots?\s*(?:#\s*)?(\d{1,4})\s*(?:and|&|-|–|—)\s*(?:(?:storyboard\s+)?shots?\s*)?(?:#\s*)?(\d{1,4})\b/i
-
-export function parseShotInsertionIntent(message: string): ShotInsertionIntent | null {
-  if (!ADD_VERB.test(message) || !NEW_SHOT.test(message)) return null
-
-  // A gap named by both its sides anchors on the earlier one.
-  const between = message.match(BETWEEN)
-  if (between) {
-    const first = Number(between[1])
-    if (Number.isInteger(first) && first >= 1) return { anchorShotNumber: first, position: "after" }
-  }
-
-  const anchor = message.match(ANCHOR)
-  if (!anchor) return null
-  const anchorShotNumber = Number(anchor[2])
-  if (!Number.isInteger(anchorShotNumber) || anchorShotNumber < 1) return null
-  const position = /^(?:before|prior)/i.test(anchor[1]) || /ahead/i.test(anchor[1]) ? "before" : "after"
-  return { anchorShotNumber, position }
+  const references = new Set(referenceShotNumbers)
+  if (!references.size) return parseRequestedShotNumbers(message)
+  return parseRequestedShotNumbers(withoutReferences).filter((number) => !references.has(number))
 }
 
 /**
  * The half-written instruction the storyboard's insert button puts in the
  * composer, for the gap after `afterNumber` of `total` shots.
  *
- * It lives here, beside the parser that has to read it back. Written in the
- * component instead, the button produced "between shot 10 and shot 11" while
- * the parser only understood "after" and "before" — so the studio's own button
- * generated a sentence the studio could not act on, and the request came back
- * as an inspection of the two shots it named.
+ * Nothing reads this back with a regex any more — the agent reads the sentence
+ * the same way it reads anything else the user types. It stays a fixed phrasing
+ * so the composer is predictable, not so a parser can match it.
  */
 export function buildInsertShotDraft(afterNumber: number, total: number) {
   if (afterNumber <= 0) return "I want to add a new shot before shot 1: "
   if (afterNumber >= total) return `I want to add a new shot after shot ${afterNumber}: `
   return `I want to add a new shot between shot ${afterNumber} and shot ${afterNumber + 1}: `
-}
-
-export function buildVideoContinuationPrompt(input: {
-  targetShotNumber: number
-  referenceShotNumber?: number
-  /**
-   * Names a clip that shot numbers cannot reach — the previous episode's
-   * ending. "@previous shot video" would point at this episode's storyboard,
-   * where the shot being continued from does not exist.
-   */
-  referenceAlias?: string
-  basePrompt: string
-  style: string
-}) {
-  const style = input.style.trim()
-  const realistic = /photo\s*-?real|realistic/i.test(style)
-  const videoAlias = input.referenceAlias
-    ? input.referenceAlias
-    : input.referenceShotNumber && input.referenceShotNumber !== input.targetShotNumber - 1
-    ? `@storyboard shot ${input.referenceShotNumber} video`
-    : "@previous shot video"
-  return [
-    `Extend from video ${videoAlias} into the next scene while following the composition and shot layout of @storyboard shot ${input.targetShotNumber} image.`,
-    realistic ? "Photorealistic, hyper realistic." : `Maintain the project's ${style || "cinematic"} visual style.`,
-    input.basePrompt.trim(),
-  ].filter(Boolean).join("\n\n")
 }
 
 export function actionMatchesRequestedShots(intent: string, requestedShotNumbers: number[]) {

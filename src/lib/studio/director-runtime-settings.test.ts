@@ -5,7 +5,15 @@ describe("Director runtime settings", () => {
   it("normalizes partial persisted settings with safe defaults", () => {
     const settings = normalizeDirectorRuntimeSettings({ maxToolSteps: 6, nextActionLimit: 2, orchestrationInstructions: "Use saved context.", specialists: { script: "Read it." } })
     expect(settings.maxToolSteps).toBe(6)
-    expect(settings).toEqual({ maxToolSteps: 6, nextActionLimit: 2, orchestrationInstructions: "Use saved context." })
+    expect(settings).toEqual({ maxToolSteps: 6, nextActionLimit: 2, orchestrationInstructions: "Use saved context.", maxHandoffs: 2, maxConsultations: 3 })
+  })
+
+
+  it("carries handover and consultation ceilings, so two agents cannot pass one request back and forth", () => {
+    const settings = normalizeDirectorRuntimeSettings({ orchestrationInstructions: "Use saved context.", maxHandoffs: 1, maxConsultations: 0 })
+    expect(settings.maxHandoffs).toBe(1)
+    expect(settings.maxConsultations).toBe(0)
+    expect(normalizeDirectorRuntimeSettings({ orchestrationInstructions: "x" }).maxHandoffs).toBe(2)
   })
 
   it("builds orchestrator instructions without legacy specialist notes", () => {

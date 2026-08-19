@@ -109,6 +109,7 @@ export async function fetchDirectorTeam(supabase: SupabaseClient): Promise<Direc
 /** Which agent owns each Director tool. The orchestrator and read tools stay unowned. */
 export const toolAgentOwnership: Partial<Record<DirectorToolName, DirectorAgentKey>> = {
   create_production_entity: "character_asset",
+  generate_entity_reference_art: "character_asset",
   create_production_entities_batch: "character_asset",
   update_asset: "character_asset",
   delete_asset: "character_asset",
@@ -134,6 +135,86 @@ export const toolAgentOwnership: Partial<Record<DirectorToolName, DirectorAgentK
   create_revision_request: "continuity",
 }
 
+
+/**
+ * Which specialist a turn starts as, read from what the workspace contains.
+ *
+ * The team used to be six briefs concatenated into one prompt, so every turn
+ * was every agent at once: the model narrated a handover it was not performing,
+ * and six sets of instructions competed over one reply. Starting from the stage
+ * the production is actually on gives the turn one brief and one tool set, and
+ * makes handing over mean something — there is now somewhere to hand over from.
+ *
+ * This is a starting point, not a cage. hand_off_to_agent moves it.
+ */
+export function agentForStage(stageKey: string): DirectorAgentKey | null {
+  switch (stageKey) {
+    case "script": return "script"
+    case "prompt_sheet": return "prompt"
+    case "entities":
+    case "entity_images": return "character_asset"
+    case "storyboard":
+    case "keyframes": return "storyboard"
+    case "videos": return "video_prompt"
+    default: return null
+  }
+}
+
+/**
+ * The brief for one agent, rather than all six.
+ *
+ * The orchestrator keeps the chain and the roster so it still knows the shape
+ * of the production and who else exists; what it no longer carries is five
+ * other agents' pages of instructions on how to do work it is not doing.
+ */
+export function activeAgentInstructions(team: DirectorTeam, active: DirectorAgentKey | null): string {
+  const enabled = directorAgentKeys.filter((key) => team[key].enabled)
+  if (!enabled.length) return ""
+  const chain = directorPipeline.filter((key) => enabled.includes(key)).map((key) => team[key].name)
+  const lines = [
+    chain.length > 1 ? `Production runs in this order: ${chain.join(" → ")}.` : "",
+    "Work arrives mid-pipeline all the time. If your work genuinely cannot be done without what an earlier stage produces — a storyboard needs a prompt sheet, a shot video needs its keyframe — say so and offer to build that first. If it can be done from what is already saved, do it. The order is how the production flows when nobody steers it, not a gate on what the user may ask for.",
+    "When the user has not named a task, do the stage the production is on and hand back with the next step. When they have named one, that request is the turn, wherever it sits in the order. Keyframe images and shot videos still go one shot at a time in storyboard order, so the user sees each shot before the next one is paid for.",
+  ].filter(Boolean)
+
+  if (!active || !team[active].enabled) {
+    return [
+      "You are the Director, coordinating the production yourself.",
+      ...lines,
+      teamRoster(team, null),
+    ].filter(Boolean).join("\n\n")
+  }
+
+  const agent = team[active]
+  return [
+    `You are acting as the ${agent.name}. This is your brief for this turn; follow it exactly.`,
+    `Skills: ${agent.skills}`,
+    agent.instructions,
+    ...lines,
+    teamRoster(team, active),
+  ].filter(Boolean).join("\n\n")
+}
+
+/**
+ * Who else is on the team, so a handover names a real colleague.
+ *
+ * Without it the model invents a plausible-sounding key, the handover fails,
+ * and the user gets a reply about a specialist who does not exist.
+ */
+export function teamRoster(team: DirectorTeam, activeKey: DirectorAgentKey | null): string {
+  const others = directorAgentKeys.filter((key) => team[key].enabled && key !== activeKey)
+  if (!others.length) return ""
+  return [
+    "THE REST OF THE TEAM. Hand over with hand_off_to_agent when the work is theirs and they should answer the user; ask them with ask_agent when you only need something they would know and the work stays yours.",
+    ...others.map((key) => `- ${key} — ${team[key].name}: ${team[key].skills}`),
+  ].join("\n")
+}
+
+export function agentBriefFor(team: DirectorTeam, key: DirectorAgentKey): string {
+  const agent = team[key]
+  return [`You are the ${agent.name}.`, `Skills: ${agent.skills}`, agent.instructions].join("\n\n")
+}
+
 export function agentForTool(tool: string): DirectorAgentKey | null {
   return toolAgentOwnership[tool as DirectorToolName] ?? null
 }
@@ -152,9 +233,9 @@ export function teamInstructions(team: DirectorTeam): string {
     chain.length > 1
       ? [
         `Production runs in this order: ${chain.join(" → ")}.`,
-        "Work arrives mid-pipeline all the time. Before acting, check what the stage before yours should already have produced, and if it is missing say so and offer to build it first rather than improvising a substitute.",
+        "Work arrives mid-pipeline all the time. Before acting, check what the stage before yours should already have produced. If your work genuinely cannot be done without it — a storyboard needs a prompt sheet, a shot video needs its keyframe — say so and offer to build that first. If it can be done from what is already saved, do it: a character's reference art needs her saved description and nothing else, so asking for a script before drawing her refuses a request you were able to fulfil. The order is how the production flows when nobody steers it, not a gate on what the user is allowed to ask for.",
         "When you move between agents, say which agent is taking over and why in one short sentence, using that agent's name.",
-        "Run one stage per turn and then hand back to the user with the next step. Keyframe images and shot videos go one shot at a time in storyboard order, so the user sees each shot before the next one is paid for. Do not run a later stage because an earlier one went well.",
+        "When the user has not named a task, run one stage per turn and then hand back with the next step; do not run a later stage because an earlier one went well. When they have named one, that request is the turn, wherever it sits in the order. Keyframe images and shot videos still go one shot at a time in storyboard order, so the user sees each shot before the next one is paid for.",
       ].join(" ")
       : "",
     ...active.map((key) => {

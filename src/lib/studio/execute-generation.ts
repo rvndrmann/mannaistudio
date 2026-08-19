@@ -16,7 +16,56 @@ import { refundGenerationCredits } from "./credits"
 import { parseSeedanceMissingAssetError, purgeStaleBytePlusAsset } from "./seedance-reference-error"
 import { isVideoReferencePath } from "./media-reference"
 
+/**
+ * Where a finished image is stored, and what it gets attached to.
+ *
+ * A job targets a storyboard shot or a production entity, never both. Keeping
+ * the difference in these three helpers is what let asset reference art join
+ * the shot pipeline — the approval card, the job row, the credit ledger, and
+ * the retry and refund handling — instead of keeping its own private route to
+ * the provider that charged the user with nothing to approve.
+ */
+function generationStoragePath(context: AuthenticatedProjectContext, job: Record<string, unknown>, extension = "png") {
+  const folder = typeof job.entity_id === "string" ? `entities/${job.entity_id}` : `shots/${job.shot_id}`
+  return `${context.user.id}/${context.project.id}/${folder}/${job.model}-${randomUUID()}.${extension}`
+}
+
+/** Adds the new art to the entity's library and makes it the chosen reference. */
+async function attachEntityReferenceImage(context: AuthenticatedProjectContext, entityId: string, path: string, prompt: string) {
+  const { data: entity, error } = await context.supabase
+    .from("creator_entities")
+    .select("id,reference_images,metadata")
+    .eq("id", entityId)
+    .eq("project_id", context.project.id)
+    .maybeSingle()
+  if (error) throw error
+  if (!entity) throw new Error("Generation target asset no longer exists")
+  const existing = Array.isArray(entity.reference_images) ? entity.reference_images as string[] : []
+  const metadata = entity.metadata && typeof entity.metadata === "object" ? entity.metadata as Record<string, unknown> : {}
+  const { error: updateError } = await context.supabase
+    .from("creator_entities")
+    .update({
+      reference_images: Array.from(new Set([...existing, path])),
+      // The newest art is what the rest of the pipeline should reference, and
+      // recording what it was made from is what lets a later description edit
+      // be noticed as having left the art behind.
+      metadata: { ...metadata, chosen_reference: path, image_generation: { path, generatedAt: new Date().toISOString(), prompt } },
+    })
+    .eq("id", entityId)
+  if (updateError) throw updateError
+}
+
 async function verifyAttachedOutput(context: AuthenticatedProjectContext, job: Record<string, unknown>, resultPath: string) {
+  // An entity's art is verified by having landed on the entity: there is no
+  // shot, episode, or cast list to check it against.
+  if (typeof job.entity_id === "string") {
+    const { data: entity, error } = await context.supabase
+      .from("creator_entities").select("id,reference_images").eq("id", job.entity_id).maybeSingle()
+    if (error) throw error
+    const images = Array.isArray(entity?.reference_images) ? entity.reference_images as string[] : []
+    if (!images.includes(resultPath)) throw new Error("Generation verification failed: the art was not attached to the asset")
+    return { status: "verified", checkedAt: new Date().toISOString(), checks: { attached: true }, resultPath }
+  }
   if (typeof job.shot_id !== "string") throw new Error("Generation completed without a target shot")
   const { data: shot, error } = await context.supabase
     .from("creator_shots")
@@ -242,12 +291,16 @@ export async function executeGenerationJobsInBackground(
               quality: openAIImageQuality(projectImageQuality(context.project)),
             }))
             
-            const path = `${context.user.id}/${context.project.id}/shots/${job.shot_id}/${job.model}-${randomUUID()}.png`
+            const path = generationStoragePath(context, job)
             await context.supabase.storage.from("creator-studio-media").upload(path, imageBuffer, { contentType: "image/png" })
-            
-            await context.supabase.from("creator_shots").update({
-              keyframe_image: path,
-            }).eq("id", job.shot_id)
+
+            if (typeof job.entity_id === "string") {
+              await attachEntityReferenceImage(context, job.entity_id, path, typeof job.prompt === "string" ? job.prompt : "")
+            } else {
+              await context.supabase.from("creator_shots").update({
+                keyframe_image: path,
+              }).eq("id", job.shot_id)
+            }
 
             const verification = await verifyAttachedOutput(context, job, path)
             await context.supabase.from("creator_generation_jobs").update({
@@ -281,14 +334,18 @@ export async function executeGenerationJobsInBackground(
             if (!download.ok) throw new Error(`Could not download Seedream output (${download.status}).`)
             const imageBuffer = Buffer.from(await download.arrayBuffer())
             
-            const path = `${context.user.id}/${context.project.id}/shots/${job.shot_id}/${job.model}-${randomUUID()}.png`
+            const path = generationStoragePath(context, job)
             await context.supabase.storage.from("creator-studio-media").upload(path, imageBuffer, { contentType: generated.contentType })
-            
-            await context.supabase.from("creator_shots").update({
-              keyframe_image: path,
-              is_trusted_provider_asset: Boolean(byteplusAssetUri),
-              provider_asset_uri: byteplusAssetUri || null,
-            }).eq("id", job.shot_id)
+
+            if (typeof job.entity_id === "string") {
+              await attachEntityReferenceImage(context, job.entity_id, path, typeof job.prompt === "string" ? job.prompt : "")
+            } else {
+              await context.supabase.from("creator_shots").update({
+                keyframe_image: path,
+                is_trusted_provider_asset: Boolean(byteplusAssetUri),
+                provider_asset_uri: byteplusAssetUri || null,
+              }).eq("id", job.shot_id)
+            }
 
             const verification = await verifyAttachedOutput(context, job, path)
             await context.supabase.from("creator_generation_jobs").update({

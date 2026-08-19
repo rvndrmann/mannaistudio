@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest"
 import { computePipelineStage, emptySnapshot, missingEntityNames, pipelineInstructionBlock, withSkippedShots, type ProductionSnapshot } from "./pipeline"
-import { parseBulkEntityImageIntent } from "./entity-image-workflow"
 import { parseRequestedShotNumbers } from "./shot-intent"
 
 function snapshot(patch: Partial<ProductionSnapshot> = {}): ProductionSnapshot {
@@ -17,10 +16,23 @@ const shot = (number: number, patch: { hasKeyframe?: boolean; hasVideo?: boolean
 })
 
 describe("production pipeline stages", () => {
-  it("asks for the script first", () => {
+  // "Confirm the script" was offered when no script existed, which is the one
+  // thing that cannot be done at this stage. A button has to name what pressing
+  // it does, so the two real routes to a script are the two buttons.
+  it("offers the two ways to get a script, and never offers to confirm one that does not exist", () => {
     const stage = computePipelineStage(emptySnapshot)
     expect(stage.key).toBe("script")
-    expect(stage.nextAction?.label).toBe("Confirm the script")
+    expect(stage.nextAction?.label).toBe("Write the script from my idea")
+    expect(stage.alternatives.map((action) => action.label)).toContain("I'll paste my own script")
+    expect(stage.nextAction?.label).not.toContain("Confirm")
+  })
+
+  // Someone who has just made a character and wants her portrait was shown the
+  // script step and nothing else, because reference art is a later stage.
+  it("keeps started asset work reachable while the script is still missing", () => {
+    const stage = computePipelineStage(snapshot({ entities: [withoutArt("Sara")] }))
+    expect(stage.key).toBe("script")
+    expect(stage.alternatives.map((action) => action.label)).toContain("Generate reference art for Sara")
   })
 
   it("writes the prompt sheet once a script is saved", () => {
@@ -126,7 +138,6 @@ describe("production pipeline stages", () => {
       entities: [withArt("Detective Rao")],
     }))
     expect(stage.key).toBe("entities")
-    expect(parseBulkEntityImageIntent(stage.nextAction!.intent, [])).toBeNull()
   })
 
   it("sends the reference-art step down the bulk entity image path without regenerating", () => {
@@ -137,16 +148,13 @@ describe("production pipeline stages", () => {
       entities: [withoutArt("Sana")],
     }))
     expect(stage.key).toBe("entity_images")
-    expect(parseBulkEntityImageIntent(stage.nextAction!.intent, [])?.regenerate).toBe(false)
   })
 
   it("sends the keyframe and video steps to their shot, not to the entity library", () => {
     const keyframe = computePipelineStage(snapshot({ hasScript: true, promptSheetCount: 3, shots: [shot(1, { hasKeyframe: true }), shot(2), shot(3)] }))
-    expect(parseBulkEntityImageIntent(keyframe.nextAction!.intent, [])).toBeNull()
     expect(parseRequestedShotNumbers(keyframe.nextAction!.intent)).toEqual([2])
 
     const video = computePipelineStage(snapshot({ hasScript: true, promptSheetCount: 3, shots: [shot(1, { hasKeyframe: true, hasVideo: true }), shot(2, { hasKeyframe: true })] }))
-    expect(parseBulkEntityImageIntent(video.nextAction!.intent, [])).toBeNull()
     expect(parseRequestedShotNumbers(video.nextAction!.intent)).toEqual([2])
   })
 
@@ -161,9 +169,12 @@ describe("production pipeline stages", () => {
     expect(stage.key).toBe("keyframes")
     expect(stage.nextAction?.label).toBe("Generate the image for shot 3")
     expect(stage.summary).toContain("2 images and 3 videos still to generate.")
+    // Redoing from the same prompt returns the same picture, so a frame the user
+    // dislikes also needs a way to change the prompt before spending again.
     expect(stage.alternatives.map((action) => action.label)).toEqual([
       "Generate the video for shot 2",
       "Regenerate the image for shot 2",
+      "Change shot 2's prompt first",
     ])
   })
 
@@ -201,7 +212,6 @@ describe("production pipeline stages", () => {
     }))
     const alt = stage.alternatives.find((action) => action.id === "pipeline-keyframe-2")
     expect(parseRequestedShotNumbers(alt!.intent)).toEqual([2])
-    expect(parseBulkEntityImageIntent(alt!.intent, [])).toBeNull()
   })
 
   // "Skip shot 6 and continue" names a shot in order to exclude it. Left to the
@@ -231,5 +241,21 @@ describe("production pipeline stages", () => {
     const block = pipelineInstructionBlock(snapshot({ hasScript: true }))
     expect(block).toContain("Write the prompt sheet")
     expect(block).toContain("Never tell the user to open a tab")
+  })
+})
+
+describe("a blocking approval is surfaced before anything else", () => {
+  // The Director refused to generate Sara's reference art because her record was
+  // pending approval, while the next-step block said "no script yet" — so the
+  // one thing standing in the way was the one thing never mentioned.
+  it("asks for the pending change even when the episode has no script", () => {
+    const stage = computePipelineStage(snapshot({ pendingApprovals: 1, entities: [withoutArt("Sara")] }))
+    expect(stage.title).toBe("Waiting on you")
+    expect(stage.nextAction?.label).toBe("Review 1 pending change")
+  })
+
+  it("still asks for it once a script and prompt sheet exist", () => {
+    const stage = computePipelineStage(snapshot({ hasScript: true, promptSheetCount: 3, pendingApprovals: 2 }))
+    expect(stage.nextAction?.label).toBe("Review 2 pending changes")
   })
 })
