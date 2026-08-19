@@ -259,3 +259,36 @@ describe("a blocking approval is surfaced before anything else", () => {
     expect(stage.nextAction?.label).toBe("Review 2 pending changes")
   })
 })
+
+describe("art the user is happy with can be kept without paying to remake it", () => {
+  it("offers keeping the existing art beside regenerating it", () => {
+    const stage = computePipelineStage(snapshot({
+      hasScript: true,
+      promptSheetCount: 4,
+      entities: [
+        { name: "Sleek Luxury Car", type: "prop", hasReferenceImage: true, artIsStale: true },
+        { name: "Sunny Urban Road", type: "scene", hasReferenceImage: true, artIsStale: true },
+      ],
+    }))
+    expect(stage.key).toBe("entity_images")
+    expect(stage.nextAction?.label).toBe("Regenerate art for Sleek Luxury Car, Sunny Urban Road")
+    const keep = stage.alternatives.find((action) => action.id === "pipeline-accept-stale-entity-art")
+    expect(keep?.label).toBe("Keep the existing art for Sleek Luxury Car, Sunny Urban Road")
+    expect(keep?.risk).toBe("write")
+    expect(keep?.intent).toContain("accept_existing_art")
+    expect(keep?.intent).toContain("spend no credits")
+  })
+
+  it("offers the same for a keyframe whose prompt moved on", () => {
+    const stage = computePipelineStage(snapshot({
+      hasScript: true,
+      promptSheetCount: 4,
+      entities: [withArt("Sara")],
+      shots: [{ number: 1, hasPrompt: true, hasKeyframe: true, hasVideo: false, keyframeIsStale: true }],
+    }))
+    expect(stage.key).toBe("keyframes")
+    const keep = stage.alternatives.find((action) => action.id === "pipeline-accept-stale-keyframes")
+    expect(keep?.label).toBe("Keep the existing image for shot 1")
+    expect(keep?.risk).toBe("write")
+  })
+})

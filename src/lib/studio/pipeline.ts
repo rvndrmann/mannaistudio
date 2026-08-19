@@ -328,7 +328,19 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
         risk: "costly",
         recommended: true,
       },
-      alternatives: [],
+      // Stale art had one way out and it cost money. A user happy with the
+      // picture, who had reworded the description under it, could say "these
+      // are good enough" and be offered the same paid button again, because
+      // nothing they could say changed the stored comparison.
+      alternatives: [
+        {
+          id: "pipeline-accept-stale-entity-art",
+          label: `Keep the existing art for ${list(staleArt)}`,
+          intent: `Accept the reference art ${staleArt.join(", ")} already ${plural(staleArt.length, "has", "have")} as matching ${plural(staleArt.length, "its", "their")} current description, using accept_existing_art. Generate nothing and spend no credits.`,
+          risk: "write",
+          recommended: false,
+        },
+      ],
     }
   }
 
@@ -364,7 +376,15 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
         risk: "costly",
         recommended: true,
       },
-      alternatives: [],
+      alternatives: [
+        {
+          id: "pipeline-accept-stale-keyframes",
+          label: `Keep the existing image for shot ${numbers.join(", ")}`,
+          intent: `Accept the keyframe shot ${numbers.join(", ")} already ${plural(numbers.length, "has", "have")} as matching the shot's current prompt, using accept_existing_art. Generate nothing and spend no credits.`,
+          risk: "write",
+          recommended: false,
+        },
+      ],
     }
   }
 

@@ -17,6 +17,7 @@ import { aspectMismatch, restateAspect } from "./shot-aspect"
 import { assertShotPromptShape, normalizeShotColumns } from "./shot-writes"
 import { withCandidateNumbers } from "./generation-candidates"
 import { mergeEntityMetadata } from "./entity-writes"
+import { metadataAcceptingEntityArt, metadataAcceptingKeyframe } from "./accept-existing-art"
 import { buildGenerationTargetSnapshot } from "./generation-target"
 import { scriptContentSchema, normalizeScriptContent } from "./script"
 import { buildEntityReferenceImagePrompt, projectVisualStyle } from "./entity-image-workflow"
@@ -1217,6 +1218,75 @@ export const createRevisionRequestTool = defineDirectorTool({
   },
 })
 
+/**
+ * Marks the art an entity or shot already has as matching the text it has now.
+ *
+ * The counterpart to regenerating. Staleness is a comparison against the text
+ * recorded at generation time, and only a generation ever wrote that text — so
+ * art the user was happy with, whose description they had since reworded, could
+ * only be settled by paying to render it again. This settles it by recording
+ * what the user is telling us: the picture already answers the description.
+ */
+export const acceptExistingArtTool = defineDirectorTool({
+  name: "accept_existing_art",
+  version: 1,
+  risk: "write",
+  requiresApproval: true,
+  input: z.object({
+    entityNames: z.array(z.string().trim().min(1).max(200)).max(50).default([]),
+    shotNumbers: z.array(z.number().int().positive().max(10_000)).max(100).default([]),
+    episodeId: z.string().uuid().optional(),
+  }),
+  async execute(context, input) {
+    if (!input.entityNames.length && !input.shotNumbers.length) {
+      throw new Error("Name the characters, assets, or shots whose existing art is being accepted.")
+    }
+    const acceptedEntities: string[] = []
+    const acceptedShots: number[] = []
+
+    if (input.entityNames.length) {
+      const { data: entities, error } = await context.supabase.from("creator_entities").select("id,name,description,reference_images,metadata").eq("project_id", context.project.id)
+      if (error) throw error
+      const byHandle = new Map((entities || []).map((entity) => [entityHandle(entity.name), entity]))
+      for (const name of input.entityNames) {
+        const entity = byHandle.get(entityHandle(name))
+        if (!entity) throw new Error(`This project has no character or asset called ${name}.`)
+        if (!Array.isArray(entity.reference_images) || !entity.reference_images.length) {
+          throw new Error(`${entity.name} has no reference art to accept. Generate it first.`)
+        }
+        const { error: writeError } = await context.supabase
+          .from("creator_entities")
+          .update({ metadata: metadataAcceptingEntityArt(entity.metadata, typeof entity.description === "string" ? entity.description : "") })
+          .eq("id", entity.id)
+          .eq("project_id", context.project.id)
+        if (writeError) throw writeError
+        acceptedEntities.push(entity.name)
+      }
+    }
+
+    if (input.shotNumbers.length) {
+      if (!input.episodeId) throw new Error("Naming shots by number needs an episodeId, because the numbers are per episode.")
+      const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
+      if (!episode) throw new Error("Episode does not belong to this project")
+      const { data: shots, error } = await context.supabase.from("creator_shots").select("id,order_index,prompt,keyframe_image,metadata").eq("episode_id", input.episodeId)
+      if (error) throw error
+      for (const number of input.shotNumbers) {
+        const shot = (shots || []).find((row) => row.order_index + 1 === number)
+        if (!shot) throw new Error(`This episode has no shot ${number}.`)
+        if (!shot.keyframe_image) throw new Error(`Shot ${number} has no keyframe to accept. Generate it first.`)
+        const { error: writeError } = await context.supabase
+          .from("creator_shots")
+          .update({ metadata: metadataAcceptingKeyframe(shot.metadata, typeof shot.prompt === "string" ? shot.prompt : "") })
+          .eq("id", shot.id)
+        if (writeError) throw writeError
+        acceptedShots.push(number)
+      }
+    }
+
+    return { acceptedEntities, acceptedShots, generated: false, creditsUsed: 0 }
+  },
+})
+
 export const directorTools = {
   inspect_current_project: inspectCurrentProjectTool,
   read_episode_script: readEpisodeScriptTool,
@@ -1246,6 +1316,7 @@ export const directorTools = {
   fix_shot_aspect_mismatch: fixShotAspectMismatchTool,
   delete_shot: deleteShotTool,
   update_asset: updateAssetTool,
+  accept_existing_art: acceptExistingArtTool,
   attach_media_to_asset: attachMediaToAssetTool,
   delete_asset: deleteAssetTool,
   attach_media_to_shot: attachMediaToShotTool,
