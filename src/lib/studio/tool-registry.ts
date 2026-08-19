@@ -819,7 +819,7 @@ export const updateScriptTool = defineDirectorTool({
   async execute(context, input) {
     const { data, error } = await context.supabase
       .from("creator_episodes")
-      .update({ script_content: normalizeScriptContent(input.content), script_updated_at: new Date().toISOString() })
+      .update({ script_content: normalizeScriptContent(input.content), script_updated_at: new Date().toISOString(), status: "draft" })
       .eq("id", input.episodeId)
       .eq("project_id", context.project.id)
       .select("*")

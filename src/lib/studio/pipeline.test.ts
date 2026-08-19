@@ -41,6 +41,13 @@ describe("production pipeline stages", () => {
     expect(stage.nextAction?.intent).toContain("Prompt Agent")
   })
 
+  it("stops after a script draft until it is approved", () => {
+    const stage = computePipelineStage(snapshot({ hasScript: true, scriptNeedsApproval: true }))
+    expect(stage.key).toBe("script")
+    expect(stage.nextAction?.label).toBe("Review and approve the script")
+    expect(stage.nextAction?.intent).toContain("Do not create a prompt sheet")
+  })
+
   it("creates only the characters the prompt sheet names and the project lacks", () => {
     const stage = computePipelineStage(snapshot({
       hasScript: true,

@@ -466,9 +466,9 @@ export default function WorkspacePage({
   const [enterpriseOpen, setEnterpriseOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   // Generation runs on the server after approval and writes its result onto the
-  // shot, so the storyboard only looks empty because nothing refetched. Poll
-  // while any job is still in flight, and nudge video jobs through their
-  // provider status check, which is what actually completes them.
+   // shot or entity, so the workspace only looks stale because nothing refetched.
+   // Poll while any job is still in flight, and nudge video jobs through their
+   // provider status check, which is what actually completes them.
   const jobsInFlight = useMemo(
     () => (data?.production?.generationJobs || []).filter((job) => !["completed", "failed", "cancelled"].includes(job.status)),
     [data?.production?.generationJobs],
@@ -502,9 +502,15 @@ export default function WorkspacePage({
     if (!jobsInFlight.length) return;
     let cancelled = false;
     const tick = async () => {
-      await Promise.all(jobsInFlight
-        .filter((job) => job.type === "video")
-        .map((job) => fetch(`/api/studio/projects/${projectId}/videos?jobId=${encodeURIComponent(job.id)}`, { cache: "no-store" }).catch(() => null)));
+      await Promise.all(jobsInFlight.map((job) => {
+        if (job.type === "video") {
+          return fetch(`/api/studio/projects/${projectId}/videos?jobId=${encodeURIComponent(job.id)}`, { cache: "no-store" }).catch(() => null);
+        }
+        if (job.type === "image" && job.settings && typeof job.settings === "object" && (job.settings as Record<string, unknown>).target === "asset") {
+          return fetch(`/api/studio/projects/${projectId}/images?jobId=${encodeURIComponent(job.id)}`, { cache: "no-store" }).catch(() => null);
+        }
+        return Promise.resolve(null);
+      }));
       if (!cancelled) await loadRef.current(true);
     };
     const timer = setInterval(() => { void tick(); }, 5000);
@@ -1588,7 +1594,7 @@ function ProductionOverview({ data }: { data: Workspace }) {
   };
   const approvedAssets = production.referenceAssets.filter((asset) => asset.approval_status === "approved").length;
   const rejectedAssets = production.referenceAssets.filter((asset) => asset.approval_status === "rejected").length;
-  const activeJobs = production.generationJobs.filter((job) => ["queued", "approved", "processing"].includes(String(job.status))).length;
+  const activeJobs = production.generationJobs.filter((job) => ["queued", "approved", "generating", "processing"].includes(String(job.status))).length;
   const cards = [
     ["Series", production.series.length],
     ["Episodes", data.episodes.length],

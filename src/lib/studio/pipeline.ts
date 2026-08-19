@@ -57,6 +57,8 @@ export type ProductionSnapshot = {
   /** Changes the Director has prepared that are waiting on the user. */
   pendingApprovals?: number
   hasScript: boolean
+  /** The saved script has not yet been accepted as the production input. */
+  scriptNeedsApproval?: boolean
   promptSheetCount: number
   /** Entity names the saved prompt sheet references, in sheet order. */
   promptSheetEntityNames: string[]
@@ -257,6 +259,22 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
         id: "pipeline-pending-approvals",
         label: `Review ${count} pending ${plural(count, "change")}`,
         intent: "List the changes waiting for my approval, saying for each one exactly what it changes and what it will look like afterwards, then tell me what happens once I approve them.",
+        risk: "read",
+        recommended: true,
+      },
+      alternatives: [],
+    }
+  }
+
+  if (snapshot.scriptNeedsApproval) {
+    return {
+      key: "script",
+      title: "Script",
+      summary: "A script draft is saved but still needs your approval before the production can move to prompts or assets.",
+      nextAction: {
+        id: "pipeline-script-approval",
+        label: "Review and approve the script",
+        intent: "Review the saved script draft. Explain exactly what will change and what the finished commercial will look and sound like, then ask for my approval. Do not create a prompt sheet, characters, assets, storyboard, or images until I approve it.",
         risk: "read",
         recommended: true,
       },
@@ -561,7 +579,7 @@ export function pipelineInstructionBlock(snapshot: ProductionSnapshot): string {
   const withoutArt = entitiesWithoutArt(snapshot)
   return [
     "=== PRODUCTION PIPELINE ===",
-    "Order of work: script → prompt sheet → missing characters and assets → their reference art → storyboard → keyframe images shot by shot → shot video shot by shot.",
+    "Order of work: script approval → prompt sheet → missing characters and assets → their reference art → storyboard → keyframe images shot by shot → shot video shot by shot.",
     `Script saved: ${snapshot.hasScript ? "yes" : "no"}`,
     `Prompt sheet entries: ${snapshot.promptSheetCount}`,
     `Characters and assets: ${snapshot.entities.length} saved, ${missing.length} named by the prompt sheet but missing${missing.length ? ` (${list(missing, 24)})` : ""}, ${withoutArt.length} without reference art${withoutArt.length ? ` (${list(withoutArt, 24)})` : ""}`,

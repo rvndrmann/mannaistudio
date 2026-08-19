@@ -16,7 +16,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const { projectId } = await params; const { supabase, user } = await context(projectId); const body = await request.json()
     if (body.action === "saveScript") {
-      const { data, error } = await supabase.from("creator_episodes").update({ script_content: body.content, script_updated_at: new Date().toISOString() }).eq("id", body.episodeId).eq("project_id", projectId).select().single(); if (error) throw error; return NextResponse.json(data)
+      const { data, error } = await supabase.from("creator_episodes").update({ script_content: body.content, script_updated_at: new Date().toISOString(), status: "draft" }).eq("id", body.episodeId).eq("project_id", projectId).select().single(); if (error) throw error; return NextResponse.json(data)
     }
     if (body.action === "createEpisode") {
       const { data: latest } = await supabase.from("creator_episodes").select("order_index").eq("project_id", projectId).order("order_index", { ascending: false }).limit(1)
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     if (body.action === "reviewSuggestion") {
       const { data: suggestion, error } = await supabase.from("creator_script_suggestions").update({ status: body.status }).eq("id", body.suggestionId).select().single(); if (error) throw error
-      if (body.status === "accepted") { const { error: episodeError } = await supabase.from("creator_episodes").update({ script_content: suggestion.content, script_updated_at: new Date().toISOString() }).eq("id", suggestion.episode_id); if (episodeError) throw episodeError }
+      if (body.status === "accepted") { const { error: episodeError } = await supabase.from("creator_episodes").update({ script_content: suggestion.content, script_updated_at: new Date().toISOString(), status: "approved" }).eq("id", suggestion.episode_id); if (episodeError) throw episodeError }
       return NextResponse.json(suggestion)
     }
     if (body.action === "saveAsset") {
