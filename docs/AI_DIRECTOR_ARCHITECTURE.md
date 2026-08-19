@@ -94,6 +94,7 @@ Every completed debit response includes `creditBalance`. The Studio broadcasts i
 - The selected project visual style is appended at the provider boundary. `Realistic - Photorealistic` explicitly requests live-action photography and rejects anime, illustrations, cartoons, CG, collages, labels, and text overlays.
 - OpenAI image canvas selection follows the requested composition: landscape requests including `16:9` use `1536x1024`, portrait requests including `9:16` use `1024x1536`, and `1:1` uses `1024x1024`. GPT Image's native landscape canvas is 3:2, so 16:9 is composed as widescreen but is not pixel-exact at the provider level.
 - Asset-image requests persist `metadata.image_generation.status` as `generating`, `completed`, or `failed`. Returning to the asset tab therefore retains visible progress and polls until the generated reference image is saved. The asset concept gallery also reads matching `creator_generation_jobs` by `settings.target` and `settings.entityId`, so in-flight and failed attempts are shown beside completed concept images.
+- Director-approved asset jobs use the same authoritative `creator_generation_jobs` lifecycle as storyboard jobs. The main Studio workspace polls asset image jobs after approval, while Characters & Assets renders a shimmer/spinner for queued, approved, generating, and processing jobs, refreshes on completion, and retains a visible failure card when generation fails.
 - Storyboard image galleries are additive. New generations append to `creator_generation_jobs`; the active `creator_shots.keyframe_image` points at the chosen image but does not replace prior generated images.
 
 ### Studio project gallery
@@ -175,6 +176,10 @@ npm run build
 ```
 
 Full lint currently exposes pre-existing errors outside the Studio work. Scoped Studio lint should remain error-free while those are addressed separately.
+
+## Script and pipeline gating
+
+Episode script state is explicit. Saving or updating a script sets `creator_episodes.status` to `draft`; accepting a script suggestion sets it to `approved`. `loadProductionSnapshot()` exposes `scriptNeedsApproval` whenever a saved script is not approved, and `computePipelineStage()` returns the Script stage with a single **Review and approve the script** action. Prompt sheets, entities, entity reference art, storyboard shots, and media generation cannot be offered by the pipeline until approval is complete.
 
 ## Migration rollout
 
