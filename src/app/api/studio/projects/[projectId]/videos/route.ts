@@ -6,6 +6,11 @@ import { BytePlusProviderError, bytePlusVideoRatio, bytePlusVideoReferenceLimit,
 import { FalProviderError, getFalVideoTask, submitFalVideo } from "@/lib/studio/fal"
 import { getGoogleVideoTask, GoogleProviderError, submitGoogleVideo } from "@/lib/studio/google"
 import { generationProvider, isVideoGenerationModel } from "@/lib/studio/generation-models"
+import { byokProviderFor } from "@/lib/byok/providers"
+import { decideBilling } from "@/lib/byok/billing"
+import { hasCredential, withCredential } from "@/lib/byok/credential-service"
+import { runWithCredential } from "@/lib/byok/active-credential"
+import { ownKeysOnly } from "@/lib/byok/preferences"
 import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
 import { trackGenerationActivation } from "@/lib/studio/activation"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
@@ -83,12 +88,37 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Validate the full request before reserving credits.
-    const creditCost = calculateCreditCost(input.model, "video", input.durationSeconds, { resolution: input.resolution, aspectRatio: input.aspectRatio, quality: input.quality })
-    const deduct = await deductUserCredits(context.user.id, creditCost, input.model, `Video Generation (${input.model})`, context.supabase)
-    if (!deduct.success) {
-      return NextResponse.json({ error: deduct.errorMessage || "Insufficient credits" }, { status: 402 })
+    const platformCost = calculateCreditCost(input.model, "video", input.durationSeconds, { resolution: input.resolution, aspectRatio: input.aspectRatio, quality: input.quality })
+    // Same rule as every other charge path. This route billed directly and
+    // never asked, so a connected key was ignored and "only my own keys" was
+    // not honoured — the video equivalent of the image bug.
+    const byokProvider = byokProviderFor(provider)
+    const billing = decideBilling({
+      hasCredential: byokProvider ? await hasCredential(context.user.id, byokProvider) : false,
+      platformCredits: platformCost,
+      ownKeysOnly: await ownKeysOnly(context.user.id).catch(() => false),
+      provider: byokProvider || provider,
+    })
+    const creditCost = billing.credits
+    let creditBalanceAfter: number | null = null
+    if (billing.mode !== "byok") {
+      const deduct = await deductUserCredits(context.user.id, creditCost, input.model, `Video Generation (${input.model})`, context.supabase)
+      if (!deduct.success) {
+        return NextResponse.json({ error: deduct.errorMessage || "Insufficient credits" }, { status: 402 })
+      }
+      creditBalanceAfter = deduct.newBalance
+      // Only a charge can be refunded; a BYOK failure is the provider's bill.
+      pendingRefund = { userId: context.user.id, amount: creditCost, key: `video-request:${randomUUID()}`, client: context.supabase }
     }
-    pendingRefund = { userId: context.user.id, amount: creditCost, key: `video-request:${randomUUID()}`, client: context.supabase }
+
+    /** Submits on whichever account is paying for this clip. */
+    const runOnBillingAccount = async <T,>(work: () => Promise<T>): Promise<T> => {
+      if (billing.mode !== "byok" || !byokProvider) return work()
+      const ran = await withCredential({ userId: context.user.id, provider: byokProvider }, (parts) =>
+        runWithCredential(byokProvider, parts, work))
+      if (ran === null) throw new Error("The provider key for this model is no longer connected.")
+      return ran
+    }
 
     // Resolve canonical character, scene, and prop references plus direct shot references.
     let combinedReferencePaths: string[] = []
@@ -279,9 +309,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       credits_used: 0,
     }).select("*").single()
     if (jobError) throw jobError
-    pendingRefund.key = `generation-job:${job.id}`
+    // Only set when a charge happened; a BYOK clip has nothing to refund.
+    if (pendingRefund) pendingRefund.key = `generation-job:${job.id}`
 
     try {
+      const task: { id: string; response?: unknown } = await runOnBillingAccount(async () => {
       let task: { id: string; response?: unknown }
       if (provider === "fal") {
         const falRes = await submitFalVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 4), ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references, endReferenceUrl: input.endFrame || undefined })
@@ -293,8 +325,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const bpRes = await submitBytePlusVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: providerRatio, referenceUrls: references, faceReferenceUrls: faceReferences, videoReferenceUrls: videoReferences, generationMode: input.generationMode, audioEnabled: input.audioEnabled })
         task = { id: bpRes.id, response: bpRes.response }
       }
+      return task
+      })
       await Promise.all([
-        context.supabase.from("creator_generation_jobs").update({ status: "processing", credits_used: creditCost, provider_job_id: task.id, provider_response: task.response }).eq("id", job.id),
+        context.supabase.from("creator_generation_jobs").update({ status: "processing", credits_used: creditCost, billing_mode: billing.mode, provider_job_id: task.id, provider_response: task.response }).eq("id", job.id),
         context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...resolvedEntityIds])), metadata: { ...(shot.metadata || {}), video_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, style, reference_images: viewableReferencePaths, character_entity_ids: input.characterEntityIds, mentioned_entity_ids: input.mentionedEntityIds, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
       ])
       return NextResponse.json({
@@ -304,7 +338,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         provider,
         model: input.model,
         creditsCharged: creditCost,
-        creditBalance: deduct.newBalance,
+        creditBalance: creditBalanceAfter,
       }, { status: 202 })
     } catch (error) {
       const errorMessage = studioErrorMessage(error, "Submission failed")
@@ -340,7 +374,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             provider,
             model: input.model,
             creditsCharged: creditCost,
-            creditBalance: deduct.newBalance,
+            creditBalance: creditBalanceAfter,
           }, { status: 202 })
         } catch (retryError) {
           console.warn("Auto-retry after clearing stale BytePlus asset failed:", retryError)

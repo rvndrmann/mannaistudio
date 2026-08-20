@@ -10,7 +10,7 @@ import { deductUserCredits } from "./credits"
 import { decideBilling } from "@/lib/byok/billing"
 import { hasCredential } from "@/lib/byok/credential-service"
 import { ownKeysOnly } from "@/lib/byok/preferences"
-import { isByokProvider } from "@/lib/byok/providers"
+import { byokProviderFor, isByokProvider } from "@/lib/byok/providers"
 import { executeGenerationJobsInBackground } from "./execute-generation"
 import { findMentionedEntityIds, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
 import { sceneNotFrameReason, stripIdentityDescriptions } from "./prompt-sanitizer"
@@ -715,9 +715,10 @@ export const submitGenerationTool = defineDirectorTool({
     // job, because a job that charged nothing has to stay recognisable for the
     // rest of its life or the failure path refunds a charge that never happened.
     const servingProvider = routing.selected.provider
+    const byokProvider = byokProviderFor(servingProvider)
     const billing = decideBilling({
-      hasCredential: isByokProvider(servingProvider)
-        ? await hasCredential(context.user.id, servingProvider)
+      hasCredential: byokProvider
+        ? await hasCredential(context.user.id, byokProvider)
         : false,
       platformCredits: routing.creditsPerShot,
       ownKeysOnly: await ownKeysOnly(context.user.id).catch(() => false),

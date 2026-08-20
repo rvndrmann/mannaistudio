@@ -18,6 +18,21 @@ export function isByokProvider(value: string): value is ByokProvider {
   return (byokProviders as readonly string[]).includes(value)
 }
 
+/**
+ * The BYOK provider a generation model's provider maps to, or null when the
+ * model cannot run on a customer key at all.
+ *
+ * The generation catalogue labels Google's models `google` while the credential
+ * is called `gemini` — the same account and the same key, named differently in
+ * two places written at different times. Compared directly, a connected Gemini
+ * key never matched a Google image model, so it silently charged credits and
+ * ran on ours. Naming is not a detail when it decides who pays.
+ */
+export function byokProviderFor(generationProvider: string): ByokProvider | null {
+  if (generationProvider === "google") return "gemini"
+  return isByokProvider(generationProvider) ? generationProvider : null
+}
+
 export type ProviderPartSpec = {
   key: string
   label: string

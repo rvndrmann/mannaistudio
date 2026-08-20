@@ -6,6 +6,11 @@ import { createBytePlusAsset, generateBytePlusImage, BytePlusProviderError } fro
 import { FalProviderError, generateFalImage } from "@/lib/studio/fal"
 import { generateGoogleImage, GoogleProviderError } from "@/lib/studio/google"
 import { generationProvider, isImageGenerationModel, type ImageGenerationModelId } from "@/lib/studio/generation-models"
+import { byokProviderFor } from "@/lib/byok/providers"
+import { decideBilling, refundableCredits } from "@/lib/byok/billing"
+import { hasCredential, withCredential } from "@/lib/byok/credential-service"
+import { runWithCredential } from "@/lib/byok/active-credential"
+import { ownKeysOnly } from "@/lib/byok/preferences"
 import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
 import { trackGenerationActivation } from "@/lib/studio/activation"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
@@ -94,7 +99,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const runningMs = Number.isNaN(startedAt) ? 0 : Date.now() - startedAt
     if (runningMs < STALLED_IMAGE_JOB_MS) return NextResponse.json(job)
 
-    const charged = Number(job.credits_used || job.estimated_credits || 0)
+    // Reads the recorded mode rather than whichever number is non-zero: a BYOK
+    // job charged nothing, so the old fallback refunded its estimate.
+    const charged = refundableCredits(job as { billing_mode?: string | null; credits_used?: number | null; estimated_credits?: number | null })
     const refund = charged > 0
       ? await refundGenerationCredits(context.user.id, charged, `generation-job:${job.id}`, "Refund: image generation did not finish", job.id, context.supabase)
       : { refunded: false, newBalance: 0 }
@@ -150,12 +157,30 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // a caller that names one explicitly still wins.
     const quality = input.quality || projectImageQuality(context.project)
     // Validate the full request before reserving credits.
-    const creditCost = calculateCreditCost(input.model, "image", 5, { quality, aspectRatio: input.aspectRatio })
-    const deduct = await deductUserCredits(context.user.id, creditCost, input.model, `Image Generation (${input.model})`, context.supabase)
-    if (!deduct.success) {
-      return NextResponse.json({ error: deduct.errorMessage || "Insufficient credits" }, { status: 402 })
+    const platformCost = calculateCreditCost(input.model, "image", 5, { quality, aspectRatio: input.aspectRatio })
+    // This route charges directly rather than through submit_generation, so the
+    // billing rule has to be read here too. It was not, and that was the whole
+    // bug: a user who had chosen "only my own keys" still had credits taken for
+    // an image on a provider they had not connected, and a user who *had*
+    // connected one was charged anyway and rendered on our account.
+    const byokProvider = byokProviderFor(provider)
+    const billing = decideBilling({
+      hasCredential: byokProvider ? await hasCredential(context.user.id, byokProvider) : false,
+      platformCredits: platformCost,
+      ownKeysOnly: await ownKeysOnly(context.user.id).catch(() => false),
+      provider: byokProvider || provider,
+    })
+    const creditCost = billing.credits
+    let creditBalanceAfter: number | null = null
+    if (billing.mode !== "byok") {
+      const deduct = await deductUserCredits(context.user.id, creditCost, input.model, `Image Generation (${input.model})`, context.supabase)
+      if (!deduct.success) {
+        return NextResponse.json({ error: deduct.errorMessage || "Insufficient credits" }, { status: 402 })
+      }
+      // Only a charge can be refunded. A BYOK failure is the provider's bill.
+      creditBalanceAfter = deduct.newBalance
+      pendingRefund = { context, amount: creditCost, key: `image-request:${randomUUID()}`, jobId: null }
     }
-    pendingRefund = { context, amount: creditCost, key: `image-request:${randomUUID()}`, jobId: null }
 
     const mentionReferencePaths: string[] = []
     for (const entity of mentionedEntities || []) {
@@ -252,6 +277,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           ...(input.drawEdit ? { drawEdit: input.drawEdit } : {}),
         },
         estimated_credits: creditCost,
+        billing_mode: billing.mode,
         credits_used: 0,
         requires_approval: false,
         approved_at: new Date().toISOString(),
@@ -260,7 +286,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .single()
     if (generationJobError) throw generationJobError
     pendingGenerationJobId = generationJob.id
-    pendingRefund = { ...pendingRefund, key: `generation-job:${generationJob.id}`, jobId: generationJob.id }
+    if (pendingRefund) pendingRefund = { ...pendingRefund, key: `generation-job:${generationJob.id}`, jobId: generationJob.id }
 
     const { error: processingError } = await context.supabase
       .from("creator_generation_jobs")
@@ -309,13 +335,35 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         referenceUrls.push(data.signedUrl)
       }
     }
-    let image: Buffer
+    type RenderResult = {
+      image: Buffer
+      contentType: string
+      byteplusAssetId: string | null
+      byteplusAssetUri: string | null
+      registeredAsset: { assetId: string; name: string } | null
+    }
     let contentType = "image/png"
     let byteplusAssetId: string | null = null
     let pendingAssetRecord: { assetId: string; name: string } | null = null
     let byteplusAssetUri: string | null = null
     let generationJobId: string | null = pendingGenerationJobId
 
+    // The provider call itself has to happen inside the customer's credential
+    // scope, or billing says "your key" while the render runs on ours — the
+    // failure that costs us money and reports nothing.
+    const runOnBillingAccount = async <T,>(work: () => Promise<T>): Promise<T> => {
+      if (billing.mode !== "byok" || !byokProvider) return work()
+      const ran = await withCredential({ userId: context.user.id, provider: byokProvider }, (parts) =>
+        runWithCredential(byokProvider, parts, work))
+      if (ran === null) throw new Error("The provider key for this model is no longer connected.")
+      return ran
+    }
+
+    // Returned rather than assigned outward: the render happens inside a
+    // callback, and TypeScript cannot see through one to know an outer variable
+    // was set.
+    const rendered: RenderResult = await runOnBillingAccount(async () => {
+    let image: Buffer
     if (provider === "openai") {
       image = await generateOpenAIImage({ userId: context.user.id, model: input.model as (typeof openAIImageModels)[number], prompt: resolvedPrompt, referenceUrls, aspectRatio: effectiveAspectRatio, quality: openAIImageQuality(quality === "Ultra" ? "High" : quality) })
     } else if (provider === "fal") {
@@ -346,18 +394,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       image = Buffer.from(await download.arrayBuffer())
       contentType = generated.contentType
     }
+    return { image, contentType, byteplusAssetId, byteplusAssetUri, registeredAsset: pendingAssetRecord }
+    })
+    const image = rendered.image
+    contentType = rendered.contentType
+    byteplusAssetId = rendered.byteplusAssetId
+    byteplusAssetUri = rendered.byteplusAssetUri
+    const registeredAsset = rendered.registeredAsset
     const extension = contentType.includes("jpeg") ? "jpg" : contentType.includes("webp") ? "webp" : "png"
     const storagePath = `${context.user.id}/${projectId}/${provider}-image-${randomUUID()}.${extension}`
     const { error: uploadError } = await context.supabase.storage.from("creator-studio-media").upload(storagePath, image, { contentType, upsert: false })
     if (uploadError) throw uploadError
     // Seedream registers its own output as part of generating it, so that slot
     // is already spent — recording it is what lets an admin see and reclaim it.
-    if (pendingAssetRecord) {
+    if (registeredAsset) {
       await recordExistingAsset({
         supabase: context.supabase,
         sourcePath: storagePath,
-        assetId: pendingAssetRecord.assetId,
-        name: pendingAssetRecord.name,
+        assetId: registeredAsset.assetId,
+        name: registeredAsset.name,
         projectId,
         userId: context.user.id,
       })
@@ -464,7 +519,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       byteplusAssetUri,
       cameraSettingsUsed: cameraSettings,
       creditsCharged: creditCost,
-      creditBalance: deduct.newBalance,
+      creditBalance: creditBalanceAfter,
     })
   } catch (error) {
     if (pendingRefund) {

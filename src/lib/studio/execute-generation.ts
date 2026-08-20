@@ -16,7 +16,7 @@ import { refundGenerationCredits } from "./credits"
 import { isProviderOutOfCredit, outOfCreditOffer, refundableCredits } from "@/lib/byok/billing"
 import { withCredential } from "@/lib/byok/credential-service"
 import { runWithCredential } from "@/lib/byok/active-credential"
-import { isByokProvider } from "@/lib/byok/providers"
+import { byokProviderFor } from "@/lib/byok/providers"
 import { parseSeedanceMissingAssetError, purgeStaleBytePlusAsset } from "./seedance-reference-error"
 import { isVideoReferencePath } from "./media-reference"
 
@@ -496,8 +496,8 @@ export async function executeGenerationJobsInBackground(
         }
         }
 
-        const provider = typeof job.provider === "string" ? job.provider : ""
-        if (job.billing_mode === "byok" && isByokProvider(provider)) {
+        const provider = byokProviderFor(typeof job.provider === "string" ? job.provider : "")
+        if (job.billing_mode === "byok" && provider) {
           const ran = await withCredential({ userId: context.user.id, provider }, (parts) =>
             runWithCredential(provider, parts, runJob))
           if (ran === null) {
