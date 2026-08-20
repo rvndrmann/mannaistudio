@@ -19,6 +19,7 @@ const accountTabs: { id: AccountTab; label: string }[] = [
 
 export default function CreditBadge({ className }: { className?: string }) {
   const [credits, setCredits] = useState<number | null>(null)
+  const [pending, setPending] = useState(0)
   const [showModal, setShowModal] = useState(false)
   const [tab, setTab] = useState<AccountTab>("topup")
   const [mounted, setMounted] = useState(false)
@@ -34,6 +35,7 @@ export default function CreditBadge({ className }: { className?: string }) {
       if (res.ok) {
         const json = await res.json()
         setCredits(json.credits)
+        setPending(Number(json.pendingCredits) || 0)
       }
     } catch (err) {
       console.warn("Could not fetch credits:", err)
@@ -133,6 +135,14 @@ export default function CreditBadge({ className }: { className?: string }) {
       >
         <Zap className="h-3.5 w-3.5 fill-[#b9f42e] group-hover:fill-black" />
         <span>{credits !== null ? `${credits.toLocaleString()} Credits` : "Loading..."}</span>
+        {pending > 0 && (
+          <span
+            className="rounded-md bg-black/25 px-1.5 py-0.5 text-[10px] font-semibold opacity-90 group-hover:bg-black/10"
+            title={`${pending.toLocaleString()} credits are committed to generations still running`}
+          >
+            {pending.toLocaleString()} pending
+          </span>
+        )}
         <Plus className="h-3 w-3 opacity-70 group-hover:opacity-100" />
       </button>
 
@@ -157,7 +167,10 @@ export default function CreditBadge({ className }: { className?: string }) {
               </div>
               <div>
                 <h3 className="text-lg font-bold">Generation Credits</h3>
-                <p className="text-xs text-zinc-400">{credits !== null ? `${credits.toLocaleString()} credits available` : "Loading balance…"}</p>
+                <p className="text-xs text-zinc-400">
+                  {credits !== null ? `${credits.toLocaleString()} credits available` : "Loading balance…"}
+                  {pending > 0 && ` · ${pending.toLocaleString()} committed to generations still running`}
+                </p>
               </div>
             </div>
 

@@ -10,6 +10,7 @@ import { buildVisionUserContent, type DirectorVisionAttachment } from "./directo
 import { activeAgentInstructions, agentBriefFor, agentForStage, agentForTool, fetchDirectorTeam, type DirectorAgentKey, type DirectorTeam } from "./director-team"
 import { addWorkflowStep, createWorkflowRun, finishWorkflowRun } from "./workflow-runs"
 import { directorRecovery } from "./recovery"
+import { addTokenUsage } from "@/lib/byok/usage"
 
 export type DirectorStreamEvent =
   | { type: "text"; delta: string }
@@ -303,7 +304,11 @@ export async function runDirectorAgent(input: {
       await finishWorkflowRun(input.context, workflowRun.id, "failed", { completedSteps, failedSteps: failedSteps + 1, awaitingApproval, toolCalls: toolCalls.length }, { code: recovery.code, message: recovery.message })
       throw error
     }
-    usage = turn.usage
+    // Summed across steps, not replaced. A Director turn is six or seven model
+    // round trips, each carrying a context that grows as it goes — keeping only
+    // the last one's usage reported a fraction of what the turn actually cost,
+    // and metering built on it undercharged by roughly that factor.
+    usage = addTokenUsage(usage, turn.usage)
     if (turn.content) content = turn.content
     if (!turn.calls.length) break
     if (step === runtimeSettings.maxToolSteps - 1) reachedStepLimit = true

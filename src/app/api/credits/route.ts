@@ -25,7 +25,26 @@ export async function GET() {
     const isAdmin = await isAdminUser(supabase, user.id)
     const activeMember = isAdmin || isMembershipActive(profile)
 
-    return NextResponse.json({ credits, userId: user.id, isMember: activeMember })
+    // Credits already committed to work still running.
+    //
+    // The balance alone reads as more headroom than there is: a queued batch
+    // has been charged against the account but its jobs have not finished, so
+    // someone looking at the badge mid-render sees a number that is about to
+    // move for reasons they cannot see. Reported separately rather than
+    // subtracted, because the balance is what it is — this is what is spoken
+    // for out of it.
+    const { data: inFlight } = await supabase
+      .from("creator_generation_jobs")
+      .select("estimated_credits,credits_used,billing_mode,status")
+      .eq("user_id", user.id)
+      .in("status", ["queued", "awaiting_approval", "approved", "processing", "generating"])
+    const pendingCredits = (inFlight || []).reduce((total, job) => {
+      // A job on the customer's own key is not spoken for out of this balance.
+      if (job.billing_mode === "byok") return total
+      return total + (Number(job.credits_used) || Number(job.estimated_credits) || 0)
+    }, 0)
+
+    return NextResponse.json({ credits, pendingCredits, userId: user.id, isMember: activeMember })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Internal error" }, { status: 500 })
   }

@@ -15,6 +15,7 @@ import {
   Sparkles,
   Trash2,
   Users, KeyRound,} from "lucide-react";
+import { BillingModeToggle } from "@/components/studio/BillingModeToggle";
 import CreditBadge from "@/components/CreditBadge";
 import { useAuth } from "@/components/auth/auth-provider";
 
@@ -322,6 +323,7 @@ function TopBar({ onOpenCreate, creating }: { onOpenCreate: () => void; creating
             <Users className="h-4 w-4" />
             Team
           </Link>
+          <BillingModeToggle />
           {/* Beside the credit badge, because this is the switch that decides
               whether generations spend credits at all. */}
           <Link

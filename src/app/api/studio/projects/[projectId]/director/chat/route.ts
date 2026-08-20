@@ -19,6 +19,7 @@ import { runWithCredential } from "@/lib/byok/active-credential"
 import { ownKeysOnly } from "@/lib/byok/preferences"
 import { OwnKeysOnlyError } from "@/lib/byok/billing"
 import { chatTurnCredits, type TokenUsage } from "@/lib/byok/chat-pricing"
+import { hasTokenCounts } from "@/lib/byok/usage"
 import { deductUserCredits } from "@/lib/studio/credits"
 import { fetchDirectorRuntimeSettings } from "@/lib/studio/director-runtime-settings"
 import { buildEntityMentionContext, type MentionableEntity } from "@/lib/studio/entity-mentions"
@@ -192,7 +193,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
      */
     const chargeForTurn = async (response: Awaited<ReturnType<typeof runDirectorAgent>>) => {
       if (ranOnCustomerKey) return 0
-      const credits = chatTurnCredits(model, (response.usage || {}) as TokenUsage)
+      const usage = (response.usage || {}) as TokenUsage
+      if (!hasTokenCounts(usage as Record<string, unknown>)) {
+        // A turn nobody counted is free, and that has to be visible: a silent
+        // zero here is indistinguishable from metering that is switched off.
+        console.warn(`Director turn on ${model} reported no token usage; nothing charged.`)
+        return 0
+      }
+      const credits = chatTurnCredits(model, usage)
       if (credits <= 0) return 0
       try {
         const deduction = await deductUserCredits(

@@ -3,10 +3,11 @@
 import Link from "next/link"
 import { AnimatePresence, motion } from "framer-motion"
 import { springUI, materialize } from "@/lib/motion"
-import { Clapperboard, Play, Zap, User, Menu, X, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, MessageSquare, BookOpen, PlugZap, Sparkles, Users } from "lucide-react"
+import { Clapperboard, Play, Zap, User, Menu, X, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, MessageSquare, BookOpen, PlugZap, Sparkles, Users, KeyRound} from "lucide-react"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
+import { BillingModeToggle } from "@/components/studio/BillingModeToggle";
 import CreditBadge from "@/components/CreditBadge"
 import NotificationBell from "@/components/NotificationBell"
 import { createClient } from "@/lib/supabase/client"
@@ -118,6 +119,18 @@ export default function Navbar() {
                     ) : user ? (
                         <div className="flex items-center gap-3">
                             <CreditBadge />
+                            <BillingModeToggle compact />
+                            {/* Next to the credit badge, because it is the
+                                alternative to spending them: connect a key and
+                                that provider stops costing credits. */}
+                            <Link
+                                href="/studio/integrations"
+                                title="Use your own provider API keys instead of studio credits"
+                                className="flex items-center gap-1.5 rounded-md border border-white/10 px-3 py-2 text-sm font-medium text-white/70 transition duration-press ease-out hover:bg-white/10 hover:text-white active:scale-[0.97]"
+                            >
+                                <KeyRound className="h-4 w-4" />
+                                <span className="hidden lg:inline">API keys</span>
+                            </Link>
                             <Link
                                 href="/studio/team"
                                 title="Add and manage team members"
@@ -197,6 +210,10 @@ export default function Navbar() {
                     <div className="border-t border-white/10 pt-4 mt-2">
                         {user ? (
                             <div className="flex flex-col gap-3">
+                                <Link href="/studio/integrations" onClick={() => setIsOpen(false)} className="flex min-h-[44px] items-center gap-3 text-lg font-medium text-white/70">
+                                    <KeyRound className="h-5 w-5" />
+                                    API keys
+                                </Link>
                                 <Link href="/profile" onClick={() => setIsOpen(false)} className="flex min-h-[44px] items-center gap-3 text-lg font-medium text-white/70">
                                     <User className="w-5 h-5 text-primary" />
                                     Profile
