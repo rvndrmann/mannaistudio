@@ -141,3 +141,21 @@ export function toHistoryItem(job: Record<string, unknown>): QuickHistoryItem {
     completedAt: typeof job.completed_at === "string" ? job.completed_at : null,
   }
 }
+
+/**
+ * A job row the database refused.
+ *
+ * Standalone generation needs the RLS policies relaxed to accept a job with no
+ * project — until that migration is applied, the insert is refused and the raw
+ * message is "new row violates row-level security policy", which tells the user
+ * nothing they can act on and reads like the button is broken. Nothing has been
+ * charged at this point, so the honest answer is that the feature is not
+ * switched on yet.
+ */
+export function generationJobRejection(error: { message?: string; code?: string } | null): string | null {
+  if (!error) return null
+  const message = error.message || ""
+  const isPolicyRefusal = error.code === "42501" || /row-level security|violates row-level/i.test(message)
+  if (!isPolicyRefusal) return null
+  return "Quick Create is not finished setting up on this server: the database is still refusing generations that do not belong to a project. Apply the pending migration (supabase db push) and try again. Nothing was charged."
+}

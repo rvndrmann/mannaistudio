@@ -79,19 +79,31 @@ merely billed.
 
 ## Every charge path asks
 
-There are three, written at different times, and for a while only one asked.
+There were three, written at different times, and for a while only one asked.
 The Director's `submit_generation` consulted the rule; the direct image and
 video routes billed straight from the rate card. So a user who had chosen to run
 on their own keys still had credits taken, and a user who had connected a key
 was charged anyway and rendered on the platform account. The setting looked
 enforced because the path everyone tested was the one that enforced it.
 
+There are five now — the standalone generators in
+[`QUICK_CREATE.md`](QUICK_CREATE.md) are two more. `charge-paths.test.ts` names
+them all, because a new surface reaching a model is a new charge path and
+adding one is exactly when the rule gets forgotten.
+
+The client side had the same shape of bug for longer. `resolveGenerationSource()`
+decides what the generate button says and whether a low balance may block it,
+and it compared the two catalogues directly rather than through
+`byokProviderFor()` — so a connected Gemini key never matched a Google model.
+It quoted a credit price the server was going to bill at zero, and greyed the
+button out over a cost nobody was going to charge.
+
 The same applies to refunds. `credits_used || estimated_credits` is correct only
 while every job charges; a BYOK job has `credits_used` of zero, so it falls
 through to the estimate and refunds money nobody paid — repeat a failing
 generation and it prints credits. Each refund site had its own copy of that
 expression. `refundableCredits()` reads the recorded `billing_mode` instead, and
-a test walks all three paths rather than trusting that the last one found was
+a test walks every refund path rather than trusting that the last one found was
 the last one.
 
 ## Chat is metered

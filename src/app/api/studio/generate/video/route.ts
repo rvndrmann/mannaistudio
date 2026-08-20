@@ -18,12 +18,13 @@ import { runWithCredential } from "@/lib/byok/active-credential"
 import { ownKeysOnly } from "@/lib/byok/preferences"
 import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
 import { trackGenerationActivation } from "@/lib/studio/activation"
-import { studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
+import { StudioAccessError, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 import {
   composeQuickPrompt,
   foreignReferences,
   MEDIA_BUCKET,
   quickStoragePath,
+  generationJobRejection,
   requireAuthenticatedUser,
   signReferenceUrls,
   type QuickContext,
@@ -150,7 +151,11 @@ export async function POST(request: NextRequest) {
       })
       .select("id")
       .single()
-    if (jobError) throw jobError
+    if (jobError) {
+      const rejection = generationJobRejection(jobError)
+      if (rejection) throw new StudioAccessError(rejection, 403)
+      throw jobError
+    }
     if (pendingRefund) pendingRefund.key = `generation-job:${job.id}`
 
     /** Submits on whichever account is paying for this clip. */

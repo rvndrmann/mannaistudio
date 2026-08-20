@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   composeQuickPrompt,
+  generationJobRejection,
   extensionForContentType,
   foreignReferences,
   isDirectReference,
@@ -104,5 +105,26 @@ describe("a history row as the page reads it", () => {
     // An empty string is falsy in the template but truthy as a path, and a tile
     // handed one would sign nothing and render a broken frame for ever.
     expect(toHistoryItem({ id: "a", result_url: "" }).resultPath).toBeNull()
+  })
+})
+
+describe("a job row the database refused", () => {
+  it("explains an RLS refusal instead of leaking the policy error", () => {
+    // Until the standalone migration is applied the insert policy still demands
+    // a project, and the raw message reads like the button is broken.
+    const message = generationJobRejection({ code: "42501", message: 'new row violates row-level security policy for table "creator_generation_jobs"' })
+    expect(message).toContain("supabase db push")
+    expect(message).toContain("Nothing was charged")
+  })
+
+  it("recognises the refusal by its message when no code is given", () => {
+    expect(generationJobRejection({ message: "new row violates row-level security policy" })).not.toBeNull()
+  })
+
+  it("leaves every other database failure to be reported as itself", () => {
+    // A column type error or a dropped connection is not a setup problem, and
+    // telling the user to run a migration would send them the wrong way.
+    expect(generationJobRejection({ code: "23503", message: "foreign key violation" })).toBeNull()
+    expect(generationJobRejection(null)).toBeNull()
   })
 })

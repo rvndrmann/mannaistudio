@@ -95,7 +95,16 @@ export function RecentStrip({
               disabled={removing === item.id}
               onClick={async () => {
                 setRemoving(item.id);
-                try { await history.remove(item.id); } finally { setRemoving(null); }
+                try {
+                  await history.remove(item.id);
+                } catch (cause) {
+                  // Surfaced rather than swallowed: the tile stays put on a
+                  // failure, and without this the rejection is unhandled and
+                  // the row silently refuses to go away.
+                  alert(cause instanceof Error ? cause.message : "Could not delete this generation.");
+                } finally {
+                  setRemoving(null);
+                }
               }}
               className="absolute right-0.5 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-black/75 text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:bg-red-500 hover:text-white"
               title="Delete"

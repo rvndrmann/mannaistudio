@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertCircle, Download, ImageIcon, Loader2, Sparkles, Wand2 } from "lucide-react";
+import { Download, ImageIcon, Loader2, Sparkles, Wand2 } from "lucide-react";
 import { CreateChrome } from "@/components/studio/create/CreateChrome";
 import { ReferenceStrip } from "@/components/studio/create/ReferenceStrip";
 import { SignedMedia } from "@/components/studio/create/SignedMedia";
 import { useQuickHistory } from "@/components/studio/create/use-quick-history";
 import { useCreditBalance } from "@/components/studio/create/use-credit-balance";
 import { PillGroup, RecentStrip } from "@/components/studio/create/GeneratorControls";
+import { AttemptBlock, type Attempt } from "@/components/studio/create/AttemptBlock";
 import { useAuth } from "@/components/auth/auth-provider";
 import { imageGenerationModels, type ImageGenerationModelId } from "@/lib/studio/generation-models";
 import { calculateCreditCost } from "@/lib/studio/credits";
@@ -21,8 +22,6 @@ const ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"] as const;
 const QUALITIES = ["Low", "Medium", "High", "Ultra"] as const;
 const BATCH_SIZES = [1, 2, 3, 4] as const;
 
-type Pending = { id: string; prompt: string };
-
 export default function QuickImagePage() {
   const { user, signInWithGoogle } = useAuth();
   const connectedProviders = useConnectedProviders();
@@ -34,8 +33,11 @@ export default function QuickImagePage() {
   const [quality, setQuality] = useState<(typeof QUALITIES)[number]>("Medium");
   const [batch, setBatch] = useState<(typeof BATCH_SIZES)[number]>(1);
   const [references, setReferences] = useState<string[]>([]);
-  const [pending, setPending] = useState<Pending[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  // One block per requested image, created before the first request is sent
+  // and updated in place as each settles. Both the wait and the failure are
+  // reported here, in the canvas, rather than in the scrolling settings column
+  // where a message can sit below the fold unseen.
+  const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [focused, setFocused] = useState<QuickHistoryItem | null>(null);
 
   const creditBalance = useCreditBalance(Boolean(user));
@@ -53,68 +55,71 @@ export default function QuickImagePage() {
   // fails partway through with three images made and the fourth refused.
   const outOfCredits = blockedByCredits({ ...source, credits: totalCredits }, creditBalance);
 
+  const generating = attempts.some((attempt) => attempt.status === "generating");
+
   const generate = async () => {
     if (!user) {
       signInWithGoogle();
       return;
     }
-    if (!prompt.trim() || pending.length) return;
-    setError(null);
+    const text = prompt.trim();
+    if (!text || generating) return;
 
-    const batchPending: Pending[] = Array.from({ length: batch }, (_, index) => ({
-      id: `pending-${Date.now()}-${index}`,
-      prompt: prompt.trim(),
+    const batchAttempts: Attempt[] = Array.from({ length: batch }, (_, index) => ({
+      id: `attempt-${Date.now()}-${index}`,
+      status: "generating",
+      prompt: text,
+      resultPath: null,
+      error: null,
     }));
-    setPending(batchPending);
+    setAttempts(batchAttempts);
+    setFocused(null);
+
+    const settle = (id: string, patch: Partial<Attempt>) =>
+      setAttempts((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
 
     // Fired as independent requests rather than one batched call: each is its
     // own job, its own charge and its own refund, so one provider failure
     // cannot take the other three down or leave a partial charge to unpick.
-    const results = await Promise.allSettled(batchPending.map(async () => {
-      const response = await fetch("/api/studio/generate/image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: prompt.trim(), model, referenceImages: references, aspectRatio, quality }),
-      });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "Image generation failed");
-      return body as { jobId: string; path: string; creditsCharged: number; billingMode: string; creditBalance: number | null };
-    }));
+    // Each settles its own block, so the first image appears while the rest are
+    // still rendering instead of all four landing together at the end.
+    await Promise.all(batchAttempts.map(async (attempt) => {
+      try {
+        const response = await fetch("/api/studio/generate/image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: text, model, referenceImages: references, aspectRatio, quality }),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || `Image generation failed (${response.status})`);
 
-    setPending([]);
-    notifyCreditBalanceChanged();
-
-    const failures: string[] = [];
-    for (const result of results) {
-      if (result.status === "rejected") {
-        failures.push(result.reason instanceof Error ? result.reason.message : "Image generation failed");
-        continue;
+        settle(attempt.id, { status: "completed", resultPath: body.path });
+        history.prepend({
+          id: body.jobId,
+          type: "image",
+          status: "completed",
+          prompt: text,
+          model,
+          provider: source.provider,
+          resultPath: body.path,
+          error: null,
+          creditsCharged: body.creditsCharged || 0,
+          billingMode: body.billingMode || "credits",
+          settings: { aspectRatio, quality },
+          createdAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+        });
+      } catch (cause) {
+        settle(attempt.id, {
+          status: "failed",
+          error: cause instanceof Error ? cause.message : "Image generation failed",
+        });
+      } finally {
+        // After every settle, not once at the end: a batch where one request
+        // was refunded has to move the badge even if the others succeeded.
+        notifyCreditBalanceChanged();
       }
-      const item: QuickHistoryItem = {
-        id: result.value.jobId,
-        type: "image",
-        status: "completed",
-        prompt: prompt.trim(),
-        model,
-        provider: source.provider,
-        resultPath: result.value.path,
-        error: null,
-        creditsCharged: result.value.creditsCharged || 0,
-        billingMode: result.value.billingMode || "credits",
-        settings: { aspectRatio, quality },
-        createdAt: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
-      };
-      history.prepend(item);
-      setFocused(item);
-    }
-    // One line however many failed: four copies of the same provider error is
-    // noise, not information.
-    if (failures.length) {
-      setError(failures.length === results.length
-        ? failures[0]
-        : `${failures.length} of ${results.length} did not render: ${failures[0]}`);
-    }
+    }));
   };
 
   const latest = focused || history.items.find((item) => item.status === "completed" && item.resultPath) || null;
@@ -189,13 +194,6 @@ export default function QuickImagePage() {
             render={(option) => `${option}`}
           />
 
-          {error && (
-            <p className="flex items-start gap-2 rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-xs text-red-200">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{error}</span>
-            </p>
-          )}
-
           <div className="sticky bottom-0 -mx-5 border-t border-white/10 bg-[#0b0c0b] px-5 pb-1 pt-4">
             <div className="mb-2 flex items-center justify-between text-xs">
               <span className="text-zinc-500">
@@ -213,23 +211,31 @@ export default function QuickImagePage() {
             <button
               type="button"
               onClick={() => void generate()}
-              disabled={Boolean(pending.length) || !prompt.trim() || outOfCredits}
+              disabled={generating || !prompt.trim() || outOfCredits}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-3 text-sm font-bold text-black transition hover:bg-[#a5de25] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {pending.length ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-              {pending.length ? "Generating…" : outOfCredits ? "Not enough credits" : "Generate"}
+              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+              {generating ? "Generating…" : outOfCredits ? "Not enough credits" : "Generate"}
             </button>
           </div>
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex min-h-[45vh] flex-1 items-center justify-center overflow-auto p-6">
-            {pending.length ? (
-              <div className="flex flex-col items-center gap-3 text-zinc-500">
-                <Loader2 className="h-8 w-8 animate-spin text-[#b9f42e]" />
-                <p className="text-sm">
-                  Rendering {pending.length} image{pending.length > 1 ? "s" : ""}…
-                </p>
+            {attempts.length ? (
+              <div
+                className={`grid w-full max-w-4xl gap-4 ${attempts.length === 1 ? "place-items-center" : "sm:grid-cols-2"}`}
+              >
+                {attempts.map((attempt) => (
+                  <AttemptBlock
+                    key={attempt.id}
+                    attempt={attempt}
+                    kind="image"
+                    large={attempts.length === 1}
+                    onRetry={() => void generate()}
+                    onReusePrompt={setPrompt}
+                  />
+                ))}
               </div>
             ) : latest?.resultPath ? (
               <figure className="flex max-h-full flex-col items-center gap-3">
@@ -270,7 +276,7 @@ export default function QuickImagePage() {
           <RecentStrip
             history={history}
             kind="image"
-            onFocus={setFocused}
+            onFocus={(item) => { setAttempts([]); setFocused(item); }}
             focusedId={latest?.id || null}
           />
         </section>

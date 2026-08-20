@@ -13,7 +13,7 @@ import { runWithCredential } from "@/lib/byok/active-credential"
 import { ownKeysOnly } from "@/lib/byok/preferences"
 import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
 import { trackGenerationActivation } from "@/lib/studio/activation"
-import { studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
+import { StudioAccessError, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 import { openAIImageQuality } from "@/lib/studio/entity-image-workflow"
 import { recordExistingAsset } from "@/lib/studio/byteplus-assets"
 import {
@@ -22,6 +22,7 @@ import {
   foreignReferences,
   MEDIA_BUCKET,
   quickStoragePath,
+  generationJobRejection,
   requireAuthenticatedUser,
   signReferenceUrls,
   type QuickContext,
@@ -171,7 +172,11 @@ export async function POST(request: NextRequest) {
       })
       .select("id")
       .single()
-    if (jobError) throw jobError
+    if (jobError) {
+      const rejection = generationJobRejection(jobError)
+      if (rejection) throw new StudioAccessError(rejection, 403)
+      throw jobError
+    }
     pendingJobId = job.id
     if (pendingRefund) pendingRefund = { ...pendingRefund, key: `generation-job:${job.id}`, jobId: job.id }
 

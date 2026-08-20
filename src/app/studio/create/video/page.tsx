@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Download, Loader2, Sparkles, Video, Volume2, VolumeX, Wand2 } from "lucide-react";
+import { Download, Loader2, Sparkles, Video, Volume2, VolumeX, Wand2 } from "lucide-react";
 import { CreateChrome } from "@/components/studio/create/CreateChrome";
 import { ReferenceStrip } from "@/components/studio/create/ReferenceStrip";
 import { SignedMedia } from "@/components/studio/create/SignedMedia";
 import { useQuickHistory } from "@/components/studio/create/use-quick-history";
 import { useCreditBalance } from "@/components/studio/create/use-credit-balance";
 import { PillGroup, RecentStrip } from "@/components/studio/create/GeneratorControls";
+import { AttemptBlock, type Attempt } from "@/components/studio/create/AttemptBlock";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
   videoDurationOptions,
@@ -47,9 +48,12 @@ export default function QuickVideoPage() {
   const [endFrame, setEndFrame] = useState<string[]>([]);
   const [referenceVideos, setReferenceVideos] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // The clip's whole lifecycle, shown in the canvas where the result will be.
+  // Reporting a failure in the settings column meant it landed below the fold
+  // on most windows, so a clip that failed after four minutes looked exactly
+  // like a button that had done nothing.
+  const [attempt, setAttempt] = useState<Attempt | null>(null);
   const [focused, setFocused] = useState<QuickHistoryItem | null>(null);
-  const [generating, setGenerating] = useState(false);
   // Cleared on unmount so a poll cannot go on setting state on a dead page.
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -76,72 +80,67 @@ export default function QuickVideoPage() {
   const source = resolveGenerationSource({ model, connectedProviders, platformCredits });
   const outOfCredits = blockedByCredits(source, creditBalance);
 
+  const generating = attempt?.status === "generating";
+
+  const settle = useCallback((patch: Partial<Attempt>) => {
+    setAttempt((current) => (current ? { ...current, ...patch } : current));
+  }, []);
+
   const pollUntilDone = useCallback(async (jobId: string, startedAt: number) => {
     try {
       const response = await fetch(`/api/studio/generate/video?jobId=${encodeURIComponent(jobId)}`, { cache: "no-store" });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "Could not check the video.");
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || `Could not check the video (${response.status})`);
 
       if (body.status === "completed" && body.result_url) {
-        setGenerating(false);
         setStatus(null);
+        settle({ status: "completed", resultPath: body.result_url });
         notifyCreditBalanceChanged();
         await history.load();
-        setFocused({
-          id: jobId,
-          type: "video",
-          status: "completed",
-          prompt: body.prompt || prompt,
-          model,
-          provider: source.provider,
-          resultPath: body.result_url,
-          error: null,
-          creditsCharged: Number(body.credits_used || 0),
-          billingMode: body.billing_mode || "credits",
-          settings: {},
-          createdAt: body.created_at || new Date().toISOString(),
-          completedAt: body.completed_at || new Date().toISOString(),
-        });
         return;
       }
       if (body.status === "failed" || body.status === "cancelled") {
-        setGenerating(false);
         setStatus(null);
+        settle({ status: "failed", error: body.error || "The provider did not render this clip." });
         notifyCreditBalanceChanged();
-        setError(body.error || "The video did not render.");
         await history.load();
         return;
       }
       if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
-        setGenerating(false);
         setStatus(null);
-        setError("This is taking longer than expected. It will appear in History if it finishes.");
+        // Not a failure: the job is still the server's and may yet finish. The
+        // page has simply stopped asking, and says where to look instead.
+        settle({
+          status: "failed",
+          error: "This is taking longer than expected, so the page has stopped waiting. The clip will appear under History if the provider finishes it.",
+        });
         return;
       }
       setStatus(body.providerStatus === "queued" ? "Queued at the provider…" : "Rendering…");
       pollTimer.current = setTimeout(() => { void pollUntilDone(jobId, startedAt); }, POLL_INTERVAL_MS);
     } catch (cause) {
-      setGenerating(false);
       setStatus(null);
-      setError(cause instanceof Error ? cause.message : "Could not check the video.");
+      settle({ status: "failed", error: cause instanceof Error ? cause.message : "Could not check the video." });
     }
-  }, [history, model, prompt, source.provider]);
+  }, [history, settle]);
 
   const generate = async () => {
     if (!user) {
       signInWithGoogle();
       return;
     }
-    if (!prompt.trim() || generating) return;
-    setError(null);
-    setGenerating(true);
+    const text = prompt.trim();
+    if (!text || generating) return;
+
+    setFocused(null);
+    setAttempt({ id: `attempt-${Date.now()}`, status: "generating", prompt: text, resultPath: null, error: null });
     setStatus("Submitting…");
     try {
       const response = await fetch("/api/studio/generate/video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: prompt.trim(),
+          prompt: text,
           model,
           startFrame: startFrame[0] || null,
           endFrame: endFrame[0] || null,
@@ -152,16 +151,15 @@ export default function QuickVideoPage() {
           durationSeconds,
         }),
       });
-      const body = await response.json();
+      const body = await response.json().catch(() => ({}));
       notifyCreditBalanceChanged();
-      if (!response.ok) throw new Error(body.error || "Video generation failed");
+      if (!response.ok) throw new Error(body.error || `Video generation failed (${response.status})`);
       setStatus("Queued at the provider…");
       await history.load();
       void pollUntilDone(body.jobId, Date.now());
     } catch (cause) {
-      setGenerating(false);
       setStatus(null);
-      setError(cause instanceof Error ? cause.message : "Video generation failed");
+      settle({ status: "failed", error: cause instanceof Error ? cause.message : "Video generation failed" });
     }
   };
 
@@ -262,13 +260,6 @@ export default function QuickVideoPage() {
             </span>
           </button>
 
-          {error && (
-            <p className="flex items-start gap-2 rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-xs text-red-200">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{error}</span>
-            </p>
-          )}
-
           <div className="sticky bottom-0 -mx-5 border-t border-white/10 bg-[#0b0c0b] px-5 pb-1 pt-4">
             <div className="mb-2 flex items-center justify-between text-xs">
               <span className="text-zinc-500">{source.ownKey ? "Billed by your provider" : "Cost"}</span>
@@ -295,14 +286,15 @@ export default function QuickVideoPage() {
 
         <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex min-h-[45vh] flex-1 items-center justify-center overflow-auto p-6">
-            {generating ? (
-              <div className="flex flex-col items-center gap-3 text-zinc-500">
-                <Loader2 className="h-8 w-8 animate-spin text-[#b9f42e]" />
-                <p className="text-sm">{status || "Rendering…"}</p>
-                <p className="max-w-xs text-center text-xs text-zinc-600">
-                  This takes a few minutes. Leaving the page will not cancel it — the clip appears in History when it lands.
-                </p>
-              </div>
+            {attempt ? (
+              <AttemptBlock
+                attempt={attempt}
+                kind="video"
+                statusText={status}
+                large
+                onRetry={() => void generate()}
+                onReusePrompt={setPrompt}
+              />
             ) : latest?.resultPath ? (
               <figure className="flex max-h-full flex-col items-center gap-3">
                 <SignedMedia
@@ -340,7 +332,12 @@ export default function QuickVideoPage() {
             )}
           </div>
 
-          <RecentStrip history={history} kind="video" onFocus={setFocused} focusedId={latest?.id || null} />
+          <RecentStrip
+            history={history}
+            kind="video"
+            onFocus={(item) => { setAttempt(null); setFocused(item); }}
+            focusedId={latest?.id || null}
+          />
         </section>
       </div>
     </CreateChrome>
