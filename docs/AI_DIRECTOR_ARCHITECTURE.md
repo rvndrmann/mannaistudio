@@ -177,6 +177,20 @@ npm run build
 
 Full lint currently exposes pre-existing errors outside the Studio work. Scoped Studio lint should remain error-free while those are addressed separately.
 
+## Who pays for a generation
+
+A customer who has connected their own provider key is billed by that provider
+directly and spends no credits; every other generation charges as before. The
+decision is made once in `decideBilling()`, written onto the job as
+`billing_mode`, and read by the refund path — a job that charged nothing has to
+stay recognisable, or a failure refunds credits nobody paid. All three charge
+paths consult it: the Director's `submit_generation` and the direct image and
+video routes. See [`BYOK_PROVIDER_KEYS.md`](BYOK_PROVIDER_KEYS.md).
+
+Director chat turns are metered too, priced from published token rates and
+charged after the turn completes — and not at all when the customer's own key
+served it.
+
 ## Script status
 
 Saving or updating a script sets `creator_episodes.status` to `draft`; accepting a script suggestion sets it to `approved`. The status is recorded but the pipeline does not gate on it — `computePipelineStage()` moves from Script to the prompt sheet as soon as a script is saved. A blocking approval stage was tried and removed: the only code that could set `approved` was the suggestion-accept path, so a script written by the Director or pasted by the user had no way to clear the gate and the production wedged on Script.

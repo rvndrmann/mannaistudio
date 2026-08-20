@@ -1,5 +1,11 @@
 # Session Handoff - 2026-08-19
 
+> **Superseded on 2026-08-20.** The script approval gate described below was
+> removed: the only code that could set an episode to `approved` was accepting a
+> script suggestion, so a script written by the Director or pasted by the user
+> had no way to clear the gate and the production wedged on Script. The asset
+> job polling in this session is unaffected and still current.
+
 ## Completed This Session
 
 - Added an explicit script approval gate to the Director production pipeline.
