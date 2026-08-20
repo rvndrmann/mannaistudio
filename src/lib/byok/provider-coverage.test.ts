@@ -43,3 +43,34 @@ describe("every connectable provider honours the customer's key", () => {
     }
   })
 })
+
+describe("the Director chat runs on the right account", () => {
+  const chatRoute = readFileSync(
+    join(process.cwd(), "src/app/api/studio/projects/[projectId]/director/chat/route.ts"),
+    "utf8",
+  )
+
+  it("wraps the agent turn in the customer's credential scope", () => {
+    // Without the scope the provider modules read the platform environment, so
+    // every chat turn spends our budget — including for the customer paying
+    // their own way for everything else, who is also the heaviest chat user.
+    expect(chatRoute).toContain("runWithCredential")
+    expect(chatRoute).toContain("chatModelProvider")
+  })
+
+  it("routes both agent call sites through the same helper", () => {
+    // Two call sites, one streaming and one not. A scope applied to only one of
+    // them is the half-fixed version that looks correct in testing.
+    const direct = chatRoute.match(/runDirectorAgent\(/g) || []
+    const wrapped = chatRoute.match(/runOnRightAccount\(/g) || []
+    expect(direct.length).toBeGreaterThan(0)
+    expect(wrapped.length).toBeGreaterThanOrEqual(direct.length)
+  })
+
+  it("honours only-my-own-keys for chat as well as generation", () => {
+    // A setting that stops generation while the agent keeps running on us does
+    // not mean what it says.
+    expect(chatRoute).toContain("ownKeysOnly")
+    expect(chatRoute).toContain("OwnKeysOnlyError")
+  })
+})

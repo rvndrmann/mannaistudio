@@ -13,6 +13,11 @@ import { fetchDirectorWorkflows } from "@/lib/studio/workflows"
 import { normalizeDirectorGlobalInstructions } from "@/lib/studio/instructions"
 import { loadProjectBrandContext } from "@/lib/studio/brand-server"
 import { runDirectorAgent } from "@/lib/studio/director-agent"
+import { chatModelProvider } from "@/lib/byok/chat-source"
+import { hasCredential, withCredential } from "@/lib/byok/credential-service"
+import { runWithCredential } from "@/lib/byok/active-credential"
+import { ownKeysOnly } from "@/lib/byok/preferences"
+import { OwnKeysOnlyError } from "@/lib/byok/billing"
 import { fetchDirectorRuntimeSettings } from "@/lib/studio/director-runtime-settings"
 import { buildEntityMentionContext, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { collectDirectorVisionAttachments } from "@/lib/studio/director-vision"
@@ -140,6 +145,33 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         workflowRunId: workflowRun.id,
       }
     }
+    // The agent talks to OpenAI or Gemini through the same modules generation
+    // uses, so it can run on a customer's connected key — it was simply never
+    // given a scope to do it in, and every turn spent the platform's budget
+    // instead, including for the customer paying their own way for everything
+    // else.
+    //
+    // "Only my own keys" is honoured here too. A setting that stops generation
+    // while the agent keeps running on us does not mean what it says.
+    const chatProvider = chatModelProvider(model)
+    const runOnRightAccount = async <T,>(work: () => Promise<T>): Promise<T> => {
+      if (!chatProvider) return work()
+      const connected = await hasCredential(context.user.id, chatProvider).catch(() => false)
+      if (connected) {
+        const result = await withCredential({ userId: context.user.id, provider: chatProvider }, (parts) =>
+          runWithCredential(chatProvider, parts, work))
+        // Null means the credential vanished between the check and the read.
+        // Falling through to the platform key would bill us for a turn the user
+        // asked to pay for themselves.
+        if (result === null) throw new Error("The provider key for this model is no longer connected.")
+        return result
+      }
+      if (await ownKeysOnly(context.user.id).catch(() => false)) {
+        throw new OwnKeysOnlyError(chatProvider)
+      }
+      return work()
+    }
+
     const persistAssistantMessage = async (response: Awaited<ReturnType<typeof runDirectorAgent>>) => {
       // Read after the run, so the button offers the step the workspace is on
       // once this run's writes have landed.
@@ -155,7 +187,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // A non-streaming client still gets the single JSON body it expects.
     if (!body.stream) {
-      return NextResponse.json(await persistAssistantMessage(await runDirectorAgent(await buildAgentInput())))
+      return NextResponse.json(await persistAssistantMessage(await runOnRightAccount(async () => runDirectorAgent(await buildAgentInput()))))
     }
 
     const encoder = new TextEncoder()
@@ -166,7 +198,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         }
         try {
           send({ type: "start", sessionId })
-          const response = await runDirectorAgent({ ...(await buildAgentInput()), onEvent: send })
+          const response = await runOnRightAccount(async () => runDirectorAgent({ ...(await buildAgentInput()), onEvent: send }))
           send({ type: "done", ...(await persistAssistantMessage(response)) })
         } catch (error) {
           console.error("DIRECTOR CHAT STREAM ERROR:", error)
