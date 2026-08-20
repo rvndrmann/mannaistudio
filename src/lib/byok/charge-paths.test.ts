@@ -85,3 +85,23 @@ describe("provider names line up across the two catalogues", () => {
     }
   })
 })
+
+describe("no refund path can hand back credits that were never taken", () => {
+  it("reads the recorded billing mode instead of guessing from two numbers", () => {
+    // `credits_used || estimated_credits` is correct only while every job
+    // charges. A BYOK job has credits_used of zero, so it falls through to the
+    // estimate and refunds money nobody paid — repeat a failing generation and
+    // it prints credits. Every refund site had its own copy of this.
+    const refundSites = [
+      "src/lib/studio/execute-generation.ts",
+      "src/app/api/studio/projects/[projectId]/images/route.ts",
+      "src/app/api/studio/projects/[projectId]/videos/route.ts",
+    ]
+    for (const path of refundSites) {
+      const source = readFileSync(join(process.cwd(), path), "utf8")
+      expect(source, `${path} refunds without checking who paid`).toContain("refundableCredits")
+      expect(source, `${path} still guesses the refund from estimated_credits`)
+        .not.toMatch(/credits_used \|\| job\.estimated_credits/)
+    }
+  })
+})

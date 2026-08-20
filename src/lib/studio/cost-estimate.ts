@@ -180,6 +180,8 @@ export type SpendJob = {
   credits_used?: number | null
   credits_refunded?: number | null
   episode_id?: string | null
+  /** Which account paid. BYOK work is not spend against this balance. */
+  billing_mode?: string | null
 }
 
 export type SpendLeg = {
@@ -208,6 +210,10 @@ export type ProjectSpend = {
 const FAILED = new Set(["failed", "cancelled"])
 
 function chargeOf(job: SpendJob) {
+  // Work billed to the customer's own provider account never touched this
+  // balance, so it is not spend. True today because such a job stores zero,
+  // but said outright rather than resting on that.
+  if (job.billing_mode === "byok") return 0
   // credits_used is written when the provider settles. Until then the reserved
   // estimate is the money that actually left the balance.
   const used = Number(job.credits_used || 0)

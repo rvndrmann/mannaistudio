@@ -79,7 +79,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // over the whole project separately from the job list — and split by
     // episode, because the estimate beside it is built from one episode's
     // shots and the two have to be comparable.
-    const { data: spendRows } = await supabase.from("creator_generation_jobs").select("type,status,estimated_credits,credits_used,credits_refunded,episode_id").eq("project_id", projectId)
+    const { data: spendRows } = await supabase.from("creator_generation_jobs").select("type,status,estimated_credits,credits_used,credits_refunded,episode_id,billing_mode").eq("project_id", projectId)
     const spend = summarizeSpendByEpisode(spendRows || [], activeEpisode.id)
     let production = { series: [], scenes: [], referenceAssets: [], continuityIssues: [], revisions: [], generationJobs: baseGenerationJobs || [], creditAccount: null, workflowRuns: workflowRuns || [], spend } as Record<string, unknown>
     if (features.series_hierarchy_enabled || features.continuity_checks_enabled || features.generation_jobs_enabled) {

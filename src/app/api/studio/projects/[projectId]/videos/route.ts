@@ -7,7 +7,7 @@ import { FalProviderError, getFalVideoTask, submitFalVideo } from "@/lib/studio/
 import { getGoogleVideoTask, GoogleProviderError, submitGoogleVideo } from "@/lib/studio/google"
 import { generationProvider, isVideoGenerationModel } from "@/lib/studio/generation-models"
 import { byokProviderFor } from "@/lib/byok/providers"
-import { decideBilling } from "@/lib/byok/billing"
+import { decideBilling, refundableCredits } from "@/lib/byok/billing"
 import { hasCredential, withCredential } from "@/lib/byok/credential-service"
 import { runWithCredential } from "@/lib/byok/active-credential"
 import { ownKeysOnly } from "@/lib/byok/preferences"
@@ -445,7 +445,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     if (task.status === "failed" || task.status === "cancelled") {
       const error = task.error?.message || `${provider} task ${task.status}`
-      const charged = Number(job.credits_used || job.estimated_credits || 0)
+      // Reads the recorded billing mode, not whichever number is non-zero. A
+      // BYOK clip charged nothing, so this fallback would refund its estimate —
+      // and a provider that keeps failing would print credits.
+      const charged = refundableCredits(job as { billing_mode?: string | null; credits_used?: number | null; estimated_credits?: number | null })
       const refund = charged > 0
         ? await refundGenerationCredits(context.user.id, charged, `generation-job:${job.id}`, `Refund: ${task.status} video generation`, job.id, context.supabase)
         : { refunded: false, newBalance: 0 }
