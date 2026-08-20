@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
-import { MEDIA_BUCKET, requireAuthenticatedUser, toHistoryItem } from "@/lib/studio/quick-generation"
+import { MEDIA_BUCKET, QUICK_GENERATIONS_TABLE, requireAuthenticatedUser, toHistoryItem } from "@/lib/studio/quick-generation"
 
 /**
  * Everything generated outside a production, newest first.
  *
- * `project_id is null` is the whole filter: a job either belongs to a
- * storyboard or it does not, and the standalone pages only ever wrote jobs
- * without one. RLS restricts the table to the caller's own rows, and the
- * user_id filter is kept anyway so the query uses the partial index rather than
- * relying on the policy to narrow it.
+ * A table of its own, so there is no filter to get right: every row here is a
+ * standalone generation. RLS restricts it to the caller, and the user_id filter
+ * is kept anyway so the query uses the index rather than relying on the policy
+ * to narrow it.
  */
 
 const querySchema = z.object({
@@ -27,10 +26,9 @@ export async function GET(request: NextRequest) {
     const params = querySchema.parse(Object.fromEntries(request.nextUrl.searchParams))
 
     let query = context.supabase
-      .from("creator_generation_jobs")
-      .select("id,type,status,prompt,model,provider,result_url,error,credits_used,credits_refunded,billing_mode,settings,created_at,completed_at")
+      .from(QUICK_GENERATIONS_TABLE)
+      .select("id,type,status,prompt,model,provider,result_path,error,credits_used,credits_refunded,billing_mode,settings,created_at,completed_at")
       .eq("user_id", context.user.id)
-      .is("project_id", null)
       .order("created_at", { ascending: false })
       .limit(params.limit)
     if (params.type !== "all") query = query.eq("type", params.type)
@@ -66,19 +64,18 @@ export async function DELETE(request: NextRequest) {
     if (!z.string().uuid().safeParse(id).success) return NextResponse.json({ error: "Valid id is required" }, { status: 400 })
 
     const { data: job } = await context.supabase
-      .from("creator_generation_jobs")
-      .select("id,result_url")
+      .from(QUICK_GENERATIONS_TABLE)
+      .select("id,result_path")
       .eq("id", id)
       .eq("user_id", context.user.id)
-      .is("project_id", null)
       .maybeSingle()
     if (!job) return NextResponse.json({ error: "Generation not found" }, { status: 404 })
 
-    if (job.result_url) {
-      const { error: removeError } = await context.supabase.storage.from(MEDIA_BUCKET).remove([job.result_url])
+    if (job.result_path) {
+      const { error: removeError } = await context.supabase.storage.from(MEDIA_BUCKET).remove([job.result_path])
       if (removeError) throw removeError
     }
-    const { error } = await context.supabase.from("creator_generation_jobs").delete().eq("id", job.id)
+    const { error } = await context.supabase.from(QUICK_GENERATIONS_TABLE).delete().eq("id", job.id)
     if (error) throw error
 
     return NextResponse.json({ deleted: true, id: job.id })

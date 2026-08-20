@@ -10,6 +10,14 @@
 
 export const MEDIA_BUCKET = "creator-studio-media"
 
+/**
+ * Standalone generations have a table of their own rather than sharing
+ * `creator_generation_jobs`. Sharing would have meant widening that table's RLS
+ * policies — which exist to guarantee a job belongs to a project the caller
+ * owns — so an unrelated feature could store rows that belong to no project.
+ */
+export const QUICK_GENERATIONS_TABLE = "creator_quick_generations"
+
 /** Second path segment for standalone media, where a project id would sit. */
 export const QUICK_MEDIA_FOLDER = "quick"
 

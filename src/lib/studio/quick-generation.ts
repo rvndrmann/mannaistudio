@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto"
 import type { SupabaseClient, User } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase/server"
 import { StudioAccessError } from "@/lib/studio/server-context"
-import { MEDIA_BUCKET, QUICK_MEDIA_FOLDER, type QuickHistoryItem } from "@/lib/studio/quick-media"
+import { refundGenerationCredits } from "@/lib/studio/credits"
+import { MEDIA_BUCKET, QUICK_GENERATIONS_TABLE, QUICK_MEDIA_FOLDER, type QuickHistoryItem } from "@/lib/studio/quick-media"
 
 /**
  * Generating outside a production.
@@ -23,7 +24,7 @@ import { MEDIA_BUCKET, QUICK_MEDIA_FOLDER, type QuickHistoryItem } from "@/lib/s
  * reaching for a bare generator will notice.
  */
 
-export { MEDIA_BUCKET, QUICK_MEDIA_FOLDER } from "@/lib/studio/quick-media"
+export { MEDIA_BUCKET, QUICK_MEDIA_FOLDER, QUICK_GENERATIONS_TABLE } from "@/lib/studio/quick-media"
 export type { QuickHistoryItem } from "@/lib/studio/quick-media"
 
 export type QuickContext = { supabase: SupabaseClient; user: User }
@@ -121,41 +122,94 @@ export function foreignReferences(userId: string, paths: string[]): string[] {
  * rather than the amount it briefly cost, because that is what the balance
  * shows and a history that disagrees with the balance reads as a double charge.
  */
-export function toHistoryItem(job: Record<string, unknown>): QuickHistoryItem {
-  const used = Number(job.credits_used || 0)
-  const refunded = Number(job.credits_refunded || 0)
-  const settings = job.settings && typeof job.settings === "object" ? job.settings as Record<string, unknown> : {}
+export function toHistoryItem(row: Record<string, unknown>): QuickHistoryItem {
+  const used = Number(row.credits_used || 0)
+  const refunded = Number(row.credits_refunded || 0)
+  const settings = row.settings && typeof row.settings === "object" ? row.settings as Record<string, unknown> : {}
   return {
-    id: String(job.id),
-    type: job.type === "video" ? "video" : "image",
-    status: String(job.status || "queued"),
-    prompt: typeof job.prompt === "string" ? job.prompt : "",
-    model: typeof job.model === "string" ? job.model : "",
-    provider: typeof job.provider === "string" ? job.provider : "",
-    resultPath: typeof job.result_url === "string" && job.result_url ? job.result_url : null,
-    error: typeof job.error === "string" && job.error ? job.error : null,
+    id: String(row.id),
+    type: row.type === "video" ? "video" : "image",
+    status: String(row.status || "queued"),
+    prompt: typeof row.prompt === "string" ? row.prompt : "",
+    model: typeof row.model === "string" ? row.model : "",
+    provider: typeof row.provider === "string" ? row.provider : "",
+    resultPath: typeof row.result_path === "string" && row.result_path ? row.result_path : null,
+    error: typeof row.error === "string" && row.error ? row.error : null,
     creditsCharged: Math.max(0, used - refunded),
-    billingMode: typeof job.billing_mode === "string" ? job.billing_mode : "credits",
+    billingMode: typeof row.billing_mode === "string" ? row.billing_mode : "credits",
     settings,
-    createdAt: String(job.created_at || ""),
-    completedAt: typeof job.completed_at === "string" ? job.completed_at : null,
+    createdAt: String(row.created_at || ""),
+    completedAt: typeof row.completed_at === "string" ? row.completed_at : null,
   }
 }
 
 /**
- * A job row the database refused.
+ * Gives back what a failed generation charged, and records that it did.
  *
- * Standalone generation needs the RLS policies relaxed to accept a job with no
- * project — until that migration is applied, the insert is refused and the raw
- * message is "new row violates row-level security policy", which tells the user
- * nothing they can act on and reads like the button is broken. Nothing has been
- * charged at this point, so the honest answer is that the feature is not
+ * The refund RPC belongs to the storyboard job table — its `p_job_id` writes
+ * `credits_refunded` back onto a row there — so a quick generation passes no
+ * job id and keeps its own tally instead. Idempotency does not depend on that
+ * argument in any case: it comes from the refund key, which is why the key is
+ * derived from the row's id rather than being a fresh uuid each attempt.
+ *
+ * A BYOK generation never reaches here with anything to give back. Nothing was
+ * taken, so nothing can be returned — the cost of that failure sat with the
+ * provider and no refund here can reach it.
+ */
+export async function refundQuickGeneration(input: {
+  context: QuickContext
+  /**
+   * Idempotency key, and the reason this is a parameter rather than derived
+   * from the row: credits are taken before the row is written, so a failed
+   * insert has to be refundable with no row to name. The caller mints a
+   * per-request key up front and reuses it; a path that can be retried against
+   * an existing row (the stalled-job reconcile) passes a key derived from that
+   * row's id instead, so polling twice cannot refund twice.
+   */
+  refundKey: string
+  amount: number
+  description: string
+  /** Present once the row exists, so the refund can be recorded on it. */
+  generationId?: string | null
+}): Promise<{ refunded: boolean; newBalance: number }> {
+  if (input.amount <= 0) return { refunded: false, newBalance: 0 }
+  const result = await refundGenerationCredits(
+    input.context.user.id,
+    input.amount,
+    input.refundKey,
+    input.description,
+    // The RPC's job id writes `credits_refunded` back onto a storyboard job
+    // row. A quick generation has none, so it keeps its own tally below.
+    null,
+    input.context.supabase,
+  )
+  if (result.refunded && input.generationId) {
+    await input.context.supabase
+      .from(QUICK_GENERATIONS_TABLE)
+      .update({ credits_refunded: input.amount })
+      .eq("id", input.generationId)
+      .eq("user_id", input.context.user.id)
+  }
+  return result
+}
+
+/**
+ * A row the database refused.
+ *
+ * Standalone generation needs its own table, and until that migration is
+ * applied the insert fails with "relation does not exist" — which tells the
+ * user nothing they can act on and reads like the button is broken. Nothing has
+ * been charged at this point, so the honest answer is that the feature is not
  * switched on yet.
  */
 export function generationJobRejection(error: { message?: string; code?: string } | null): string | null {
   if (!error) return null
   const message = error.message || ""
-  const isPolicyRefusal = error.code === "42501" || /row-level security|violates row-level/i.test(message)
-  if (!isPolicyRefusal) return null
-  return "Quick Create is not finished setting up on this server: the database is still refusing generations that do not belong to a project. Apply the pending migration (supabase db push) and try again. Nothing was charged."
+  // 42P01 undefined_table, 42501 insufficient_privilege. Either means the
+  // migration has not run: the table is absent, or present without its policy.
+  const isSetupFailure = error.code === "42P01"
+    || error.code === "42501"
+    || /does not exist|row-level security|violates row-level|schema cache/i.test(message)
+  if (!isSetupFailure) return null
+  return "Quick Create is not finished setting up on this server: its database table is missing. Apply the pending migration (supabase db push) and try again. Nothing was charged."
 }

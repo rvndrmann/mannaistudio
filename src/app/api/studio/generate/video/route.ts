@@ -16,7 +16,7 @@ import { decideBilling, refundableCredits } from "@/lib/byok/billing"
 import { hasCredential, withCredential } from "@/lib/byok/credential-service"
 import { runWithCredential } from "@/lib/byok/active-credential"
 import { ownKeysOnly } from "@/lib/byok/preferences"
-import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
+import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
 import { trackGenerationActivation } from "@/lib/studio/activation"
 import { StudioAccessError, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 import {
@@ -25,6 +25,8 @@ import {
   MEDIA_BUCKET,
   quickStoragePath,
   generationJobRejection,
+  QUICK_GENERATIONS_TABLE,
+  refundQuickGeneration,
   requireAuthenticatedUser,
   signReferenceUrls,
   type QuickContext,
@@ -128,26 +130,21 @@ export async function POST(request: NextRequest) {
     }
 
     const { data: job, error: jobError } = await context.supabase
-      .from("creator_generation_jobs")
+      .from(QUICK_GENERATIONS_TABLE)
       .insert({
         user_id: context.user.id,
-        project_id: null,
         type: "video",
-        status: "approved",
+        status: "queued",
         provider,
         model: input.model,
         prompt: input.prompt,
+        composed_prompt: resolvedPrompt,
         input_images: [...imageReferences, ...input.referenceVideos],
         settings: providerRequest,
-        provider_request: providerRequest,
-        requires_approval: false,
-        approved_at: new Date().toISOString(),
-        started_at: new Date().toISOString(),
-        idempotency_key: randomUUID(),
-        operation: "submit_quick_video",
         estimated_credits: creditCost,
         billing_mode: billing.mode,
-        credits_used: 0,
+        credits_used: creditCost,
+        started_at: new Date().toISOString(),
       })
       .select("id")
       .single()
@@ -156,7 +153,6 @@ export async function POST(request: NextRequest) {
       if (rejection) throw new StudioAccessError(rejection, 403)
       throw jobError
     }
-    if (pendingRefund) pendingRefund.key = `generation-job:${job.id}`
 
     /** Submits on whichever account is paying for this clip. */
     const runOnBillingAccount = async <T,>(work: () => Promise<T>): Promise<T> => {
@@ -209,8 +205,8 @@ export async function POST(request: NextRequest) {
       })
 
       await context.supabase
-        .from("creator_generation_jobs")
-        .update({ status: "processing", credits_used: creditCost, provider_job_id: task.id, provider_response: task.response })
+        .from(QUICK_GENERATIONS_TABLE)
+        .update({ status: "processing", provider_job_id: task.id, provider_response: task.response })
         .eq("id", job.id)
 
       return NextResponse.json({
@@ -227,11 +223,17 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       const errorMessage = studioErrorMessage(error, "Submission failed")
       await context.supabase
-        .from("creator_generation_jobs")
+        .from(QUICK_GENERATIONS_TABLE)
         .update({ status: "failed", error: errorMessage, completed_at: new Date().toISOString() })
         .eq("id", job.id)
       const refund = pendingRefund
-        ? await refundGenerationCredits(context.user.id, pendingRefund.amount, `generation-job:${job.id}`, "Refund: failed video generation", job.id, context.supabase)
+        ? await refundQuickGeneration({
+          context,
+          refundKey: pendingRefund.key,
+          generationId: job.id,
+          amount: pendingRefund.amount,
+          description: "Refund: failed video generation",
+        })
         : { refunded: false, newBalance: 0 }
       pendingRefund = null
       return NextResponse.json({
@@ -248,7 +250,12 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (openContext && pendingRefund) {
       try {
-        await refundGenerationCredits(openContext.user.id, pendingRefund.amount, pendingRefund.key, "Refund: video generation could not start", null, openContext.supabase)
+        await refundQuickGeneration({
+          context: openContext,
+          refundKey: pendingRefund.key,
+          amount: pendingRefund.amount,
+          description: "Refund: video generation could not start",
+        })
       } catch (refundError) {
         console.error("Could not refund failed standalone video generation", refundError)
       }
@@ -278,11 +285,10 @@ export async function GET(request: NextRequest) {
     }
 
     const { data: job } = await context.supabase
-      .from("creator_generation_jobs")
+      .from(QUICK_GENERATIONS_TABLE)
       .select("*")
       .eq("id", jobId)
       .eq("user_id", context.user.id)
-      .is("project_id", null)
       .maybeSingle()
     if (!job) return NextResponse.json({ error: "Generation job not found" }, { status: 404 })
     if (["completed", "failed", "cancelled"].includes(job.status)) return NextResponse.json(job)
@@ -320,11 +326,17 @@ export async function GET(request: NextRequest) {
       // The recorded mode decides the refund. A BYOK clip charged nothing, so
       // refunding its estimate would print credits on every repeated failure.
       const charged = refundableCredits(job as { billing_mode?: string | null; credits_used?: number | null; estimated_credits?: number | null })
-      const refund = charged > 0
-        ? await refundGenerationCredits(context.user.id, charged, `generation-job:${job.id}`, `Refund: ${task.status} video generation`, job.id, context.supabase)
-        : { refunded: false, newBalance: 0 }
+      const refund = await refundQuickGeneration({
+        context,
+        // Keyed off the row, because polling a failed task repeatedly must
+        // refund once rather than once per poll.
+        refundKey: `quick-generation:${job.id}`,
+        generationId: job.id,
+        amount: charged,
+        description: `Refund: ${task.status} video generation`,
+      })
       await context.supabase
-        .from("creator_generation_jobs")
+        .from(QUICK_GENERATIONS_TABLE)
         .update({ status: task.status === "cancelled" ? "cancelled" : "failed", provider_response: task, error, completed_at: new Date().toISOString() })
         .eq("id", job.id)
       return NextResponse.json({
@@ -350,8 +362,8 @@ export async function GET(request: NextRequest) {
 
     const completedAt = new Date().toISOString()
     await context.supabase
-      .from("creator_generation_jobs")
-      .update({ status: "completed", provider_response: task, result_url: storagePath, completed_at: completedAt })
+      .from(QUICK_GENERATIONS_TABLE)
+      .update({ status: "completed", provider_response: task, result_path: storagePath, completed_at: completedAt })
       .eq("id", job.id)
 
     // The clip is downloaded, stored and recorded, and a later poll returns
@@ -363,7 +375,7 @@ export async function GET(request: NextRequest) {
       sourceUrl: "https://www.aidirectorhub.com/studio/create/video",
     })
 
-    return NextResponse.json({ ...job, status: "completed", result_url: storagePath, completed_at: completedAt })
+    return NextResponse.json({ ...job, status: "completed", result_path: storagePath, completed_at: completedAt })
   } catch (error) {
     return NextResponse.json({ error: studioErrorMessage(error, "Could not check video status") }, {
       status: error instanceof BytePlusProviderError || error instanceof FalProviderError || error instanceof GoogleProviderError

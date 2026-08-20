@@ -92,9 +92,9 @@ export default function QuickVideoPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || `Could not check the video (${response.status})`);
 
-      if (body.status === "completed" && body.result_url) {
+      if (body.status === "completed" && body.result_path) {
         setStatus(null);
-        settle({ status: "completed", resultPath: body.result_url });
+        settle({ status: "completed", resultPath: body.result_path });
         notifyCreditBalanceChanged();
         await history.load();
         return;

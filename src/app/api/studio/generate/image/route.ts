@@ -11,7 +11,7 @@ import { decideBilling, refundableCredits } from "@/lib/byok/billing"
 import { hasCredential, withCredential } from "@/lib/byok/credential-service"
 import { runWithCredential } from "@/lib/byok/active-credential"
 import { ownKeysOnly } from "@/lib/byok/preferences"
-import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
+import { calculateCreditCost, deductUserCredits } from "@/lib/studio/credits"
 import { trackGenerationActivation } from "@/lib/studio/activation"
 import { StudioAccessError, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 import { openAIImageQuality } from "@/lib/studio/entity-image-workflow"
@@ -23,6 +23,8 @@ import {
   MEDIA_BUCKET,
   quickStoragePath,
   generationJobRejection,
+  QUICK_GENERATIONS_TABLE,
+  refundQuickGeneration,
   requireAuthenticatedUser,
   signReferenceUrls,
   type QuickContext,
@@ -71,11 +73,10 @@ export async function GET(request: NextRequest) {
     if (!jobId) return NextResponse.json({ error: "Which job?" }, { status: 400 })
 
     const { data: job } = await context.supabase
-      .from("creator_generation_jobs")
+      .from(QUICK_GENERATIONS_TABLE)
       .select("*")
       .eq("id", jobId)
       .eq("user_id", context.user.id)
-      .is("project_id", null)
       .maybeSingle()
     if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 })
     if (job.status !== "processing") return NextResponse.json(job)
@@ -87,12 +88,16 @@ export async function GET(request: NextRequest) {
     // The recorded mode decides the refund, not whichever number is non-zero:
     // a BYOK job charged nothing, and refunding its estimate mints credits.
     const charged = refundableCredits(job as { billing_mode?: string | null; credits_used?: number | null; estimated_credits?: number | null })
-    const refund = charged > 0
-      ? await refundGenerationCredits(context.user.id, charged, `generation-job:${job.id}`, "Refund: image generation did not finish", job.id, context.supabase)
-      : { refunded: false, newBalance: 0 }
+    const refund = await refundQuickGeneration({
+      context,
+      refundKey: `quick-generation:${job.id}`,
+      generationId: job.id,
+      amount: charged,
+      description: "Refund: image generation did not finish",
+    })
     const error = "The image generation did not finish. Nothing was produced and the credits have been returned."
     await context.supabase
-      .from("creator_generation_jobs")
+      .from(QUICK_GENERATIONS_TABLE)
       .update({ status: "failed", error, completed_at: new Date().toISOString() })
       .eq("id", job.id)
 
@@ -145,30 +150,21 @@ export async function POST(request: NextRequest) {
     const resolvedPrompt = composeQuickPrompt(input.prompt, input.aspectRatio)
 
     const { data: job, error: jobError } = await context.supabase
-      .from("creator_generation_jobs")
+      .from(QUICK_GENERATIONS_TABLE)
       .insert({
         user_id: context.user.id,
-        // No project, no episode, no shot. This column being null is what marks
-        // the job as standalone everywhere else that reads it.
-        project_id: null,
         type: "image",
-        status: "approved",
+        status: "processing",
         provider,
         model: input.model,
         prompt: input.prompt,
+        composed_prompt: resolvedPrompt,
         input_images: references,
-        settings: {
-          surface: "quick",
-          aspectRatio: input.aspectRatio,
-          quality: input.quality,
-          basePrompt: input.prompt,
-          composedPrompt: resolvedPrompt,
-        },
+        settings: { aspectRatio: input.aspectRatio, quality: input.quality },
         estimated_credits: creditCost,
         billing_mode: billing.mode,
-        credits_used: 0,
-        requires_approval: false,
-        approved_at: new Date().toISOString(),
+        credits_used: creditCost,
+        started_at: new Date().toISOString(),
       })
       .select("id")
       .single()
@@ -178,13 +174,7 @@ export async function POST(request: NextRequest) {
       throw jobError
     }
     pendingJobId = job.id
-    if (pendingRefund) pendingRefund = { ...pendingRefund, key: `generation-job:${job.id}`, jobId: job.id }
-
-    const { error: processingError } = await context.supabase
-      .from("creator_generation_jobs")
-      .update({ status: "processing", credits_used: creditCost, started_at: new Date().toISOString() })
-      .eq("id", job.id)
-    if (processingError) throw processingError
+    if (pendingRefund) pendingRefund = { ...pendingRefund, jobId: job.id }
 
     const referenceUrls = await signReferenceUrls(context, references)
 
@@ -272,13 +262,8 @@ export async function POST(request: NextRequest) {
     }
 
     const { error: completeError } = await context.supabase
-      .from("creator_generation_jobs")
-      .update({
-        status: "completed",
-        result_url: storagePath,
-        credits_used: creditCost,
-        completed_at: new Date().toISOString(),
-      })
+      .from(QUICK_GENERATIONS_TABLE)
+      .update({ status: "completed", result_path: storagePath, completed_at: new Date().toISOString() })
       .eq("id", job.id)
     if (completeError) throw completeError
     pendingRefund = null
@@ -302,21 +287,33 @@ export async function POST(request: NextRequest) {
       creditBalance: creditBalanceAfter,
     })
   } catch (error) {
-    if (openContext && pendingRefund) {
-      try {
-        await refundGenerationCredits(openContext.user.id, pendingRefund.amount, pendingRefund.key, "Refund: failed image generation", pendingRefund.jobId, openContext.supabase)
-      } catch (refundError) {
-        console.error("Could not refund failed standalone image generation", refundError)
-      }
-    }
+    // The row is closed out before the refund, so a refund that itself fails
+    // still leaves a row that says what happened rather than one stuck in
+    // `processing` for ever.
     if (openContext && pendingJobId) {
       try {
         await openContext.supabase
-          .from("creator_generation_jobs")
+          .from(QUICK_GENERATIONS_TABLE)
           .update({ status: "failed", error: studioErrorMessage(error, "Image generation failed"), completed_at: new Date().toISOString() })
           .eq("id", pendingJobId)
       } catch (historyError) {
         console.error("Could not mark standalone image generation failed", historyError)
+      }
+    }
+    // Refunded whether or not a row was ever written: the credits are taken
+    // before the insert, so an insert that fails is exactly the case where a
+    // refund keyed off the row would silently never happen.
+    if (openContext && pendingRefund) {
+      try {
+        await refundQuickGeneration({
+          context: openContext,
+          refundKey: pendingRefund.key,
+          generationId: pendingJobId,
+          amount: pendingRefund.amount,
+          description: "Refund: failed image generation",
+        })
+      } catch (refundError) {
+        console.error("Could not refund failed standalone image generation", refundError)
       }
     }
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid image request", issues: error.flatten() }, { status: 400 })

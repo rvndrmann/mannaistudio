@@ -15,24 +15,34 @@ and nothing else. No project, no episode, no shot, no cast.
 
 ## What a standalone generation is
 
-The same job row every other generation writes, with `project_id` null.
+A row in `creator_quick_generations`, a table of its own.
 
-That column is the entire marker. Everything that reports on productions —
-the admin project overview, per-episode credit totals, the workspace — already
-filters on it, so these rows stay out of production accounting without a single
-one of those queries changing. And the history page is the exact complement:
-`project_id is null`, newest first, on a partial index that matches.
+The first draft recorded these as `creator_generation_jobs` rows with a null
+`project_id`, on the reasoning that reuse buys the refund linkage, the
+billing-mode column and admin visibility for free. It does — but it also
+requires widening two RLS policies on that table so they accept a job naming no
+project, and those policies exist to guarantee precisely the opposite: that a
+job belongs to a project the caller owns. Relaxing a security boundary so an
+unrelated feature can share storage is a bad trade, and it leaves every query
+that reports on productions depending, for ever, on remembering to filter the
+strangers out.
 
-Reusing the table rather than adding one was deliberate. A separate table would
-have needed its own refund linkage, its own billing-mode column, its own admin
-visibility, and a second copy of the rule about what a failed job gives back.
-The refund RPC takes a `creator_generation_jobs` id; a parallel table would have
-had to either lose the linkage or reimplement it.
+So the table is separate and nothing about productions changes at all. The two
+enums are shared deliberately — `image | video` and the job status machine
+already say exactly the right thing, and a second copy of either would drift.
 
-Two RLS policies had to be relaxed for it. Both required the job to name a
-project the caller owns, so a null `project_id` could not be inserted at all,
-and a job that somehow was could never be updated again — it would sit in
-`processing` for ever with its credits unrefundable.
+The one thing reuse did give away is the refund linkage: `refund_generation_credits`
+takes a `p_job_id` that writes `credits_refunded` back onto a storyboard job
+row. A quick generation passes null and keeps its own tally instead. Idempotency
+never depended on that argument anyway — it comes from the refund key.
+
+That key is worth stating, because it is the difference between a bug and not
+one. Credits are taken **before** the row is written, so a failed insert is
+exactly the case where a refund keyed off the row would silently never happen.
+Every request therefore mints its key up front and reuses it; only the paths
+that can be retried against a row that already exists — the stalled-image
+reconcile, and polling a failed video task — key off the row id, so asking twice
+cannot refund twice.
 
 ## What is deliberately absent
 
@@ -96,7 +106,8 @@ storyboard route likely wants the same treatment.
 `{owner}/quick/…` in `creator-studio-media`. The bucket's sharing policy
 resolves the second path segment as a project id to decide who else may read the
 file; `quick` matches no project row, so the owner-only policy is the only one
-that grants it. Nobody is sharing these.
+that grants it. Nobody is sharing these, and the table's RLS says the same
+thing — owner only, not visible to a team or to anyone granted a project.
 
 References upload straight from the browser rather than through an API route: a
 start frame is a few megabytes, and routing it through a serverless function
@@ -125,21 +136,25 @@ generation that fails partway through with three made and the fourth refused.
 | `src/lib/studio/quick-media.ts` | The few facts both sides of the wire need |
 | `src/lib/studio/quick-uploads.ts` | Browser-side reference upload |
 | `src/app/api/studio/generate/` | The three routes |
-| `supabase/migrations/20260820120000_standalone_generations.sql` | Project-less jobs |
+| `supabase/migrations/20260820120000_standalone_generations.sql` | The table |
 
 ## The migration is not optional
 
-Until `20260820120000_standalone_generations.sql` is applied, the insert policy
-still demands a project and every generation is refused — before any provider is
-called and before any credit is taken. That refusal is caught and reported as
-"Quick Create is not finished setting up on this server", with the command to
-run, rather than as the raw `new row violates row-level security policy`, which
-reads like a broken button.
+Until `20260820120000_standalone_generations.sql` is applied the table is not
+there, and every generation is refused — before any provider is called and
+before any credit is taken. That refusal is caught and reported as "Quick Create
+is not finished setting up on this server", with the command to run, rather than
+as `relation "creator_quick_generations" does not exist`, which reads like a
+broken button. PostgREST answers the same cause with its own wording about a
+schema cache and shares no error code with Postgres, so both are recognised.
 
 ## Still to verify
 
-Neither route has been exercised against a live provider from these pages — the
-generation code is the storyboard route's, but the wiring around it is new. In
-particular: a BYOK video end to end, where the poll now runs inside the
-credential scope, and a Seedream image, whose Asset Library registration is
-recorded with no project id for the first time.
+The table is applied and proven: insert, update, the `updated_at` trigger and
+RLS refusing an anonymous read were all exercised against the live database.
+
+Not yet proven is a real generation through these pages. The generation code is
+the storyboard route's, but the wiring around it is new. In particular: a BYOK
+video end to end, where the poll now runs inside the credential scope, and a
+Seedream image, whose Asset Library registration is recorded with no project id
+for the first time.

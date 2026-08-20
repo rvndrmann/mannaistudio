@@ -104,21 +104,27 @@ describe("a history row as the page reads it", () => {
   it("turns an empty result url into no result at all", () => {
     // An empty string is falsy in the template but truthy as a path, and a tile
     // handed one would sign nothing and render a broken frame for ever.
-    expect(toHistoryItem({ id: "a", result_url: "" }).resultPath).toBeNull()
+    expect(toHistoryItem({ id: "a", result_path: "" }).resultPath).toBeNull()
   })
 })
 
-describe("a job row the database refused", () => {
-  it("explains an RLS refusal instead of leaking the policy error", () => {
-    // Until the standalone migration is applied the insert policy still demands
-    // a project, and the raw message reads like the button is broken.
-    const message = generationJobRejection({ code: "42501", message: 'new row violates row-level security policy for table "creator_generation_jobs"' })
+describe("a row the database refused", () => {
+  it("explains a missing table instead of leaking the Postgres error", () => {
+    // Until the migration is applied the table is not there at all, and
+    // "relation does not exist" reads like the button is broken.
+    const message = generationJobRejection({ code: "42P01", message: 'relation "public.creator_quick_generations" does not exist' })
     expect(message).toContain("supabase db push")
     expect(message).toContain("Nothing was charged")
   })
 
-  it("recognises the refusal by its message when no code is given", () => {
-    expect(generationJobRejection({ message: "new row violates row-level security policy" })).not.toBeNull()
+  it("recognises PostgREST's schema-cache wording for the same cause", () => {
+    // PostgREST answers an unknown table from its own cache, with wording that
+    // shares no code with Postgres's.
+    expect(generationJobRejection({ message: "Could not find the table 'public.creator_quick_generations' in the schema cache" })).not.toBeNull()
+  })
+
+  it("recognises a policy refusal, which is the same setup failure", () => {
+    expect(generationJobRejection({ code: "42501", message: "new row violates row-level security policy" })).not.toBeNull()
   })
 
   it("leaves every other database failure to be reported as itself", () => {
