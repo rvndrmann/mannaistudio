@@ -81,17 +81,20 @@ export default function Navbar() {
                 className={cn(
                     // A floating island of material, not an opaque bar: the page
                     // scrolls underneath it and stays partly visible through it.
-                    "material-chrome flex items-center justify-between w-full max-w-6xl px-6 py-3 rounded-lg",
+                    // gap-6 rather than justify-between alone: the right-hand cluster grew
+                    // by two controls, and without a floor on the spacing the brand
+                    // ends up touching the first nav link.
+                    "material-chrome flex items-center justify-between gap-6 w-full max-w-6xl px-6 py-3 rounded-lg",
                     offerText && "mt-6"
                 )}
             >
-                <Link href="/" className="flex min-h-[44px] items-center gap-2.5 group">
-                    <img src="/logo.png" alt="AI Director Hub" className="w-10 h-10 rounded-full transition-transform duration-press ease-out group-active:scale-95" />
-                    <span className="text-xl font-semibold tracking-[-0.02em] text-white">AI Director <span className="text-primary">Hub</span></span>
+                <Link href="/" className="flex min-h-[44px] shrink-0 items-center gap-2.5 group">
+                    <img src="/logo.png" alt="AI Director Hub" className="w-10 h-10 shrink-0 rounded-full transition-transform duration-press ease-out group-active:scale-95" />
+                    <span className="whitespace-nowrap text-xl font-semibold tracking-[-0.02em] text-white">AI Director <span className="text-primary">Hub</span></span>
                 </Link>
 
                 {/* Desktop Nav */}
-                <div className="hidden md:flex items-center gap-8">
+                <div className="hidden md:flex shrink-0 items-center gap-5">
                     {user && navLinks.map((link) => (
                         <Link
                             key={link.name}
@@ -105,7 +108,7 @@ export default function Navbar() {
                     {!loading && (
                         <Link
                             href="/studio"
-                            className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"
+                            className="flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md bg-primary px-4 text-sm font-medium text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"
                         >
                             <Sparkles className="h-4 w-4" />
                             Creator Studio
@@ -126,18 +129,18 @@ export default function Navbar() {
                             <Link
                                 href="/studio/integrations"
                                 title="Use your own provider API keys instead of studio credits"
-                                className="flex items-center gap-1.5 rounded-md border border-white/10 px-3 py-2 text-sm font-medium text-white/70 transition duration-press ease-out hover:bg-white/10 hover:text-white active:scale-[0.97]"
+                                className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-white/10 px-3 text-sm font-medium text-white/70 transition duration-press ease-out hover:bg-white/10 hover:text-white active:scale-[0.97]"
                             >
-                                <KeyRound className="h-4 w-4" />
-                                <span className="hidden lg:inline">API keys</span>
+                                <KeyRound className="h-4 w-4 shrink-0" />
+                                <span className="hidden xl:inline">API keys</span>
                             </Link>
                             <Link
                                 href="/studio/team"
                                 title="Add and manage team members"
-                                className="flex items-center gap-1.5 rounded-md border border-white/10 px-3 py-2 text-sm font-medium text-white/70 transition duration-press ease-out hover:bg-white/10 hover:text-white active:scale-[0.97]"
+                                className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-white/10 px-3 text-sm font-medium text-white/70 transition duration-press ease-out hover:bg-white/10 hover:text-white active:scale-[0.97]"
                             >
-                                <Users className="h-4 w-4" />
-                                <span className="hidden lg:inline">Team</span>
+                                <Users className="h-4 w-4 shrink-0" />
+                                <span className="hidden xl:inline">Team</span>
                             </Link>
                             <NotificationBell />
                             <Link href="/profile" className="flex items-center gap-2 px-4 py-2 bg-white/10 rounded-md transition duration-press ease-out hover:bg-white/20 active:scale-[0.97] group">

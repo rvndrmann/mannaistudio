@@ -14,7 +14,7 @@ import {
   Plus,
   Sparkles,
   Trash2,
-  Users, KeyRound,} from "lucide-react";
+  Users, KeyRound, Wand2,} from "lucide-react";
 import { BillingModeToggle } from "@/components/studio/BillingModeToggle";
 import CreditBadge from "@/components/CreditBadge";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -308,6 +308,14 @@ function TopBar({ onOpenCreate, creating }: { onOpenCreate: () => void; creating
           </button>
           <CreditBadge />
           <Link
+            href="/studio/create"
+            title="Generate a single image or clip, with no production attached"
+            className="touch-target hidden items-center gap-1.5 rounded-md border border-[#b9f42e]/35 px-3 py-2 text-sm font-medium text-[#b9f42e] transition hover:bg-[#b9f42e]/10 md:flex"
+          >
+            <Wand2 className="h-4 w-4" />
+            Quick Create
+          </Link>
+          <Link
             href="/studio/brand"
             title="Your brand rooms: goals, knowledge base, asset library, and the agents that write your scripts"
             className="touch-target hidden items-center gap-1.5 rounded-md border border-white/10 px-3 py-2 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white md:flex"
@@ -370,6 +378,17 @@ function StudioRail() {
         >
           <Building2 className="h-6 w-6" />
           Brand Room
+        </Link>
+        {/* The way out of the project model entirely: one image or one clip,
+            belonging to nothing. It sits in the rail beside the productions
+            because someone who came here to make a single picture should not
+            have to create a production to find the button. */}
+        <Link
+          href="/studio/create"
+          className="flex w-full flex-col items-center gap-2 rounded-xl py-4 text-xs font-semibold text-zinc-500 transition hover:bg-white/5 hover:text-white"
+        >
+          <Wand2 className="h-6 w-6" />
+          Quick Create
         </Link>
       </nav>
     </aside>

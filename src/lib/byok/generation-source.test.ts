@@ -3,6 +3,7 @@ import { blockedByCredits, resolveGenerationSource } from "./generation-source"
 
 const GPT_IMAGE = "gpt-image-2" as const
 const SEEDANCE = "dreamina-seedance-2-5-260628" as const
+const NANO_BANANA = "google-nano-banana-2-pro" as const
 
 describe("which account a generation runs on", () => {
   it("charges credits when nothing is connected", () => {
@@ -23,6 +24,26 @@ describe("which account a generation runs on", () => {
     expect(resolveGenerationSource({ model: SEEDANCE, connectedProviders, platformCredits: 20 }).ownKey).toBe(true)
     expect(resolveGenerationSource({ model: GPT_IMAGE, connectedProviders, platformCredits: 12 }).ownKey).toBe(false)
     expect(resolveGenerationSource({ model: GPT_IMAGE, connectedProviders, platformCredits: 12 }).credits).toBe(12)
+  })
+})
+
+describe("provider names that differ between the two catalogues", () => {
+  it("matches a connected Gemini key against a Google model", () => {
+    // The generation catalogue labels these `google`; the credential is called
+    // `gemini`. Compared directly the two never matched, so this card quoted a
+    // credit price the server was never going to charge.
+    const source = resolveGenerationSource({ model: NANO_BANANA, connectedProviders: ["gemini"], platformCredits: 29 })
+    expect(source).toMatchObject({ ownKey: true, provider: "google", credits: 0, label: "Your key" })
+  })
+
+  it("still charges for a Google model with no Gemini key connected", () => {
+    const source = resolveGenerationSource({ model: NANO_BANANA, connectedProviders: ["byteplus"], platformCredits: 29 })
+    expect(source).toMatchObject({ ownKey: false, credits: 29 })
+  })
+
+  it("does not let a low balance block a Google model on a connected key", () => {
+    const source = resolveGenerationSource({ model: NANO_BANANA, connectedProviders: ["gemini"], platformCredits: 29 })
+    expect(blockedByCredits(source, 0)).toBe(false)
   })
 })
 

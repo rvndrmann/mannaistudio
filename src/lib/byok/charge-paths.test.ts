@@ -17,6 +17,11 @@ const CHARGE_PATHS = [
   "src/app/api/studio/projects/[projectId]/images/route.ts",
   "src/app/api/studio/projects/[projectId]/videos/route.ts",
   "src/lib/studio/tool-registry.ts",
+  // The standalone generators. A new surface reaching a model is a new charge
+  // path, and the reason this list is written down rather than inferred is that
+  // adding one is exactly when the rule gets forgotten.
+  "src/app/api/studio/generate/image/route.ts",
+  "src/app/api/studio/generate/video/route.ts",
 ]
 
 describe("every charge path asks who is paying", () => {
@@ -48,6 +53,8 @@ describe("every charge path asks who is paying", () => {
       "src/app/api/studio/projects/[projectId]/images/route.ts",
       "src/app/api/studio/projects/[projectId]/videos/route.ts",
       "src/lib/studio/execute-generation.ts",
+      "src/app/api/studio/generate/image/route.ts",
+      "src/app/api/studio/generate/video/route.ts",
     ]
     for (const path of rendering) {
       const source = readFileSync(join(process.cwd(), path), "utf8")
@@ -96,6 +103,8 @@ describe("no refund path can hand back credits that were never taken", () => {
       "src/lib/studio/execute-generation.ts",
       "src/app/api/studio/projects/[projectId]/images/route.ts",
       "src/app/api/studio/projects/[projectId]/videos/route.ts",
+      "src/app/api/studio/generate/image/route.ts",
+      "src/app/api/studio/generate/video/route.ts",
     ]
     for (const path of refundSites) {
       const source = readFileSync(join(process.cwd(), path), "utf8")

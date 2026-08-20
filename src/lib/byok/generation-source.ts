@@ -1,5 +1,5 @@
 import { generationProvider, type ImageGenerationModelId, type VideoGenerationModelId } from "@/lib/studio/generation-models"
-import { isByokProvider } from "./providers"
+import { byokProviderFor } from "./providers"
 
 /**
  * Which account a generation will run on, decided once and read everywhere.
@@ -42,7 +42,14 @@ export function resolveGenerationSource(input: {
   platformCredits: number
 }): GenerationSource {
   const provider = generationProvider(input.model)
-  const ownKey = isByokProvider(provider) && input.connectedProviders.includes(provider)
+  // Matched through the name map, not by comparing the two catalogues
+  // directly. The generation catalogue says `google` where the credential says
+  // `gemini`, so a direct comparison never matched a connected Gemini key: the
+  // card quoted a credit price for a Nano Banana render the server then billed
+  // at zero, and a user out of credits was blocked from a generation nobody was
+  // going to charge them for — the exact case BYOK exists to serve.
+  const byokProvider = byokProviderFor(provider)
+  const ownKey = byokProvider !== null && input.connectedProviders.includes(byokProvider)
   return {
     ownKey,
     provider,

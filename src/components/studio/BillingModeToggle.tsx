@@ -1,22 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { KeyRound, Zap } from "lucide-react";
 
 /**
  * The switch between paying with studio credits and paying your own provider.
  *
  * In the header rather than only on the integrations page because it decides
  * what every generation and every chat turn costs, and a setting with that
- * reach should be visible while you work — not somewhere you have to remember
- * to go and check. Which mode is in force was invisible until now, and one
- * account had it on without anyone noticing, which turned every chat turn into
- * a refusal that read like a bug.
+ * reach should be visible while you work. One account had it on without anyone
+ * noticing, which turned every chat turn into a refusal that read like a bug.
  *
- * Renders nothing until it knows the answer. A control that guesses and
- * corrects itself is worse than one that arrives a moment late, because the
- * wrong state here means the user believes they are being charged when they are
- * not, or the reverse.
+ * Drawn as a switch with a fixed label rather than a button whose text changes.
+ * A control reading "Studio credits" cannot tell you whether that is the state
+ * it is in or the state it will move to, and this one changed its colour at the
+ * same time, so neither half disambiguated the other. A switch has a position,
+ * and the position is the answer.
+ *
+ * Renders nothing until it knows that position. A control that guesses and
+ * corrects itself would tell the user they are being charged when they are not,
+ * or the reverse.
  */
 export function BillingModeToggle({ compact = false }: { compact?: boolean }) {
   const [ownKeysOnly, setOwnKeysOnly] = useState<boolean | null>(null);
@@ -60,20 +62,36 @@ export function BillingModeToggle({ compact = false }: { compact?: boolean }) {
   return (
     <button
       type="button"
+      role="switch"
+      aria-checked={ownKeysOnly}
+      aria-label="Only my API"
       onClick={() => void toggle()}
       disabled={saving}
       title={ownKeysOnly
-        ? "Running on your own provider keys. Studio credits are never spent, and a provider you have not connected is refused. Click to allow studio credits."
-        : "Running on studio credits where you have not connected a key. Click to use only your own keys."}
-      className={`flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium transition active:scale-[0.97] disabled:opacity-50 ${
-        ownKeysOnly
-          ? "border-[#b9f42e]/40 bg-[#b9f42e]/10 text-[#b9f42e] hover:bg-[#b9f42e]/20"
-          : "border-white/10 text-white/70 hover:bg-white/10 hover:text-white"
-      }`}
+        ? "On — everything runs on your own provider keys. Studio credits are never spent, and a provider you have not connected is refused."
+        : "Off — providers you have not connected run on studio credits."}
+      className="flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md border border-white/10 px-2.5 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white active:scale-[0.97] disabled:opacity-50"
     >
-      {ownKeysOnly ? <KeyRound className="h-4 w-4" /> : <Zap className="h-4 w-4" />}
-      <span className={compact ? "hidden lg:inline" : ""}>
-        {ownKeysOnly ? "My keys only" : "Studio credits"}
+      <span className={compact ? "hidden xl:inline" : ""}>My API</span>
+
+      {/* The switch itself: a track the knob sits at one end of. */}
+      <span
+        aria-hidden
+        className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
+          ownKeysOnly ? "bg-[#b9f42e]" : "bg-white/20"
+        }`}
+      >
+        <span
+          className={`inline-block h-3 w-3 transform rounded-full bg-black transition-transform ${
+            ownKeysOnly ? "translate-x-3.5" : "translate-x-0.5"
+          }`}
+        />
+      </span>
+
+      {/* Spelled out as well as shown: the position carries the meaning, but a
+          two-letter word costs nothing and removes the last doubt. */}
+      <span className={`text-xs font-semibold ${ownKeysOnly ? "text-[#b9f42e]" : "text-white/40"}`}>
+        {ownKeysOnly ? "ON" : "OFF"}
       </span>
     </button>
   );

@@ -130,7 +130,7 @@ export default function CreditBadge({ className }: { className?: string }) {
       <button
         type="button"
         onClick={() => setShowModal(true)}
-        className={`group flex items-center gap-1.5 rounded-xl border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-3 py-1.5 text-xs font-bold text-[#b9f42e] transition hover:bg-[#b9f42e] hover:text-black ${className || ""}`}
+        className={`group flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-3 text-xs font-bold text-[#b9f42e] transition hover:bg-[#b9f42e] hover:text-black ${className || ""}`}
         title="Click to top up AI Generation Credits via Razorpay."
       >
         <Zap className="h-3.5 w-3.5 fill-[#b9f42e] group-hover:fill-black" />
