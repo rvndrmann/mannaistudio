@@ -26,6 +26,24 @@ type ProviderRow = {
   lastUsedAt: string | null;
 };
 
+/**
+ * Reads a response body that is supposed to be JSON but might not be.
+ *
+ * A route that threw before it could answer returns an empty body, and
+ * `response.json()` on that throws a SyntaxError that took the whole page down
+ * — so a misconfigured server looked like a broken form, with the real cause
+ * only in the server log. The status is what tells us whether it worked; the
+ * body is a nicety.
+ */
+async function readJson(response: Response): Promise<Record<string, unknown>> {
+  try {
+    const text = await response.text();
+    return text ? JSON.parse(text) as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
 export function IntegrationsPanel() {
   const [rows, setRows] = useState<ProviderRow[]>([]);
   const [configured, setConfigured] = useState(true);
@@ -40,9 +58,9 @@ export function IntegrationsPanel() {
   const load = useCallback(async () => {
     try {
       const response = await fetch("/api/studio/integrations", { cache: "no-store" });
-      if (!response.ok) throw new Error("Could not load integrations");
-      const data = await response.json();
-      setRows(data.providers || []);
+      if (!response.ok) return;
+      const data = await readJson(response);
+      setRows((data.providers as ProviderRow[]) || []);
       setConfigured(Boolean(data.configured));
       setVaultReadable(data.vaultReadable !== false);
       setOwnKeysOnly(Boolean(data.ownKeysOnly));
@@ -65,9 +83,9 @@ export function IntegrationsPanel() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ parts }),
       });
-      const data = await response.json();
+      const data = await readJson(response);
       if (!response.ok) {
-        setMessage({ provider: row.provider, text: data.error || "Could not save that key.", ok: false });
+        setMessage({ provider: row.provider, text: String(data.error || "Could not save that key."), ok: false });
         return;
       }
       // The only copy of the secret in this tab goes now.
@@ -85,10 +103,10 @@ export function IntegrationsPanel() {
     setMessage(null);
     try {
       const response = await fetch(`/api/studio/integrations/${row.provider}/test`, { method: "POST" });
-      const data = await response.json();
+      const data = await readJson(response);
       setMessage({
         provider: row.provider,
-        text: response.ok ? "That key works." : data.error || "That key did not work.",
+        text: response.ok ? "That key works." : String(data.error || "That key did not work."),
         ok: response.ok,
       });
       await load();

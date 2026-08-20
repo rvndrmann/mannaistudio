@@ -41,8 +41,32 @@ function kmsClient() {
     })
     return client
   }
+  // No inline credentials: fall back to application default credentials, which
+  // is right on Cloud Run and a developer machine that has run `gcloud auth`.
+  // On a host with neither, the failure surfaces from deep inside the auth
+  // library as "the incoming JSON object does not contain a client_email
+  // field", which says nothing about what to do — so it is named here instead.
   client = new KeyManagementServiceClient()
   return client
+}
+
+/** Turns an auth failure into something that names the missing setting. */
+function describeKmsFailure(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error)
+  if (/client_email|Could not load the default credentials|application default/i.test(message)) {
+    return new Error(
+      "Cloud KMS has no credentials on this server. Set GOOGLE_KMS_SERVICE_ACCOUNT_JSON to the service account key, or provide application default credentials.",
+    )
+  }
+  if (/permission|PERMISSION_DENIED|IAM/i.test(message)) {
+    return new Error(
+      "The KMS service account cannot use this key. Grant it roles/cloudkms.cryptoKeyEncrypterDecrypter on the configured key.",
+    )
+  }
+  if (/NOT_FOUND|not found/i.test(message)) {
+    return new Error("The configured KMS key was not found. Check GOOGLE_KMS_PROJECT_ID, LOCATION, KEY_RING and KEY_NAME.")
+  }
+  return error instanceof Error ? error : new Error(message)
 }
 
 /**
@@ -102,7 +126,12 @@ export function kmsKeyWrapper(): KeyWrapper {
   return {
     async wrap(dek) {
       const name = cryptoKeyName()
-      const [result] = await kmsClient().encrypt({ name, plaintext: dek })
+      let result
+      try {
+        ;[result] = await kmsClient().encrypt({ name, plaintext: dek })
+      } catch (error) {
+        throw describeKmsFailure(error)
+      }
       if (!result.ciphertext) throw new Error("KMS returned no ciphertext for the data key")
       return {
         wrapped: Buffer.from(result.ciphertext as Uint8Array),
@@ -113,7 +142,12 @@ export function kmsKeyWrapper(): KeyWrapper {
     },
     async unwrap(wrapped) {
       const name = cryptoKeyName()
-      const [result] = await kmsClient().decrypt({ name, ciphertext: wrapped })
+      let result
+      try {
+        ;[result] = await kmsClient().decrypt({ name, ciphertext: wrapped })
+      } catch (error) {
+        throw describeKmsFailure(error)
+      }
       if (!result.plaintext) throw new Error("KMS returned no plaintext for the wrapped data key")
       return Buffer.from(result.plaintext as Uint8Array)
     },

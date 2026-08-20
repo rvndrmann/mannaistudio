@@ -30,7 +30,23 @@ async function authorize(request: NextRequest, provider: string) {
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ provider: string }> }) {
-  const { provider: raw } = await params
+  try {
+    return await saveProviderCredential(request, await params)
+  } catch (error) {
+    // Anything thrown here reached the browser as a 500 with no body, and the
+    // page called response.json() on it and crashed — so a misconfigured server
+    // looked like a broken form. The message is deliberately generic: a KMS or
+    // provider failure can name paths and credentials, and this string is both
+    // shown and logged.
+    console.error("Could not save a provider credential:", error instanceof Error ? error.message : "unknown")
+    return NextResponse.json(
+      { error: "This key could not be saved. The server could not complete the encryption step — please try again, or contact support if it continues." },
+      { status: 500 },
+    )
+  }
+}
+
+async function saveProviderCredential(request: NextRequest, { provider: raw }: { provider: string }) {
   const auth = await authorize(request, raw)
   if ("error" in auth) return auth.error
   const { user, provider } = auth
@@ -66,9 +82,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ provider: string }> }) {
-  const { provider: raw } = await params
-  const auth = await authorize(request, raw)
-  if ("error" in auth) return auth.error
-  const removed = await deleteCredential(auth.user.id, auth.provider)
-  return NextResponse.json({ disconnected: removed })
+  try {
+    const { provider: raw } = await params
+    const auth = await authorize(request, raw)
+    if ("error" in auth) return auth.error
+    const removed = await deleteCredential(auth.user.id, auth.provider)
+    return NextResponse.json({ disconnected: removed })
+  } catch (error) {
+    console.error("Could not disconnect a provider credential:", error instanceof Error ? error.message : "unknown")
+    return NextResponse.json({ error: "That key could not be disconnected. Please try again." }, { status: 500 })
+  }
 }
