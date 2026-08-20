@@ -19,11 +19,32 @@ const chatRoute = readFileSync("src/app/api/studio/projects/[projectId]/director
  * new negative regex on top of the last one, so the failure mode is not that
  * someone reinstates the whole thing — it is that one helper creeps back in.
  */
-describe("the chat route cannot spend the user's credits", () => {
-  it("imports no credit primitives", () => {
-    for (const primitive of ["deductUserCredits", "refundGenerationCredits", "calculateCreditCost"]) {
+describe("the chat route cannot spend the user's credits on generation", () => {
+  // The rule narrowed when chat turns became metered, and the reason it existed
+  // is worth restating so it is not widened back by accident. What it guards
+  // against is the route billing for *generation* outside the tool registry,
+  // producing a charge where submit_generation would have produced an approval
+  // card the user could refuse.
+  //
+  // Charging for the turn itself is not that. A turn has no approval card by
+  // nature — the user already chose to send the message — and the amount comes
+  // from tokens the provider counted, not from a generation rate card. So the
+  // deduction is allowed, and pinned instead to the shape that makes it safe.
+  it("prices nothing from the generation rate card", () => {
+    for (const primitive of ["refundGenerationCredits", "calculateCreditCost"]) {
       expect(chatRoute).not.toContain(primitive)
     }
+  })
+
+  it("charges only for measured token usage, through one function", () => {
+    expect(chatRoute).toContain("chatTurnCredits")
+    // One charge site. Two would be a turn billed twice on the streaming path.
+    expect((chatRoute.match(/deductUserCredits\(/g) || []).length).toBe(1)
+  })
+
+  it("charges nothing for a turn the customer's own provider billed them for", () => {
+    expect(chatRoute).toContain("ranOnCustomerKey")
+    expect(chatRoute).toMatch(/if \(ranOnCustomerKey\) return 0/)
   })
 
   it("calls no generation provider directly", () => {

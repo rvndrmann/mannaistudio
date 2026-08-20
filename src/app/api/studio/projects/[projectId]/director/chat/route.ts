@@ -18,6 +18,8 @@ import { hasCredential, withCredential } from "@/lib/byok/credential-service"
 import { runWithCredential } from "@/lib/byok/active-credential"
 import { ownKeysOnly } from "@/lib/byok/preferences"
 import { OwnKeysOnlyError } from "@/lib/byok/billing"
+import { chatTurnCredits, type TokenUsage } from "@/lib/byok/chat-pricing"
+import { deductUserCredits } from "@/lib/studio/credits"
 import { fetchDirectorRuntimeSettings } from "@/lib/studio/director-runtime-settings"
 import { buildEntityMentionContext, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { collectDirectorVisionAttachments } from "@/lib/studio/director-vision"
@@ -154,10 +156,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // "Only my own keys" is honoured here too. A setting that stops generation
     // while the agent keeps running on us does not mean what it says.
     const chatProvider = chatModelProvider(model)
+    // Set when the turn ran on the customer's own account, so the metering
+    // below knows not to charge for something we were not billed for.
+    let ranOnCustomerKey = false
     const runOnRightAccount = async <T,>(work: () => Promise<T>): Promise<T> => {
       if (!chatProvider) return work()
       const connected = await hasCredential(context.user.id, chatProvider).catch(() => false)
       if (connected) {
+        ranOnCustomerKey = true
         const result = await withCredential({ userId: context.user.id, provider: chatProvider }, (parts) =>
           runWithCredential(chatProvider, parts, work))
         // Null means the credential vanished between the check and the read.
@@ -172,6 +178,37 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return work()
     }
 
+    /**
+     * Bills a completed turn.
+     *
+     * After the turn, never before: a turn that failed produced no reply and
+     * should cost nothing, and the token count is not known until it is done.
+     * A turn on the customer's own key is free here because their provider has
+     * already billed them for it directly.
+     *
+     * A failed deduction is logged and swallowed. Losing the reply the user is
+     * reading over a billing write would be a worse outcome than an uncharged
+     * turn, and the transaction ledger records what did happen either way.
+     */
+    const chargeForTurn = async (response: Awaited<ReturnType<typeof runDirectorAgent>>) => {
+      if (ranOnCustomerKey) return 0
+      const credits = chatTurnCredits(model, (response.usage || {}) as TokenUsage)
+      if (credits <= 0) return 0
+      try {
+        const deduction = await deductUserCredits(
+          context.user.id,
+          credits,
+          model,
+          "AI Director chat turn",
+          context.supabase,
+        )
+        if (!deduction.success) console.warn("Could not charge for a Director turn:", deduction.errorMessage)
+      } catch (error) {
+        console.warn("Could not charge for a Director turn:", error instanceof Error ? error.message : "unknown")
+      }
+      return credits
+    }
+
     const persistAssistantMessage = async (response: Awaited<ReturnType<typeof runDirectorAgent>>) => {
       // Read after the run, so the button offers the step the workspace is on
       // once this run's writes have landed.
@@ -182,7 +219,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const timeline = [...response.timeline, ...(progress ? [progress] : []), ...(nextStep ? [nextStep] : [])]
       const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, workflow_run_id: workflowRun.id, role: "assistant", content: response.content, tool_calls: response.toolCalls, suggested_actions: response.suggestedActions, timeline_blocks: timeline, timeline_version: 1 }).select().single()
       if (assistantError) throw assistantError
-      return { sessionId, userMessage, assistantMessage, provider: model.startsWith("gemini") ? "google" : "openai", model, usage: response.usage }
+      // Charged here so both the streaming and non-streaming paths bill exactly
+      // once, and only after the reply is safely persisted.
+      const creditsCharged = await chargeForTurn(response)
+      return {
+        sessionId,
+        userMessage,
+        assistantMessage,
+        provider: model.startsWith("gemini") ? "google" : "openai",
+        model,
+        usage: response.usage,
+        // Told to the client so the credit badge can move, and so a turn on the
+        // customer's own key can say plainly that it cost nothing.
+        creditsCharged,
+        billingMode: ranOnCustomerKey ? "byok" : "credits",
+      }
     }
 
     // A non-streaming client still gets the single JSON body it expects.
