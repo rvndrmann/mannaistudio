@@ -106,3 +106,19 @@ describe("running on your own keys only", () => {
       .toEqual({ mode: "credits", credits: 12 })
   })
 })
+
+describe("how a refusal is reported over HTTP", () => {
+  it("carries Payment Required rather than falling through to 500", () => {
+    // Nothing has gone wrong: the user chose to run only on their own keys and
+    // has not connected this one. A 500 gets retried by clients and pages
+    // someone, and tells the person who set the option that we are broken.
+    const error = new OwnKeysOnlyError("byteplus")
+    expect(error.status).toBe(402)
+  })
+
+  it("still says which key is missing and how to proceed", () => {
+    const error = new OwnKeysOnlyError("byteplus")
+    expect(error.message).toContain("byteplus")
+    expect(error.message).toMatch(/connect one|turn off/i)
+  })
+})

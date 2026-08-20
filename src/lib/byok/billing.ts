@@ -22,6 +22,16 @@ export type BillingDecision = {
 }
 
 export class OwnKeysOnlyError extends Error {
+  /**
+   * Payment Required, not Internal Server Error.
+   *
+   * Nothing has gone wrong here — the user chose to run only on their own keys
+   * and has not connected this one. Reported as a 500 it reads as our fault:
+   * clients retry it, monitoring alerts on it, and the person who set the
+   * option is told the server is broken instead of what to do next.
+   */
+  readonly status = 402
+
   constructor(provider: string) {
     super(`You have chosen to run everything on your own provider keys, and no ${provider} key is connected. Connect one under Integrations, or turn off "only my own keys" to let this run on studio credits.`)
     this.name = "OwnKeysOnlyError"

@@ -38,7 +38,16 @@ export async function requireAuthenticatedProject(
 }
 
 export function studioErrorStatus(error: unknown): number {
-  return error instanceof StudioAccessError ? error.status : 500
+  if (error instanceof StudioAccessError) return error.status
+  // Any error that names its own HTTP status is taken at its word. Errors that
+  // describe a user's configuration rather than a fault — no key connected for
+  // the provider they insisted on — would otherwise be reported as 500, which
+  // clients retry and monitoring pages someone about.
+  if (error && typeof error === "object" && "status" in error) {
+    const status = (error as { status?: unknown }).status
+    if (typeof status === "number" && status >= 400 && status <= 599) return status
+  }
+  return 500
 }
 
 export function studioErrorMessage(error: unknown, fallback: string): string {

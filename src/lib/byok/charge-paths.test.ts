@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { byokProviderFor } from "./providers"
+import { OwnKeysOnlyError } from "./billing"
+import { studioErrorStatus } from "@/lib/studio/server-context"
 
 /**
  * Every path that can charge a user must ask who is paying first.
@@ -112,5 +114,18 @@ describe("no refund path can hand back credits that were never taken", () => {
       expect(source, `${path} still guesses the refund from estimated_credits`)
         .not.toMatch(/credits_used \|\| job\.estimated_credits/)
     }
+  })
+})
+
+describe("a refusal reaches the caller as a refusal", () => {
+  it("gives an own-keys-only error its own status instead of 500", () => {
+    // studioErrorStatus is what every generate route reports through. Without
+    // this, choosing "only my own keys" and generating on an unconnected
+    // provider answered 500 — a server fault, for a setting working correctly.
+    expect(studioErrorStatus(new OwnKeysOnlyError("fal"))).toBe(402)
+  })
+
+  it("leaves a genuine fault as 500", () => {
+    expect(studioErrorStatus(new Error("something actually broke"))).toBe(500)
   })
 })
