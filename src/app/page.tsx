@@ -25,8 +25,7 @@ import {
     Tv,
     Wand2,
     X,
-    Zap,
-} from "lucide-react"
+    Zap, KeyRound,} from "lucide-react"
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 
@@ -224,6 +223,15 @@ export default function LandingPage() {
                                 It writes scripts, sets up character turnaround assets, builds storyboards, and renders broadcast-ready video clips.
                             </p>
 
+                            {/* The BYOK pitch, stated as what it costs rather than
+                                as a feature name: connect a key and the provider
+                                bills you directly at their price. */}
+                            <p className="mt-4 max-w-xl t-body text-white/45">
+                                Bring your own API keys and pay OpenAI, BytePlus, fal.ai or Google
+                                directly at their price &mdash; no markup to a middleman. Or use studio
+                                credits and skip the setup. Switch per provider, whenever you like.
+                            </p>
+
                             <div className="mt-10 flex flex-wrap items-center gap-4">
                                 {user ? (
                                     <Link href="/studio" className="btn-primary flex items-center gap-2.5 px-7 py-3.5 text-[15px]">
@@ -256,6 +264,10 @@ export default function LandingPage() {
                                 <div className="flex items-center gap-2">
                                     <Film className="h-4 w-4 text-primary" />
                                     <span>Multi-Model Pipeline</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <KeyRound className="h-4 w-4 text-primary" />
+                                    <span>Bring Your Own API Keys</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <Bot className="h-4 w-4 text-primary" />
