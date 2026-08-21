@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Loader2, TrendingDown, TrendingUp } from "lucide-react"
+import { KeyRound, Loader2, TrendingDown, TrendingUp } from "lucide-react"
 
 type CreditTransaction = {
   id: string
@@ -19,6 +19,7 @@ const typeLabels: Record<string, string> = {
   team_allocation: "Team Allocation",
   refund: "Refund",
   bonus: "Bonus",
+  byok_generation: "Own Key",
 }
 
 function formatType(type: string) {
@@ -75,10 +76,10 @@ export default function CreditUsageTab() {
                 {new Date(item.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
               </td>
               <td className="whitespace-nowrap px-4 py-3 font-medium text-zinc-200">{formatType(item.type)}</td>
-              <td className={`whitespace-nowrap px-4 py-3 font-bold ${item.amount < 0 ? "text-red-300" : "text-[#b9f42e]"}`}>
+              <td className={`whitespace-nowrap px-4 py-3 font-bold ${item.amount < 0 ? "text-red-300" : item.amount > 0 ? "text-[#b9f42e]" : "text-zinc-400"}`}>
                 <span className="inline-flex items-center gap-1">
-                  {item.amount < 0 ? <TrendingDown className="h-3 w-3" /> : <TrendingUp className="h-3 w-3" />}
-                  {item.amount > 0 ? "+" : ""}{item.amount.toLocaleString()}
+                  {item.amount === 0 ? <KeyRound className="h-3 w-3" /> : item.amount < 0 ? <TrendingDown className="h-3 w-3" /> : <TrendingUp className="h-3 w-3" />}
+                  {item.amount === 0 ? "0 · your key" : `${item.amount > 0 ? "+" : ""}${item.amount.toLocaleString()}`}
                 </span>
               </td>
               <td className="whitespace-nowrap px-4 py-3 text-zinc-400">{item.balance_after.toLocaleString()}</td>

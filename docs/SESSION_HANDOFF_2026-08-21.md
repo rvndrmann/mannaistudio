@@ -95,6 +95,31 @@ past. It now keys off `isMembershipActive`; an expired member sees the renew
 flow, and a member inside a cancelled period stays active until it actually
 ends.
 
+### Own-key generations now leave a record in the credit ledger
+
+A generation on a customer's own provider key charges no studio credits and so
+wrote no `credit_transactions` row, and the Credit Usage tab reads only that
+table — so own-key work was invisible there. That is a dispute waiting to
+happen: a user could claim credits were taken for a generation when none were,
+and there was no positive record to answer with.
+
+Every own-key job now leaves its own ledger line — amount `0`, `balance_after`
+equal to the balance at the time, the model and provider named — written by a
+trigger on the two job tables (`creator_quick_generations` and
+`creator_generation_jobs`) rather than at each of the five API charge sites, so
+a sixth path cannot forget it. It is safe to fire on insert because every BYOK
+job is inserted already set to run — the Director's go in `approved` and execute
+in the background — so there is no un-run proposal to record by mistake. The
+recording is best-effort inside the trigger: any failure is swallowed with a
+warning so an audit write can never block the generation. `credit_transactions`
+gains no new charge — the row is a zero, and the balance is stated unchanged
+either side of it. The Credit Usage tab renders these as an "Own Key" row,
+`0 · your key`, in a neutral colour rather than as a gain.
+
+Verified live: inserting a `billing_mode = 'byok'` job produced exactly one
+`byok_generation` line at 0 credits with the balance unchanged, a `credits` job
+produced none, and the balance did not move. Test rows were removed afterward.
+
 ### What the audit confirmed is already safe
 
 - **BYOK vault.** Own `byok` schema outside PostgREST's search path, `revoke all
@@ -129,9 +154,11 @@ back. Two things worth an operator's eye, neither a code bug:
 ## Migrations Applied
 
 - `20260821120000_lock_down_value_granting_rpcs.sql`
+- `20260821130000_record_byok_generation_usage.sql`
 
-Pushed to the linked Supabase project. The lockdown is therefore **live now**,
-independent of any deploy — it is a database change.
+Both pushed to the linked Supabase project. The RPC lockdown and the own-key
+ledger trigger are therefore **live now**, independent of any deploy — they are
+database changes. The Credit Usage tab change ships with the next build.
 
 ## Current Runtime Notes
 
