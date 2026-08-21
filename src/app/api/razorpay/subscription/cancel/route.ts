@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import Razorpay from 'razorpay'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 
 function rzpError(error: any): string {
     return (
@@ -70,7 +71,9 @@ export async function POST() {
 
         // Unlink locally now (webhook also handles this, but don't depend on it).
         await supabase.rpc('set_razorpay_subscription', { p_profile_id: user.id, p_subscription_id: '' })
-        await supabase.rpc('record_payment', {
+        // The payment log is written by the server only; the signed-in role has
+        // no grant on record_payment.
+        await createServiceClient().rpc('record_payment', {
             p_email: user.email || '',
             p_txnid: `cancel_${subscriptionId.slice(0, 16)}_${Date.now()}`,
             p_payment_id: subscriptionId,

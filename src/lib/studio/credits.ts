@@ -189,14 +189,25 @@ export async function deductUserCredits(
   }
 }
 
+/**
+ * Grant credits outright.
+ *
+ * `add_user_credits` is service-role only — granting credit is something the
+ * server does after it has verified a payment, never something a session asks
+ * for. The client is required rather than defaulted for that reason: a browser
+ * client here would fail at the database, which is a confusing way to find out.
+ *
+ * For a Razorpay top-up, prefer `grant_purchased_credits`, which is idempotent
+ * on the payment id and cannot double-credit a replayed submission.
+ */
 export async function addUserCredits(
   userId: string,
   amount: number,
   type = "purchase",
   description = "Credit Top Up",
-  client?: SupabaseClient,
+  client: SupabaseClient,
 ): Promise<number> {
-  const supabase = client ?? createBrowserClient()
+  const supabase = client
   const { data, error } = await supabase.rpc("add_user_credits", {
     p_user_id: userId,
     p_amount: amount,

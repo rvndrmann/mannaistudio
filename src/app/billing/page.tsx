@@ -238,12 +238,11 @@ export default function BillingPage() {
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,
-                amountInr,
               }),
             })
             const verifyData = await verifyRes.json()
             if (!verifyRes.ok) throw new Error(verifyData.error || "Payment verification failed")
-            setSubSuccess(`Payment successful! Added ${amountInr.toLocaleString()} credits to your account.`)
+            setSubSuccess(verifyData.message)
             loadBillingData()
           } catch (vErr) {
             setSubError(vErr instanceof Error ? vErr.message : "Payment verification failed")

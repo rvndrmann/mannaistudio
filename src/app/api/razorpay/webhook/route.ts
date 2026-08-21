@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { billingTiers, isBillingTierId, tierForPlanId, type BillingTierId } from '@/lib/billing-plans'
 import { sendCapiEvent } from '@/lib/meta-capi'
 
@@ -31,7 +31,11 @@ export async function POST(req: Request) {
         const orderEntity = event?.payload?.order?.entity
         const subscriptionId: string = subscription?.id || ''
 
-        const supabase = await createClient()
+        // Razorpay carries no user session, so this request arrives as `anon`.
+        // The credit and membership functions it calls are service-role only —
+        // they used to be reachable by anyone holding the public anon key. The
+        // signature check above is what authenticates this caller.
+        const supabase = createServiceClient()
 
         // --- One-time bid / credit purchase (order.paid) ---
         if (eventType === 'order.paid') {

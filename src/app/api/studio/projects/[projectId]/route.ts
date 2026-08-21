@@ -26,12 +26,37 @@ function getDbClient(fallback: any, accessToken?: string) {
   return fallback
 }
 
-async function ownedProject(projectId: string) {
+type ProjectAccess = "read" | "edit" | "owner"
+
+// The data queries below run as the service role, which bypasses RLS — so the
+// access check RLS would have made has to happen here, or a caller can name any
+// project id and read, edit, or delete a stranger's project. These three
+// SECURITY DEFINER helpers are the same predicates the project's RLS policies
+// use, and they read auth.uid() from the cookie client's JWT:
+//   read  -> owner or any shared member
+//   edit  -> owner or a non-viewer member
+//   owner -> the owner alone (delete)
+async function assertProjectAccess(supabase: any, projectId: string, level: ProjectAccess) {
+  const fn = level === "owner"
+    ? "owns_creator_project"
+    : level === "edit"
+      ? "can_edit_creator_project"
+      : "can_access_creator_project"
+  const { data, error } = await supabase.rpc(fn, { p_project_id: projectId })
+  if (error) throw new Error("Could not verify project access")
+  // Reported as "not found" rather than "forbidden" so a stranger cannot use
+  // this endpoint to learn which project ids exist.
+  if (data !== true) throw new Error("Project not found")
+}
+
+async function ownedProject(projectId: string, level: ProjectAccess = "read") {
   const supabase = await createClient(); const { data: { user } } = await supabase.auth.getUser(); if (!user) throw new Error("Unauthorized")
+  await assertProjectAccess(supabase, projectId, level)
   const { data: { session } } = await supabase.auth.getSession()
   const db = getDbClient(supabase, session?.access_token)
-  // RLS grants this row to the owner and to shared team members; an explicit
-  // owner filter here would hide projects that were shared with the caller.
+  // Access has been verified above, so the service-role fetch here is scoped by
+  // that check rather than by an owner filter — which would wrongly hide a
+  // project shared with the caller.
   const { data: project, error } = await db.from("creator_projects").select("*").eq("id", projectId).single(); if (error || !project) throw new Error("Project not found")
   return { supabase, user, project, db }
 }
@@ -101,7 +126,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   try {
     const { projectId } = await params;
-    const { supabase, project } = await ownedProject(projectId);
+    const { supabase, project } = await ownedProject(projectId, "edit");
     const body = await request.json();
     const updates: Record<string, string | null> = {};
     for (const key of ["name", "description", "cover_image"]) if (body[key] !== undefined) updates[key] = body[key];
@@ -117,7 +142,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 export async function DELETE(_: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   try {
     const { projectId } = await params;
-    const { supabase, project } = await ownedProject(projectId);
+    const { supabase, project } = await ownedProject(projectId, "owner");
     const db = getDbClient(supabase);
 
     // Delete associated child records before deleting the project
