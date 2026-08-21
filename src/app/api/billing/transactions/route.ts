@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { fetchMyPayments } from "@/lib/membership"
+import { fetchMyPayments, isMembershipActive } from "@/lib/membership"
 
 export async function GET() {
   try {
@@ -20,13 +20,20 @@ export async function GET() {
     ])
 
     const profile = profileRes.data
-    const subscription = profile?.razorpay_subscription_id || profile?.membership_status === "active"
+    // Active is the date-aware truth, not the stored status. The status column
+    // is never flipped back when membership_expires_at passes — access ends by
+    // the read-time check in isMembershipActive — so keying the panel off the
+    // raw status would show a lapsed or cancelled member an "active" plan with a
+    // billing date in the past. A member still inside a cancelled period keeps
+    // active:true until the period ends, which is correct.
+    const active = isMembershipActive(profile)
+    const subscription = active
       ? {
           active: true,
-          status: profile.membership_status || "active",
-          subscriptionId: profile.razorpay_subscription_id || null,
-          createdAt: profile.created_at || null,
-          nextBillingDate: profile.membership_expires_at || null,
+          status: profile?.membership_status || "active",
+          subscriptionId: profile?.razorpay_subscription_id || null,
+          createdAt: profile?.created_at || null,
+          nextBillingDate: profile?.membership_expires_at || null,
         }
       : null
 
