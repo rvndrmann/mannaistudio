@@ -212,7 +212,7 @@ export function bytePlusVideoRatio(requestedRatio: string, hasVideoReference: bo
   return bytePlusVideoRatios.includes(requestedRatio as (typeof bytePlusVideoRatios)[number]) ? requestedRatio : "9:16"
 }
 
-export async function submitBytePlusVideo(input: { model: VideoGenerationModelId; prompt: string; duration: number; resolution: string; ratio: string; referenceUrls?: string[]; faceReferenceUrls?: string[]; videoReferenceUrls?: string[]; generationMode?: "keyframe" | "multi_image"; audioEnabled?: boolean; subjects?: SeedanceSubject[]; mentionedNames?: string[] }) {
+export async function submitBytePlusVideo(input: { model: VideoGenerationModelId; prompt: string; duration: number; resolution: string; ratio: string; referenceUrls?: string[]; faceReferenceUrls?: string[]; videoReferenceUrls?: string[]; generationMode?: "keyframe" | "multi_image"; audioEnabled?: boolean; subjects?: SeedanceSubject[]; mentionedNames?: string[]; compositionFrames?: number }) {
   // Only a character's reference is registered; everything else is sent as-is.
   const faces = new Set(input.faceReferenceUrls || [])
   const resolvedUrls = await Promise.all((input.referenceUrls || []).map((url) => resolveBytePlusReferenceUrl(url, faces.has(url))))
@@ -223,7 +223,24 @@ export async function submitBytePlusVideo(input: { model: VideoGenerationModelId
   }]
 
   if (input.generationMode === "keyframe") {
-    resolvedUrls.forEach((url, index) => content.push({ type: "image_url", image_url: { url }, role: index === 0 ? "first_frame" : index === 1 ? "last_frame" : "reference_image" }))
+    // How many of these are composition frames, rather than which position they
+    // happen to sit in.
+    //
+    // The roles were assigned purely by index: first, last, then everything
+    // else. That reads correctly only when the caller sends a start frame and
+    // an end frame and nothing else in front of the cast — so the moment a shot
+    // sends its keyframe plus three cast references, the first cast member
+    // became the clip's *last frame* and the video ended on a reference sheet.
+    // The caller knows how many composition frames it put at the front, so it
+    // says, and a cast reference can never be mistaken for one.
+    const frames = typeof input.compositionFrames === "number"
+      ? Math.max(0, Math.min(2, input.compositionFrames))
+      : Math.min(2, resolvedUrls.length)
+    resolvedUrls.forEach((url, index) => content.push({
+      type: "image_url",
+      image_url: { url },
+      role: index === 0 && frames >= 1 ? "first_frame" : index === 1 && frames >= 2 ? "last_frame" : "reference_image",
+    }))
   } else {
     for (const url of resolvedUrls) content.push({ type: "image_url", image_url: { url }, role: "reference_image" })
   }

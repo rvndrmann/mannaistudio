@@ -24,7 +24,20 @@ export const generationRequestSchema = z.object({
   // leaving the choice to preference-based routing.
   model: z.string().trim().max(100).optional(),
   audioEnabled: z.boolean().default(true),
-  generationMode: z.enum(["keyframe", "multi_image"]).default("keyframe"),
+  /**
+   * How the attached images are read.
+   *
+   * `multi_image` sends every image as a plain reference, which is what a
+   * storyboard shot wants: its own keyframe for composition plus the cast, all
+   * of them locking a look and none of them claiming a position in time.
+   *
+   * `keyframe` assigns the first two images as the clip's opening and closing
+   * frames, so it is only right when the caller genuinely has a start and an
+   * end frame — the storyboard panel's own start/end flow. Left as the default
+   * it applied to chat generations too, where the images after the keyframe are
+   * cast references, and the first of those became the clip's last frame.
+   */
+  generationMode: z.enum(["keyframe", "multi_image"]).default("multi_image"),
   referencePaths: z.array(z.string().trim().min(1).max(2_000)).max(8).default([]),
   // Clips referenced for motion and look continuity, kept apart from image
   // references because the provider treats the two differently.

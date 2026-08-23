@@ -1,3 +1,4 @@
+import { generationRequestSchema } from "./model-routing"
 import { describe, expect, it } from "vitest"
 import { formatBytePlusError, formatBytePlusMediaUrl, bytePlusVideoRatio, bytePlusVideoReferenceLimit, formatBytePlusReferencePrompt } from "./byteplus"
 
@@ -110,5 +111,51 @@ describe("the cast is bound to the pictures that travel with the request", () =>
     )
     expect(prompt).toContain("[Video 1]")
     expect(prompt).toContain("Sara@Image 1")
+  })
+})
+
+/**
+ * A cast reference is never a frame.
+ *
+ * Roles were assigned by index — first, last, then everything else — which
+ * reads correctly only when the caller sends a start frame and an end frame and
+ * nothing in front of the cast. The moment a shot sent its keyframe plus three
+ * cast references, the first cast member became the clip's *last frame* and the
+ * video ended on a reference sheet.
+ */
+describe("keyframe mode names only the frames it was given", () => {
+  // Role assignment as submitBytePlusVideo applies it.
+  const roles = (count: number, compositionFrames: number) =>
+    Array.from({ length: count }, (_, index) =>
+      index === 0 && compositionFrames >= 1 ? "first_frame"
+        : index === 1 && compositionFrames >= 2 ? "last_frame"
+        : "reference_image")
+
+  it("makes the cast plain references when only one frame was sent", () => {
+    // Keyframe, then Sara, the car and the street.
+    expect(roles(4, 1)).toEqual(["first_frame", "reference_image", "reference_image", "reference_image"])
+  })
+
+  it("still honours a real start and end frame", () => {
+    expect(roles(4, 2)).toEqual(["first_frame", "last_frame", "reference_image", "reference_image"])
+  })
+
+  it("sends everything as a reference when no frame was given", () => {
+    expect(roles(3, 0)).toEqual(["reference_image", "reference_image", "reference_image"])
+  })
+})
+
+describe("a chat video generation defaults to multi image", () => {
+  it("reads every attached image as a reference rather than a position in time", () => {
+    // multi_image is what a storyboard shot wants: its own keyframe for
+    // composition plus the cast, none of them claiming to be the first or last
+    // frame. keyframe mode is for the panel's explicit start/end flow.
+    const parsed = generationRequestSchema.parse({ type: "video", shotNumbers: [1], episodeId: "11111111-1111-4111-8111-111111111111" })
+    expect(parsed.generationMode).toBe("multi_image")
+  })
+
+  it("still lets a caller ask for keyframe mode outright", () => {
+    const parsed = generationRequestSchema.parse({ type: "video", shotNumbers: [1], episodeId: "11111111-1111-4111-8111-111111111111", generationMode: "keyframe" })
+    expect(parsed.generationMode).toBe("keyframe")
   })
 })

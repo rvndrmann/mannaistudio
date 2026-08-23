@@ -446,7 +446,10 @@ export async function executeGenerationJobsInBackground(
                 referenceUrls,
                 faceReferenceUrls,
                 videoReferenceUrls,
-                generationMode: settings.generationMode === "multi_image" ? "multi_image" : "keyframe",
+                generationMode: settings.generationMode === "keyframe" ? "keyframe" : "multi_image",
+                // Only the shot-owned composition images count as frames; the
+                // cast that follows them is always a plain reference.
+                compositionFrames: referencePaths.filter((path) => typeof path === "string" && path.trim() && !isVideoReferencePath(path)).length,
                 audioEnabled: typeof settings.audioEnabled === "boolean" ? settings.audioEnabled : true,
                 subjects: referenceSubjects,
                 mentionedNames: mentionedEntities.map((entity) => String(entity.name || "").trim()).filter(Boolean),
