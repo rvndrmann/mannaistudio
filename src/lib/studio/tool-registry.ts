@@ -13,6 +13,7 @@ import { ownKeysOnly } from "@/lib/byok/preferences"
 import { byokProviderFor, isByokProvider } from "@/lib/byok/providers"
 import { executeGenerationJobsInBackground } from "./execute-generation"
 import { findMentionedEntityIds, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
+import { describeUntaggedEntities, findUntaggedEntities } from "./untagged-entities"
 import { sceneNotFrameReason, stripIdentityDescriptions } from "./prompt-sanitizer"
 import { ensureProjectShotLocations, ensureShotLocations, inheritedShotLocations } from "./shot-location"
 import { estimateShotSeconds } from "./shot-duration"
@@ -355,7 +356,29 @@ export const createStoryboardBatchTool = defineDirectorTool({
      * storyboard, which is a different scene order than the one requested.
      */
     insertAfterShotNumber: z.number().int().min(0).max(1_000).optional(),
-    shots: z.array(z.object({ title: z.string().trim().min(1).max(200), description: z.string().trim().max(5_000).default(""), scriptText: z.string().trim().max(10_000).default(""), prompt: z.string().trim().min(1).max(20_000), durationSeconds: z.number().positive().max(120).default(4), aspectRatio: z.string().trim().max(20).default("16:9"), referencedEntityIds: z.array(z.string().uuid()).max(30).default([]) })).min(1).max(100),
+    shots: z.array(z.object({
+      title: z.string().trim().min(1).max(200),
+      description: z.string().trim().max(5_000).default(""),
+      scriptText: z.string().trim().max(10_000).default(""),
+      prompt: z.string().trim().min(1).max(20_000),
+      /**
+       * Written here, beside the image prompt, rather than in a later pass.
+       *
+       * The two describe the same shot from one reading of the script — the
+       * frame it opens on and what happens across it — and splitting them into
+       * separate stages meant the storyboard was built, approved, and then
+       * revisited by a second tool that had to re-derive the same intent from
+       * the same source. A shot whose video prompt was never written falls back
+       * to its image prompt at generation, which is a single frame filmed as
+       * though it were a scene.
+       */
+      videoPrompt: z.string().trim().max(20_000).optional().describe(
+        "What happens across THIS ONE SHOT, as contiguous timed beats starting at 0s — `0-4s: <action>`, or the timestamped-title form `0-2s — BEAT TITLE`. Write it in the same pass as `prompt`: that one is the single frame the keyframe is drawn from, this one is the motion the clip is filmed from. Name every character and asset by @tag on every mention, because the @tag is what binds them to their reference image at the provider; a subject described in words instead of tagged is rendered from the words and drifts. Never describe a referenced character's face, hair, build, or wardrobe. Dialogue in braces, sound in angle brackets. The last beat ends where the shot ends, and that runtime overrides durationSeconds.",
+      ),
+      durationSeconds: z.number().positive().max(120).default(4),
+      aspectRatio: z.string().trim().max(20).default("16:9"),
+      referencedEntityIds: z.array(z.string().uuid()).max(30).default([]),
+    })).min(1).max(100),
   }),
   async execute(context, input) {
     const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
@@ -368,6 +391,13 @@ export const createStoryboardBatchTool = defineDirectorTool({
       .map((shot, index) => ({ index, reason: sceneNotFrameReason(shot.prompt) }))
       .filter((entry): entry is { index: number; reason: string } => Boolean(entry.reason))
     if (sceneShots.length) throw new Error(sceneShots.slice(0, 4).map((entry) => `Shot "${input.shots[entry.index].title}": ${entry.reason}`).join(" "))
+    // Beats that do not add up render unpredictably, and only the writer can
+    // fix them — so the same check write_shot_video_prompts applies is applied
+    // here, rather than storing a broken timeline to be discovered as a bad clip.
+    const beatFaults = input.shots.flatMap((shot) => shot.videoPrompt
+      ? describeBeatProblems(shot.videoPrompt).map((problem) => `Shot "${shot.title}": ${problem}`)
+      : [])
+    if (beatFaults.length) throw new Error(beatFaults.slice(0, 8).join(" "))
     const referencedIds = Array.from(new Set(input.shots.flatMap((shot) => shot.referencedEntityIds)))
     if (referencedIds.length) {
       const { data: entities, error: entityError } = await context.supabase.from("creator_entities").select("id").eq("project_id", context.project.id).in("id", referencedIds)
@@ -407,6 +437,20 @@ export const createStoryboardBatchTool = defineDirectorTool({
     // as references and puts unrelated characters and props in the frame.
     const { data: batchEntityRows } = await context.supabase.from("creator_entities").select("id,name,type").eq("project_id", context.project.id)
     const batchEntities = (batchEntityRows || []) as MentionableEntity[]
+    // An asset written as words instead of tagged ships with its reference
+    // image attached and nothing in the prompt pointing at it, so the model
+    // renders it from the words. Checked rather than asked for: the tool
+    // descriptions and both agent briefs already say to tag every subject, and
+    // prompts still came back with the character tagged and the car described.
+    const untagged = input.shots.flatMap((shot) => {
+      const found = [
+        ...findUntaggedEntities(shot.prompt, batchEntities),
+        ...(shot.videoPrompt ? findUntaggedEntities(shot.videoPrompt, batchEntities) : []),
+      ]
+      const unique = found.filter((entity, index) => found.findIndex((other) => other.id === entity.id) === index)
+      return unique.length ? [describeUntaggedEntities(unique, `Shot "${shot.title}"`)] : []
+    })
+    if (untagged.length) throw new Error(untagged.slice(0, 4).join(" "))
     const rows = input.shots.map((shot, index) => {
       const text = `${shot.prompt}\n${shot.description}\n${shot.scriptText}`
       const cast = findShotCastEntityIds(text, batchEntities, shot.referencedEntityIds)
@@ -417,10 +461,29 @@ export const createStoryboardBatchTool = defineDirectorTool({
       // A shot runs as long as what happens in it. Left on the schema default,
       // every shot in a storyboard came out the same four seconds, and a shot
       // carrying a long line was clipped mid-sentence.
-      const durationSeconds = shot.durationSeconds === 4
-        ? estimateShotSeconds(`${shot.prompt}\n${shot.scriptText}`)
-        : shot.durationSeconds
-      return { episode_id: input.episodeId, order_index: offset + index, title: shot.title, description: shot.description || null, script_text: shot.scriptText || null, prompt: stripIdentityDescriptions(shot.prompt), duration_seconds: durationSeconds, aspect_ratio: shot.aspectRatio, referenced_entities: cast.length ? cast : shot.referencedEntityIds }
+      // Written in the same pass as the image prompt, so a shot leaves this
+      // tool ready to film. Sanitised the same way: identity prose overrides
+      // the reference art whichever prompt it is written into.
+      const videoPrompt = shot.videoPrompt ? stripIdentityDescriptions(shot.videoPrompt) : ""
+      // The beats are the runtime when there are beats. Otherwise the estimate
+      // from the script stands, as it always did.
+      const beatSeconds = videoPrompt ? beatRuntimeSeconds(videoPrompt) : null
+      const durationSeconds = beatSeconds
+        ?? (shot.durationSeconds === 4
+          ? estimateShotSeconds(`${shot.prompt}\n${shot.scriptText}`)
+          : shot.durationSeconds)
+      return {
+        episode_id: input.episodeId,
+        order_index: offset + index,
+        title: shot.title,
+        description: shot.description || null,
+        script_text: shot.scriptText || null,
+        prompt: stripIdentityDescriptions(shot.prompt),
+        duration_seconds: durationSeconds,
+        aspect_ratio: shot.aspectRatio,
+        referenced_entities: cast.length ? cast : shot.referencedEntityIds,
+        ...(videoPrompt ? { metadata: writeShotVideoPrompt(null, videoPrompt) } : {}),
+      }
     })
     // A prompt names the location only where it changes, so the shots in
     // between were built with none and later rendered nowhere. The scene runs
@@ -628,7 +691,7 @@ export const submitGenerationTool = defineDirectorTool({
         await ensureShotLocations(context.supabase, { shots: episodeShots, entities: (projectEntityRows || []) as { id: string; type: string }[] })
       }
     }
-    const { data: generationShots, error: validationError } = await context.supabase.from("creator_shots").select("id,prompt,referenced_entities,keyframe_image,video_url").in("id", request.shotIds)
+    const { data: generationShots, error: validationError } = await context.supabase.from("creator_shots").select("id,prompt,metadata,referenced_entities,keyframe_image,video_url").in("id", request.shotIds)
     if (validationError) throw validationError
     const referencedIds = Array.from(new Set([...(generationShots || []).flatMap((shot) => shot.referenced_entities || []), ...request.mentionedEntityIds]))
     if (referencedIds.length) {
@@ -700,7 +763,17 @@ export const submitGenerationTool = defineDirectorTool({
     // a shot that already carries a saved storyboard prompt does not need the
     // model to restate it — refusing to generate in that case only blocks work
     // the user can see is ready.
-    const savedPrompts = new Map((generationShots || []).map((shot) => [shot.id, (shot.prompt || "").trim()]))
+    // A video is filmed from the shot's video prompt; an image is drawn from
+    // its image prompt. This map used to hold `prompt` for both, so every video
+    // that fell back to the saved text was filmed from a description of a single
+    // frame — which is why those clips came back as a still that drifts. The
+    // video prompt has been written and stored all along; nothing read it.
+    const savedPrompts = new Map((generationShots || []).map((shot) => [
+      shot.id,
+      request.type === "video"
+        ? (readShotVideoPrompt(shot) || (shot.prompt || "").trim())
+        : (shot.prompt || "").trim(),
+    ]))
     const promptFor = (shotId: string) => {
       if (input.prompts[shotId]?.trim()) return input.prompts[shotId].trim()
       for (const [number, id] of Array.from(promptsByNumber.entries())) {
@@ -1023,6 +1096,21 @@ export const writeShotVideoPromptsTool = defineDirectorTool({
     const faults = input.shots.flatMap((entry) => describeBeatProblems(entry.videoPrompt).map((problem) => `Shot ${entry.shotNumber}: ${problem}`))
     if (faults.length) throw new Error(faults.slice(0, 8).join(" "))
 
+    // The path that actually produced "a dark sleek modern car" while the
+    // project held reference art for @Sleek Luxury Car. The tag is what binds a
+    // subject to its picture at the provider, so an untagged asset is rendered
+    // from the words and comes back as a different one.
+    const { data: entityRows } = await context.supabase
+      .from("creator_entities")
+      .select("id,name,type,reference_images,primary_reference_image")
+      .eq("project_id", context.project.id)
+    const projectEntities = (entityRows || []) as MentionableEntity[]
+    const untagged = input.shots.flatMap((entry) => {
+      const found = findUntaggedEntities(entry.videoPrompt, projectEntities)
+      return found.length ? [describeUntaggedEntities(found, `Shot ${entry.shotNumber}'s video prompt`)] : []
+    })
+    if (untagged.length) throw new Error(untagged.slice(0, 4).join(" "))
+
     const written = await Promise.all(input.shots.map(async (entry) => {
       const shot = byNumber.get(entry.shotNumber)!
       // Identity descriptions override the reference art, exactly as they do in
@@ -1339,7 +1427,77 @@ export const acceptExistingArtTool = defineDirectorTool({
   },
 })
 
+/**
+ * Reads back a tool result that was too large to carry in the conversation.
+ *
+ * Oversized results are cut to a head and a tail before they reach the model,
+ * which keeps a turn affordable but would lose the middle if there were no way
+ * back to it. There is: every tool result is written whole to
+ * creator_workflow_steps.output the moment the tool finishes, so the full text
+ * is already sitting there under the step number the marker names.
+ *
+ * Scoped to the run that is asking. The run id is supplied by the tool service
+ * from the live run rather than by the model, so this cannot be pointed at
+ * another conversation's results — and RLS on creator_workflow_steps scopes it
+ * to the owner besides.
+ */
+export const readToolOutputTool = defineDirectorTool({
+  name: "read_tool_output",
+  version: 1,
+  risk: "read",
+  requiresApproval: false,
+  input: z.object({
+    stepSequence: z.number().int().positive(),
+    /** Code points to skip, so a long result can be walked in pages. */
+    offset: z.number().int().nonnegative().default(0),
+    limit: z.number().int().min(256).max(24_000).default(8_000),
+    // Filled in by the tool service from the run in flight, never by the model.
+    workflowRunId: z.string().uuid().optional(),
+  }),
+  async execute(context, input) {
+    if (!input.workflowRunId) throw new Error("read_tool_output is only available inside a running workflow.")
+    const { data: run } = await context.supabase
+      .from("creator_workflow_runs")
+      .select("id")
+      .eq("id", input.workflowRunId)
+      .eq("project_id", context.project.id)
+      .eq("user_id", context.user.id)
+      .maybeSingle()
+    if (!run) throw new Error("That workflow run does not belong to this project.")
+
+    const { data: step, error } = await context.supabase
+      .from("creator_workflow_steps")
+      .select("output,label,status")
+      .eq("run_id", input.workflowRunId)
+      .eq("sequence", input.stepSequence)
+      .order("attempt", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error) throw error
+    if (!step) throw new Error(`This run has no step ${input.stepSequence}.`)
+    if (step.output === null || step.output === undefined) throw new Error(`Step ${input.stepSequence} (${step.label}) recorded no output to read.`)
+
+    // Code points, matching how the pruner counted when it reported the number
+    // of omitted characters — otherwise an offset taken from that marker lands
+    // in the wrong place, and can land inside a character.
+    const points = Array.from(JSON.stringify(step.output) ?? "null")
+    const slice = points.slice(input.offset, input.offset + input.limit).join("")
+    const nextOffset = input.offset + input.limit
+    return {
+      label: step.label,
+      totalCharacters: points.length,
+      offset: input.offset,
+      content: slice,
+      // Told rather than implied: a model that has to infer whether it reached
+      // the end will either stop early or keep asking past it.
+      hasMore: nextOffset < points.length,
+      ...(nextOffset < points.length ? { nextOffset } : {}),
+    }
+  },
+})
+
 export const directorTools = {
+  read_tool_output: readToolOutputTool,
   inspect_current_project: inspectCurrentProjectTool,
   read_episode_script: readEpisodeScriptTool,
   save_script_prompts: saveScriptPromptsTool,

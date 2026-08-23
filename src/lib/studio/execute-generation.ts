@@ -5,6 +5,7 @@ import { generateFalImage, submitFalVideo } from "./fal"
 import { generateGoogleImage, submitGoogleVideo } from "./google"
 import type { VideoGenerationModelId, ImageGenerationModelId } from "./generation-models"
 import { buildEntityMentionContext, chosenReferences, entityPrimaryReference, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
+import type { SeedanceSubject } from "./seedance-mentions"
 import { openAIImageQuality, projectImageQuality, projectVisualStyle } from "./entity-image-workflow"
 import { composeLookDirectives, projectStyleDna } from "./style-dna"
 import { stripIdentityDescriptions } from "./prompt-sanitizer"
@@ -255,6 +256,19 @@ export async function executeGenerationJobsInBackground(
           const entityIdByPath = new Map(mentionedEntities
             .map((entity) => [entityPrimaryReference(entity as MentionableEntity), entity.id] as const)
             .filter((pair): pair is readonly [string, string] => Boolean(pair[0])))
+          // Which cast member each attached picture actually is, so the prompt
+          // can point at it. Seedance counts images by their position in the
+          // request, so the index is recorded as each one is added rather than
+          // derived afterwards — that stays correct whether or not the shot's
+          // own keyframe took the first slot.
+          const entityNameByPath = new Map(mentionedEntities
+            .map((entity) => [entityPrimaryReference(entity as MentionableEntity), String(entity.name || "").trim()] as const)
+            .filter((pair): pair is readonly [string, string] => Boolean(pair[0] && pair[1])))
+          const referenceSubjects: SeedanceSubject[] = []
+          const recordSubject = (ref: string) => {
+            const name = entityNameByPath.get(ref)
+            if (name) referenceSubjects.push({ name, imageIndex: referenceUrls.length })
+          }
           for (const ref of combinedReferencePaths) {
             const signed = await signReference(ref)
             if (!signed) continue
@@ -274,10 +288,12 @@ export async function executeGenerationJobsInBackground(
               })
               if (assetUri) {
                 referenceUrls.push(assetUri)
+                recordSubject(ref)
                 continue
               }
             }
             referenceUrls.push(signed)
+            recordSubject(ref)
             if (facePaths.has(ref)) faceReferenceUrls.push(signed)
           }
 
@@ -413,6 +429,8 @@ export async function executeGenerationJobsInBackground(
                 videoReferenceUrls,
                 generationMode: settings.generationMode === "multi_image" ? "multi_image" : "keyframe",
                 audioEnabled: typeof settings.audioEnabled === "boolean" ? settings.audioEnabled : true,
+                subjects: referenceSubjects,
+                mentionedNames: mentionedEntities.map((entity) => String(entity.name || "").trim()).filter(Boolean),
                   })
             } catch (videoErr) {
               const errMsg = videoErr instanceof Error ? videoErr.message : "Video submission failed"

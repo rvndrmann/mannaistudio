@@ -1,4 +1,4 @@
-import { beatRuntimeSeconds, writeShotVideoPrompt } from "./shot-video-prompt"
+import { beatRuntimeSeconds, describeBeatProblems, writeShotVideoPrompt } from "./shot-video-prompt"
 import { sceneNotFrameReason, stripIdentityDescriptions } from "./prompt-sanitizer"
 
 /**
@@ -30,9 +30,27 @@ export type ShotPromptPatch = {
  * produces a keyframe nobody asked for.
  */
 export function assertShotPromptShape(patch: ShotPromptPatch): void {
-  if (typeof patch.prompt !== "string") return
-  const reason = sceneNotFrameReason(patch.prompt)
-  if (reason) throw new Error(reason)
+  if (typeof patch.prompt === "string") {
+    const reason = sceneNotFrameReason(patch.prompt)
+    if (reason) throw new Error(reason)
+  }
+
+  // The video prompt gets the same guard, on the same door.
+  //
+  // create_storyboard_batch and write_shot_video_prompts both refuse beats
+  // that do not add up; update_shot and the storyboard editor did not, so the
+  // one path a revision actually takes — "change this prompt" — was the one
+  // path that could quietly replace timed beats with a paragraph. A rewritten
+  // shot then filmed as a drifting still again, which is the failure the beats
+  // exist to prevent.
+  //
+  // Clearing the field is not writing a bad prompt: an empty string removes it
+  // and falls back to the image prompt, which is a decision the caller is
+  // allowed to make.
+  if (typeof patch.video_prompt === "string" && patch.video_prompt.trim()) {
+    const problems = describeBeatProblems(patch.video_prompt)
+    if (problems.length) throw new Error(problems.slice(0, 4).join(" "))
+  }
 }
 
 /**

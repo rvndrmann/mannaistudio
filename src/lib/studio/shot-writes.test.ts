@@ -1,3 +1,5 @@
+import { directorTools } from "./tool-registry"
+import { readShotVideoPrompt, videoPromptFor } from "./shot-video-prompt"
 import { describe, expect, it } from "vitest"
 import { assertShotPromptShape, normalizeShotColumns } from "./shot-writes"
 
@@ -69,5 +71,92 @@ describe("both doors write a shot the same way", () => {
 
   it("accepts one frame", () => {
     expect(() => assertShotPromptShape({ prompt: "@Ethan leans on the sink, lit from below by the mirror light." })).not.toThrow()
+  })
+})
+
+describe("a storyboard shot leaves create_storyboard_batch ready to film", () => {
+  const shot = (extra: Record<string, unknown> = {}) => ({
+    title: "Shot 1 — Hook",
+    prompt: "Eye-level tracking shot of @Sara driving the @Sleek Luxury Car down a sunny street.",
+    ...extra,
+  })
+
+  it("accepts a video prompt written beside the image prompt", () => {
+    const parsed = directorTools.create_storyboard_batch.input.parse({
+      episodeId: "11111111-1111-4111-8111-111111111111",
+      shots: [shot({ videoPrompt: "0-3s: @Sara grips the wheel.\n3-5s: @Sara glances toward the camera." })],
+    }) as unknown as { shots: Array<{ videoPrompt?: string }> }
+    expect(parsed.shots[0].videoPrompt).toContain("0-3s")
+  })
+
+  it("still accepts a shot with only an image prompt", () => {
+    const parsed = directorTools.create_storyboard_batch.input.parse({
+      episodeId: "11111111-1111-4111-8111-111111111111",
+      shots: [shot()],
+    }) as unknown as { shots: Array<{ videoPrompt?: string }> }
+    expect(parsed.shots[0].videoPrompt).toBeUndefined()
+  })
+})
+
+describe("a video generation is filmed from the video prompt, not the frame", () => {
+  it("prefers the saved video prompt over the image paragraph", () => {
+    // The regression this encodes: submit_generation selected only `prompt`, so
+    // a video with no model-supplied text was filmed from a single-frame
+    // description and came back as a still that drifts.
+    const shot = { prompt: "A frame.", metadata: { video_prompt: "0-4s: @Sara turns." } }
+    expect(readShotVideoPrompt(shot)).toBe("0-4s: @Sara turns.")
+    expect(videoPromptFor(shot)).toBe("0-4s: @Sara turns.")
+  })
+
+  it("falls back to the image prompt only when no video prompt was ever written", () => {
+    expect(videoPromptFor({ prompt: "A frame." })).toBe("A frame.")
+  })
+})
+
+/**
+ * The revision path is the one that has to hold.
+ *
+ * "Change this prompt" is the most common thing a user asks for, and update_shot
+ * plus the storyboard editor were the two writers that never checked the video
+ * prompt's beats. A rewrite could quietly replace timed beats with a paragraph,
+ * and the shot went back to filming as a drifting still.
+ */
+describe("a rewritten video prompt is held to the same shape as a written one", () => {
+  const beats = "0-3s: @Sara grips the wheel.\n3-5s: @Sara glances toward the camera."
+
+  it("accepts contiguous beats", () => {
+    expect(() => assertShotPromptShape({ video_prompt: beats })).not.toThrow()
+  })
+
+  it("refuses a paragraph with no beats at all", () => {
+    expect(() => assertShotPromptShape({
+      video_prompt: "A smooth continuous tracking move follows the dark modern car along the sunny road.",
+    })).toThrow(/no timed beats/i)
+  })
+
+  it("refuses beats with a hole in the middle", () => {
+    expect(() => assertShotPromptShape({ video_prompt: "0-2s: a\n4-6s: b" })).toThrow(/nothing is scripted/i)
+  })
+
+  it("refuses beats that do not start at zero", () => {
+    expect(() => assertShotPromptShape({ video_prompt: "2-6s: a" })).toThrow(/must start at 0/i)
+  })
+
+  it("lets the field be cleared, which falls back to the image prompt", () => {
+    expect(() => assertShotPromptShape({ video_prompt: "" })).not.toThrow()
+    expect(() => assertShotPromptShape({ video_prompt: "   " })).not.toThrow()
+    expect(() => assertShotPromptShape({ video_prompt: null })).not.toThrow()
+  })
+
+  it("still checks the image prompt in the same patch", () => {
+    expect(() => assertShotPromptShape({
+      prompt: "PRODUCTION NOTES\nRuntime: 15 seconds",
+      video_prompt: beats,
+    })).toThrow()
+  })
+
+  it("keeps the beats' runtime when the patch does not set one", () => {
+    const columns = normalizeShotColumns({ video_prompt: beats }, null) as { duration_seconds?: number }
+    expect(columns.duration_seconds).toBe(5)
   })
 })

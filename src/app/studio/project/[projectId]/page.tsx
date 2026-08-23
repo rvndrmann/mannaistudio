@@ -1475,9 +1475,12 @@ export default function WorkspacePage({
             )}
             <PendingProposalCards
               proposals={data.actionProposals}
-              excludeIds={data.chatMessages.flatMap((item) => proposalIdsFromActions(item.suggested_actions))}
+              // Only the newest reply renders its own card inline above, so only
+              // its ids would be duplicates here. Excluding every message's ids,
+              // as this did, is what stranded an older unanswered card halfway
+              // up the transcript with no way to reach it from the bottom.
+              excludeIds={proposalIdsFromActions(data.chatMessages.filter((item) => item.role === "assistant").at(-1)?.suggested_actions)}
               sessionId={data.activeSessionId}
-              latestRunId={(data.production?.workflowRuns || []).find((run) => run.session_id === data.activeSessionId)?.id || null}
               entities={data.entities}
               shots={data.shots}
               projectId={projectId}
@@ -6730,7 +6733,6 @@ function PendingProposalCards({
   proposals,
   excludeIds,
   sessionId,
-  latestRunId,
   entities,
   shots,
   projectId,
@@ -6742,7 +6744,6 @@ function PendingProposalCards({
   proposals: ChatProposal[];
   excludeIds: string[];
   sessionId?: string | null;
-  latestRunId?: string | null;
   entities: Entity[];
   shots: Shot[];
   projectId: string;
@@ -6755,10 +6756,18 @@ function PendingProposalCards({
   // Only the current conversation's approvals belong in this timeline. Without
   // the session check, opening a new chat inherits every unresolved card from
   // earlier chats in the same project.
+  // Scoped to this conversation, but not to its newest run.
+  //
+  // The run check meant a card left unanswered by an earlier run could never
+  // come back into view: it rendered once, inline with the reply that made it,
+  // and after that the user was at the bottom of a long transcript with only a
+  // "Review 1 pending change" button — which sends a message rather than
+  // showing the card, so pressing it produced a description and offered itself
+  // again. An unanswered approval has to stay reachable from where the user
+  // actually is.
   const pending = proposals.filter((proposal) => proposal.status === "pending"
     && !excluded.has(proposal.id)
-    && proposal.session_id === sessionId
-    && (!latestRunId || proposal.workflow_run_id === latestRunId)).slice(0, 3);
+    && proposal.session_id === sessionId).slice(0, 3);
   if (!pending.length) return null;
   return (
     <div className="mt-4 flex flex-col">

@@ -292,3 +292,51 @@ describe("art the user is happy with can be kept without paying to remake it", (
     expect(keep?.risk).toBe("write")
   })
 })
+
+/**
+ * The loop this encodes.
+ *
+ * The pipeline counted every pending proposal in the project, while the
+ * workspace only rendered — and only withdrew — the ones belonging to the open
+ * chat session. A card prepared in an earlier session was therefore counted
+ * forever and reachable never: the next step read "Review 1 pending change",
+ * pressing it sent a message instead of showing the card, the agent described
+ * the change in prose, and the same button came back. Pressing it again did the
+ * same thing.
+ */
+describe("the pending-approval count only counts what the user can answer", () => {
+  const hour = 60 * 60 * 1000
+  const proposal = (sessionId: string | null, expiresInMs = hour) => ({
+    expires_at: new Date(Date.now() + expiresInMs).toISOString(),
+    creator_tool_executions: { session_id: sessionId },
+  })
+
+  // The filter as loadProductionSnapshot applies it.
+  const countable = (rows: ReturnType<typeof proposal>[], sessionId?: string) => rows.filter((row) => {
+    if (row.expires_at && new Date(row.expires_at).getTime() <= Date.now()) return false
+    if (!sessionId) return true
+    return (row.creator_tool_executions?.session_id ?? null) === sessionId
+  }).length
+
+  it("counts a card belonging to the open session", () => {
+    expect(countable([proposal("session-a")], "session-a")).toBe(1)
+  })
+
+  it("does not count a card stranded in another session", () => {
+    expect(countable([proposal("session-b")], "session-a")).toBe(0)
+  })
+
+  it("does not count a card that has already expired", () => {
+    expect(countable([proposal("session-a", -hour)], "session-a")).toBe(0)
+  })
+
+  it("still blocks the pipeline when the count is real", () => {
+    const stage = computePipelineStage({ ...emptySnapshot, pendingApprovals: 1 })
+    expect(stage.nextAction?.label).toBe("Review 1 pending change")
+  })
+
+  it("moves on when nothing answerable is pending", () => {
+    const stage = computePipelineStage({ ...emptySnapshot, pendingApprovals: 0 })
+    expect(stage.nextAction?.label).not.toBe("Review 1 pending change")
+  })
+})

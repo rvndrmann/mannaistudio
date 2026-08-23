@@ -39,7 +39,11 @@ function normalizeToolInput(input: unknown): unknown {
 export async function requestDirectorTool(context: AuthenticatedProjectContext, raw: unknown) {
   const request = toolRequestSchema.parse(raw)
   const tool = directorTools[request.tool]
-  const preparedInput = request.tool === "submit_generation" && request.workflowRunId && request.input && typeof request.input === "object"
+  // Both of these take the run id from the live run rather than from the model:
+  // submit_generation so a job is attributed to the workflow that proposed it,
+  // read_tool_output so it can only ever read back this run's own results.
+  const runScopedTools = ["submit_generation", "read_tool_output"]
+  const preparedInput = runScopedTools.includes(request.tool) && request.workflowRunId && request.input && typeof request.input === "object"
     ? { ...(request.input as Record<string, unknown>), workflowRunId: request.workflowRunId }
     : request.input
   const rawInput = normalizeToolInput(preparedInput)
@@ -162,6 +166,51 @@ async function describeProposal(context: AuthenticatedProjectContext, toolName: 
       summary: `${batchNames.length} ${noun}${batchNames.length === 1 ? "" : "s"}: ${shown}${rest}.`,
       estimatedCredits: 0,
       affectedEntities: [],
+    }
+  }
+
+  // The same problem the asset branch below solves, for shots.
+  //
+  // A revision card that says only "Update storyboard shot" asks the user to
+  // approve writing they cannot see. Rewriting a prompt is the most common
+  // thing they ask for, and the whole point of the approval gate is that they
+  // read the change before it lands — so the card names the shot, says which
+  // fields move, and shows the new writing itself.
+  const shotId = typeof payload.shotId === "string" ? payload.shotId : ""
+  if (shotId) {
+    const patch = payload.patch && typeof payload.patch === "object" ? payload.patch as Record<string, unknown> : {}
+    const { data: shot } = await context.supabase
+      .from("creator_shots")
+      .select("title,order_index,referenced_entities,episode_id")
+      .eq("id", shotId)
+      .maybeSingle()
+    const number = typeof shot?.order_index === "number" ? shot.order_index + 1 : null
+    const name = typeof patch.title === "string" && patch.title.trim() ? patch.title.trim() : shot?.title || ""
+    const label = [number ? `shot ${number}` : "", name].filter(Boolean).join(" — ") || "this shot"
+    const deleting = toolName === "delete_shot"
+    // The writing itself, not just the field names: a prompt revision is
+    // approved on whether the new wording is right.
+    const preview = (field: string, heading: string) => {
+      const value = patch[field]
+      if (typeof value !== "string" || !value.trim()) return ""
+      const text = value.trim()
+      return `${heading}: ${text.length > 600 ? `${text.slice(0, 600)}…` : text}`
+    }
+    const written = [preview("prompt", "New image prompt"), preview("video_prompt", "New video prompt")].filter(Boolean)
+    const otherFields = Object.keys(patch).filter((field) => field !== "prompt" && field !== "video_prompt")
+    return {
+      title: `${deleting ? "Delete" : "Update"} ${label}`,
+      summary: deleting
+        ? `This will remove ${label} and its media after approval.`
+        : [written.join("\n\n"), otherFields.length ? `Also changes ${otherFields.map((field) => field.replace(/_/g, " ")).join(", ")}.` : ""].filter(Boolean).join("\n\n")
+          || `Changes ${label}.`,
+      estimatedCredits: 0,
+      // The shot's cast travels with the card, so the reference art the prompt
+      // will actually generate against is visible beside the new wording.
+      affectedEntities: [
+        { type: "shot", id: shotId },
+        ...(Array.isArray(shot?.referenced_entities) ? shot.referenced_entities.map((id: string) => ({ type: "asset", id })) : []),
+      ],
     }
   }
 

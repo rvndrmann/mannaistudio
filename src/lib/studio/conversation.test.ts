@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildDirectorInstructions, selectConversationWindow } from "./conversation"
+import { buildDirectorInstructions, compactionNotice, replayToolResults, selectConversationWindow } from "./conversation"
 import { projectContextSchema } from "./domain"
 
 const project = projectContextSchema.parse({
@@ -44,7 +44,15 @@ describe("AI Director conversation context", () => {
 
   it("bounds history sent to a provider", () => {
     const messages = Array.from({ length: 40 }, (_, index) => ({ role: "user" as const, content: String(index) }))
-    expect(selectConversationWindow(messages, 5).map((message) => message.content)).toEqual(["35", "36", "37", "38", "39"])
+    // The opening is kept and a notice stands in for what was dropped, so the
+    // tail is two shorter than the budget rather than filling all of it.
+    expect(selectConversationWindow(messages, 5).map((message) => message.content)).toEqual([
+      "0",
+      compactionNotice(36),
+      "37",
+      "38",
+      "39",
+    ])
   })
 })
 
@@ -58,5 +66,89 @@ describe("buildDirectorInstructions with a brand", () => {
   it("says nothing about a brand for a project that has none", () => {
     expect(buildDirectorInstructions(project)).not.toContain("This production is made for the following brand")
     expect(buildDirectorInstructions(project, undefined, "   ")).not.toContain("This production is made for the following brand")
+  })
+})
+
+describe("compaction keeps the brief and says what it dropped", () => {
+  const turns = (count: number) => Array.from({ length: count }, (_, index) => ({ role: "user" as const, content: String(index) }))
+
+  it("sends a short conversation whole", () => {
+    expect(selectConversationWindow(turns(4), 30)).toHaveLength(4)
+  })
+
+  it("keeps the opening request even when it is far outside the window", () => {
+    const window = selectConversationWindow(turns(200), 10)
+    expect(window[0].content).toBe("0")
+    expect(window).toHaveLength(10)
+  })
+
+  it("marks the gap rather than leaving it silent", () => {
+    const window = selectConversationWindow(turns(200), 10)
+    expect(window[1].role).toBe("system")
+    expect(window[1].content).toBe(compactionNotice(191))
+  })
+
+  it("counts the pages the caller never fetched", () => {
+    // The route reads a bounded page of recent history, so a 500-message
+    // session hands in 40. Without droppedBefore the notice would claim 31.
+    const window = selectConversationWindow(turns(40), 10, { droppedBefore: 460 })
+    expect(window[1].content).toBe(compactionNotice(491))
+  })
+
+  it("still marks the gap when the page itself fits but earlier pages do not", () => {
+    const window = selectConversationWindow(turns(5), 30, { droppedBefore: 100 })
+    expect(window[1].content).toBe(compactionNotice(100))
+    expect(window.map((message) => message.content)).toEqual(["0", compactionNotice(100), "1", "2", "3", "4"])
+  })
+
+  it("falls back to a plain tail when there is no room for a notice", () => {
+    expect(selectConversationWindow(turns(10), 2).map((message) => message.content)).toEqual(["8", "9"])
+  })
+})
+
+describe("recent tool results are carried into the next turn", () => {
+  const assistantWith = (calls: Array<{ tool: string; result: unknown }>) => ({ role: "assistant", content: "Done.", tool_calls: calls })
+
+  it("attaches what the tools returned to the turn that called them", () => {
+    const replayed = replayToolResults([
+      { role: "user", content: "List the shots." },
+      assistantWith([{ tool: "list_storyboard_shots", result: { shots: [{ number: 1 }] } }]),
+    ])
+    expect(replayed).toHaveLength(3)
+    expect(replayed[2].role).toBe("system")
+    expect(replayed[2].content).toContain("list_storyboard_shots")
+    expect(replayed[2].content).toContain('"number":1')
+  })
+
+  it("leaves a turn that called nothing alone", () => {
+    const replayed = replayToolResults([{ role: "assistant", content: "Hello.", tool_calls: [] }])
+    expect(replayed).toEqual([{ role: "assistant", content: "Hello." }])
+  })
+
+  it("carries only the most recent turns", () => {
+    const history = Array.from({ length: 6 }, (_, index) => assistantWith([{ tool: `tool_${index}`, result: { index } }]))
+    const replayed = replayToolResults(history, 2)
+    const notes = replayed.filter((message) => message.role === "system")
+    expect(notes).toHaveLength(2)
+    expect(notes[0].content).toContain("tool_4")
+    expect(notes[1].content).toContain("tool_5")
+  })
+
+  it("prunes a replayed result to the same budget the live loop uses", () => {
+    const huge = { shots: "S".repeat(60_000) }
+    const replayed = replayToolResults([assistantWith([{ tool: "list_storyboard_shots", result: huge }])])
+    const note = replayed[1].content
+    expect(note.length).toBeLessThan(20_000)
+    expect(note).toContain("characters omitted")
+  })
+
+  it("keeps roles the model understands", () => {
+    const replayed = replayToolResults([
+      { role: "user", content: "Hi." },
+      { role: "assistant", content: "Hello." },
+      { role: "system", content: "[note]" },
+      { role: "tool", content: "raw" },
+    ])
+    expect(replayed.map((message) => message.role)).toEqual(["user", "assistant", "system", "user"])
   })
 })

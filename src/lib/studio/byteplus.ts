@@ -1,6 +1,7 @@
 import { videoModelMaxDuration, type ImageGenerationModelId, type VideoGenerationModelId } from "@/lib/studio/generation-models"
 
 import { activeCredentialPart, isRunningOnCustomerKey } from "@/lib/byok/active-credential"
+import { bindSeedanceMentions, unboundMentions, type SeedanceSubject } from "./seedance-mentions"
 
 const defaultBaseUrl = "https://ark.ap-southeast.bytepluses.com/api/v3"
 
@@ -166,13 +167,28 @@ export function bytePlusVideoReferenceLimit(model: string) {
     : bytePlusVideoReferenceLimits.default
 }
 
-export function formatBytePlusReferencePrompt(prompt: string, input: { imageCount: number; videoCount: number }) {
+export function formatBytePlusReferencePrompt(prompt: string, input: { imageCount: number; videoCount: number; subjects?: SeedanceSubject[]; mentionedNames?: string[] }) {
   let formatted = prompt
     .replace(/@previous\s+shot\s+video/gi, "[Video 1]")
     .replace(/@storyboard\s+shot\s+\d+\s+video/gi, "[Video 1]")
     .replace(/@storyboard\s+shot\s+\d+\s+image/gi, "[Image 1]")
 
+  // The cast, bound to the pictures of them that travel with this request.
+  // Without this the references arrive as unlabelled images and the prompt's
+  // "@Sara" reaches Seedance as literal text pointing at nothing, so the clip
+  // is rendered from the words instead of from the reference art.
+  if (input.subjects?.length) {
+    const binding = bindSeedanceMentions(formatted, input.subjects, input.mentionedNames)
+    formatted = binding.prompt
+  }
+
   const guidance: string[] = []
+  // A mention with no picture behind it is the one case worth naming out loud:
+  // the model will invent that subject, and the invention is what drifts.
+  const loose = unboundMentions(formatted)
+  if (loose.length) {
+    guidance.push(`No reference image was provided for ${loose.join(", ")}; render ${loose.length === 1 ? "it" : "them"} from the description alone.`)
+  }
   if (input.videoCount > 0 && !/\[video\s*1\]/i.test(formatted)) {
     guidance.push("Use [Video 1] as the previous-shot continuity and motion reference.")
   }
@@ -196,14 +212,14 @@ export function bytePlusVideoRatio(requestedRatio: string, hasVideoReference: bo
   return bytePlusVideoRatios.includes(requestedRatio as (typeof bytePlusVideoRatios)[number]) ? requestedRatio : "9:16"
 }
 
-export async function submitBytePlusVideo(input: { model: VideoGenerationModelId; prompt: string; duration: number; resolution: string; ratio: string; referenceUrls?: string[]; faceReferenceUrls?: string[]; videoReferenceUrls?: string[]; generationMode?: "keyframe" | "multi_image"; audioEnabled?: boolean }) {
+export async function submitBytePlusVideo(input: { model: VideoGenerationModelId; prompt: string; duration: number; resolution: string; ratio: string; referenceUrls?: string[]; faceReferenceUrls?: string[]; videoReferenceUrls?: string[]; generationMode?: "keyframe" | "multi_image"; audioEnabled?: boolean; subjects?: SeedanceSubject[]; mentionedNames?: string[] }) {
   // Only a character's reference is registered; everything else is sent as-is.
   const faces = new Set(input.faceReferenceUrls || [])
   const resolvedUrls = await Promise.all((input.referenceUrls || []).map((url) => resolveBytePlusReferenceUrl(url, faces.has(url))))
   const videoUrls = (input.videoReferenceUrls || []).filter((value) => typeof value === "string" && value.trim())
   const content: Array<Record<string, unknown>> = [{
     type: "text",
-    text: formatBytePlusReferencePrompt(input.prompt, { imageCount: resolvedUrls.length, videoCount: videoUrls.length }),
+    text: formatBytePlusReferencePrompt(input.prompt, { imageCount: resolvedUrls.length, videoCount: videoUrls.length, subjects: input.subjects, mentionedNames: input.mentionedNames }),
   }]
 
   if (input.generationMode === "keyframe") {

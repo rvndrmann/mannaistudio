@@ -66,6 +66,20 @@ export async function loadProductionSnapshot(
   supabase: SupabaseClient,
   projectId: string,
   episodeId?: string,
+  /**
+   * The chat session the count is for.
+   *
+   * Without it the pipeline counted every pending proposal in the project while
+   * the workspace only ever renders, and only ever withdraws, the ones
+   * belonging to the open session. A card prepared in an earlier chat was
+   * therefore counted forever and reachable never: the next step read "Review 1
+   * pending change", pressing it sent a message rather than showing the card,
+   * the card was in a session nobody was looking at, and the count never moved.
+   * Pressing it again did the same thing.
+   *
+   * So the count is scoped to the cards the user can actually answer.
+   */
+  sessionId?: string,
 ): Promise<ProductionSnapshot> {
   const [episodesRes, entitiesRes, shotsRes, promptsRes, jobsRes, proposalsRes] = await Promise.all([
     supabase
@@ -116,7 +130,7 @@ export async function loadProductionSnapshot(
     // are decided nothing downstream can move, so the pipeline has to see them.
     supabase
       .from("creator_action_proposals")
-      .select("id")
+      .select("id, expires_at, creator_tool_executions(session_id)")
       .eq("project_id", projectId)
       .eq("status", "pending"),
   ])
@@ -134,7 +148,15 @@ export async function loadProductionSnapshot(
 
   return {
     episodeName: activeEpisode?.name || "Episode 1",
-    pendingApprovals: (proposalsRes.data || []).length,
+    // Only what the user can answer from where they are: this session's cards,
+    // and not ones that have already timed out. A row whose status column still
+    // says "pending" past its expiry is not something to block a production on.
+    pendingApprovals: (proposalsRes.data || []).filter((proposal) => {
+      const record = proposal as { expires_at?: string | null; creator_tool_executions?: { session_id?: string | null } | null }
+      if (record.expires_at && new Date(record.expires_at).getTime() <= Date.now()) return false
+      if (!sessionId) return true
+      return (record.creator_tool_executions?.session_id ?? null) === sessionId
+    }).length,
     hasScript: Boolean(scriptText && scriptText.length > 30),
     promptSheetCount: promptRows.length,
     // The most recent revision anywhere in the sheet: one entry changing means
@@ -164,9 +186,10 @@ export async function buildProjectStateSummary(
   supabase: SupabaseClient,
   projectId: string,
   episodeId?: string,
+  sessionId?: string,
 ): Promise<string> {
   try {
-    const snapshot = await loadProductionSnapshot(supabase, projectId, episodeId)
+    const snapshot = await loadProductionSnapshot(supabase, projectId, episodeId, sessionId)
     return buildProjectStateSummaryFrom(snapshot)
   } catch (err) {
     console.warn("Could not build project state summary:", err)

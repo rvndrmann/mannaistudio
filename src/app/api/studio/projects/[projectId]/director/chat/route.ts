@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { ZodError } from "zod"
-import { buildDirectorInstructions, selectConversationWindow } from "@/lib/studio/conversation"
+import { buildDirectorInstructions, replayToolResults, selectConversationWindow } from "@/lib/studio/conversation"
 import { activeDirectorModels } from "@/lib/studio/ai-models"
 import { directorChatInputSchema } from "@/lib/studio/domain"
 import { describeError } from "@/lib/studio/errors"
@@ -58,29 +58,37 @@ export const maxDuration = 300
  * on costly and destructive tools is what keeps a wrong decision cheap.
  */
 
+/** How many recent messages are read back per turn. */
+const HISTORY_PAGE = 40
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   try {
     const { projectId } = await params
     const context = await requireProjectFromRequest(request, projectId, "director:chat")
     const body = directorChatInputSchema.parse({ ...(await request.json()), projectId })
-    const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", body.episodeId).eq("project_id", projectId).maybeSingle()
-    if (!episode) return NextResponse.json({ error: "Episode not found" }, { status: 404 })
+    // The episode, the entities the message mentions and the admin's model list
+    // are three independent reads that were run one after another, ahead of
+    // everything else, on every turn. Their checks still happen in the same
+    // order below, so a bad episode is still answered with 404 before anything
+    // is said about entities.
     const uniqueMentionIds = Array.from(new Set(body.mentionedEntityIds))
-    const { data: mentionedEntities, error: mentionedEntityError } = uniqueMentionIds.length
-      ? await context.supabase
-        .from("creator_entities")
-        .select("*")
-        .eq("project_id", projectId)
-        .in("id", uniqueMentionIds)
-      : { data: [], error: null }
-    if (mentionedEntityError) throw mentionedEntityError
+    const [episodeRes, mentionedRes, modelSettingsRes] = await Promise.all([
+      context.supabase.from("creator_episodes").select("id").eq("id", body.episodeId).eq("project_id", projectId).maybeSingle(),
+      uniqueMentionIds.length
+        ? context.supabase.from("creator_entities").select("*").eq("project_id", projectId).in("id", uniqueMentionIds)
+        : Promise.resolve({ data: [], error: null }),
+      context.supabase.from("site_settings").select("value").eq("key", "ai_director_models").maybeSingle(),
+    ])
+    const episode = episodeRes.data
+    if (!episode) return NextResponse.json({ error: "Episode not found" }, { status: 404 })
+    const mentionedEntities = mentionedRes.data
+    if (mentionedRes.error) throw mentionedRes.error
     if ((mentionedEntities || []).length !== uniqueMentionIds.length) {
       return NextResponse.json({ error: "One or more mentioned entities do not belong to this project." }, { status: 400 })
     }
     const mentionContext = buildEntityMentionContext((mentionedEntities || []) as MentionableEntity[])
     const modelMessage = mentionContext ? `${body.message}\n\n${mentionContext}` : body.message
-    const { data: modelSettings } = await context.supabase.from("site_settings").select("value").eq("key", "ai_director_models").maybeSingle()
-    const activeModels = activeDirectorModels(modelSettings?.value)
+    const activeModels = activeDirectorModels(modelSettingsRes.data?.value)
     const fallbackModel = activeModels.find((item) => item.id === defaultOpenAIDirectorModel())?.id || activeModels[0]?.id || defaultOpenAIDirectorModel()
     const model = body.model || fallbackModel
     if (!activeModels.some((item) => item.id === model)) {
@@ -89,16 +97,46 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { data: existingSession } = await context.supabase.from("creator_chat_sessions").select("id").eq("episode_id", episode.id).eq("user_id", context.user.id).order("created_at", { ascending: false }).limit(1).maybeSingle()
     const sessionId = body.sessionId || existingSession?.id || (await context.supabase.from("creator_chat_sessions").insert({ episode_id: episode.id, user_id: context.user.id, title: "AI Director", model }).select("id").single()).data?.id
     if (!sessionId) throw new Error("Could not create an AI Director chat session")
-    await context.supabase.from("creator_chat_sessions").update({ model }).eq("id", sessionId).eq("user_id", context.user.id)
-    const workflowRun = await createWorkflowRun(context, { episodeId: episode.id, sessionId, objective: body.message, maxSteps: 10 })
-    const { data: history, error: historyError } = await context.supabase.from("creator_chat_messages").select("role, content").eq("session_id", sessionId).order("created_at", { ascending: true }).limit(40)
-    if (historyError) throw historyError
+    // Everything the turn needs before the agent can start, in one batch. The
+    // session's model stamp, the run row, the history page and the withdrawal
+    // of superseded cards were four sequential round trips and none of them
+    // needs anything from the others.
+    //
+    // The user's own message is inserted after this rather than in it: it is
+    // the one write here that genuinely depends on another, since it carries
+    // the run id.
+    const [, workflowRun, recentRes, openingRes, totalRes, withdrawn] = await Promise.all([
+      context.supabase.from("creator_chat_sessions").update({ model }).eq("id", sessionId).eq("user_id", context.user.id),
+      createWorkflowRun(context, { episodeId: episode.id, sessionId, objective: body.message, maxSteps: 10 }),
+      // The newest turns, the very first one, and how many there are in total.
+      //
+      // This read used to be `ascending: true` with `limit(40)`, which returns
+      // the *oldest* forty messages rather than the most recent ones. Past
+      // message forty the Director stopped being shown anything that had been
+      // said since — it answered every turn from the opening of the session and
+      // never saw the conversation it was actually in.
+      //
+      // So: the recent page descending (reversed back into reading order
+      // below), the opening message on its own because it holds the brief, and
+      // a count so the compaction notice can say honestly how much is not being
+      // shown.
+      context.supabase.from("creator_chat_messages").select("id, role, content, tool_calls").eq("session_id", sessionId).order("created_at", { ascending: false }).limit(HISTORY_PAGE),
+      context.supabase.from("creator_chat_messages").select("id, role, content").eq("session_id", sessionId).order("created_at", { ascending: true }).limit(1),
+      context.supabase.from("creator_chat_messages").select("id", { count: "exact", head: true }).eq("session_id", sessionId),
+      // Replying instead of approving is an answer: the user wants to steer
+      // before anything is generated. The card it replaces must not sit there
+      // pending forever, or block the ones that come after it.
+      withdrawSupersededProposals(context, sessionId),
+    ])
+    if (recentRes.error) throw recentRes.error
+    const recent = (recentRes.data || []).slice().reverse()
+    const opening = openingRes.data?.[0]
+    // Only when it is not already in the page, or it would be sent twice.
+    const history = opening && !recent.some((item) => item.id === opening.id) ? [opening, ...recent] : recent
+    const droppedBefore = Math.max(0, (totalRes.count ?? history.length) - history.length)
+
     const { data: userMessage, error: userError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, workflow_run_id: workflowRun.id, role: "user", content: body.message, referenced_entity_ids: uniqueMentionIds }).select().single()
     if (userError) throw userError
-    // Replying instead of approving is an answer: the user wants to steer before
-    // anything is generated. The card it replaces must not sit there pending
-    // forever, or block the ones that come after it.
-    const withdrawn = await withdrawSupersededProposals(context, sessionId)
 
     const buildAgentInput = async () => {
       // Independent reads, so they go together. Run one after another these
@@ -119,7 +157,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         buildProjectStateBlock(context, episode.id, sessionId),
         // Which specialist opens the turn, read from what the workspace holds
         // rather than from the words in the message.
-        loadProductionSnapshot(context.supabase, projectId, episode.id)
+        loadProductionSnapshot(context.supabase, projectId, episode.id, sessionId)
           .then((snapshot) => computePipelineStage(snapshot).key)
           .catch(() => ""),
       ])
@@ -137,7 +175,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             ? `The user replied instead of approving, so ${withdrawn.length === 1 ? "this proposal has" : "these proposals have"} been withdrawn: ${withdrawn.join("; ")}. Their message is the new instruction — work from it, and propose again only if it still calls for one.`
             : "",
         ].filter(Boolean).join("\n\n"),
-        messages: selectConversationWindow([...(history || []).filter((item) => item.content).map((item) => ({ role: item.role as "user" | "assistant", content: item.content as string })), { role: "user", content: modelMessage }]),
+        messages: selectConversationWindow(
+          [
+            ...replayToolResults(history).filter((item) => item.content),
+            { role: "user", content: modelMessage },
+          ],
+          undefined,
+          { droppedBefore },
+        ),
         sessionId,
         idempotencyKey: body.idempotencyKey,
         runtimeSettings,
@@ -221,8 +266,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       // Read after the run, so the button offers the step the workspace is on
       // once this run's writes have landed.
       const [nextStep, progress] = await Promise.all([
-        nextStepBlock(context, projectId, episode.id, parseTargetShotNumbers(body.message)),
-        progressBlock(context, projectId, episode.id),
+        nextStepBlock(context, projectId, episode.id, parseTargetShotNumbers(body.message), sessionId),
+        progressBlock(context, projectId, episode.id, sessionId),
       ])
       const timeline = [...response.timeline, ...(progress ? [progress] : []), ...(nextStep ? [nextStep] : [])]
       const { data: assistantMessage, error: assistantError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, workflow_run_id: workflowRun.id, role: "assistant", content: response.content, tool_calls: response.toolCalls, suggested_actions: response.suggestedActions, timeline_blocks: timeline, timeline_version: 1 }).select().single()
@@ -322,7 +367,7 @@ async function recordFailedRun(
     // stopped: a warning, and nothing to press. The production is still standing
     // wherever this run left it, so the step it is waiting on is still the right
     // one to offer.
-    const nextStep = await nextStepBlock(context, input.projectId, input.episodeId)
+    const nextStep = await nextStepBlock(context, input.projectId, input.episodeId, [], input.sessionId)
     await context.supabase.from("creator_chat_messages").insert({
       session_id: input.sessionId,
       workflow_run_id: input.runId,
@@ -390,9 +435,10 @@ async function nextStepBlock(
   projectId: string,
   episodeId: string,
   requestedShotNumbers: number[] = [],
+  sessionId?: string,
 ): Promise<DirectorTimelineBlock | null> {
   try {
-    const stage = computePipelineStage(await loadProductionSnapshot(context.supabase, projectId, episodeId))
+    const stage = computePipelineStage(await loadProductionSnapshot(context.supabase, projectId, episodeId, sessionId))
     if (!stage.nextAction) return null
     // The primary step first, then the moves that make sense beside it: film the
     // shot whose frame was just approved, or redo the frame. Each is judged on
@@ -441,9 +487,10 @@ async function progressBlock(
   context: Awaited<ReturnType<typeof requireAuthenticatedProject>>,
   projectId: string,
   episodeId: string,
+  sessionId?: string,
 ): Promise<DirectorTimelineBlock | null> {
   try {
-    const snapshot = await loadProductionSnapshot(context.supabase, projectId, episodeId)
+    const snapshot = await loadProductionSnapshot(context.supabase, projectId, episodeId, sessionId)
     const progress = buildProductionProgress(snapshot)
 
     let awardedXp = 0

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
-import { agentForTool, defaultDirectorTeam, directorAgentKeys, directorPipeline, normalizeDirectorTeam, teamInstructions } from "./director-team"
+import { agentForStage, agentForTool, defaultDirectorTeam, directorAgentKeys, directorPipeline, normalizeDirectorTeam, teamInstructions } from "./director-team"
+import { toolsForAgent } from "./director-agent"
+import type { DirectorToolName } from "./tool-registry"
 
 describe("director agent team", () => {
   it("normalizes unknown values to the default team", () => {
@@ -58,5 +60,80 @@ describe("director agent team", () => {
     const team = normalizeDirectorTeam({ script: { name: "Writer", enabled: true, instructions: "x", skills: "y" } })
     expect(team.script.name).toBe("Writer")
     expect(team.prompt).toEqual(defaultDirectorTeam.prompt)
+  })
+})
+
+/**
+ * The Video Prompt Agent's brief used to read "Each prompt describes one
+ * continuous camera action…" — an instruction to write a paragraph. It was
+ * producing exactly what it was asked for: a single-paragraph frame
+ * description with assets named in prose, which binds to nothing at the
+ * provider and renders from the words instead of the reference art.
+ */
+describe("the briefs that decide how a video prompt is written", () => {
+  const videoPrompt = defaultDirectorTeam.video_prompt.instructions
+  const storyboard = defaultDirectorTeam.storyboard.instructions
+
+  it("asks the Video Prompt Agent for timed beats, not a paragraph", () => {
+    expect(videoPrompt).toContain("0-4s")
+    expect(videoPrompt).not.toContain("one continuous camera action with subject")
+  })
+
+  it("tells it that every subject must be @tagged on every mention", () => {
+    expect(videoPrompt).toMatch(/@tag on every mention/i)
+  })
+
+  it("tells it why prose instead of a tag breaks the binding", () => {
+    expect(videoPrompt).toMatch(/nothing pointing at it/i)
+  })
+
+  it("forbids describing a character's wardrobe", () => {
+    expect(videoPrompt).toMatch(/wardrobe/i)
+  })
+
+  it("tells the Storyboard Agent to write both prompts in one pass", () => {
+    expect(storyboard).toContain("videoPrompt")
+    expect(storyboard).toMatch(/same pass/i)
+  })
+
+  it("warns the Storyboard Agent what happens when it skips the video prompt", () => {
+    expect(storyboard).toMatch(/filmed from its image prompt/i)
+  })
+})
+
+/**
+ * The invariant that keeps a stage able to do its own work.
+ *
+ * toolsForAgent hands an agent the read tools, the tools it owns, and the
+ * unowned ones — nothing else. So a tool owned by the wrong agent is invisible
+ * to the agent that actually holds the turn at that stage, and the model
+ * answers that the operation "is not available in this turn" while the user
+ * watches nothing happen.
+ *
+ * This has now bitten twice: submit_generation at the keyframes stage, and
+ * write_shot_video_prompts at the video stage. Asserted per stage so a third
+ * ownership move fails here instead of in production.
+ */
+describe("every stage's opening agent can reach the tool that stage needs", () => {
+  const cases: Array<{ stage: string; tool: DirectorToolName }> = [
+    { stage: "prompt_sheet", tool: "save_script_prompts" },
+    { stage: "prompt_sheet", tool: "write_episode_master_prompt" },
+    { stage: "entity_images", tool: "generate_entity_reference_art" },
+    { stage: "storyboard", tool: "create_storyboard_batch" },
+    { stage: "keyframes", tool: "submit_generation" },
+    { stage: "videos", tool: "write_shot_video_prompts" },
+    { stage: "videos", tool: "submit_generation" },
+  ]
+
+  for (const { stage, tool } of cases) {
+    it(`${stage} can reach ${tool}`, () => {
+      expect(toolsForAgent(agentForStage(stage))).toContain(tool)
+    })
+  }
+
+  it("gives the Video Prompt Agent the tool it is named after", () => {
+    // It owned nothing at all, so the stage named after it could do nothing.
+    expect(agentForStage("videos")).toBe("video_prompt")
+    expect(agentForTool("write_shot_video_prompts")).toBe("video_prompt")
   })
 })

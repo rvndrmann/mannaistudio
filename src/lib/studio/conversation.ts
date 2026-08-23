@@ -2,6 +2,7 @@ import { z } from "zod"
 import { revisionRoutingInstructions } from "./revision-routing"
 import type { ProjectContext } from "./domain"
 import { defaultDirectorGlobalInstructions } from "./instructions"
+import { serializeToolOutput } from "./tool-result-budget"
 
 export const directorMessageSchema = z.object({
   role: z.enum(["user", "assistant", "system", "tool"]),
@@ -79,6 +80,117 @@ export function buildDirectorInstructions(project: ProjectContext, globalInstruc
   ].join("\n")
 }
 
-export function selectConversationWindow(messages: DirectorMessage[], maximumMessages = 30): DirectorMessage[] {
-  return z.array(directorMessageSchema).parse(messages).slice(-Math.max(1, maximumMessages))
+/**
+ * What the compaction note says in place of the turns it stands for.
+ *
+ * Deliberately model-free. Summarising the dropped range with another model
+ * call would cost a round trip on every long session and could itself be wrong;
+ * stating plainly that the range existed, how big it was, and that it can still
+ * be read is accurate for nothing and cheap for everything.
+ */
+export function compactionNotice(droppedMessages: number): string {
+  return `[${droppedMessages} earlier message${droppedMessages === 1 ? "" : "s"} from this conversation are not shown here, to keep the context affordable. The user's opening request is kept above. If you need something that was agreed in between, ask the user rather than assuming it.]`
+}
+
+/**
+ * The slice of a conversation that is actually sent to the model.
+ *
+ * This used to be `slice(-30)` and nothing else, which meant that at message
+ * thirty-one the opening request — "a 60-second vertical ad, moody, for X" —
+ * stopped being sent, with no summary in its place and no sign to the model
+ * that anything had gone. It would then confidently carry on against a brief it
+ * could no longer see.
+ *
+ * So the opening is kept, a notice stands in for the range that was dropped,
+ * and the rest of the budget goes to the most recent turns. Nothing is deleted
+ * anywhere: this only decides what travels, and the full transcript stays in
+ * creator_chat_messages for the user to scroll and for any later replay.
+ */
+export function selectConversationWindow(
+  messages: DirectorMessage[],
+  maximumMessages = 30,
+  options: {
+    /**
+     * Messages that exist in this session before the ones handed in, and were
+     * never fetched. The caller reads a bounded page of recent history, so
+     * without this the notice would only count what the page itself dropped and
+     * would under-report a long session by hundreds of turns.
+     */
+    droppedBefore?: number
+  } = {},
+): DirectorMessage[] {
+  const parsed = z.array(directorMessageSchema).parse(messages)
+  const budget = Math.max(1, maximumMessages)
+  const droppedBefore = Math.max(0, options.droppedBefore ?? 0)
+  if (parsed.length <= budget && !droppedBefore) return parsed
+
+  // Under three there is no room for an opening, a notice and a tail, so the
+  // plain tail is the honest answer — a notice with nothing kept above it
+  // would describe a brief that is not there.
+  if (budget < 3) return parsed.slice(-budget)
+
+  const opening = parsed[0]
+  // Never back past index 1. A page short enough for the tail to reach the
+  // start would otherwise send the opening twice — once as the kept brief and
+  // again as the first message of the tail.
+  const tail = parsed.slice(Math.max(1, parsed.length - (budget - 2)))
+  const dropped = parsed.length - tail.length - 1 + droppedBefore
+  if (dropped <= 0) return parsed.slice(-budget)
+
+  return [opening, { role: "system", content: compactionNotice(dropped) }, ...tail]
+}
+
+/**
+ * How many of the most recent assistant turns get their tool results replayed.
+ *
+ * Every one of these costs context on every step of the next turn, so it is a
+ * small number deliberately: enough that "now regenerate shot 4" does not have
+ * to re-list the storyboard, not so many that the saving is spent carrying
+ * results nobody is going to refer to again.
+ */
+const REPLAY_TURNS = 3
+
+type StoredMessage = { role: string; content: string | null; tool_calls?: unknown }
+
+/**
+ * Turns stored history into the messages the model sees, carrying recent tool
+ * results back with it.
+ *
+ * The tool_calls column has always been written and never read. Without it each
+ * new turn began blind: the Director had its own prose from last turn saying it
+ * had read the storyboard, but not what the storyboard said — so it read the
+ * script, the shots and the entities again, from scratch, every single message,
+ * and the user paid for all of it every time.
+ *
+ * Replayed as text rather than as provider tool-call items on purpose. The
+ * stored calls have no call ids that this turn's provider would recognise, and
+ * a function_call without a matching output is rejected outright by both
+ * providers. As a note attached to the assistant turn that made the calls, it
+ * is just context, and it survives a model switch mid-session.
+ */
+export function replayToolResults(history: StoredMessage[], replayTurns = REPLAY_TURNS): Array<{ role: "user" | "assistant" | "system"; content: string }> {
+  const assistantIndexes = history
+    .map((item, index) => ({ item, index }))
+    .filter((entry) => entry.item.role === "assistant" && Array.isArray(entry.item.tool_calls) && entry.item.tool_calls.length)
+    .slice(-replayTurns)
+    .map((entry) => entry.index)
+  const replayAt = new Set(assistantIndexes)
+
+  return history.flatMap((item, index) => {
+    const role = item.role === "assistant" ? "assistant" as const : item.role === "system" ? "system" as const : "user" as const
+    const base = { role, content: String(item.content ?? "") }
+    if (!replayAt.has(index)) return [base]
+
+    const calls = (item.tool_calls as Array<{ tool?: unknown; result?: unknown }>).slice(0, 8)
+    const summary = calls
+      .map((call) => {
+        const tool = typeof call.tool === "string" ? call.tool : "tool"
+        // Pruned to the same budget the live loop uses, so replaying a turn
+        // costs no more than the turn itself did.
+        return `${tool} → ${serializeToolOutput(call.result, { tool }).output}`
+      })
+      .join("\n")
+    if (!summary) return [base]
+    return [base, { role: "system" as const, content: `[What your tools returned on that turn, so you do not need to read it again:\n${summary}\n]` }]
+  })
 }

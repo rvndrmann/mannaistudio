@@ -6,10 +6,11 @@ import { requestDirectorTool } from "./tool-service"
 import type { AuthenticatedProjectContext } from "./server-context"
 import type { DirectorTimelineBlock } from "./timeline"
 import { defaultDirectorRuntimeSettings, runtimeInstructions, type DirectorRuntimeSettings } from "./director-runtime-settings"
-import { buildVisionUserContent, type DirectorVisionAttachment } from "./director-vision"
+import { buildVisionUserContent, collectRequestedMedia, type DirectorVisionAttachment } from "./director-vision"
 import { activeAgentInstructions, agentBriefFor, agentForStage, agentForTool, fetchDirectorTeam, type DirectorAgentKey, type DirectorTeam } from "./director-team"
 import { addWorkflowStep, createWorkflowRun, finishWorkflowRun } from "./workflow-runs"
 import { directorRecovery } from "./recovery"
+import { serializeToolOutput } from "./tool-result-budget"
 import { addTokenUsage } from "@/lib/byok/usage"
 
 export type DirectorStreamEvent =
@@ -18,6 +19,7 @@ export type DirectorStreamEvent =
   | { type: "proposal"; proposalId: string; title: string }
 
 const toolDescriptions: Record<DirectorToolName, string> = {
+  read_tool_output: "Read back a tool result that was too large to fit in the conversation. When a result you were given ends with a marker saying characters were omitted, that marker names the step number to pass here. Walk a long result with `offset`, using the `nextOffset` each reply gives you, rather than asking for it all at once.",
   inspect_current_project: "Read the current project settings and creative brief.",
   read_episode_script: "Read the complete saved script for one episode. Use this when the user refers to the script already added in the Studio.",
   save_script_prompts: "Save the prompt sheet for the whole script: one prompt per shot, in order. Overwrites the episode's existing sheet",
@@ -32,7 +34,7 @@ const toolDescriptions: Record<DirectorToolName, string> = {
   write_series_bible: "Propose an update to a saved series bible.",
   create_production_entity: "Propose creation of a character, location, prop, product, wardrobe, or voice asset. Use this when a shot prompt references an asset the project does not have yet. After it is approved, generate a reference image for it so later shots can use it as a visual reference, drawing on existing project assets so the look stays consistent.",
   create_production_entities_batch: "Propose creating up to 50 deduplicated production entities after inspecting existing entities.",
-  create_storyboard_batch: "Propose creating or replacing an ordered storyboard batch with validated entity references. Each shot's prompt is one frame — a single paragraph of what the camera sees in that one moment — never the master prompt's own section headings and never more than one timed beat; a prompt that reads as a whole scene is rejected.",
+  create_storyboard_batch: "Propose creating or replacing an ordered storyboard batch with validated entity references. Write both prompts for each shot in this one pass. `prompt` is one frame — a single paragraph of what the camera sees in that one moment — never the master prompt's own section headings and never more than one timed beat; a prompt that reads as a whole scene is rejected. `videoPrompt` is the timed beats that shot is filmed from, starting at 0s. Write it here rather than leaving it for a later pass: a shot with no video prompt is filmed from its image prompt, which is a single frame rendered as though it were a scene. Name every character and asset by @tag in both, on every mention — the @tag is what binds them to their reference image at the provider, and a subject described in words instead of tagged is rendered from the words.",
   validate_production: "Validate storyboard prompts and entity references before generation.",
   record_continuity_fact: "Propose a scoped continuity fact for the production.",
   inspect_continuity: "Read approved continuity facts and conflicts.",
@@ -58,6 +60,7 @@ const toolDescriptions: Record<DirectorToolName, string> = {
 // toolDescriptions, which is written for the model and states schema limits
 // like "up to 50" that read as intent when shown as a label.
 const toolLabels: Record<DirectorToolName, string> = {
+  read_tool_output: "Read the full tool result",
   inspect_current_project: "Read project settings",
   read_episode_script: "Read the episode script",
   save_script_prompts: "Save the prompt sheet",
@@ -120,6 +123,7 @@ export function directorFunctionDefinitions(only?: readonly DirectorToolName[]):
 
 export const HAND_OFF_TOOL = "hand_off_to_agent"
 export const ASK_AGENT_TOOL = "ask_agent"
+export const LOOK_AT_TOOL = "look_at_media"
 
 /**
  * The two tools that move work between agents rather than changing the
@@ -137,6 +141,17 @@ const controlToolDefinitions: OpenAIDirectorFunction[] = [
         brief: { type: "string", description: "What they are being asked for, and the decisions already made." },
       },
       required: ["agent_key"],
+    },
+  },
+  {
+    name: LOOK_AT_TOOL,
+    description: "Look at saved workspace images when you need to see them to answer. Storyboard keyframes by shot number, character and asset reference art by name. Images are not attached to the conversation unless the user pointed at one, because they are large and slow to send — so ask for exactly what you need to see and nothing more. Use this when the user asks how something looks, whether a frame is right, or whether two shots match. Do not use it to re-read a prompt: prompts are text and you can read them with the storyboard tools.",
+    parameters: {
+      type: "object",
+      properties: {
+        shotNumbers: { type: "array", items: { type: "number" }, description: "Storyboard shot numbers whose current keyframe you need to see." },
+        entityNames: { type: "array", items: { type: "string" }, description: "Character or asset names whose reference art you need to see." },
+      },
     },
   },
   {
@@ -163,7 +178,7 @@ const readOnlyToolNames = (Object.keys(directorTools) as DirectorToolName[]).fil
  * every step cost ten thousand tokens a call and offered the Script Agent the
  * video renderer.
  */
-function toolsForAgent(active: DirectorAgentKey | null): DirectorToolName[] {
+export function toolsForAgent(active: DirectorAgentKey | null): DirectorToolName[] {
   const all = Object.keys(directorTools) as DirectorToolName[]
   if (!active) return all
   return all.filter((name) => {
@@ -204,8 +219,34 @@ export async function runDirectorAgent(input: {
 }) {
   const emit = (event: DirectorStreamEvent) => { try { input.onEvent?.(event) } catch { /* a broken consumer must not fail the run */ } }
   const runtimeSettings = input.runtimeSettings || defaultDirectorRuntimeSettings
+  /**
+   * Workflow step writes, started but not waited for.
+   *
+   * addWorkflowStep is three or four Postgres round trips — the step row, a
+   * checkpoint when the status warrants one, sometimes an artifact, then the
+   * run's current_step. Awaited inside the tool loop, every one of those sat
+   * between a tool finishing and the next model call starting, on a loop that
+   * runs up to ten times. Nothing in the loop reads what they return.
+   *
+   * They are still guaranteed to land: every promise is collected here and
+   * awaited before the run reports its result, so the timeline a reloading page
+   * reads is complete. Only the waiting moved.
+   */
+  const stepWrites: Array<Promise<unknown>> = []
+  const recordStep = (step: Parameters<typeof addWorkflowStep>[1]) => {
+    stepWrites.push(
+      addWorkflowStep(input.context, step).catch((error) => {
+        // A step row is a record of work that already happened. Losing one must
+        // not fail the turn the user is waiting on.
+        console.warn("Could not record a Director workflow step:", error instanceof Error ? error.message : "unknown")
+      }),
+    )
+  }
+  // System messages travel too. The conversation window inserts one in place of
+  // the turns it dropped, and filtering it out here would have removed the only
+  // sign that anything was missing while still leaving the gap.
   const items: Array<Record<string, unknown>> = input.messages
-    .filter((message) => message.role === "user" || message.role === "assistant")
+    .filter((message) => message.role === "user" || message.role === "assistant" || message.role === "system")
     .map((message) => ({ role: message.role, content: message.content }))
   // Attach workspace images to the latest user turn so the Director looks at the
   // references instead of reasoning from storage paths it cannot open.
@@ -301,6 +342,9 @@ export async function runDirectorAgent(input: {
           })
     } catch (error) {
       const recovery = directorRecovery(error)
+      // Same ordering rule as the successful path: drain the deferred step
+      // writes first, or one of them reopens the run this is closing.
+      await Promise.all(stepWrites)
       await finishWorkflowRun(input.context, workflowRun.id, "failed", { completedSteps, failedSteps: failedSteps + 1, awaitingApproval, toolCalls: toolCalls.length }, { code: recovery.code, message: recovery.message })
       throw error
     }
@@ -321,8 +365,99 @@ export async function runDirectorAgent(input: {
       items.push({ type: "function_call", call_id: call.callId, name: call.name, arguments: JSON.stringify(call.arguments), thoughtSignature: call.thoughtSignature })
     }
 
+    /**
+     * Read-only calls of this batch, run together rather than one after another.
+     *
+     * A model asked to revise a shot commonly emits three or four reads at once
+     * — the shots, the entities, the master prompt — and every one of them was
+     * awaited in turn, so the batch took as long as all of them added up. Reads
+     * have no side effects and no ordering between them, which is exactly the
+     * condition for doing them at once.
+     *
+     * Only reads. A write, a costly tool or a handover changes what the next
+     * call in the batch should see, and an approval card must be raised in the
+     * order the model asked for it.
+     *
+     * The idempotency key is the same one the sequential path would have used,
+     * so nothing is executed twice: the result is prefetched here and consumed
+     * below in call order, which keeps the conversation deterministic.
+     */
+    const prefetched = new Map<string, { ok: true; value: Awaited<ReturnType<typeof requestDirectorTool>> } | { ok: false; error: unknown }>()
+    // read_tool_output reads the very rows the deferred writes above are still
+    // writing. In practice a model turn takes seconds and an insert takes
+    // milliseconds, so it would almost always find them — but "almost always"
+    // is the wrong guarantee for a tool whose entire job is retrieving
+    // something the user was told they could retrieve.
+    if (turn.calls.some((call) => call.name === "read_tool_output")) await Promise.all(stepWrites)
+    const readCalls = turn.calls.filter((call) => directorTools[call.name as DirectorToolName]?.risk === "read")
+    if (readCalls.length > 1) {
+      await Promise.all(readCalls.map(async (call) => {
+        try {
+          prefetched.set(call.callId, {
+            ok: true,
+            value: await requestDirectorTool(input.context, {
+              tool: call.name,
+              input: call.arguments,
+              sessionId: input.sessionId,
+              workflowRunId: workflowRun.id,
+              idempotencyKey: `${input.idempotencyKey}:${step}:${call.callId}`,
+            }),
+          })
+        } catch (error) {
+          // Reported in call order below, exactly as a sequential failure would
+          // have been, so a parallel read fails the same way it always did.
+          prefetched.set(call.callId, { ok: false, error })
+        }
+      }))
+    }
+
     for (const call of turn.calls) {
       stepSequence += 1
+
+      // Looking at a picture changes what the model can see, not what the
+      // workspace holds, so it is answered here alongside the other control
+      // tools: no execution row, no approval card, nothing spent.
+      if (call.name === LOOK_AT_TOOL) {
+        const args = (call.arguments || {}) as Record<string, unknown>
+        const shotNumbers = Array.isArray(args.shotNumbers) ? args.shotNumbers.map(Number).filter(Number.isFinite) : []
+        const entityNames = Array.isArray(args.entityNames) ? args.entityNames.map((name) => String(name)) : []
+        const label = shotNumbers.length && entityNames.length
+          ? `Looked at ${shotNumbers.length + entityNames.length} images`
+          : shotNumbers.length
+          ? `Looked at shot ${shotNumbers.join(", ")}`
+          : entityNames.length
+          ? `Looked at ${entityNames.join(", ")}`
+          : "Looked at the workspace"
+        emit({ type: "tool", tool: call.name, label, status: "running" })
+        try {
+          const requested = await collectRequestedMedia({
+            supabase: input.context.supabase,
+            projectId: input.context.project.id,
+            episodeId: input.episodeId,
+            shotNumbers,
+            entityNames,
+          })
+          items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify(
+            requested.length
+              ? { looking_at: requested.map((attachment) => attachment.label) }
+              : { error: "Nothing saved matches that. A shot with no keyframe and an asset with no reference art have nothing to show yet." },
+          ), thoughtSignature: call.thoughtSignature })
+          // The pictures themselves arrive as a user turn after the tool
+          // output, because that is the only shape both providers accept image
+          // parts in. From here on they ride in the item list like any other
+          // turn, so the next step of the loop can actually see them.
+          if (requested.length) {
+            items.push({ role: "user", content: buildVisionUserContent("Here is what you asked to look at.", requested) })
+          }
+          timeline.push({ type: "tool_execution", tool: call.name, label, status: "completed" })
+          emit({ type: "tool", tool: call.name, label, status: "completed" })
+        } catch (error) {
+          const message = directorRecovery(error).message
+          items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify({ error: message }), thoughtSignature: call.thoughtSignature })
+          emit({ type: "tool", tool: call.name, label, status: "failed" })
+        }
+        continue
+      }
 
       // Moving work between agents is loop control, not a workspace change, so
       // it is answered here: no execution row, no approval card, nothing spent.
@@ -331,7 +466,7 @@ export async function runDirectorAgent(input: {
         const targetKey = typeof args.agent_key === "string" ? args.agent_key as DirectorAgentKey : null
         const target = targetKey && team[targetKey]?.enabled ? targetKey : null
         const reply = (output: Record<string, unknown>) =>
-          items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify(output), thoughtSignature: call.thoughtSignature })
+          items.push({ type: "function_call_output", call_id: call.callId, output: serializeToolOutput(output).output, thoughtSignature: call.thoughtSignature })
 
         // A key nobody answers to is the model inventing a colleague. Told
         // plainly, it does the work itself; thrown, it would lose the turn.
@@ -411,7 +546,11 @@ export async function runDirectorAgent(input: {
       timeline.push(block)
       emit({ type: "tool", tool: call.name, label, status: "running", agent: agentName })
       try {
-        const result = await requestDirectorTool(input.context, {
+        const ready = prefetched.get(call.callId)
+        // A prefetched failure is re-thrown here rather than where it happened,
+        // so it lands in this call's own catch and is reported in call order.
+        if (ready && !ready.ok) throw ready.error
+        const result = ready?.ok ? ready.value : await requestDirectorTool(input.context, {
           tool: call.name,
           input: call.arguments,
           sessionId: input.sessionId,
@@ -429,18 +568,21 @@ export async function runDirectorAgent(input: {
           // card is most of the delay between asking and being able to act.
           emit({ type: "proposal", proposalId: result.proposal.id, title: result.proposal.title })
         }
-        await addWorkflowStep(input.context, { runId: workflowRun.id, sequence: stepSequence, specialist: activeAgent || specialistForTool(call.name), label, status: block.status, toolExecutionId: block.executionId, toolInput: call.arguments, output: result })
+        recordStep({ runId: workflowRun.id, sequence: stepSequence, specialist: activeAgent || specialistForTool(call.name), label, status: block.status, toolExecutionId: block.executionId, toolInput: call.arguments, output: result })
         if (block.status === "completed") completedSteps += 1
         if (block.status === "awaiting_approval") awaitingApproval += 1
         emit({ type: "tool", tool: call.name, label, status: block.status, agent: agentName })
-        items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify(result), thoughtSignature: call.thoughtSignature })
+        // The whole result is already safe in the workflow step above; what goes
+        // into the conversation is bounded, because this context is re-sent on
+        // every remaining step of the loop and the user pays for each one.
+        items.push({ type: "function_call_output", call_id: call.callId, output: serializeToolOutput(result, { tool: call.name, stepSequence }).output, thoughtSignature: call.thoughtSignature })
       } catch (error) {
         const recovery = directorRecovery(error)
         const message = recovery.message
         block.status = "failed"
         block.error = message
         failedSteps += 1
-        await addWorkflowStep(input.context, { runId: workflowRun.id, sequence: stepSequence, specialist: activeAgent || specialistForTool(call.name), label, status: "failed", toolInput: call.arguments, error: { message } })
+        recordStep({ runId: workflowRun.id, sequence: stepSequence, specialist: activeAgent || specialistForTool(call.name), label, status: "failed", toolInput: call.arguments, error: { message } })
         emit({ type: "tool", tool: call.name, label, status: "failed", agent: agentName })
         items.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify({ error: message }), thoughtSignature: call.thoughtSignature })
         timeline.push({ type: "warning", code: recovery.code, message: recovery.message, recoverable: recovery.recoverable, actions: recovery.suggestedIntent && recovery.suggestedLabel ? [{ id: `recover-${stepSequence}`, label: recovery.suggestedLabel, intent: recovery.suggestedIntent, payload: {}, risk: "read", recommended: true }] : [] })
@@ -450,6 +592,10 @@ export async function runDirectorAgent(input: {
 
   if (!content) content = timeline.length ? "I completed the available workflow steps. Review any approval cards before I continue." : "I could not complete that request. Please try a more specific instruction."
   const finalStatus = failedSteps || reachedStepLimit ? (completedSteps || awaitingApproval ? "partially_completed" : "failed") : awaitingApproval ? "awaiting_approval" : "completed"
+  // Before the run is closed, never after: addWorkflowStep also moves the run's
+  // status, so a step write still in flight would reopen a finished run as
+  // "running" and leave the page waiting on a reply it already has.
+  await Promise.all(stepWrites)
   await finishWorkflowRun(input.context, workflowRun.id, finalStatus, { completedSteps, failedSteps, awaitingApproval, toolCalls: toolCalls.length })
   timeline.unshift({ type: "workflow_summary", title: "Director workflow", summary: finalStatus === "completed" ? "Workflow completed." : finalStatus === "awaiting_approval" ? "Workflow is waiting for your approval." : "Workflow completed with items that need attention.", completed: completedSteps, failed: failedSteps })
   if (reachedStepLimit) timeline.push({ type: "warning", code: "step_limit", message: `This workflow reached the configured limit of ${runtimeSettings.maxToolSteps} tool turns. Continue it in a new message if more work remains.`, recoverable: true, actions: [{ id: "continue-workflow", label: "Continue workflow", intent: "Continue the previous workflow from its latest checkpoint", payload: { workflowRunId: workflowRun.id }, risk: "read", recommended: true }] })
