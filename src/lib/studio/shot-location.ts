@@ -70,6 +70,26 @@ export function inheritedShotLocations(shots: LocatableShot[], entities: Locatab
     if (carried) repairs.set(shot.id, carried)
     else awaitingFirst.push(shot)
   }
+
+  // Nothing named a location anywhere in the episode.
+  //
+  // The carry-forward above only works from a shot that already has one, so an
+  // episode where no prompt ever @mentions the scene left every shot with
+  // nowhere to be: awaitingFirst filled up, no shot ever set `carried`, and the
+  // list was dropped on the way out. That is the ordinary case, not an edge —
+  // a prompt names the place it is in far less often than it names who is in
+  // frame, and the Storyboard Agent tags characters and props reliably while
+  // leaving the location to the setting.
+  //
+  // One scene in the project is unambiguous: it is where the episode happens.
+  // Several is a real choice between them, and guessing would put shots in the
+  // wrong place, so those are left for the writer to tag.
+  if (carried === null && awaitingFirst.length) {
+    const scenes = entities.filter((entity) => entity.type === "scene")
+    if (scenes.length === 1) {
+      for (const shot of awaitingFirst) repairs.set(shot.id, scenes[0].id)
+    }
+  }
   return repairs
 }
 

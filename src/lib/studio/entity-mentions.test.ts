@@ -125,3 +125,38 @@ describe("reference budget", () => {
     ], 8)).toEqual(["shared.png"])
   })
 })
+
+/**
+ * The inheritance that undid itself.
+ *
+ * A prompt names a place only where it changes, which is why the location is
+ * carried onto the shots in between. But the cast was then recomputed from the
+ * prompt, keeping a declared entity only when its name appeared in the text —
+ * so the scene the repair had just added was dropped again for exactly the
+ * reason it was added. The storyboard showed a cast with nowhere to be, and
+ * generation, which reads the cast through the same function, sent no location.
+ */
+describe("a declared location survives the cast filter", () => {
+  const street = { id: "street", name: "Modern Roadway Day", type: "scene" as const }
+  const sara = { id: "sara", name: "Sara", type: "character" as const }
+  const car = { id: "car", name: "Luxury Car", type: "prop" as const }
+  const cast = [street, sara, car]
+
+  it("keeps the scene even though the prompt never names it", () => {
+    const ids = findShotCastEntityIds("Wide aerial of @Luxury Car with @Sara at the wheel.", cast, ["street", "sara", "car"])
+    expect(ids).toContain("street")
+    expect(ids).toContain("sara")
+    expect(ids).toContain("car")
+  })
+
+  it("still drops a declared prop the prompt does not name", () => {
+    const trunk = { id: "trunk", name: "Car Trunk", type: "prop" as const }
+    const ids = findShotCastEntityIds("@Sara at the wheel.", [...cast, trunk], ["sara", "trunk"])
+    expect(ids).toContain("sara")
+    expect(ids).not.toContain("trunk")
+  })
+
+  it("does not invent a scene that was never declared", () => {
+    expect(findShotCastEntityIds("@Sara at the wheel.", cast, ["sara"])).not.toContain("street")
+  })
+})

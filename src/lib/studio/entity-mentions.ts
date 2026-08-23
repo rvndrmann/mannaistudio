@@ -87,6 +87,16 @@ export function findShotCastEntityIds(text: string, entities: MentionableEntity[
   const confirmed = entities
     .filter((entity) => declared.has(entity.id) && !mentioned.includes(entity.id))
     .filter((entity) => {
+      // A declared location stays, whether or not the prompt says its name.
+      //
+      // Prompts name a place only where it changes, which is why the location
+      // is carried onto the shots in between in the first place. Asking those
+      // shots to name it undoes the inheritance the moment it happens: the
+      // repair added the scene because the prompt did not mention it, and this
+      // dropped it again for exactly the same reason. The storyboard then
+      // showed a cast with nowhere to be, and generation — which reads the cast
+      // through here too — sent no location reference at all.
+      if (entity.type === "scene") return true
       const name = entity.name.trim()
       if (name.length < 3) return false
       return new RegExp(`(^|[^\\w@])${escapeRegExp(name)}($|[^\\w])`, "i").test(text)

@@ -76,3 +76,50 @@ describe("inheritedShotLocations", () => {
     expect(Object.fromEntries(repairs)).toEqual({ "shot-2": "bathroom", "shot-3": "bathroom" })
   })
 })
+
+/**
+ * The case that left every shot nowhere.
+ *
+ * The carry-forward only works from a shot that already has a location, so an
+ * episode where no prompt ever @mentions the scene filled awaitingFirst, never
+ * set `carried`, and dropped the list on the way out — no shot got a location
+ * at all. The storyboard then showed a cast of characters and props with no
+ * place for them to be, and generation had no location reference.
+ */
+describe("an episode where no shot names its location", () => {
+  const street = { id: "street", type: "scene" as const }
+  const sara = { id: "sara", type: "character" as const }
+  const car = { id: "car", type: "prop" as const }
+  const shot = (id: string, order: number, cast: string[]) => ({ id, order_index: order, referenced_entities: cast })
+
+  it("puts every shot in the project's only scene", () => {
+    const repairs = inheritedShotLocations(
+      [shot("a", 0, ["sara", "car"]), shot("b", 1, ["sara"]), shot("c", 2, ["car"])],
+      [street, sara, car],
+    )
+    expect(repairs.get("a")).toBe("street")
+    expect(repairs.get("b")).toBe("street")
+    expect(repairs.get("c")).toBe("street")
+  })
+
+  it("does not guess when the project has more than one scene", () => {
+    const trunk = { id: "trunk", type: "scene" as const }
+    const repairs = inheritedShotLocations([shot("a", 0, ["sara"])], [street, trunk, sara])
+    expect(repairs.size).toBe(0)
+  })
+
+  it("does nothing when the project has no scene at all", () => {
+    expect(inheritedShotLocations([shot("a", 0, ["sara"])], [sara]).size).toBe(0)
+  })
+
+  it("still prefers a location a shot actually names", () => {
+    const trunk = { id: "trunk", type: "scene" as const }
+    const repairs = inheritedShotLocations(
+      [shot("a", 0, ["trunk"]), shot("b", 1, ["sara"])],
+      [street, trunk, sara],
+    )
+    // b inherits the trunk from a, rather than falling back to anything.
+    expect(repairs.get("b")).toBe("trunk")
+    expect(repairs.has("a")).toBe(false)
+  })
+})
