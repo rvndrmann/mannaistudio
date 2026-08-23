@@ -90,12 +90,14 @@ describe("a storyboard shot leaves create_storyboard_batch ready to film", () =>
     expect(parsed.shots[0].videoPrompt).toContain("0-3s")
   })
 
-  it("still accepts a shot with only an image prompt", () => {
-    const parsed = directorTools.create_storyboard_batch.input.parse({
+  it("refuses a shot with no video prompt", () => {
+    // Without beats a shot is sized from its spoken words alone, so a wordless
+    // one falls to the four-second floor however much happens in it — which is
+    // how a whole storyboard came out at an identical 4s.
+    expect(() => directorTools.create_storyboard_batch.input.parse({
       episodeId: "11111111-1111-4111-8111-111111111111",
       shots: [shot()],
-    }) as unknown as { shots: Array<{ videoPrompt?: string }> }
-    expect(parsed.shots[0].videoPrompt).toBeUndefined()
+    })).toThrow()
   })
 })
 
@@ -182,6 +184,7 @@ describe("a storyboard batch survives an entity id the model guessed", () => {
       shots: [{
         title: "Shot 1",
         prompt: "@Sara at the wheel.",
+        videoPrompt: "0-4s: @Sara turns toward the camera.",
         referencedEntityIds: [real, guessed],
       }],
     }) as unknown as { shots: Array<{ referencedEntityIds: string[] }> }

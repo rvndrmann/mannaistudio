@@ -27,6 +27,9 @@ export type ShotCostInput = {
   video_status?: string | null
   duration_seconds?: number | null
   prompt?: string | null
+  // Carries the timed range the writer gave the shot, which is what decides a
+  // wordless shot's runtime — and therefore what it costs to render.
+  script_text?: string | null
   aspect_ratio?: string | null
   resolution?: string | null
 }

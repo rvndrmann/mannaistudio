@@ -372,8 +372,8 @@ export const createStoryboardBatchTool = defineDirectorTool({
        * to its image prompt at generation, which is a single frame filmed as
        * though it were a scene.
        */
-      videoPrompt: z.string().trim().max(20_000).optional().describe(
-        "What happens across THIS ONE SHOT, as contiguous timed beats starting at 0s — `0-4s: <action>`, or the timestamped-title form `0-2s — BEAT TITLE`. Write it in the same pass as `prompt`: that one is the single frame the keyframe is drawn from, this one is the motion the clip is filmed from. Name every character and asset by @tag on every mention, because the @tag is what binds them to their reference image at the provider; a subject described in words instead of tagged is rendered from the words and drifts. Never describe a referenced character's face, hair, build, or wardrobe. Dialogue in braces, sound in angle brackets. The last beat ends where the shot ends, and that runtime overrides durationSeconds.",
+      videoPrompt: z.string().trim().min(1).max(20_000).describe(
+        "Required. What happens across THIS ONE SHOT, as contiguous timed beats starting at 0s — `0-4s: <action>`, or the timestamped-title form `0-2s — BEAT TITLE`. Write it in the same pass as `prompt`: that one is the single frame the keyframe is drawn from, this one is the motion the clip is filmed from. The beats are also what decides how long the shot runs — the last beat ends where the shot ends, and that overrides durationSeconds — so give a shot the time its action actually takes, up to 15 seconds. Without beats a shot is sized from its spoken words alone, and a wordless one falls to the four-second floor however much happens in it. Name every character and asset by @tag on every mention, because the @tag is what binds them to their reference image at the provider; a subject described in words instead of tagged is rendered from the words and drifts. Never describe a referenced character's face, hair, build, or wardrobe. Dialogue in braces, sound in angle brackets.",
       ),
       durationSeconds: z.number().positive().max(120).default(4),
       aspectRatio: z.string().trim().max(20).default("16:9"),
@@ -394,9 +394,7 @@ export const createStoryboardBatchTool = defineDirectorTool({
     // Beats that do not add up render unpredictably, and only the writer can
     // fix them — so the same check write_shot_video_prompts applies is applied
     // here, rather than storing a broken timeline to be discovered as a bad clip.
-    const beatFaults = input.shots.flatMap((shot) => shot.videoPrompt
-      ? describeBeatProblems(shot.videoPrompt).map((problem) => `Shot "${shot.title}": ${problem}`)
-      : [])
+    const beatFaults = input.shots.flatMap((shot) => describeBeatProblems(shot.videoPrompt).map((problem) => `Shot "${shot.title}": ${problem}`))
     if (beatFaults.length) throw new Error(beatFaults.slice(0, 8).join(" "))
     // An id the model guessed is dropped, not fatal.
     //
@@ -457,7 +455,7 @@ export const createStoryboardBatchTool = defineDirectorTool({
     const untagged = input.shots.flatMap((shot) => {
       const found = [
         ...findUntaggedEntities(shot.prompt, batchEntities),
-        ...(shot.videoPrompt ? findUntaggedEntities(shot.videoPrompt, batchEntities) : []),
+        ...findUntaggedEntities(shot.videoPrompt, batchEntities),
       ]
       const unique = found.filter((entity, index) => found.findIndex((other) => other.id === entity.id) === index)
       return unique.length ? [describeUntaggedEntities(unique, `Shot "${shot.title}"`)] : []
@@ -476,7 +474,7 @@ export const createStoryboardBatchTool = defineDirectorTool({
       // Written in the same pass as the image prompt, so a shot leaves this
       // tool ready to film. Sanitised the same way: identity prose overrides
       // the reference art whichever prompt it is written into.
-      const videoPrompt = shot.videoPrompt ? stripIdentityDescriptions(shot.videoPrompt) : ""
+      const videoPrompt = stripIdentityDescriptions(shot.videoPrompt)
       // The beats are the runtime when there are beats. Otherwise the estimate
       // from the script stands, as it always did.
       const beatSeconds = videoPrompt ? beatRuntimeSeconds(videoPrompt) : null
