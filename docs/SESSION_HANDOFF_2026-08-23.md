@@ -7,7 +7,8 @@ here, but four of its context-management ideas were worth taking. Pulling on
 those exposed a chain of bugs from the chat window down to the length of a
 storyboard shot, most of which had been silently wrong for some time.
 
-Four commits, all on `main`: `9a2b91f`, `8226fc9`, `d3b135d`, `ff3193a`.
+Seven commits, all on `main`: `9a2b91f`, `8226fc9`, `d3b135d`, `ff3193a`,
+`569c545`, `5c89a85`, `4d93a11`.
 
 ## Why deepseek-harness is not the backend
 
