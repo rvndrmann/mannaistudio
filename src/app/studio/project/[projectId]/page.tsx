@@ -6851,17 +6851,44 @@ function generationProposalPrompts(proposal: ChatProposal): Record<string, strin
 // entity is ignored by the provider, so the card warns before credits are spent
 // rather than after the shot comes back without the character.
 function unresolvedMentions(prompt: string, entities: Entity[]) {
-  const names = new Set(entities.map((entity) => entity.name.toLowerCase().replace(/\s+/g, "-")));
   // Continuation prompts use these two media aliases to explain which inputs
   // control motion and composition. They are not project entities and should
   // not produce a false missing-character warning.
   const mediaAliases = new Set(["previous", "storyboard"]);
-  const found = prompt.match(/\[@([^\]]+)\]|@([A-Za-z0-9_-]{2,})/g) || [];
-  return Array.from(new Set(
-    found
-      .map((token) => token.replace(/^\[?@/, "").replace(/\]$/, "").trim())
-      .filter((name) => name && !mediaAliases.has(name.toLowerCase()) && !names.has(name.toLowerCase().replace(/\s+/g, "-"))),
-  )).slice(0, 6);
+  // Longest first, so "@Luxury Car" is tested before "@Luxury" could match it.
+  const known = entities
+    .map((entity) => entity.name.trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+  const missing: string[] = [];
+  // Walked one @ at a time rather than matched with a single pattern.
+  //
+  // The pattern here was `@([A-Za-z0-9_-]{2,})`, which stops at a space — so
+  // "@Luxury Car" was read as "@Luxury" and "@Modern Roadway Day" as "@Modern",
+  // neither of which matches an entity called "Luxury Car" or "Modern Roadway
+  // Day". The card then warned that references it was about to send correctly
+  // would be ignored, and offered to create assets that already existed.
+  // Generation itself never had this problem: it resolves the cast by matching
+  // entity names, which is what this does now.
+  for (let index = prompt.indexOf("@"); index !== -1; index = prompt.indexOf("@", index + 1)) {
+    // Only a real mention start: preceded by nothing, whitespace, or an opener.
+    const before = index === 0 ? "" : prompt[index - 1];
+    if (before && !/[\s([{,:;]/.test(before)) continue;
+    const rest = prompt.slice(index + 1);
+    const resolved = known.find((name) => rest.toLowerCase().startsWith(name.toLowerCase())
+      // The character after the name must end it, or "@Sara" would match inside
+      // "@Sarah" and hide a genuinely missing asset.
+      && !/[\w-]/.test(rest.charAt(name.length)));
+    if (resolved) {
+      index += resolved.length;
+      continue;
+    }
+    const token = (rest.match(/^[A-Za-z0-9_-]{2,}/) || [])[0];
+    if (!token || mediaAliases.has(token.toLowerCase())) continue;
+    if (!missing.includes(token)) missing.push(token);
+  }
+  return missing.slice(0, 6);
 }
 
 function VideoGenerationProposalBlock({

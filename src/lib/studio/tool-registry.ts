@@ -775,6 +775,21 @@ export const submitGenerationTool = defineDirectorTool({
         // it was meant to replace.
         return owner === shotId && request.useExistingFrame
       })
+      // A video is filmed from the shot's approved keyframe, always.
+      //
+      // The keyframe is the clip's first frame — that is what generationMode
+      // "keyframe" means, and execute-generation puts shot-owned images ahead
+      // of the cast precisely so the frame arrives as [Image 1]. But this only
+      // ever filtered what the model passed in, and the model is told not to
+      // attach a shot's own keyframe, which is right when regenerating an image
+      // and wrong here. So nothing put it in the list, useExistingFrame merely
+      // permitted something that was never there, and the clip was rendered
+      // from the cast and the prompt with the approved frame ignored.
+      if (request.type === "video") {
+        const shot = (generationShots || []).find((item) => item.id === shotId)
+        const keyframe = typeof shot?.keyframe_image === "string" ? shot.keyframe_image.trim() : ""
+        if (keyframe) return Array.from(new Set([keyframe, ...scoped]))
+      }
       return scoped.length ? scoped : undefined
     }
     // A model that addressed shots by number keys its prompts the same way, and

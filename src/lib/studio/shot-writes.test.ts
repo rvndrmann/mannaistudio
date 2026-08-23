@@ -198,3 +198,57 @@ describe("a storyboard batch survives an entity id the model guessed", () => {
     expect(findShotCastEntityIds("@Sara at the wheel.", entities, [guessed])).toEqual([real])
   })
 })
+
+/**
+ * A video is filmed from the shot's approved keyframe.
+ *
+ * The keyframe is the clip's first frame — that is what generationMode
+ * "keyframe" means, and execute-generation orders shot-owned images ahead of
+ * the cast so the frame arrives as [Image 1]. But submit_generation only ever
+ * filtered the reference paths the model passed in, and the model is told not
+ * to attach a shot's own keyframe, which is right for an image regenerate and
+ * wrong here. Nothing put it in the list; useExistingFrame merely permitted
+ * something that was never there. The Director then reported the frame
+ * "missing" and asked the user to pick one that was already attached.
+ */
+describe("video generation carries the shot's keyframe", () => {
+  const keyframe = "project/shots/shot-1.png"
+  const castRef = "project/entities/sara.png"
+
+  // inputImagesFor as submit_generation applies it, for a video request.
+  const inputImagesFor = (opts: { type: "image" | "video"; referencePaths: string[]; useExistingFrame: boolean }) => {
+    const shot = { id: "shot-1", keyframe_image: keyframe }
+    const owned = new Map<string, string>([[keyframe, shot.id]])
+    const scoped = opts.referencePaths.filter((path) => {
+      const owner = owned.get(path)
+      if (!owner) return true
+      return owner === shot.id && opts.useExistingFrame
+    })
+    if (opts.type === "video") {
+      const frame = shot.keyframe_image.trim()
+      if (frame) return Array.from(new Set([frame, ...scoped]))
+    }
+    return scoped.length ? scoped : undefined
+  }
+
+  it("attaches the keyframe even though the model passed none", () => {
+    expect(inputImagesFor({ type: "video", referencePaths: [castRef], useExistingFrame: false }))
+      .toEqual([keyframe, castRef])
+  })
+
+  it("puts the keyframe first, which is where [Image 1] is read from", () => {
+    expect(inputImagesFor({ type: "video", referencePaths: [castRef], useExistingFrame: true })?.[0]).toBe(keyframe)
+  })
+
+  it("does not attach it twice when the model passed it as well", () => {
+    expect(inputImagesFor({ type: "video", referencePaths: [keyframe, castRef], useExistingFrame: true }))
+      .toEqual([keyframe, castRef])
+  })
+
+  it("still keeps an image regenerate off its own frame", () => {
+    // A regenerate should build from the cast and the prompt, not re-derive the
+    // picture it is replacing.
+    expect(inputImagesFor({ type: "image", referencePaths: [keyframe, castRef], useExistingFrame: false }))
+      .toEqual([castRef])
+  })
+})
