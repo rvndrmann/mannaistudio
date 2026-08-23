@@ -51,9 +51,9 @@ ARK_API_KEY=
 BYTEPLUS_ARK_BASE_URL=https://ark.ap-southeast.bytepluses.com/api/v3
 ```
 
-The Studio chat selector reads active models from `site_settings.ai_director_models`. Defaults are `gpt-5.6`, `gpt-5.6-luna`, `gpt-5.6-terra`, `gpt-5.5`, `gemini-3.6-flash`, `gemini-3.6-pro`, `gemini-2.0-flash`, `kimi-2.5`, `deepseek-v4`, `glm-5.2`, `dola-seed-2-1-turbo`, and `dola-seed-2-0`. `OPENAI_DIRECTOR_MODEL` sets the preferred server fallback when no model is supplied by the browser. 
+The Studio chat selector reads active models from `site_settings.ai_director_models`, merged over the catalog in `src/lib/studio/ai-models.ts`. As of 2026-08-23 that catalog is **`gpt-5.6-luna` and `gemini-3.6-flash`** — a stored setting can rename or pause one, but cannot introduce a model the catalog does not list. `OPENAI_DIRECTOR_MODEL` sets the preferred server fallback when the browser supplies none. Only `gpt-5.6-luna` streams; the Gemini path is non-streaming, so on Gemini nothing is shown until the whole tool loop finishes.
 
-The AI Director natively supports **BytePlus Ark** for chat completion models (Kimi, DeepSeek, GLM, Dola Seed) utilizing the `BYTEPLUS_ARK_BASE_URL` and `ARK_API_KEY`, routing these requests to the OpenAI-compatible BytePlus `/chat/completions` API instead of OpenAI.
+> **Stale as of 2026-08-23.** This section described chat-completion models served through BytePlus Ark — Kimi, DeepSeek, GLM, Dola Seed — via `createBytePlusDirectorToolTurn`. **That function does not exist in `src/`.** `byteplus.ts` is image and video generation only, and `ai-models.ts` ships two Director models: `gpt-5.6-luna` and `gemini-3.6-flash`. `BYTEPLUS_ARK_BASE_URL` and `ARK_API_KEY` are real and are used for generation, not for chat. Adding a chat provider means a new adapter beside `openai.ts` and `google.ts`, plus entries in `ai-models.ts`, `byok/providers.ts`, `byok/chat-source.ts` and `byok/chat-pricing.ts`.
 
 Admins can pause or rerun models in the Admin AI Models panel; paused models are hidden from the Studio selector and rejected by the server route.
 
