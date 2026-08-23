@@ -139,6 +139,45 @@ the project has reference art for it — after three rounds of asking politely i
 tool descriptions and agent briefs produced "a dark sleek modern car" while
 `@Sleek Luxury Car` sat in the library with a photograph.
 
+### A video was never filmed from its keyframe
+
+The keyframe is a clip's first frame — that is what `generationMode:
+"keyframe"` means, and `execute-generation` orders shot-owned images ahead of
+the cast so the frame arrives as `[Image 1]`. But `inputImagesFor` only ever
+**filtered** the reference paths the model passed, and the model is told not to
+attach a shot's own keyframe: right when regenerating an image, wrong here.
+Nothing put the frame in the list; `useExistingFrame` merely permitted something
+that was never there.
+
+Worse than the miss was the explanation. The Director reported the keyframe
+"missing" and asked which completed image should become it — while
+`keyframe_image` was set the whole time. It invented a plausible cause for a
+real symptom and sent the user to fix something that was not broken. Worth
+remembering when its diagnosis is convincing.
+
+Attaching the frame then exposed a second fault. Roles in keyframe mode were
+assigned **by index** — first, last, then everything else — which reads
+correctly only when the caller sends a start frame *and* an end frame and
+nothing in front of the cast. With the keyframe at index 0, the first cast
+reference became the clip's **last frame**: the video would have ended on a
+reference sheet. A video request now defaults to `multi_image`, where every
+image is a plain reference and none claims a position in time, and keyframe mode
+takes an explicit `compositionFrames` count instead of guessing from position.
+
+The approval card also could not show any of this, because it renders from the
+proposal payload while the attachment happens at execution. It seeds its
+references with the target shots' keyframes now, so the strip shows the frame
+that will be sent.
+
+### The card warned about references it was about to send correctly
+
+`unresolvedMentions` matched `@([A-Za-z0-9_-]{2,})`, which stops at a space, so
+`@Luxury Car` read as `@Luxury` and `@Modern Roadway Day` as `@Modern` — neither
+matching an entity of that name. The card warned they would be ignored and
+offered to create assets that already existed. Generation never had this
+problem; it resolves the cast by matching entity names, which the card does now,
+longest name first so `@Luxury` cannot shadow `@Luxury Car`.
+
 ### Freshly generated art reported itself out of date
 
 `artIsStale` compares the description the art was made from against the one the
@@ -230,12 +269,21 @@ Verified live in the browser: the storyboard batch executing, the scene
 appearing in each shot's assets, the Video Prompt Agent writing real timed
 beats, entity jobs carrying `entity_id`, and both latency measurements.
 
+Verified in the browser after the video work: the approval card showing
+`SHOT 1 IMAGE` beside the cast, and the false `[@Luxury]` / `[@Modern]` warning
+gone.
+
 **Committed but never seen working in a real turn** — treat as unproven:
 
 - Revision cards showing the new prompt text (`update_shot`) — unit-tested only.
 - `read_tool_output` — never fired; the test projects are too small to reach the
   trim threshold.
 - `@tag` enforcement — never triggered live.
+- **No video has been generated end to end.** The keyframe attachment, the
+  `multi_image` default and the explicit `compositionFrames` role assignment are
+  unit-tested and the reasoning is checkable, but BytePlus stops the chain at
+  `CreateAssetGroup` before a clip is ever produced. The first real clip is the
+  proof, and it has not happened.
 - `videoPrompt` being **required** on `create_storyboard_batch`. This is a hard
   schema requirement: if the Storyboard Agent omits it the batch fails with a
   clear message rather than silently producing four-second shots. That was a
