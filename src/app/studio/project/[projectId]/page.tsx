@@ -212,7 +212,7 @@ type Workspace = {
     referenceAssets: Array<Record<string, unknown>>;
     continuityIssues: Array<Record<string, unknown>>;
     revisions: Array<Record<string, unknown>>;
-    generationJobs: Array<{ id: string; workflow_run_id?: string | null; shot_id?: string | null; type?: string; status: string; model?: string | null; prompt?: string | null; input_images?: string[] | null; result_url?: string | null; error?: string | null; settings?: Record<string, unknown> | null; target_snapshot?: Record<string, unknown>; verification?: Record<string, unknown>; estimated_credits?: number | null; credits_used?: number | null; credits_refunded?: number | null; created_at?: string; completed_at?: string | null }>;
+    generationJobs: Array<{ id: string; workflow_run_id?: string | null; shot_id?: string | null; entity_id?: string | null; type?: string; status: string; model?: string | null; prompt?: string | null; input_images?: string[] | null; result_url?: string | null; error?: string | null; settings?: Record<string, unknown> | null; target_snapshot?: Record<string, unknown>; verification?: Record<string, unknown>; estimated_credits?: number | null; credits_used?: number | null; credits_refunded?: number | null; created_at?: string; completed_at?: string | null }>;
     creditAccount: { balance: number; reserved: number } | null;
     /** Every job this project ever ran, netted of refunds and split by episode. */
     spend?: SpendBreakdown;
@@ -2115,10 +2115,19 @@ function Assets({
                   key={e.id}
                   entity={e}
                   projectId={projectId}
+                  // Matched on the job's own entity_id.
+                  //
+                  // This asked for settings.entityId, which generate_entity_reference_art
+                  // has never written — its settings carry `target: "asset"` and the
+                  // entity's type, not its id — so the card never knew a job was for it
+                  // and the panel sat still while art rendered, then changed all at once
+                  // when it landed. The column was set on the job all along; the
+                  // workspace endpoint simply did not send it. settings.entityId is
+                  // still honoured for jobs written before that changed.
                   generating={generationJobs.some((job) => {
                     const settings = job.settings && typeof job.settings === "object" ? job.settings as Record<string, unknown> : null;
                     return job.type === "image"
-                      && settings?.entityId === e.id
+                      && (job.entity_id === e.id || settings?.entityId === e.id)
                       && !["completed", "failed", "cancelled"].includes(job.status);
                   })}
                   save={save}

@@ -398,12 +398,24 @@ export const createStoryboardBatchTool = defineDirectorTool({
       ? describeBeatProblems(shot.videoPrompt).map((problem) => `Shot "${shot.title}": ${problem}`)
       : [])
     if (beatFaults.length) throw new Error(beatFaults.slice(0, 8).join(" "))
+    // An id the model guessed is dropped, not fatal.
+    //
+    // referencedEntityIds is a hint: the cast that actually gets stored is
+    // derived from the prompt's @mentions by findShotCastEntityIds below, and
+    // only falls back to this list when the prompt names nobody. So an id that
+    // does not resolve costs nothing — but failing the whole batch on one cost
+    // the user eleven shots and a turn, with an error naming no id, so the
+    // Director could not tell which one to fix and simply proposed the same
+    // thing again.
     const referencedIds = Array.from(new Set(input.shots.flatMap((shot) => shot.referencedEntityIds)))
+    let unknownEntityIds: string[] = []
     if (referencedIds.length) {
       const { data: entities, error: entityError } = await context.supabase.from("creator_entities").select("id").eq("project_id", context.project.id).in("id", referencedIds)
       if (entityError) throw entityError
-      if ((entities || []).length !== referencedIds.length) throw new Error("One or more storyboard entity references are invalid")
+      const known = new Set((entities || []).map((entity) => entity.id as string))
+      unknownEntityIds = referencedIds.filter((id) => !known.has(id))
     }
+    const knownEntityId = (id: string) => !unknownEntityIds.includes(id)
     if (input.replaceExisting) {
       const { error } = await context.supabase.from("creator_shots").delete().eq("episode_id", input.episodeId)
       if (error) throw error
@@ -481,7 +493,7 @@ export const createStoryboardBatchTool = defineDirectorTool({
         prompt: stripIdentityDescriptions(shot.prompt),
         duration_seconds: durationSeconds,
         aspect_ratio: shot.aspectRatio,
-        referenced_entities: cast.length ? cast : shot.referencedEntityIds,
+        referenced_entities: cast.length ? cast : shot.referencedEntityIds.filter(knownEntityId),
         ...(videoPrompt ? { metadata: writeShotVideoPrompt(null, videoPrompt) } : {}),
       }
     })
@@ -496,7 +508,15 @@ export const createStoryboardBatchTool = defineDirectorTool({
     }
     const { data, error } = await context.supabase.from("creator_shots").insert(rows).select("*")
     if (error) throw error
-    return { created: data || [], replacedExisting: input.replaceExisting }
+    return {
+      created: data || [],
+      replacedExisting: input.replaceExisting,
+      // Reported rather than thrown, so the Director can see it guessed an id
+      // and read the real ones next time instead of proposing the same batch.
+      ...(unknownEntityIds.length
+        ? { ignoredEntityIds: unknownEntityIds, note: `${unknownEntityIds.length} referencedEntityIds did not match any asset in this project and were ignored. Each shot's cast came from the @mentions in its prompt. Read the real ids with list_production_entities before passing them.` }
+        : {}),
+    }
   },
 })
 

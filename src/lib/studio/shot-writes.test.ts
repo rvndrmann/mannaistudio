@@ -1,3 +1,4 @@
+import { findShotCastEntityIds } from "./entity-mentions"
 import { directorTools } from "./tool-registry"
 import { readShotVideoPrompt, videoPromptFor } from "./shot-video-prompt"
 import { describe, expect, it } from "vitest"
@@ -158,5 +159,39 @@ describe("a rewritten video prompt is held to the same shape as a written one", 
   it("keeps the beats' runtime when the patch does not set one", () => {
     const columns = normalizeShotColumns({ video_prompt: beats }, null) as { duration_seconds?: number }
     expect(columns.duration_seconds).toBe(5)
+  })
+})
+
+/**
+ * One guessed id used to cost eleven shots.
+ *
+ * create_storyboard_batch threw "One or more storyboard entity references are
+ * invalid" when any referencedEntityId did not resolve — naming none of them,
+ * so the Director could not tell which to fix and proposed the same batch
+ * again. The ids are only a hint: the stored cast comes from the @mentions in
+ * each shot's prompt, and falls back to this list only when the prompt names
+ * nobody. So an unresolved id is dropped and reported.
+ */
+describe("a storyboard batch survives an entity id the model guessed", () => {
+  const real = "11111111-1111-4111-8111-111111111111"
+  const guessed = "99999999-9999-4999-8999-999999999999"
+
+  it("accepts a batch whose referencedEntityIds include an unknown one", () => {
+    const parsed = directorTools.create_storyboard_batch.input.parse({
+      episodeId: "22222222-2222-4222-8222-222222222222",
+      shots: [{
+        title: "Shot 1",
+        prompt: "@Sara at the wheel.",
+        referencedEntityIds: [real, guessed],
+      }],
+    }) as unknown as { shots: Array<{ referencedEntityIds: string[] }> }
+    // The schema does not judge which ids exist; execute drops the ones that
+    // do not, rather than refusing the batch.
+    expect(parsed.shots[0].referencedEntityIds).toEqual([real, guessed])
+  })
+
+  it("keeps the cast the prompt names regardless of the id list", () => {
+    const entities = [{ id: real, name: "Sara", type: "character" as const, reference_images: ["a.png"] }]
+    expect(findShotCastEntityIds("@Sara at the wheel.", entities, [guessed])).toEqual([real])
   })
 })

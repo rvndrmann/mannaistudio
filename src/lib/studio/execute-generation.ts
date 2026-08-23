@@ -39,7 +39,7 @@ function generationStoragePath(context: AuthenticatedProjectContext, job: Record
 async function attachEntityReferenceImage(context: AuthenticatedProjectContext, entityId: string, path: string, prompt: string) {
   const { data: entity, error } = await context.supabase
     .from("creator_entities")
-    .select("id,reference_images,metadata")
+    .select("id,description,reference_images,metadata")
     .eq("id", entityId)
     .eq("project_id", context.project.id)
     .maybeSingle()
@@ -54,7 +54,26 @@ async function attachEntityReferenceImage(context: AuthenticatedProjectContext, 
       // The newest art is what the rest of the pipeline should reference, and
       // recording what it was made from is what lets a later description edit
       // be noticed as having left the art behind.
-      metadata: { ...metadata, chosen_reference: path, image_generation: { path, generatedAt: new Date().toISOString(), prompt } },
+      //
+      // source_description is the exact test artIsStale wants, and it was only
+      // ever written by accept_existing_art — never here, where the art is
+      // actually made. Without it every freshly generated reference fell to the
+      // fallback, which asks whether the description appears verbatim inside
+      // the prompt. That holds only for the prompt this workspace composes; the
+      // moment the Director writes its own entity prompt, which the tool lets
+      // it do, the description is nowhere in the text and the brand-new picture
+      // reads as stale. The pipeline then offered to regenerate art that had
+      // just finished, as a costly action, on a loop.
+      metadata: {
+        ...metadata,
+        chosen_reference: path,
+        image_generation: {
+          path,
+          generatedAt: new Date().toISOString(),
+          prompt,
+          source_description: typeof entity.description === "string" ? entity.description.trim() : "",
+        },
+      },
     })
     .eq("id", entityId)
   if (updateError) throw updateError

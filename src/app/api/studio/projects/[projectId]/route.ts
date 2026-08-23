@@ -108,7 +108,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       supabase.from("creator_workflow_runs").select("*").eq("project_id", projectId).order("started_at", { ascending: false }).limit(25),
       // Generation jobs drive the storyboard's live refresh, so they travel on
       // every response rather than only when the production panels are enabled.
-      supabase.from("creator_generation_jobs").select("id,workflow_run_id,shot_id,type,status,model,provider,prompt,input_images,result_url,error,settings,target_snapshot,verification,estimated_credits,credits_used,credits_refunded,created_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(50),
+      supabase.from("creator_generation_jobs").select("id,workflow_run_id,shot_id,entity_id,type,status,model,provider,prompt,input_images,result_url,error,settings,target_snapshot,verification,estimated_credits,credits_used,credits_refunded,created_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(50),
       // What the project has actually cost is every job it ever ran, not the
       // fifty most recent the storyboard renders, so the ledger is aggregated
       // over the whole project separately from the job list — and split by
