@@ -6929,12 +6929,31 @@ function VideoGenerationProposalBlock({
       ? request.model!
       : proposalVideoModels[0].id;
   });
-  const [mode, setMode] = useState<"keyframe" | "multi_image">(request.generationMode === "multi_image" ? "multi_image" : "keyframe");
+  // Follows the request, which defaults to multi_image for video: a storyboard
+  // shot's images are its keyframe and its cast, none of them a position in
+  // time. Only an explicit ask for keyframe mode gets it.
+  const [mode, setMode] = useState<"keyframe" | "multi_image">(request.generationMode === "keyframe" ? "keyframe" : "multi_image");
   const [aspectRatio, setAspectRatio] = useState(request.aspectRatio || "16:9");
   const [resolution, setResolution] = useState(request.resolution || "720p");
   const [durationSeconds, setDurationSeconds] = useState(Number(request.durationSeconds || 5));
   const [audioEnabled, setAudioEnabled] = useState(request.audioEnabled !== false);
-  const [references, setReferences] = useState<string[]>(request.referencePaths || []);
+  // A video's composition frame is the shot's own approved keyframe, attached
+  // by submit_generation at execution rather than passed by the model. The card
+  // has to show what will actually be sent — without this it listed the cast
+  // and no frame, so the reply read as though the approved storyboard image was
+  // being ignored, and the Director was asked to attach one that was already
+  // there.
+  const [references, setReferences] = useState<string[]>(() => {
+    const passed = request.referencePaths || [];
+    if (!isVideo) return passed;
+    const targets = shots.filter((shot) =>
+      (request.shotIds || []).includes(shot.id)
+      || (request.shotNumbers || []).includes(shot.order_index + 1));
+    const keyframes = targets
+      .map((shot) => shot.keyframe_image)
+      .filter((path): path is string => typeof path === "string" && path.trim().length > 0);
+    return Array.from(new Set([...keyframes, ...passed]));
+  });
   const [videoReferences, setVideoReferences] = useState<string[]>(request.videoReferencePaths || []);
   // Entity tiles are derived from the prompt, so removing one has to be
   // remembered here — and sent explicitly, or the server would derive it back.
