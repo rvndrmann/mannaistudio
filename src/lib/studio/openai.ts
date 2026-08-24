@@ -38,15 +38,72 @@ function apiKey() {
   return key
 }
 
-async function openAIRequest(path: string, init: RequestInit, userId: string) {
-  const response = await fetch(`https://api.openai.com${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${apiKey()}`,
-      "OpenAI-Safety-Identifier": createHash("sha256").update(userId).digest("hex"),
-      ...init.headers,
-    },
-  })
+/**
+ * How long an image generation may hold the request open.
+ *
+ * The route's own budget is 300s, and a fetch with no timeout spends all of it:
+ * the platform kills the function mid-call, so the catch that marks the job
+ * failed and returns the credits never runs. The job is left `processing` and
+ * only the stalled-job reconcile settles it, six minutes after the user pressed
+ * the button, with a message that cannot say what went wrong.
+ *
+ * Well under the budget, so the failure path is always the one that runs: the
+ * request gives up with a real error, the job is failed and refunded on the
+ * spot, and the user waits three minutes for an answer instead of six for a
+ * shrug. A healthy generation returns in 50-75 seconds, so this is far outside
+ * the working range and only ever catches a hang.
+ */
+export const OPENAI_IMAGE_TIMEOUT_MS = 180_000
+
+/**
+ * The model that hosts the image_generation tool for background renders. The
+ * picture is produced by the image model named in the tool; this one only
+ * carries the call.
+ */
+const OPENAI_IMAGE_HOST_MODEL = "gpt-5.1"
+
+/** Submitting and polling are ordinary API calls — quick, or something is wrong. */
+const OPENAI_SUBMIT_TIMEOUT_MS = 60_000
+
+/** A reference image is a storage read, not a generation. It is quick or broken. */
+const REFERENCE_FETCH_TIMEOUT_MS = 30_000
+
+/**
+ * True when a fetch rejection is a timeout or an abort rather than a real
+ * network failure. `AbortSignal.timeout` rejects with a TimeoutError DOMException
+ * and an aborted controller with an AbortError, and neither carries a status —
+ * left unrecognised they surfaced as an opaque "fetch failed".
+ */
+export function isAbortLikeError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false
+  const name = (error as { name?: unknown }).name
+  return name === "TimeoutError" || name === "AbortError"
+}
+
+async function openAIRequest(path: string, init: RequestInit, userId: string, timeoutMs?: number) {
+  let response: Response
+  try {
+    response = await fetch(`https://api.openai.com${path}`, {
+      ...init,
+      // Only when the caller asks. A streaming turn resolves its fetch as soon
+      // as the headers land and then reads the body for as long as the model
+      // talks, so a total-duration signal here would cut the reply off mid
+      // sentence.
+      ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
+      headers: {
+        Authorization: `Bearer ${apiKey()}`,
+        "OpenAI-Safety-Identifier": createHash("sha256").update(userId).digest("hex"),
+        ...init.headers,
+      },
+    })
+  } catch (error) {
+    if (timeoutMs && isAbortLikeError(error)) {
+      // 504, so the caller reports a provider that did not answer rather than a
+      // request the user could fix by changing something.
+      throw new OpenAIProviderError(`OpenAI did not respond within ${Math.round(timeoutMs / 1000)}s. Nothing was generated — try again.`, 504)
+    }
+    throw error
+  }
   if (!response.ok) {
     const detail = await response.text()
     throw new OpenAIProviderError(`OpenAI request failed (${response.status}): ${detail.slice(0, 500)}`, response.status)
@@ -329,16 +386,115 @@ export async function generateOpenAIImage(input: { userId: string; model: OpenAI
     ? await openAIRequest("/v1/images/edits", {
       method: "POST",
       body: await openAIImageEditForm(input.model, input.prompt, referenceUrls, size, quality),
-    }, input.userId)
+    }, input.userId, OPENAI_IMAGE_TIMEOUT_MS)
     : await openAIRequest("/v1/images/generations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model: input.model, prompt: input.prompt, size, quality, output_format: "png" }),
-    }, input.userId)
+    }, input.userId, OPENAI_IMAGE_TIMEOUT_MS)
   const data = await response.json() as { data?: Array<{ b64_json?: string }> }
   const base64 = data.data?.[0]?.b64_json
   if (!base64) throw new OpenAIProviderError("OpenAI did not return an image.")
   return Buffer.from(base64, "base64")
+}
+
+/**
+ * Starts an image generation that outlives this request.
+ *
+ * The synchronous endpoints hold the whole render on one HTTP connection, so a
+ * function killed mid-call loses an image OpenAI has already produced and
+ * billed. Nothing identifies that work afterwards — there is no handle to ask
+ * about — so the job could only be written off and refunded while the picture
+ * sat, paid for, on OpenAI's side.
+ *
+ * Background responses give the work a name. This returns as soon as OpenAI has
+ * accepted the request, and the id it returns can be read back for as long as
+ * the response is stored: if this request dies, the next one recovers the image
+ * instead of paying for it twice.
+ */
+export async function submitOpenAIImage(input: { userId: string; model: OpenAIImageModel; prompt: string; referenceUrls?: string[]; aspectRatio?: string; quality?: OpenAIImageQuality }) {
+  const size = openAIImageSizeForAspectRatio(input.aspectRatio)
+  const quality = input.quality || "medium"
+  const referenceUrls = input.referenceUrls || []
+  // References travel as data URLs in the message. The Responses API takes the
+  // cast as input images alongside the instruction, which is the same thing the
+  // edits endpoint did with a multipart form.
+  const content: Array<Record<string, unknown>> = [{ type: "input_text", text: input.prompt }]
+  for (let index = 0; index < referenceUrls.length; index += 1) {
+    const url = referenceUrls[index]
+    let response: Response
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(REFERENCE_FETCH_TIMEOUT_MS) })
+    } catch (error) {
+      if (isAbortLikeError(error)) throw new OpenAIProviderError(`Reference image ${index + 1} took too long to read. Nothing was generated — try again.`, 504)
+      throw error
+    }
+    if (!response.ok) throw new OpenAIProviderError(`Could not read reference image ${index + 1} (${response.status}).`)
+    const contentType = response.headers.get("content-type") || "image/png"
+    const base64 = Buffer.from(await response.arrayBuffer()).toString("base64")
+    content.push({ type: "input_image", image_url: `data:${contentType};base64,${base64}` })
+  }
+
+  const response = await openAIRequest("/v1/responses", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: OPENAI_IMAGE_HOST_MODEL,
+      // Both are required for recovery: background so the render is not tied to
+      // this connection, store so the result can still be read back afterwards.
+      background: true,
+      store: true,
+      input: [{ role: "user", content }],
+      tools: [{ type: "image_generation", model: input.model, size, quality, output_format: "png" }],
+      tool_choice: { type: "image_generation" },
+    }),
+  }, input.userId, OPENAI_SUBMIT_TIMEOUT_MS)
+  const data = await response.json() as { id?: string; status?: string }
+  if (!data.id) throw new OpenAIProviderError("OpenAI did not return a response id for the image.")
+  return { responseId: data.id, status: data.status || "queued" }
+}
+
+export type OpenAIImagePoll =
+  | { status: "pending" }
+  | { status: "completed"; image: Buffer }
+  | { status: "failed"; error: string }
+
+/**
+ * Reads back a background image generation by its response id.
+ *
+ * Safe to call any number of times and from any request — that is the point.
+ * A job that recorded its response id can always be resolved later, whether the
+ * request that started it finished, timed out, or was killed outright.
+ */
+export type OpenAIImageResponseBody = {
+  status?: string
+  error?: { message?: string } | null
+  incomplete_details?: { reason?: string } | null
+  output?: Array<{ type?: string; status?: string; result?: string }>
+}
+
+/**
+ * What a retrieved response means, as a decision separate from fetching it.
+ *
+ * "pending" must be reported for anything still running, because the caller
+ * settles a job on this answer — reading an in-flight render as a failure would
+ * refund and discard work that is about to finish and has already been paid
+ * for.
+ */
+export function readOpenAIImageResponse(data: OpenAIImageResponseBody): OpenAIImagePoll {
+  const status = data.status || ""
+  if (status === "queued" || status === "in_progress") return { status: "pending" }
+  if (status === "failed" || status === "cancelled" || status === "incomplete") {
+    return { status: "failed", error: data.error?.message || data.incomplete_details?.reason || `OpenAI image response ${status}` }
+  }
+  const call = (data.output || []).find((item) => item.type === "image_generation_call" && item.result)
+  if (!call?.result) return { status: "failed", error: "OpenAI finished the response without returning an image." }
+  return { status: "completed", image: Buffer.from(call.result, "base64") }
+}
+
+export async function retrieveOpenAIImage(responseId: string, userId: string): Promise<OpenAIImagePoll> {
+  const response = await openAIRequest(`/v1/responses/${encodeURIComponent(responseId)}`, { method: "GET" }, userId, OPENAI_SUBMIT_TIMEOUT_MS)
+  return readOpenAIImageResponse(await response.json() as OpenAIImageResponseBody)
 }
 
 async function openAIImageEditForm(model: OpenAIImageModel, prompt: string, referenceUrls: string[], size: ReturnType<typeof openAIImageSizeForAspectRatio>, quality: OpenAIImageQuality) {
@@ -353,7 +509,16 @@ async function openAIImageEditForm(model: OpenAIImageModel, prompt: string, refe
   }
   for (let index = 0; index < referenceUrls.length; index += 1) {
     const url = referenceUrls[index]
-    const response = await fetch(url)
+    // Bounded for the same reason as the generation itself: a storage read that
+    // never returns spent the whole function budget before the model was even
+    // asked for a picture.
+    let response: Response
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(REFERENCE_FETCH_TIMEOUT_MS) })
+    } catch (error) {
+      if (isAbortLikeError(error)) throw new OpenAIProviderError(`Reference image ${index + 1} took too long to read. Nothing was generated — try again.`, 504)
+      throw error
+    }
     if (!response.ok) throw new OpenAIProviderError(`Could not read reference image ${index + 1} (${response.status}).`)
     const contentType = response.headers.get("content-type") || "image/png"
     const extension = contentType.includes("jpeg") ? "jpg" : contentType.includes("webp") ? "webp" : "png"

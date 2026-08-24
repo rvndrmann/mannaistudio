@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { generateOpenAIImage, openAIImageModels, OpenAIProviderError } from "@/lib/studio/openai"
+import { openAIImageModels, OpenAIProviderError, retrieveOpenAIImage, submitOpenAIImage } from "@/lib/studio/openai"
 import { createBytePlusAsset, generateBytePlusImage, BytePlusProviderError } from "@/lib/studio/byteplus"
 import { FalProviderError, generateFalImage } from "@/lib/studio/fal"
 import { generateGoogleImage, GoogleProviderError } from "@/lib/studio/google"
@@ -69,12 +69,88 @@ const imageRequestSchema = z.object({
 export const maxDuration = 300
 
 /**
- * Reconciles an image job the server never got to finish.
+ * Waits on a background image render from inside the request that started it.
  *
- * Image generation is synchronous — there is no provider job to poll — so a
- * request that dies mid-flight leaves a row nothing will ever resolve. The
- * workspace asks about such a job here, and a job that has been running longer
- * than any real generation takes is settled as failed and refunded.
+ * Kept well inside the route's own budget so the failure path still belongs to
+ * this request: if the picture is not ready in time this gives up rather than
+ * being killed mid-call, and the job keeps its response id so the next poll
+ * finishes it. Nothing is lost by giving up early — the render carries on at
+ * OpenAI either way.
+ */
+const OPENAI_IMAGE_WAIT_MS = 210_000
+const OPENAI_IMAGE_POLL_MS = 3_000
+
+async function waitForOpenAIImage(responseId: string, userId: string): Promise<Buffer> {
+  const deadline = Date.now() + OPENAI_IMAGE_WAIT_MS
+  for (;;) {
+    const poll = await retrieveOpenAIImage(responseId, userId)
+    if (poll.status === "completed") return poll.image
+    if (poll.status === "failed") throw new OpenAIProviderError(poll.error, 502)
+    if (Date.now() >= deadline) {
+      // Deliberately not a refund: the render is still running under an id the
+      // job now holds, and the workspace poll picks it up from there.
+      throw new OpenAIProviderError("The image is still rendering at OpenAI. It will finish on its own — the workspace will pick it up.", 504)
+    }
+    await new Promise((resolve) => setTimeout(resolve, OPENAI_IMAGE_POLL_MS))
+  }
+}
+
+/**
+ * Saves a recovered render and attaches it where the job was aimed.
+ *
+ * Deliberately the same destinations the POST route writes: a shot job sets the
+ * keyframe, an asset job appends to the entity's reference images. Without this
+ * a recovered image would be stored and still invisible, which is the same
+ * failure as losing it.
+ */
+async function attachRecoveredImage(
+  context: Awaited<ReturnType<typeof requireAuthenticatedProject>>,
+  projectId: string,
+  job: Record<string, unknown>,
+  image: Buffer,
+) {
+  const storagePath = `${context.user.id}/${projectId}/openai-image-${randomUUID()}.png`
+  const { error: uploadError } = await context.supabase.storage
+    .from("creator-studio-media")
+    .upload(storagePath, image, { contentType: "image/png", upsert: false })
+  if (uploadError) throw uploadError
+
+  const settings = job.settings && typeof job.settings === "object" ? job.settings as Record<string, unknown> : {}
+  const target = typeof settings.target === "string" ? settings.target : (job.shot_id ? "shot" : "asset")
+
+  if (target === "shot" && typeof job.shot_id === "string") {
+    const { data: shot } = await context.supabase.from("creator_shots").select("metadata").eq("id", job.shot_id).maybeSingle()
+    const meta = (shot?.metadata as Record<string, unknown>) || {}
+    const generation = meta.image_generation && typeof meta.image_generation === "object" ? meta.image_generation as Record<string, unknown> : {}
+    await context.supabase.from("creator_shots").update({
+      keyframe_image: storagePath,
+      metadata: { ...meta, image_generation: { ...generation, status: "completed", recovered: true, completed_at: new Date().toISOString() } },
+    }).eq("id", job.shot_id)
+  } else if (typeof job.entity_id === "string") {
+    const { data: entity } = await context.supabase.from("creator_entities").select("reference_images").eq("id", job.entity_id).maybeSingle()
+    const existing = Array.isArray(entity?.reference_images) ? entity.reference_images as string[] : []
+    await context.supabase.from("creator_entities").update({
+      reference_images: Array.from(new Set([...existing, storagePath])),
+    }).eq("id", job.entity_id)
+  }
+
+  const { data: updated } = await context.supabase
+    .from("creator_generation_jobs")
+    .update({ status: "completed", result_url: storagePath, completed_at: new Date().toISOString(), error: null })
+    .eq("id", job.id as string)
+    .select("*")
+    .single()
+  return updated ?? { ...job, status: "completed", result_url: storagePath }
+}
+
+/**
+ * Finishes an image job the request that started it did not.
+ *
+ * Renders are submitted to OpenAI as background responses, so the job holds an
+ * id that outlives the request. This reads that id back: a render still running
+ * keeps the job open, a finished one is saved and attached even though the
+ * original request is long gone, and only a genuine provider failure — or a job
+ * that never got far enough to have an id — is written off and refunded.
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   try {
@@ -90,10 +166,43 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .eq("project_id", projectId)
       .maybeSingle()
     if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 })
-    // A terminal job is already resolved; anything still non-terminal is settled
-    // only once it has sat longer than any real generation takes — including a
-    // run killed before it ever reached `processing`, which the old check left
-    // spinning for ever. See isStalledImageJob.
+    if (["completed", "failed", "cancelled"].includes(job.status)) return NextResponse.json(job)
+
+    // Recovery before write-off.
+    //
+    // A job that recorded a provider response id has work OpenAI has already
+    // been paid for, whatever happened to the request that started it. Failing
+    // and refunding such a job threw away a finished picture the user had
+    // bought — so the id is read back first, and only a job with no id, or one
+    // OpenAI itself reports as finished-without-an-image, is written off.
+    const responseId = typeof job.provider_job_id === "string" ? job.provider_job_id.trim() : ""
+    if (responseId) {
+      const poll = await retrieveOpenAIImage(responseId, context.user.id)
+      if (poll.status === "pending") {
+        // Still rendering. Never settled on age alone: the render is alive at
+        // OpenAI and this job has a name for it.
+        return NextResponse.json({ ...job, status: "processing", providerStatus: "pending" })
+      }
+      if (poll.status === "completed") {
+        const recovered = await attachRecoveredImage(context, projectId, job, poll.image)
+        return NextResponse.json(recovered)
+      }
+      // OpenAI says it failed — a real, reportable outcome rather than a guess
+      // from how long the row has been sitting there.
+      const charged = refundableCredits(job as { billing_mode?: string | null; credits_used?: number | null; estimated_credits?: number | null })
+      const refund = charged > 0
+        ? await refundGenerationCredits(context.user.id, charged, `generation-job:${job.id}`, "Refund: image generation failed", job.id, context.supabase)
+        : { refunded: false, newBalance: 0 }
+      await context.supabase
+        .from("creator_generation_jobs")
+        .update({ status: "failed", error: poll.error, completed_at: new Date().toISOString() })
+        .eq("id", job.id)
+      return NextResponse.json({ ...job, status: "failed", error: poll.error, creditsRefunded: refund.refunded ? charged : 0, creditBalance: refund.newBalance })
+    }
+
+    // No handle to recover from — the request died before OpenAI accepted the
+    // work, so nothing was produced and nothing was charged for. Settled only
+    // once it has sat longer than any real generation takes.
     if (!isStalledImageJob(job)) return NextResponse.json(job)
 
     // Reads the recorded mode rather than whichever number is non-zero: a BYOK
@@ -362,7 +471,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const rendered: RenderResult = await runOnBillingAccount(async () => {
     let image: Buffer
     if (provider === "openai") {
-      image = await generateOpenAIImage({ userId: context.user.id, model: input.model as (typeof openAIImageModels)[number], prompt: resolvedPrompt, referenceUrls, aspectRatio: effectiveAspectRatio, quality: openAIImageQuality(quality === "Ultra" ? "High" : quality) })
+      // Submitted as a background response, then waited on here.
+      //
+      // The render used to be one synchronous call, so a function killed
+      // mid-flight lost an image OpenAI had already produced and charged for,
+      // with nothing left to identify it by. The id is written to the job the
+      // moment OpenAI accepts the work, before any waiting happens, so a
+      // request that dies from here on leaves a recoverable handle rather than
+      // a paid-for picture nobody can reach — see the GET route, which finishes
+      // exactly these jobs.
+      const submitted = await submitOpenAIImage({ userId: context.user.id, model: input.model as (typeof openAIImageModels)[number], prompt: resolvedPrompt, referenceUrls, aspectRatio: effectiveAspectRatio, quality: openAIImageQuality(quality === "Ultra" ? "High" : quality) })
+      if (pendingGenerationJobId) {
+        await context.supabase
+          .from("creator_generation_jobs")
+          .update({ provider_job_id: submitted.responseId, provider_response: { responseId: submitted.responseId, status: submitted.status } })
+          .eq("id", pendingGenerationJobId)
+      }
+      image = await waitForOpenAIImage(submitted.responseId, context.user.id)
     } else if (provider === "fal") {
       const generated = await generateFalImage({ model: input.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls })
       const download = await fetch(generated.url)

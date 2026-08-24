@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { analyzeImagesAsJson, openAIImageSizeForAspectRatio } from "./openai"
+import { analyzeImagesAsJson, openAIImageSizeForAspectRatio, readOpenAIImageResponse } from "./openai"
 
 describe("OpenAI image canvas routing", () => {
   it("uses the landscape canvas for cinematic landscape ratios", () => {
@@ -65,5 +65,52 @@ describe("analyzeImagesAsJson", () => {
   it("fails loudly rather than storing prose as a look", async () => {
     vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ output_text: "I think it looks moody." }), { status: 200 }))
     await expect(analyzeImagesAsJson({ userId: "u1", instructions: "x", text: "json", imageUrls: [] })).rejects.toThrow(/unreadable/i)
+  })
+})
+
+/**
+ * A render OpenAI has accepted is work the user has already paid for, whatever
+ * happens to the request that started it. Reading the response back is what
+ * turns a lost picture into a recoverable one, so the reading has to be exact:
+ * anything still running must never be mistaken for a failure, or the job is
+ * refunded and the finished image discarded.
+ */
+describe("reading back a background image render", () => {
+  it("keeps a queued render open", () => {
+    expect(readOpenAIImageResponse({ status: "queued" })).toEqual({ status: "pending" })
+  })
+
+  it("keeps an in-progress render open", () => {
+    expect(readOpenAIImageResponse({ status: "in_progress" })).toEqual({ status: "pending" })
+  })
+
+  it("recovers the image from a completed response", () => {
+    const result = readOpenAIImageResponse({
+      status: "completed",
+      output: [{ type: "image_generation_call", status: "completed", result: Buffer.from("picture").toString("base64") }],
+    })
+    expect(result.status).toBe("completed")
+    expect(result.status === "completed" && result.image.toString()).toBe("picture")
+  })
+
+  it("finds the image even when other output items come first", () => {
+    const result = readOpenAIImageResponse({
+      status: "completed",
+      output: [
+        { type: "message" },
+        { type: "image_generation_call", result: Buffer.from("late").toString("base64") },
+      ],
+    })
+    expect(result.status === "completed" && result.image.toString()).toBe("late")
+  })
+
+  it("reports a provider failure with its own message", () => {
+    const result = readOpenAIImageResponse({ status: "failed", error: { message: "content policy" } })
+    expect(result).toEqual({ status: "failed", error: "content policy" })
+  })
+
+  it("treats a completed response with no image as a failure", () => {
+    const result = readOpenAIImageResponse({ status: "completed", output: [{ type: "message" }] })
+    expect(result.status).toBe("failed")
   })
 })
