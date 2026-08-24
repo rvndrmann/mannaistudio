@@ -124,20 +124,36 @@ describe("the cast is bound to the pictures that travel with the request", () =>
  * video ended on a reference sheet.
  */
 describe("keyframe mode names only the frames it was given", () => {
-  // Role assignment as submitBytePlusVideo applies it.
-  const roles = (count: number, compositionFrames: number) =>
-    Array.from({ length: count }, (_, index) =>
-      index === 0 && compositionFrames >= 1 ? "first_frame"
-        : index === 1 && compositionFrames >= 2 ? "last_frame"
+  // Role assignment as submitBytePlusVideo applies it. Seedance rejects a
+  // payload that mixes first_frame or last_frame with reference_image in one
+  // content block, so when the caller sent frames AND extra cast references the
+  // adapter downgrades — every image becomes a plain reference. Character
+  // consistency wins over composition lock, and the request stops failing 400.
+  const roles = (count: number, compositionFrames: number) => {
+    const wouldMix = compositionFrames > 0 && count > compositionFrames
+    const frames = wouldMix ? 0 : compositionFrames
+    return Array.from({ length: count }, (_, index) =>
+      index === 0 && frames >= 1 ? "first_frame"
+        : index === 1 && frames >= 2 ? "last_frame"
         : "reference_image")
+  }
 
-  it("makes the cast plain references when only one frame was sent", () => {
-    // Keyframe, then Sara, the car and the street.
-    expect(roles(4, 1)).toEqual(["first_frame", "reference_image", "reference_image", "reference_image"])
+  it("downgrades the frame to a plain reference when cast rides with it", () => {
+    // Keyframe, then Sara, the car and the street — Seedance would reject the
+    // mix, so the keyframe stops claiming to be the first frame.
+    expect(roles(4, 1)).toEqual(["reference_image", "reference_image", "reference_image", "reference_image"])
   })
 
-  it("still honours a real start and end frame", () => {
-    expect(roles(4, 2)).toEqual(["first_frame", "last_frame", "reference_image", "reference_image"])
+  it("still honours a real start and end frame when nothing else rides", () => {
+    expect(roles(2, 2)).toEqual(["first_frame", "last_frame"])
+  })
+
+  it("downgrades a start+end pair too if extra references would ride with them", () => {
+    expect(roles(4, 2)).toEqual(["reference_image", "reference_image", "reference_image", "reference_image"])
+  })
+
+  it("keeps a lone start frame when it is the only image", () => {
+    expect(roles(1, 1)).toEqual(["first_frame"])
   })
 
   it("sends everything as a reference when no frame was given", () => {

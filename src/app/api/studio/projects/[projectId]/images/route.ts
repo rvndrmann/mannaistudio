@@ -12,6 +12,7 @@ import { hasCredential, withCredential } from "@/lib/byok/credential-service"
 import { runWithCredential } from "@/lib/byok/active-credential"
 import { ownKeysOnly } from "@/lib/byok/preferences"
 import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
+import { isStalledImageJob } from "@/lib/studio/stalled-jobs"
 import { trackGenerationActivation } from "@/lib/studio/activation"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
@@ -67,10 +68,6 @@ const imageRequestSchema = z.object({
 // credits were never refunded.
 export const maxDuration = 300
 
-// Longer than the route is allowed to run, so a job past this point cannot
-// still be working — the process that owned it is gone.
-const STALLED_IMAGE_JOB_MS = 6 * 60 * 1000
-
 /**
  * Reconciles an image job the server never got to finish.
  *
@@ -93,11 +90,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .eq("project_id", projectId)
       .maybeSingle()
     if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 })
-    if (job.status !== "processing") return NextResponse.json(job)
-
-    const startedAt = Date.parse(job.started_at || job.created_at || "")
-    const runningMs = Number.isNaN(startedAt) ? 0 : Date.now() - startedAt
-    if (runningMs < STALLED_IMAGE_JOB_MS) return NextResponse.json(job)
+    // A terminal job is already resolved; anything still non-terminal is settled
+    // only once it has sat longer than any real generation takes — including a
+    // run killed before it ever reached `processing`, which the old check left
+    // spinning for ever. See isStalledImageJob.
+    if (!isStalledImageJob(job)) return NextResponse.json(job)
 
     // Reads the recorded mode rather than whichever number is non-zero: a BYOK
     // job charged nothing, so the old fallback refunded its estimate.

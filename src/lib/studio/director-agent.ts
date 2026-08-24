@@ -400,6 +400,7 @@ export async function runDirectorAgent(input: {
               input: call.arguments,
               sessionId: input.sessionId,
               workflowRunId: workflowRun.id,
+              episodeId: input.episodeId,
               idempotencyKey: `${input.idempotencyKey}:${step}:${call.callId}`,
             }),
           })
@@ -555,6 +556,7 @@ export async function runDirectorAgent(input: {
           input: call.arguments,
           sessionId: input.sessionId,
           workflowRunId: workflowRun.id,
+          episodeId: input.episodeId,
           idempotencyKey: `${input.idempotencyKey}:${step}:${call.callId}`,
         })
         block.status = result.approvalRequired ? "awaiting_approval" : "completed"

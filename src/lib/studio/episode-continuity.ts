@@ -101,5 +101,15 @@ export function episodeFootageInstructions(footage: EpisodeFootage[], currentEpi
     "EPISODES IN THIS PROJECT:",
     ...lines,
     "These are cuts of one story. When the user wants a shot to continue from another episode — including the ordinary case of shot 1 continuing from the previous episode's ending — call list_storyboard_shots with that episode's id, take the video_url of the shot they mean, and pass it to submit_generation as videoReferencePaths. Leave videoReferenceShotNumbers empty for a clip from another episode: shot numbers resolve against the episode being generated, so a number from elsewhere would target the wrong shot. Name the episode and shot number in your reply so the user can see which clip you carried over before approving.",
+    // Continuity is an enhancement, never a precondition. An earlier episode
+    // with no rendered clip is the ordinary state of a production being built in
+    // order — the first episode has nothing before it, and a later one is
+    // usually storyboarded before the one ahead of it is filmed. Without this
+    // the Director read a missing hand-off clip as a blocker and refused to
+    // submit at all, so a shot with an approved keyframe and a saved prompt
+    // could not be filmed until unrelated footage existed. The keyframe is the
+    // clip's first frame and is attached automatically, so a shot is always
+    // filmable on its own.
+    "A missing clip is not a blocker. If the episode you would carry over from has no rendered clips yet, do not refuse and do not wait: submit the generation with no videoReferencePaths at all. The shot's own approved keyframe is the clip's first frame and is attached for you, so the shot renders correctly without any continuity clip. Say in one line that you filmed it without a continuity reference because that episode has no rendered clip yet, and carry on.",
   ].join("\n")
 }

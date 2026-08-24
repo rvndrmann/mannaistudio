@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { toolRequestSchema } from "./tool-service"
+import { toolRequestSchema, withRunEpisode } from "./tool-service"
+import { generationRequestSchema } from "./model-routing"
 import { directorTools } from "./tool-registry"
 import { directorFunctionDefinitions } from "./director-agent"
 
@@ -40,5 +41,39 @@ describe("the tool gate", () => {
     const parsed = toolRequestSchema.safeParse({ tool: " write shot video prompts ", input: {}, idempotencyKey: "idempotency-key" })
     expect(parsed.success).toBe(true)
     expect(parsed.success && parsed.data.tool).toBe("write_shot_video_prompts")
+  })
+})
+
+/**
+ * A model naming shots by number has to hand the tool an episode uuid too, and
+ * when it truncated or hallucinated that uuid the whole media step failed with
+ * "request.episodeId: Invalid UUID". The episode is a fact of the run, so the
+ * server writes it and the model's value never decides the outcome.
+ */
+describe("the run's episode overrides the model", () => {
+  const runEpisode = "11111111-1111-4111-8111-111111111111"
+
+  it("rescues a submit_generation the model gave a broken episode uuid", () => {
+    const fromModel = { request: { type: "video", shotNumbers: [1], episodeId: "episode-5" }, prompts: { "1": "a shot" } }
+    const scoped = withRunEpisode(fromModel, runEpisode) as { request: unknown }
+    const parsed = generationRequestSchema.safeParse((scoped.request))
+    expect(parsed.success).toBe(true)
+    expect(parsed.success && parsed.data.episodeId).toBe(runEpisode)
+  })
+
+  it("still supplies the episode when the model omitted it entirely", () => {
+    const fromModel = { request: { type: "video", shotNumbers: [2] }, prompts: { "2": "a shot" } }
+    const scoped = withRunEpisode(fromModel, runEpisode) as { request: { episodeId?: string } }
+    expect(scoped.request.episodeId).toBe(runEpisode)
+  })
+
+  it("leaves a call with no request object for its own validation to reject", () => {
+    const fromModel = { prompts: { "1": "a shot" } }
+    expect(withRunEpisode(fromModel, runEpisode)).toEqual(fromModel)
+  })
+
+  it("does nothing without a run episode", () => {
+    const fromModel = { request: { type: "image", shotIds: [] } }
+    expect(withRunEpisode(fromModel, undefined)).toEqual(fromModel)
   })
 })

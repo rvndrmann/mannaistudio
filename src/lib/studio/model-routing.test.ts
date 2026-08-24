@@ -68,3 +68,30 @@ describe("existing frame reference", () => {
     expect(generationRequestSchema.parse({ type: "image", shotIds: [shotId], useExistingFrame: true }).useExistingFrame).toBe(true)
   })
 })
+
+/**
+ * A shot whose script has spoken lines is described as dialogueRequired, and
+ * that travels on the request whatever is being generated. Dialogue is a video
+ * capability — no image model reports it — so applying it to an image request
+ * emptied the candidate list, and asking for a storyboard frame failed with "No
+ * configured model supports this shot request" for a frame every image model
+ * could render.
+ */
+describe("dialogue only narrows a video request", () => {
+  const shotId = "22222222-2222-4222-8222-222222222222"
+
+  it("routes a storyboard image for a shot that has dialogue", () => {
+    const routing = routeGeneration({ type: "image", shotIds: [shotId], dialogueRequired: true, referenceImageRequired: true })
+    expect(routing.selected.types).toContain("image")
+  })
+
+  it("honours an explicitly picked image model on a dialogue shot", () => {
+    const routing = routeGeneration({ type: "image", shotIds: [shotId], dialogueRequired: true, referenceImageRequired: true, model: "gpt-image-2" })
+    expect(routing.selected.model).toBe("gpt-image-2")
+  })
+
+  it("still requires a dialogue-capable model for video", () => {
+    const routing = routeGeneration({ type: "video", shotIds: [shotId], dialogueRequired: true })
+    expect(routing.selected.dialogue).toBe(true)
+  })
+})

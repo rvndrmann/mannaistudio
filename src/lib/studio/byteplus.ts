@@ -222,28 +222,29 @@ export async function submitBytePlusVideo(input: { model: VideoGenerationModelId
     text: formatBytePlusReferencePrompt(input.prompt, { imageCount: resolvedUrls.length, videoCount: videoUrls.length, subjects: input.subjects, mentionedNames: input.mentionedNames }),
   }]
 
-  if (input.generationMode === "keyframe") {
-    // How many of these are composition frames, rather than which position they
-    // happen to sit in.
-    //
-    // The roles were assigned purely by index: first, last, then everything
-    // else. That reads correctly only when the caller sends a start frame and
-    // an end frame and nothing else in front of the cast — so the moment a shot
-    // sends its keyframe plus three cast references, the first cast member
-    // became the clip's *last frame* and the video ended on a reference sheet.
-    // The caller knows how many composition frames it put at the front, so it
-    // says, and a cast reference can never be mistaken for one.
-    const frames = typeof input.compositionFrames === "number"
-      ? Math.max(0, Math.min(2, input.compositionFrames))
-      : Math.min(2, resolvedUrls.length)
-    resolvedUrls.forEach((url, index) => content.push({
-      type: "image_url",
-      image_url: { url },
-      role: index === 0 && frames >= 1 ? "first_frame" : index === 1 && frames >= 2 ? "last_frame" : "reference_image",
-    }))
-  } else {
-    for (const url of resolvedUrls) content.push({ type: "image_url", image_url: { url }, role: "reference_image" })
-  }
+  // Seedance rejects a request that mixes first_frame or last_frame with
+  // reference_image in one content block ("first/last frame content cannot be
+  // mixed with reference media content"). A storyboard shot's normal payload is
+  // exactly that mix — its own keyframe plus its cast — so a keyframe-mode
+  // regenerate with any cast attached failed with a 400 and the shot could not
+  // be rendered at all. Character consistency matters more than composition
+  // lock, so the mix downgrades to multi_image: every image becomes a plain
+  // reference, and the keyframe still guides the look without claiming to be
+  // the first frame.
+  const requestedFrames = input.generationMode === "keyframe"
+    ? (typeof input.compositionFrames === "number"
+        ? Math.max(0, Math.min(2, input.compositionFrames))
+        : Math.min(2, resolvedUrls.length))
+    : 0
+  const wouldMix = requestedFrames > 0 && resolvedUrls.length > requestedFrames
+  const frames = wouldMix ? 0 : requestedFrames
+  resolvedUrls.forEach((url, index) => content.push({
+    type: "image_url",
+    image_url: { url },
+    // Only the composition frames get positional roles; anything past them is a
+    // plain reference. When wouldMix is true this is every image.
+    role: index === 0 && frames >= 1 ? "first_frame" : index === 1 && frames >= 2 ? "last_frame" : "reference_image",
+  }))
 
   const videoLimit = bytePlusVideoReferenceLimit(input.model)
   for (const url of videoUrls.slice(0, videoLimit.maxVideos)) {

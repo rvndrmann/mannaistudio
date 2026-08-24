@@ -71,23 +71,42 @@ Assistant message + one "Next step" button at the end of the chat
 
 The Studio sends the selected episode, session, message, and `@mentioned` entity IDs to `POST /api/studio/projects/:projectId/director/chat`. The server verifies that the user owns the project and every mentioned character, scene, or prop belongs to it. It then supplies the entity descriptions and selected reference images to the relevant prompt.
 
-Up to six workspace images travel with the run so the Director can look at what it is reasoning about. They are **read here and sent inline as data URLs**, not as storage URLs for the provider to fetch: a keyframe is a multi-megabyte PNG, and OpenAI gives up on a slow download with *"Unable to download content from the provided URL before the timeout"*, which failed the whole request for reasons no user could act on. Caps are eight seconds per image, 4MB each and 12MB total; anything that cannot be read in time is dropped rather than handed over as a URL that would fail the same way.
+Workspace images travel with the run **only when the turn points at one** — the user `@mentioned` an entity, or attached media to this message. They used to travel unconditionally, up to six of them: measured, a plain "how many shots does this episode have?" carried 8.65 MB of PNG (11.54 MB as base64), 7.2s to read and 25.3s to upload, to produce 47 tokens of reply. When the Director decides mid-turn that it needs to see something else it calls `look_at_media` with the shot numbers or asset names it wants, so the capability is kept and the decision is the model's rather than a guess from the words in the sentence. What does travel is **read here and sent inline as data URLs**, not as storage URLs for the provider to fetch: a keyframe is a multi-megabyte PNG, and OpenAI gives up on a slow download with *"Unable to download content from the provided URL before the timeout"*, which failed the whole request for reasons no user could act on. Caps are eight seconds per image, 4MB each and 12MB total; anything that cannot be read in time is dropped rather than handed over as a URL that would fail the same way.
 
-### 2. Deterministic workflow routing before model chat
+### 2. Every message reaches the agent
 
-The chat route handles several high-confidence requests directly before falling back to the text agent:
+> **Rewritten 2026-08-23.** This section described about ten regex fast paths
+> that answered high-confidence requests — script writes, entity art, keyframes,
+> redo phrasing — before the model ever saw the message. **They no longer
+> exist.** `director/chat/route.ts` carries the reasoning: they broke on
+> ordinary phrasing, because "make" is the verb in both "make me some images"
+> and "edit the character to make her hair red", so an edit request was answered
+> by generating art over the art it already had. And they spent credits directly,
+> outside the tool registry, producing a charge where `submit_generation` would
+> have produced an approval card the user could refuse.
 
-- Script write/append/replace requests update the stored script through the workflow route.
-- **“Create all missing character images”** and related bulk requests generate one reference image per matching entity, then save it to that entity’s `reference_images`. A message that names a shot, storyboard, or keyframe is never routed here: it is storyboard work, and answering it with entity art reported on reference images the user had not asked about.
-- Direct image/keyframe requests generate a GPT Image 2 output, save it to Studio storage, and attach it to the named storyboard shot when one was requested. A bare **“regenerate shot 3”** is handled here too — a named shot with a redo verb means its keyframe — because leaving it to the agent resolved it to a different shot. A message that says “shot” without saying which one falls through to the agent, which has the conversation context to resolve it.
-- **“Fix the character descriptions in the prompts”** rewrites the saved shot prompts, and the prompt sheet behind them, through the identity stripper described below.
-- **“Skip shot 6 and continue”** is answered from the pipeline. Skipping changes nothing in the workspace — it only says which shot not to offer — so there is nothing to propose and nothing to approve, and the reply names what comes next instead. Left to the agent this came back as a read-only inspection report on an unrelated shot.
-- Video requests create an approval proposal; they do not submit a video until the user approves. Under a continuity workflow a bare request continues from the previous shot's clip; see below.
-- All other production questions pass to `runDirectorAgent`, which receives the selected workflow, project context, session history, global admin instructions, and current runtime settings.
+The model decides what to do, and the approval gate on costly and destructive
+tools is what keeps a wrong decision cheap. Nothing inspects the message text
+for intent before the agent runs.
 
-Redo phrasing is shared between the media paths (`wantsRedo`): `recreate`, `re-create`, `regenerate`, `redo`, `remake`, `rerender`, `rerun`, and a trailing “again”. `\bcreate\b` does not fire inside “recreate”, so “recreate the shot 6 video” previously matched nothing and fell through to the agent — which answered it with an inspection report on a different shot. A request naming several shots goes to the agent deliberately: the single-shot number match would keep the first and drop the rest.
+What the turn does carry, and what bounds it:
 
-These paths run **inside** the SSE stream and report progress as they work (`Generating the keyframe for shot 2`, `Generating reference art: Bathroom, Bathroom Mirror (1–2 of 3)`). Before this they ran before the stream was opened, so a request that spent a minute inside an image model sent nothing at all to the browser and the chat appeared frozen on the message the user had just sent.
+- **Tool results are trimmed** to a head and a tail with a marker between them
+  once they pass ~8k characters. The item list is re-sent on every step of a
+  loop that runs up to ten, so one `list_storyboard_shots` over a fifty-shot
+  episode was ~80k tokens paid ten times. `read_tool_output` reads back what was
+  cut, from `creator_workflow_steps.output`, which already stored every full
+  result and which nothing had ever read.
+- **The conversation window keeps the opening.** It was a blind `slice(-30)`, so
+  past message thirty the brief vanished with no summary and no sign it had
+  gone. It now keeps the first message and marks the gap.
+- **Recent tool results are replayed**, from the `tool_calls` column that had
+  always been written and never read — so a turn no longer begins blind and
+  re-reads the workspace from scratch.
+- **The agent holding the turn is read from the pipeline stage**, not from the
+  message, and it is given the read tools plus the tools it owns. A tool owned
+  by the wrong agent is invisible to the stage that needs it; that invariant is
+  tested per stage.
 
 ### 3. Generation, credits, and feedback
 

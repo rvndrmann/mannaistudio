@@ -57,6 +57,7 @@ import {
 } from "lucide-react";
 import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models";
 import { getModelLabel, imageGenerationModels, supportedVideoModel, videoDurationOptions, videoGenerationModels, videoModelMaxDuration, type ImageGenerationModelId } from "@/lib/studio/generation-models";
+import { resolveShotSeconds } from "@/lib/studio/shot-duration";
 import { defaultDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows";
 import { abandonedRunSilentAfterMs } from "@/lib/studio/workflow-runs";
 import { videoPromptFor } from "@/lib/studio/shot-video-prompt";
@@ -527,7 +528,12 @@ export default function WorkspacePage({
         if (job.type === "video") {
           return fetch(`/api/studio/projects/${projectId}/videos?jobId=${encodeURIComponent(job.id)}`, { cache: "no-store" }).catch(() => null);
         }
-        if (job.type === "image" && job.settings && typeof job.settings === "object" && (job.settings as Record<string, unknown>).target === "asset") {
+        // Every image job, not only the asset-target ones. The reconcile
+        // endpoint settles a job the server never finished, and a storyboard
+        // shot's image (target "shot") can be orphaned the same way an asset's
+        // can — gating the nudge to target "asset" left storyboard cells
+        // spinning for ever with no request ever asking the job to be settled.
+        if (job.type === "image") {
           return fetch(`/api/studio/projects/${projectId}/images?jobId=${encodeURIComponent(job.id)}`, { cache: "no-store" }).catch(() => null);
         }
         return Promise.resolve(null);
@@ -4580,8 +4586,17 @@ function Storyboard({
                   </div>
                   <div className="col-span-2 lg:col-span-1">
                     <div className="flex items-center gap-2">
+                      {/*
+                        The runtime the shot will actually be rendered at, not
+                        the stored default. A shot is created at the four-second
+                        floor and resolveShotSeconds re-derives the length from
+                        its dialogue and timed beats at generation time — so a
+                        two-line exchange rendered at six seconds while this
+                        badge still read "4s", and the number the user was
+                        reading was never the number being filmed.
+                      */}
                       <span className="rounded bg-[#b9f42e]/15 px-1.5 py-0.5 text-xs font-bold text-[#b9f42e]">
-                        {shot.duration_seconds}s
+                        {resolveShotSeconds(shot, supportedVideoModel(videoModel))}s
                       </span>
                       <p className="text-[13px] font-bold leading-tight lg:text-base">{shot.title}</p>
                     </div>
@@ -4906,7 +4921,15 @@ function ShotMediaWorkspace({
   const [aspectRatio, setAspectRatio] = useState<string>(savedAspectRatio || media.shot.aspect_ratio || "9:16");
   const [resolution, setResolution] = useState<string>(savedResolution || media.shot.resolution || "720p");
   const [audioEnabled, setAudioEnabled] = useState<boolean>(savedAudio);
-  const [durationSeconds, setDurationSeconds] = useState<number>(Number(media.shot.duration_seconds || 4));
+  // Opens at the length the shot will actually be filmed at. A shot is created
+  // at the four-second floor and resolveShotSeconds re-derives the runtime from
+  // its dialogue and timed beats at generation time, so seeding the picker from
+  // the stored column offered 4s for a shot the pipeline would render at 6s —
+  // and a user who never touched the picker was shown a length that was not the
+  // one being used.
+  const [durationSeconds, setDurationSeconds] = useState<number>(
+    media.type === "video" ? resolveShotSeconds(media.shot, supportedVideoModel(videoModel)) : Number(media.shot.duration_seconds || 4),
+  );
   // Switching to a model with a shorter ceiling must pull the duration down.
   // The provider would otherwise truncate the clip while the user is charged
   // for the length they picked.
@@ -5875,9 +5898,17 @@ function ShotMediaWorkspace({
           <div className="flex items-start justify-between p-6">
             <div>
               <h2 className="text-3xl font-semibold text-white">Scene {shotNumber}</h2>
+              {/*
+                The settings this render will actually use, not the shot's
+                stored defaults. Both numbers here were fixed: the duration read
+                the saved column, so changing the duration picker below left the
+                heading claiming the old length, and the aspect ratio was the
+                literal "9:16" whatever the picker said — a 16:9 shot was
+                described as vertical right above the control setting it wide.
+              */}
               <p className="mt-2 text-sm text-zinc-400">
-                {media.shot.duration_seconds}s ·{" "}
-                {isImage ? "9:16 image" : "9:16 video"}
+                {isImage ? aspectRatio : `${durationSeconds}s · ${aspectRatio}`}{" "}
+                {isImage ? "image" : "video"}
               </p>
             </div>
           </div>
@@ -6935,7 +6966,20 @@ function VideoGenerationProposalBlock({
   const [mode, setMode] = useState<"keyframe" | "multi_image">(request.generationMode === "keyframe" ? "keyframe" : "multi_image");
   const [aspectRatio, setAspectRatio] = useState(request.aspectRatio || "16:9");
   const [resolution, setResolution] = useState(request.resolution || "720p");
-  const [durationSeconds, setDurationSeconds] = useState(Number(request.durationSeconds || 5));
+  // Falls back to the shot's own resolved duration when the payload still
+  // carries the four-second floor. A legacy proposal saved before the server
+  // stamped the resolved value has the LLM's default of 4, and reading that
+  // straight into the picker showed a length that was not the one the render
+  // would use.
+  const proposalShotIds = Array.isArray(request.shotIds) ? request.shotIds.filter((id): id is string => typeof id === "string") : [];
+  const proposalShots = shots.filter((shot) => proposalShotIds.includes(shot.id));
+  const resolvedProposalSeconds = proposalShots.length
+    ? Math.max(...proposalShots.map((shot) => resolveShotSeconds(shot, supportedVideoModel(request.model))))
+    : 0;
+  const seededDuration = Number(request.durationSeconds || 0);
+  const [durationSeconds, setDurationSeconds] = useState(
+    seededDuration && seededDuration > 4 ? seededDuration : (resolvedProposalSeconds || seededDuration || 5),
+  );
   const [audioEnabled, setAudioEnabled] = useState(request.audioEnabled !== false);
   // A video's composition frame is the shot's own approved keyframe, attached
   // by submit_generation at execution rather than passed by the model. The card

@@ -88,7 +88,14 @@ export const generationModels: GenerationModel[] = [
 
 export function routeGeneration(raw: unknown, models: GenerationModel[] = generationModels) {
   const request = generationRequestSchema.parse(raw)
-  const candidates = models.filter((model) => model.types.includes(request.type) && model.sources.includes(request.source) && (!request.referenceImageRequired || model.referenceImages) && (!request.dialogueRequired || model.dialogue))
+  // Dialogue is a video capability, so it only narrows a video request. A still
+  // frame cannot carry dialogue and no image model reports it, so applying this
+  // to an image request emptied the candidate list and made routing impossible
+  // — a shot whose script has spoken lines is described as dialogueRequired,
+  // and asking for its storyboard frame then failed with "No configured model
+  // supports this shot request" for a frame every image model could render.
+  const needsDialogue = request.dialogueRequired && request.type === "video"
+  const candidates = models.filter((model) => model.types.includes(request.type) && model.sources.includes(request.source) && (!request.referenceImageRequired || model.referenceImages) && (!needsDialogue || model.dialogue))
   if (!candidates.length) throw new Error("No configured model supports this shot request")
   const score = (model: GenerationModel) => request.preference === "quality" ? model.quality * 3 - model.costPerSecond : request.preference === "speed" ? model.speed * 3 - model.costPerSecond : request.preference === "cost" ? -(model.baseCredits + model.costPerSecond * request.durationSeconds) : model.quality + model.speed - model.costPerSecond
   // An explicit choice wins over preference scoring, but only among the models

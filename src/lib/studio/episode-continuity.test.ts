@@ -100,4 +100,22 @@ describe("episodeFootageInstructions", () => {
   it("says nothing when there is only one episode to talk about", () => {
     expect(episodeFootageInstructions([episode({ id: "ep-1", orderIndex: 0 })], "ep-1")).toBe("")
   })
+
+  /**
+   * A production is built in order, so the episode ahead is routinely
+   * storyboarded before the one behind it is filmed. The Director read that
+   * missing hand-off clip as a blocker and refused to submit at all, leaving a
+   * shot with an approved keyframe and a saved prompt unfilmable until
+   * unrelated footage existed.
+   */
+  it("tells the Director to film anyway when the earlier episode has no clip", () => {
+    const text = episodeFootageInstructions([
+      episode({ id: "ep-4", orderIndex: 3 }),
+      episode({ id: "ep-5", orderIndex: 4 }),
+    ], "ep-5")
+    expect(text).toContain("A missing clip is not a blocker")
+    expect(text).toContain("submit the generation with no videoReferencePaths")
+    // The reason it is safe to proceed: the shot brings its own first frame.
+    expect(text).toContain("first frame")
+  })
 })

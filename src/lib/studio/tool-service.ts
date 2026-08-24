@@ -5,6 +5,7 @@ import { directorTools, type DirectorToolName } from "./tool-registry"
 import { getUserCredits } from "./credits"
 import { stripIdentityDescriptionsFromPrompts } from "./prompt-sanitizer"
 import { projectDirectorVideoModel } from "./generation-models"
+import { resolveShotSeconds } from "./shot-duration"
 
 // Read from the registry rather than written out again. A second copy of this
 // list meant a tool could be registered, described, owned by an agent, and
@@ -22,7 +23,31 @@ export const toolRequestSchema = z.object({
   idempotencyKey: z.string().trim().min(8).max(200),
   sessionId: z.string().uuid().optional(),
   workflowRunId: z.string().uuid().optional(),
+  // The episode the run is scoped to. submit_generation resolves shot numbers
+  // against it, so it is a fact of the run rather than something the model must
+  // echo back — see withRunEpisode.
+  episodeId: z.string().uuid().optional(),
 })
+
+/**
+ * Sets submit_generation's episode from the run rather than trusting the model
+ * to echo the uuid back inside its arguments.
+ *
+ * Shot numbers are per episode, and the tool already resolves them against the
+ * episode the run is scoped to. Making the model repeat that uuid gained
+ * nothing and could fail the whole media step with "request.episodeId: Invalid
+ * UUID" the moment the model truncated or hallucinated it. The server knows the
+ * episode, so it writes it here and overrides whatever the model sent.
+ *
+ * Only touches an input that already carries a `request` object — a genuinely
+ * malformed call with no request at all still surfaces its own error.
+ */
+export function withRunEpisode(input: unknown, episodeId: string | null | undefined): unknown {
+  if (!episodeId || !input || typeof input !== "object" || Array.isArray(input)) return input
+  const rec = input as Record<string, unknown>
+  if (!rec.request || typeof rec.request !== "object" || Array.isArray(rec.request)) return input
+  return { ...rec, request: { ...(rec.request as Record<string, unknown>), episodeId } }
+}
 
 function normalizeToolInput(input: unknown): unknown {
   if (!input || typeof input !== "object" || Array.isArray(input)) return input
@@ -36,6 +61,44 @@ function normalizeToolInput(input: unknown): unknown {
   return rec
 }
 
+
+/**
+ * The runtime the batch will actually be filmed at, stamped onto the request
+ * before the proposal is saved.
+ *
+ * The model defaults durationSeconds to the four-second floor and a shot is
+ * created at that floor too, so a two-line exchange was proposed as 4s and
+ * rendered at 6s — resolveShotSeconds re-derives the length from the shot's
+ * own dialogue and timed beats. The proposal card shows what the model sent,
+ * so unless the request carries the resolved number the user approves a
+ * length that is not the one being filmed. For a multi-shot batch the max
+ * wins: the provider clips shorter beats to their own length, but a shot with
+ * more to say must not be truncated to match a shorter neighbour.
+ *
+ * A caller who set a duration other than the four-second default meant it, so
+ * that value stays untouched.
+ */
+async function resolveVideoBatchDuration(
+  context: AuthenticatedProjectContext,
+  request: { type?: string; shotIds?: unknown; durationSeconds?: unknown; model?: unknown },
+): Promise<number | null> {
+  if (request.type !== "video") return null
+  const shotIds = Array.isArray(request.shotIds) ? request.shotIds.filter((id): id is string => typeof id === "string" && id.length > 0) : []
+  if (!shotIds.length) return null
+  const current = typeof request.durationSeconds === "number" ? request.durationSeconds : 4
+  // Four is the floor and the model's default, so the LLM cannot tell us apart
+  // from a caller who consciously wants four seconds. Rederiving on both is the
+  // safe behaviour — a wordless four-second shot resolves to four anyway.
+  if (current > 4) return null
+  const model = typeof request.model === "string" && request.model ? request.model : undefined
+  const { data: shots } = await context.supabase
+    .from("creator_shots")
+    .select("id,duration_seconds,prompt,script_text")
+    .in("id", shotIds)
+  if (!shots?.length) return null
+  return shots.reduce((max, shot) => Math.max(max, resolveShotSeconds(shot, model)), 0) || null
+}
+
 export async function requestDirectorTool(context: AuthenticatedProjectContext, raw: unknown) {
   const request = toolRequestSchema.parse(raw)
   const tool = directorTools[request.tool]
@@ -46,7 +109,11 @@ export async function requestDirectorTool(context: AuthenticatedProjectContext, 
   const preparedInput = runScopedTools.includes(request.tool) && request.workflowRunId && request.input && typeof request.input === "object"
     ? { ...(request.input as Record<string, unknown>), workflowRunId: request.workflowRunId }
     : request.input
-  const rawInput = normalizeToolInput(preparedInput)
+  // The run owns the episode; the model does not have to get its uuid right.
+  const scopedInput = request.tool === "submit_generation"
+    ? withRunEpisode(preparedInput, request.episodeId)
+    : preparedInput
+  const rawInput = normalizeToolInput(scopedInput)
   const parsedInput = tool.input.parse(rawInput)
   // Generation execution strips identity prose as a final safety check. Apply
   // the same rule before saving the approval proposal so the UI never shows a
@@ -73,6 +140,21 @@ export async function requestDirectorTool(context: AuthenticatedProjectContext, 
         prompts: stripIdentityDescriptionsFromPrompts(parsedInput.prompts as Record<string, string>),
       }
     : parsedInput
+  const resolvedSeconds = request.tool === "submit_generation"
+    && input && typeof input === "object" && "request" in input
+    && (input as { request?: unknown }).request
+    && typeof (input as { request: unknown }).request === "object"
+    ? await resolveVideoBatchDuration(context, (input as { request: Record<string, unknown> }).request)
+    : null
+  const scoredInput = resolvedSeconds
+    ? {
+        ...(input as Record<string, unknown>),
+        request: {
+          ...((input as { request: Record<string, unknown> }).request),
+          durationSeconds: resolvedSeconds,
+        },
+      }
+    : input
 
   const { data: existing } = await context.supabase
     .from("creator_tool_executions")
@@ -95,12 +177,12 @@ export async function requestDirectorTool(context: AuthenticatedProjectContext, 
     status,
     idempotency_key: request.idempotencyKey,
     workflow_run_id: request.workflowRunId ?? null,
-    input,
+    input: scoredInput,
   })
   if (executionError) throw executionError
 
   if (tool.requiresApproval) {
-    const proposalCopy = await describeProposal(context, tool.name, input)
+    const proposalCopy = await describeProposal(context, tool.name, scoredInput)
     const { data: proposal, error } = await context.supabase.from("creator_action_proposals").insert({
       project_id: context.project.id,
       user_id: context.user.id,
@@ -108,7 +190,7 @@ export async function requestDirectorTool(context: AuthenticatedProjectContext, 
       action_type: tool.name,
       title: proposalCopy.title,
       summary: proposalCopy.summary,
-      payload: input,
+      payload: scoredInput,
       estimated_credits: proposalCopy.estimatedCredits,
       affected_entities: proposalCopy.affectedEntities,
       workflow_run_id: request.workflowRunId ?? null,
