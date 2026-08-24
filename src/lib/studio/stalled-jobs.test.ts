@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { isStalledImageJob, STALLED_IMAGE_JOB_MS } from "./stalled-jobs"
+import { isStalledImageJob, isStalledVideoJob, STALLED_IMAGE_JOB_MS, STALLED_VIDEO_JOB_MS } from "./stalled-jobs"
 
 const now = Date.parse("2026-08-24T05:30:00.000Z")
 const ago = (ms: number) => new Date(now - ms).toISOString()
@@ -30,5 +30,63 @@ describe("settling an orphaned image job", () => {
   it("uses a six-minute threshold", () => {
     expect(isStalledImageJob({ status: "processing", started_at: ago(STALLED_IMAGE_JOB_MS - 1_000) }, now)).toBe(false)
     expect(isStalledImageJob({ status: "processing", started_at: ago(STALLED_IMAGE_JOB_MS + 1_000) }, now)).toBe(true)
+  })
+})
+
+/**
+ * BytePlus accepts a video task and then either progresses it — moving its own
+ * updated_at — or leaves the timestamp exactly at created_at because the queue
+ * never picked it up. The second case reports "running" for up to two days, so
+ * the shot span its generating animation the whole time and the reserved
+ * credits were never returned.
+ */
+describe("a video the provider never started", () => {
+  const providerAt = (createdSecAgo: number, updatedSecAgo: number) => ({
+    status: "running",
+    created_at: Math.floor((now - createdSecAgo * 1000) / 1000),
+    updated_at: Math.floor((now - updatedSecAgo * 1000) / 1000),
+  })
+
+  it("settles a task held at its created_at past the threshold", () => {
+    // The real failure: accepted 41 minutes ago, never touched since.
+    const job = { status: "processing", started_at: ago(41 * 60 * 1000) }
+    expect(isStalledVideoJob(job, providerAt(41 * 60, 41 * 60), now)).toBe(true)
+  })
+
+  it("leaves a slow render alone once the provider has touched it", () => {
+    // updated_at has moved past created_at, so the queue picked the task up and
+    // it is rendering — slow is not stalled.
+    const job = { status: "processing", started_at: ago(41 * 60 * 1000) }
+    expect(isStalledVideoJob(job, providerAt(41 * 60, 10 * 60), now)).toBe(false)
+  })
+
+  it("gives a fresh task time before calling it stalled", () => {
+    const job = { status: "processing", started_at: ago(60 * 1000) }
+    expect(isStalledVideoJob(job, providerAt(60, 60), now)).toBe(false)
+  })
+
+  it("never touches a job the provider already settled", () => {
+    const job = { status: "processing", started_at: ago(60 * 60 * 1000) }
+    for (const status of ["succeeded", "failed", "cancelled"]) {
+      expect(isStalledVideoJob(job, { ...providerAt(60 * 60, 60 * 60), status }, now)).toBe(false)
+    }
+  })
+
+  it("does not guess when the provider sent no timestamps", () => {
+    // Without both clocks a stall cannot be told from a slow render, and failing
+    // the job on a guess would discard work that was really happening.
+    const job = { status: "processing", started_at: ago(60 * 60 * 1000) }
+    expect(isStalledVideoJob(job, { status: "running" }, now)).toBe(false)
+  })
+
+  it("never touches a terminal job of our own", () => {
+    expect(isStalledVideoJob({ status: "completed", started_at: ago(60 * 60 * 1000) }, providerAt(60 * 60, 60 * 60), now)).toBe(false)
+  })
+
+  it("uses an eight-minute threshold", () => {
+    const under = { status: "processing", started_at: ago(STALLED_VIDEO_JOB_MS - 1_000) }
+    const over = { status: "processing", started_at: ago(STALLED_VIDEO_JOB_MS + 1_000) }
+    expect(isStalledVideoJob(under, providerAt(STALLED_VIDEO_JOB_MS / 1000, STALLED_VIDEO_JOB_MS / 1000), now)).toBe(false)
+    expect(isStalledVideoJob(over, providerAt(STALLED_VIDEO_JOB_MS / 1000, STALLED_VIDEO_JOB_MS / 1000), now)).toBe(true)
   })
 })

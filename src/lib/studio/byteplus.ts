@@ -271,6 +271,13 @@ export async function getBytePlusVideoTask(taskId: string) {
   return request(`/contents/generations/tasks/${encodeURIComponent(taskId)}`, { method: "GET" }) as Promise<{
     id: string
     status: "queued" | "running" | "succeeded" | "failed" | "cancelled"
+    // Provider's own clocks. Kept because "running with updated_at unchanged
+    // from created_at for many minutes" is BytePlus's own signature of a task
+    // it accepted but never picked up — the provider queue is stalled, not
+    // slow-rendering, and the workspace can settle the job rather than sit on
+    // the spinner for ever.
+    created_at?: number
+    updated_at?: number
     content?: { video_url?: string }
     error?: { message?: string }
     usage?: { completion_tokens?: number; total_tokens?: number }

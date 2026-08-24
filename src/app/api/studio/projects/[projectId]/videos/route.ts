@@ -14,6 +14,7 @@ import { ownKeysOnly } from "@/lib/byok/preferences"
 import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
 import { trackGenerationActivation } from "@/lib/studio/activation"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
+import { isStalledVideoJob } from "@/lib/studio/stalled-jobs"
 import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { projectVisualStyle } from "@/lib/studio/entity-image-workflow"
 import { composeLookDirectives, projectStyleDna } from "@/lib/studio/style-dna"
@@ -426,7 +427,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (!job.provider_job_id || !isVideoGenerationModel(job.model)) return NextResponse.json({ error: "Generation job is missing provider details" }, { status: 409 })
 
     const provider = generationProvider(job.model)
-    let task: { status: "queued" | "running" | "succeeded" | "failed" | "cancelled"; content?: { video_url?: string }; error?: { message?: string } }
+    let task: { status: "queued" | "running" | "succeeded" | "failed" | "cancelled"; content?: { video_url?: string }; error?: { message?: string }; created_at?: number; updated_at?: number }
 
     if (provider === "fal") {
       // fal endpoints are namespaced. The old fallback dropped the "fal-ai/"
@@ -458,6 +459,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ])
       if (job.workflow_run_id) await context.supabase.from("creator_workflow_runs").update({ status: task.status === "cancelled" ? "cancelled" : "failed", error: { message: error }, completed_at: new Date().toISOString() }).eq("id", job.workflow_run_id)
       return NextResponse.json({ ...job, status: task.status === "cancelled" ? "cancelled" : "failed", error, creditsRefunded: refund.refunded ? charged : 0, creditBalance: refund.newBalance })
+    }
+    // A task the provider queue accepted but never started. BytePlus leaves
+    // updated_at exactly at created_at in that case and holds the task for up to
+    // two days, so without this the shot span its generating animation for the
+    // whole of it and the reserved credits were never returned. Settling it here
+    // is the same contract the failed branch above already honours.
+    if (isStalledVideoJob(job, task)) {
+      const charged = refundableCredits(job as { billing_mode?: string | null; credits_used?: number | null; estimated_credits?: number | null })
+      const refund = charged > 0
+        ? await refundGenerationCredits(context.user.id, charged, `generation-job:${job.id}`, "Refund: video generation was never started by the provider", job.id, context.supabase)
+        : { refunded: false, newBalance: 0 }
+      const error = "The video provider accepted this job but never started it. Nothing was rendered and the credits have been returned. Try generating it again."
+      await Promise.all([
+        context.supabase.from("creator_generation_jobs").update({ status: "failed", provider_response: task, error, completed_at: new Date().toISOString() }).eq("id", job.id),
+        job.shot_id ? context.supabase.from("creator_shots").update({ video_status: "failed" }).eq("id", job.shot_id) : Promise.resolve(),
+      ])
+      if (job.workflow_run_id) await context.supabase.from("creator_workflow_runs").update({ status: "failed", error: { message: error }, completed_at: new Date().toISOString() }).eq("id", job.workflow_run_id)
+      return NextResponse.json({ ...job, status: "failed", error, creditsRefunded: refund.refunded ? charged : 0, creditBalance: refund.newBalance })
     }
     if (task.status !== "succeeded" || !task.content?.video_url) return NextResponse.json({ ...job, status: "processing", providerStatus: task.status })
 
