@@ -8,11 +8,13 @@ function snapshot(patch: Partial<ProductionSnapshot> = {}): ProductionSnapshot {
 
 const withArt = (name: string, type = "character") => ({ name, type, hasReferenceImage: true })
 const withoutArt = (name: string, type = "character") => ({ name, type, hasReferenceImage: false })
-const shot = (number: number, patch: { hasKeyframe?: boolean; hasVideo?: boolean; hasPrompt?: boolean } = {}) => ({
+const shot = (number: number, patch: { hasKeyframe?: boolean; hasVideo?: boolean; hasPrompt?: boolean; imageInFlight?: boolean; videoInFlight?: boolean } = {}) => ({
   number,
   hasPrompt: patch.hasPrompt ?? true,
   hasKeyframe: patch.hasKeyframe ?? false,
   hasVideo: patch.hasVideo ?? false,
+  imageInFlight: patch.imageInFlight,
+  videoInFlight: patch.videoInFlight,
 })
 
 describe("production pipeline stages", () => {
@@ -105,6 +107,18 @@ describe("production pipeline stages", () => {
     }))
     expect(stage.key).toBe("videos")
     expect(stage.nextAction?.label).toBe("Generate the video for shot 2")
+  })
+
+  it("reports an in-flight video instead of offering a duplicate generation", () => {
+    const stage = computePipelineStage(snapshot({
+      hasScript: true,
+      promptSheetCount: 2,
+      shots: [shot(1, { hasKeyframe: true, videoInFlight: true }), shot(2, { hasKeyframe: true })],
+    }))
+    expect(stage.title).toBe("Generating")
+    expect(stage.nextAction?.label).toBe("Check on shot 1")
+    expect(stage.alternatives.map((action) => action.label)).toEqual(["Regenerate the video for shot 1"])
+    expect(JSON.stringify(stage)).not.toContain('"Generate the video for shot 1"')
   })
 
   it("does not stall on a shot that has no prompt to render", () => {

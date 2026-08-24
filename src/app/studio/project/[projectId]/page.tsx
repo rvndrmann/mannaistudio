@@ -773,40 +773,44 @@ export default function WorkspacePage({
       let buffer = "";
       let json: Record<string, unknown> = {};
       let streamError = "";
-      setStreamingReply({ content: "", status: null, steps: [], startedAt: Date.now() });
+      // Keep the stream's working copy outside React. SSE events can arrive in
+      // the same turn as a render; deriving the next reply through a React
+      // state updater here caused React to repeatedly replay that updater and
+      // eventually hit its maximum update depth. Each event now publishes a
+      // complete, immutable snapshot instead.
+      let streaming = { content: "", status: null as string | null, steps: [] as Array<{ label: string; state: "running" | "done" | "failed" }>, startedAt: Date.now() };
+      const publishStreaming = () => setStreamingReply(streaming);
+      publishStreaming();
 
       const handleEvent = (event: Record<string, unknown>) => {
         if (event.type === "text" && typeof event.delta === "string") {
-          setStreamingReply((current) => ({
-            steps: current?.steps || [],
-            startedAt: current?.startedAt || Date.now(),
-            status: null,
-            content: (current?.content || "") + (event.delta as string),
-          }));
+          // Some providers emit empty keep-alive text events. They are not UI
+          // changes, so do not turn them into needless React updates.
+          if (!event.delta) return;
+          streaming = { ...streaming, status: null, content: streaming.content + event.delta };
+          publishStreaming();
         } else if (event.type === "tool") {
           const label = String(event.label || "Working");
           const state: "running" | "done" | "failed" =
             event.status === "running" ? "running" : event.status === "failed" ? "failed" : "done";
-          setStreamingReply((current) => {
-            const steps = [...(current?.steps || [])];
-            // A tool reports twice, once starting and once finishing. The second
-            // report settles the line the first one added rather than adding a
-            // duplicate beneath it.
-            const open = steps.findIndex((step) => step.label === label && step.state === "running");
-            if (state === "running") {
-              if (open === -1) steps.push({ label, state });
-            } else if (open !== -1) {
-              steps[open] = { label, state };
-            } else {
-              steps.push({ label, state });
-            }
-            return {
-              content: current?.content || "",
-              startedAt: current?.startedAt || Date.now(),
-              status: state === "running" ? `${label}…` : current?.status || null,
-              steps,
-            };
-          });
+          const steps = [...streaming.steps];
+          // A tool reports twice, once starting and once finishing. The second
+          // report settles the line the first one added rather than adding a
+          // duplicate beneath it.
+          const open = steps.findIndex((step) => step.label === label && step.state === "running");
+          if (state === "running") {
+            if (open === -1) steps.push({ label, state });
+          } else if (open !== -1) {
+            steps[open] = { label, state };
+          } else {
+            steps.push({ label, state });
+          }
+          streaming = {
+            ...streaming,
+            status: state === "running" ? `${label}…` : streaming.status,
+            steps,
+          };
+          publishStreaming();
         } else if (event.type === "proposal") {
           // Pull the card into view immediately rather than at the end of the run.
           void load(true);

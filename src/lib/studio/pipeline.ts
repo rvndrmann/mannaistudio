@@ -492,6 +492,33 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
     recommended: false,
   })
 
+  // A provider job is not a completed clip. It must take precedence over the
+  // next available shot so the Director cannot offer a second paid generation
+  // for a shot whose first request is still queued or rendering.
+  const inFlight = shotsInFlight(snapshot)
+  if (inFlight.length) {
+    const numbers = inFlight.map((shot) => shot.number)
+    return {
+      key: "keyframes",
+      title: "Generating",
+      summary: `Shot ${numbers.join(", ")} ${plural(numbers.length, "is", "are")} generating now. ${remainingWork(snapshot)} Nothing to start until ${plural(numbers.length, "it lands", "they land")}.`,
+      // Nothing new can be started, but a reply that ends with no button at all
+      // leaves the user guessing what to type. Checking on the render is the
+      // one honest move here, and it spends nothing.
+      nextAction: {
+        id: "pipeline-generating",
+        label: `Check on shot ${numbers.join(", ")}`,
+        intent: `Check the status of the shots that are generating right now and tell me what has landed, what is still running, and what the next step will be once they finish. Do not start any new generation.`,
+        risk: "read",
+        recommended: true,
+      },
+      // This is an intentional retry, not the default next action. Keeping it
+      // visible lets the user ask for another take while the provider queue is
+      // stuck, without misleading them that the first render has completed.
+      alternatives: inFlight.map((shot) => shot.videoInFlight ? videoRedoAction(shot) : keyframeRedoAction(shot)),
+    }
+  }
+
   if (nextKeyframe) {
     const nextKeyframeSubsequent = awaitingKeyframe[1] || null
     return {
@@ -529,30 +556,6 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
         : awaitingVideo[1]
         ? [videoAction(awaitingVideo[1])]
         : [],
-    }
-  }
-
-  // Nothing left to offer, but the workspace is still working. Falling through
-  // to "Review" here would announce a finished episode over shots that are
-  // mid-render, and offering the shot being rendered would charge for it twice.
-  const inFlight = shotsInFlight(snapshot)
-  if (inFlight.length) {
-    const numbers = inFlight.map((shot) => shot.number)
-    return {
-      key: "keyframes",
-      title: "Generating",
-      summary: `Shot ${numbers.join(", ")} ${plural(numbers.length, "is", "are")} generating now. ${remainingWork(snapshot)} Nothing to start until ${plural(numbers.length, "it lands", "they land")}.`,
-      // Nothing new can be started, but a reply that ends with no button at all
-      // leaves the user guessing what to type. Checking on the render is the
-      // one honest move here, and it spends nothing.
-      nextAction: {
-        id: "pipeline-generating",
-        label: `Check on shot ${numbers.join(", ")}`,
-        intent: `Check the status of the shots that are generating right now and tell me what has landed, what is still running, and what the next step will be once they finish. Do not start any new generation.`,
-        risk: "read",
-        recommended: true,
-      },
-      alternatives: lastVideoShot ? [videoRedoAction(lastVideoShot)] : [],
     }
   }
 
