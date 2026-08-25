@@ -1599,7 +1599,18 @@ export default function WorkspacePage({
               activeSessionId={data.activeSessionId}
               generationJobs={data.production?.generationJobs || []}
               creditBalance={data.production?.creditAccount?.balance ?? null}
-              busy={chatSending || Boolean(resumedRunAwaitingReply) || Boolean(proposalBusy)}
+              // `activeRun` is in here as well as the streaming flags because
+              // the stream is not the run. A turn whose stream died leaves a
+              // run still working server-side, and for the moment between the
+              // stream ending and the workspace noticing, every flag above
+              // reads false — which is the window the loop fired into, sending
+              // a second turn on top of a first that was still going, then a
+              // third. Five runs in twenty-two seconds, all of them paid for.
+              //
+              // Asking the run table directly closes that window: while this
+              // session has a run in flight, the loop waits. A run that died
+              // is excluded at the source, so this can never wait for good.
+              busy={chatSending || Boolean(activeRun) || Boolean(resumedRunAwaitingReply) || Boolean(proposalBusy)}
               // A run killed mid-flight fails no fetch the browser made, so
               // without this the loop saw a turn that simply produced no next
               // step and asked again — three dead runs, each invisible for
