@@ -263,7 +263,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         userId: context.user.id,
       })
       if (!assetUri) continue
-      const slot = references.indexOf(signed)
+      // `references` and `faceReferences` are signed in separate calls, so
+      // their URLs carry different tokens even when they represent the same
+      // storage path. Matching on `signed` therefore never found the outgoing
+      // reference and left the raw face image in the BytePlus request after a
+      // successful Asset Library verification. The canonical source path is
+      // stable and is unique here because `combinedReferencePaths` is deduped.
+      const slot = combinedReferencePaths.indexOf(path)
       if (slot >= 0) references[slot] = assetUri
       faceReferences[index] = assetUri
     }

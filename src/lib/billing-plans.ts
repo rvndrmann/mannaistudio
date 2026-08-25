@@ -33,6 +33,7 @@ export const billingTiers: Record<BillingTierId, BillingTier> = {
     subtitle: "For creators shipping their first AI videos",
     features: [
       "AI Director chat workflow",
+      "Bring your own API keys (provider rates)",
       "Script and storyboard planning",
       "Image generation",
       "Upload image, video, and audio references",
@@ -49,6 +50,7 @@ export const billingTiers: Record<BillingTierId, BillingTier> = {
     subtitle: "For steady weekly production",
     features: [
       "Everything in Pro",
+      "Bring your own API keys (provider rates)",
       "Video generation with approval workflow",
       "Character and asset reference library",
       "Voice Director",
@@ -64,6 +66,7 @@ export const billingTiers: Record<BillingTierId, BillingTier> = {
     subtitle: "For studios running continuous production",
     features: [
       "Everything in Plus",
+      "Bring your own API keys (provider rates)",
       "Full-auto production mode",
       "MCP & CLI access",
       "Marketing agent",

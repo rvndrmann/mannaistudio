@@ -62,6 +62,15 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error } = await supabase.auth.getUser()
     if (error || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("membership_status, membership_expires_at")
+      .eq("id", user.id)
+      .maybeSingle()
+    if (!isMembershipActive(profile)) {
+      return NextResponse.json({ error: "An active subscription is required to buy generation credits." }, { status: 403 })
+    }
+
     // A POST with no body throws inside JSON.parse, and the route reported it
     // as an unhandled SyntaxError rather than a bad request — which is what it
     // is. The server log filled with "Unexpected end of JSON input" naming this

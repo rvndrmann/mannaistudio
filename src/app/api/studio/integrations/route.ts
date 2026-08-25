@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { listCredentials } from "@/lib/byok/credential-service"
+import { hasByokSubscription, listCredentials } from "@/lib/byok/credential-service"
 import { byokIsConfigured } from "@/lib/byok/kms"
 import { byokProviders, providerSpecs } from "@/lib/byok/providers"
 import { ownKeysOnly, setOwnKeysOnly } from "@/lib/byok/preferences"
@@ -18,6 +18,15 @@ export async function GET() {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!(await hasByokSubscription(user.id))) {
+      return NextResponse.json({
+        configured: byokIsConfigured(),
+        subscriptionRequired: true,
+        vaultReadable: true,
+        ownKeysOnly: false,
+        providers: [],
+      })
+    }
 
     // Which providers exist is static configuration; which are connected comes
     // from the vault. Losing the second must not hide the first — an opaque
@@ -72,6 +81,9 @@ export async function PATCH(request: Request) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!(await hasByokSubscription(user.id))) {
+      return NextResponse.json({ error: "An active subscription is required to use your own API keys." }, { status: 403 })
+    }
 
     const body = await request.json().catch(() => null) as { ownKeysOnly?: unknown } | null
     if (typeof body?.ownKeysOnly !== "boolean") {

@@ -1,4 +1,5 @@
 import "server-only"
+import { isMembershipActive } from "@/lib/membership"
 import { createServiceClient } from "@/lib/supabase/service"
 import { keyLast4, openCredential, sealCredential, type CredentialParts } from "./envelope"
 import { byokIsConfigured, kmsKeyWrapper } from "./kms"
@@ -30,6 +31,16 @@ import { primaryPartKey, providerSpecs, type ByokProvider } from "./providers"
  */
 function vault() {
   return createServiceClient()
+}
+
+/** BYOK is a paid subscription entitlement, not a free-account escape hatch. */
+export async function hasByokSubscription(userId: string): Promise<boolean> {
+  const { data, error } = await vault()
+    .from("profiles")
+    .select("membership_status, membership_expires_at")
+    .eq("id", userId)
+    .maybeSingle()
+  return !error && isMembershipActive(data)
 }
 
 /** What the UI is allowed to know. Never any part of the secret. */
@@ -96,7 +107,7 @@ export async function listCredentials(userId: string): Promise<CredentialSummary
 
 /** Whether this user has a usable credential for a provider. No secret involved. */
 export async function hasCredential(userId: string, provider: ByokProvider): Promise<boolean> {
-  if (!byokIsConfigured()) return false
+  if (!byokIsConfigured() || !(await hasByokSubscription(userId))) return false
   const { data, error } = await vault().rpc("byok_has_credential", { p_user: userId, p_provider: provider })
   if (error) throw error
   return Boolean(data)
@@ -109,6 +120,7 @@ export async function saveCredential(input: {
   label?: string | null
 }): Promise<{ replaced: boolean }> {
   if (!byokIsConfigured()) throw new Error("BYOK is not configured on this server.")
+  if (!(await hasByokSubscription(input.userId))) throw new Error("An active subscription is required to use your own API keys.")
   const sealed = await sealCredential(input.parts, kmsKeyWrapper())
   const primary = input.parts[primaryPartKey(input.provider)] || ""
 
@@ -161,7 +173,7 @@ export async function withCredential<T>(
   input: { userId: string; provider: ByokProvider },
   use: (parts: CredentialParts) => Promise<T>,
 ): Promise<T | null> {
-  if (!byokIsConfigured()) return null
+  if (!byokIsConfigured() || !(await hasByokSubscription(input.userId))) return null
   const { data: rows, error } = await vault().rpc("byok_read_credential", { p_user: input.userId, p_provider: input.provider })
   if (error) throw error
   const data = Array.isArray(rows) ? rows[0] : rows

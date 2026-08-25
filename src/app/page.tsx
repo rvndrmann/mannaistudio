@@ -16,7 +16,6 @@ import {
     Bot,
     CheckCircle2,
     Clapperboard,
-    Film,
     Layers3,
     PenLine,
     Play,
@@ -26,7 +25,7 @@ import {
     Tv,
     Wand2,
     X,
-    Zap, KeyRound,} from "lucide-react"
+} from "lucide-react"
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 
@@ -50,32 +49,32 @@ const pipelineSteps = [
         id: "script",
         num: "01",
         label: "Script",
-        title: "Autonomous Screenwriting",
-        description: "The AI Director writes shoot-ready scenes, character dialogue, and shot descriptions from a single prompt.",
+        title: "Write the story",
+        description: "",
         accent: "from-primary/15 to-transparent",
     },
     {
         id: "role",
         num: "02",
         label: "Role & Assets",
-        title: "Character Continuity & Turnarounds",
-        description: "Generate consistent multi-angle character references, wardrobe sheets, and prop asset memory.",
+        title: "Build the world",
+        description: "",
         accent: "from-primary/15 to-transparent",
     },
     {
         id: "storyboard",
         num: "03",
         label: "Storyboard",
-        title: "Keyframes & Shot Cards",
-        description: "Generate camera-specific keyframe visuals with automated prompt validation and continuity facts.",
+        title: "Plan the shots",
+        description: "",
         accent: "from-primary/15 to-transparent",
     },
     {
         id: "timeline",
         num: "04",
         label: "Timeline",
-        title: "Video Motion & Assembly",
-        description: "Turn keyframe images into fluid motion clips with approval guards and full-auto production control.",
+        title: "Make the video",
+        description: "",
         accent: "from-primary/15 to-transparent",
     },
 ]
@@ -224,77 +223,71 @@ export default function LandingPage() {
             {/* Reserved room for top navbar banner */}
             <div className="h-24 md:h-20" aria-hidden="true" />
 
-            {/* SECTION 1: HERO STAGE (AUTONOMOUS AI VIDEO CREATION PLATFORM) */}
-            <section className="relative mx-auto max-w-[1540px] px-4 pb-16 pt-6 md:px-6">
-                <div className="relative overflow-hidden rounded-xl border border-white/10 bg-[#0d0f0e] p-6 md:p-12">
+            {/* SECTION 1: HERO STAGE — sell the outcome before explaining the product. */}
+            <section className="relative mx-auto max-w-[1540px] px-4 pb-12 pt-4 md:px-6 md:pb-16 md:pt-6">
+                <div className="relative overflow-hidden rounded-xl border border-white/10 bg-[#0d0f0e] p-5 sm:p-6 md:p-12">
                     {/* Background glow and subtle ambient lighting */}
                     <div className="pointer-events-none absolute -left-40 -top-40 h-[420px] w-[420px] rounded-full bg-primary/[.07] blur-[140px]" />
 
-                    <div className="relative z-10 grid gap-10 lg:grid-cols-[1.1fr_.9fr] lg:items-center">
+                    <div className="relative z-10 grid gap-8 lg:grid-cols-[1.1fr_.9fr] lg:items-center lg:gap-10">
                         <div>
-                            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[.04] px-3.5 py-1.5 t-caption text-white/60">
+                            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[.04] px-3 py-1.5 t-caption text-white/60">
                                 <Sparkles className="h-3.5 w-3.5 text-primary" />
-                                Autonomous AI video creation platform
+                                Stop prompting. Start directing.
                             </div>
 
-                            <h1 className="mt-7 t-display">
-                                AI Creative <span className="text-primary">Employee</span>
+                            {/* Desktop carries the complete promise. The mobile version
+                                deliberately removes a line so the CTA remains visible early. */}
+                            <h1 className="mt-5 hidden max-w-3xl t-display md:block">
+                                Give your AI Director an idea. Get a <span className="text-primary">production.</span>
+                            </h1>
+                            <h1 className="mt-5 max-w-xl text-[2.55rem] font-semibold leading-[1.04] tracking-[-0.035em] md:hidden">
+                                Give your AI Director an idea. Get a <span className="text-primary">production.</span>
                             </h1>
 
-                            <p className="mt-5 max-w-xl t-body-lg text-white/55">
-                                An all-in-one AI video generator powered by your dedicated AI Director Employee.
-                                It writes scripts, sets up character turnaround assets, builds storyboards, and renders broadcast-ready video clips.
+                            <p className="mt-5 hidden max-w-xl t-body-lg text-white/60 md:block">
+                                Script. Characters. Storyboard. Images. Video. Your AI Director coordinates the entire workflow
+                                across the latest AI models while you stay in control.
+                            </p>
+                            <p className="mt-4 max-w-md text-[15px] leading-6 text-white/60 md:hidden">
+                                Script. Characters. Storyboard. Images. Video. Your AI Director coordinates the whole workflow while you stay in control.
+                            </p>
+                            <p className="mt-3 max-w-xl text-sm leading-6 text-white/45 md:mt-4 md:text-base">
+                                Subscribers can use their own OpenAI, Google, BytePlus, or fal.ai API keys at provider rates, or generate instantly with studio credits.
                             </p>
 
-                            {/* The BYOK pitch, stated as what it costs rather than
-                                as a feature name: connect a key and the provider
-                                bills you directly at their price. */}
-                            <p className="mt-4 max-w-xl t-body text-white/45">
-                                Bring your own API keys and pay OpenAI, BytePlus, fal.ai or Google
-                                directly at their price &mdash; no markup to a middleman. Or use studio
-                                credits and skip the setup. Switch per provider, whenever you like.
-                            </p>
-
-                            <div className="mt-10 flex flex-wrap items-center gap-4">
+                            <div className="mt-7 flex flex-col gap-3 sm:mt-10 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
                                 {user ? (
-                                    <Link href="/studio" className="btn-primary flex items-center gap-2.5 px-7 py-3.5 text-[15px]">
-                                        Open Creator Studio <ArrowRight className="h-5 w-5" />
+                                    <Link href="/studio" className="btn-primary flex items-center justify-center gap-2.5 px-7 py-3.5 text-[15px]">
+                                        Hire Your AI Director <ArrowRight className="h-5 w-5" />
                                     </Link>
                                 ) : (
-                                    <button onClick={() => signInWithGoogle()} className="btn-primary flex items-center gap-2.5 px-7 py-3.5 text-[15px]">
-                                        Start Free Now <ArrowRight className="h-5 w-5" />
+                                    <button onClick={() => signInWithGoogle()} className="btn-primary flex items-center justify-center gap-2.5 px-7 py-3.5 text-[15px]">
+                                        Hire Your AI Director <ArrowRight className="h-5 w-5" />
                                     </button>
                                 )}
-                                <Link href="/billing" className="btn-secondary flex items-center gap-2 px-7 py-3.5 text-[15px]">
-                                    View Plans & Credits <ArrowUpRight className="h-5 w-5" />
-                                </Link>
-                                {/* Shown to signed-in users only: connecting a key is
-                                    something you do to an account, and it is the
-                                    alternative to the credits offered beside it. */}
-                                {user && (
-                                    <Link href="/studio/integrations" className="btn-secondary flex items-center gap-2 px-7 py-3.5 text-[15px]">
-                                        Use Your Own API Keys <ArrowUpRight className="h-5 w-5" />
-                                    </Link>
-                                )}
+                                <a href="#showcase" className="btn-secondary flex items-center justify-center gap-2 px-7 py-3.5 text-[15px]">
+                                    See It Build a Video <Play className="h-4 w-4 fill-current" />
+                                </a>
                             </div>
 
-                            {/* Key Stats Bar */}
-                            <div className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-3 border-t border-white/10 pt-7 t-caption text-white/45">
+                            {/* Short reassurance, not a second product explanation. */}
+                            <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-white/50 sm:mt-10 sm:gap-x-6 sm:border-t sm:border-white/10 sm:pt-7 sm:t-caption">
                                 <div className="flex items-center gap-2">
-                                    <Zap className="h-4 w-4 text-primary" />
-                                    <span>Full-Auto & Guarded Approvals</span>
+                                    <CheckCircle2 className="h-3.5 w-3.5 text-primary sm:h-4 sm:w-4" />
+                                    <span>One Prompt → Full Production</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <Film className="h-4 w-4 text-primary" />
-                                    <span>Multi-Model Pipeline</span>
+                                    <CheckCircle2 className="h-3.5 w-3.5 text-primary sm:h-4 sm:w-4" />
+                                    <span>BYO API</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <KeyRound className="h-4 w-4 text-primary" />
-                                    <span>Bring Your Own API Keys</span>
+                                    <CheckCircle2 className="h-4 w-4 text-primary" />
+                                    <span>Frontier AI Models</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <Bot className="h-4 w-4 text-primary" />
-                                    <span>AI Creative Employee</span>
+                                    <CheckCircle2 className="h-4 w-4 text-primary" />
+                                    <span>Full-Auto Available</span>
                                 </div>
                             </div>
                         </div>
@@ -368,22 +361,20 @@ export default function LandingPage() {
                 </div>
             </section>
 
-            {/* ACADEMY: learning sits beside the tool, high on the page, because a
-                first-time visitor who is not ready to generate anything still has
-                somewhere to go. Both routes are gated by middleware, so a signed-out
-                visitor is sent to sign in and returned to the exact page after. */}
+            {/* LEAD MAGNET: the course is a short product walkthrough, not a
+                competing offer. It gives a hesitant visitor a low-friction reason
+                to create an account after seeing the work above. */}
             <section className="mx-auto max-w-[1540px] px-4 md:px-6">
                 <div className="flex flex-col gap-6 rounded-lg border border-white/10 bg-[#111312] p-8 md:flex-row md:items-center md:justify-between">
                     <div>
                         <span className="inline-flex rounded-full border border-white/10 bg-white/[.04] px-3 py-1 t-caption text-white/60">
-                            Learn
+                            Free mini course
                         </span>
                         <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">
-                            AI Director Hub <span className="text-primary">Academy</span>
+                            Make your first video.
                         </h2>
                         <p className="mt-3 max-w-xl text-base leading-7 text-white/60">
-                            Learn the craft behind the tool — scripting, characters, storyboards and
-                            shot-by-shot direction. Start with the free course, no card needed.
+                            A quick walkthrough of the studio. Free to start.
                         </p>
                     </div>
                     <div className="flex shrink-0 flex-col gap-3 sm:flex-row md:flex-col lg:flex-row">
@@ -393,36 +384,63 @@ export default function LandingPage() {
                             href={freeCourse ? `/courses/${freeCourse.id}` : "/courses"}
                             className="btn-primary flex items-center justify-center gap-2.5 whitespace-nowrap px-7 py-3.5 text-[15px]"
                         >
-                            Start the Free Course <ArrowRight className="h-5 w-5" />
+                            Start the free mini course <ArrowRight className="h-5 w-5" />
                         </Link>
                         <Link
                             href="/courses"
                             className="btn-secondary flex items-center justify-center gap-2 whitespace-nowrap px-7 py-3.5 text-[15px]"
                         >
-                            Browse the Academy <ArrowUpRight className="h-5 w-5" />
+                            See what you&apos;ll learn <ArrowUpRight className="h-5 w-5" />
                         </Link>
                     </div>
                 </div>
             </section>
 
+            {/* CONTROL MODES: automation is a spectrum, not an all-or-nothing promise. */}
+            <section className="mx-auto max-w-[1540px] px-4 py-8 md:px-6 md:py-10">
+                <div className="rounded-xl border border-white/10 bg-[#0d0f0e] p-5 md:p-7">
+                    <div>
+                        <span className="t-caption text-primary">YOUR CONTROL, YOUR PACE</span>
+                        <h2 className="mt-2 text-2xl font-semibold tracking-tight md:text-3xl">
+                            Choose your control level.
+                        </h2>
+                    </div>
+
+                    <div className="mt-5 grid gap-3 md:grid-cols-3 md:gap-4">
+                        <div className="rounded-lg border border-white/10 bg-white/[.03] p-4">
+                            <h3 className="text-base font-semibold">Manual</h3>
+                            <p className="mt-1 text-sm text-white/60">Approve every step.</p>
+                        </div>
+                        <div className="rounded-lg border border-primary/25 bg-primary/[.05] p-4">
+                            <h3 className="text-base font-semibold text-primary">Semi-auto</h3>
+                            <p className="mt-1 text-sm text-white/60">AI sets up. You approve video.</p>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-white/[.03] p-4">
+                            <h3 className="text-base font-semibold">Full auto</h3>
+                            <p className="mt-1 text-sm text-white/60">AI finishes within your limits.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             {/* SECTION 2: CORE PILLARS (EVERY AI MODEL + AI DIRECTOR EMPLOYEE) */}
-            <section className="mx-auto max-w-[1540px] px-4 py-12 md:px-6">
-                <div className="grid gap-6 md:grid-cols-2">
+            <section className="mx-auto max-w-[1540px] px-4 py-8 md:px-6 md:py-10">
+                <div className="grid gap-4 md:grid-cols-2">
                     {/* PILLAR 1: EVERY AI MODEL UNDER ONE PROMPT */}
-                    <div className="group relative flex flex-col justify-between overflow-hidden rounded-lg border border-white/10 bg-[#111312] p-8 transition hover:border-primary/40">
+                    <div className="group relative flex flex-col justify-between overflow-hidden rounded-lg border border-white/10 bg-[#111312] p-6 transition hover:border-primary/40">
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,rgba(185,244,46,0.05),transparent_50%)]" />
                         <div className="relative z-10">
                             <span className="inline-flex rounded-full border border-white/10 bg-white/[.04] px-3 py-1 t-caption text-white/60">
                                 Models
                             </span>
-                            <h2 className="mt-6 text-3xl font-semibold tracking-tight md:text-4xl">Every Frontier AI Model</h2>
-                            <p className="mt-4 text-base leading-7 text-white/60">
-                                All the leading frontier models under one prompt — Seedance 2.5, the most advanced video model available today and live now on AI Director Hub, alongside Kling 3.0, Kling O3, Veo 3.1, GPT Image 2, and Nano Banana 2 Pro. Switch, compare, and combine in seconds.
+                            <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">Every model. One workspace.</h2>
+                            <p className="mt-3 text-base leading-7 text-white/60">
+                                Choose, compare, and combine the models you need.
                             </p>
 
                             {/* Model Badges Pills */}
-                            <div className="mt-8 flex flex-wrap gap-2.5">
-                                {frontierModels.map((m) => (
+                            <div className="mt-5 flex flex-wrap gap-2">
+                                {frontierModels.slice(0, 6).map((m) => (
                                     <div
                                         key={m.name}
                                         className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition ${
@@ -433,7 +451,6 @@ export default function LandingPage() {
                                     >
                                         <span className={`h-2 w-2 rounded-full bg-primary ${m.live ? "animate-pulse" : ""}`} />
                                         <span>{m.name}</span>
-                                        <span className="text-[11px] text-white/45">({m.category})</span>
                                         {m.live && (
                                             <span className="rounded-md bg-primary px-1.5 py-0.5 t-caption tracking-wide text-black">
                                                 Live
@@ -441,10 +458,13 @@ export default function LandingPage() {
                                         )}
                                     </div>
                                 ))}
+                                <div className="flex items-center rounded-xl border border-white/10 bg-white/[.04] px-3.5 py-2 text-xs font-bold text-white/60">
+                                    + more
+                                </div>
                             </div>
                         </div>
 
-                        <div className="relative z-10 mt-10">
+                        <div className="relative z-10 mt-6">
                             <Link href="/studio" className="inline-flex min-h-[44px] items-center gap-2 text-sm font-medium text-primary transition group-hover:translate-x-1 sm:min-h-0">
                                 Browse Models & Routing <ArrowRight className="h-4 w-4" />
                             </Link>
@@ -452,19 +472,19 @@ export default function LandingPage() {
                     </div>
 
                     {/* PILLAR 2: AUTONOMOUS AI DIRECTOR EMPLOYEE */}
-                    <div className="group relative flex flex-col justify-between overflow-hidden rounded-lg border border-white/10 bg-[#111312] p-8 transition hover:border-primary/40">
+                    <div className="group relative flex flex-col justify-between overflow-hidden rounded-lg border border-white/10 bg-[#111312] p-6 transition hover:border-primary/40">
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,rgba(185,244,46,0.08),transparent_50%)]" />
                         <div className="relative z-10">
                             <span className="inline-flex rounded-full border border-primary/30 bg-primary/10 px-3 py-1 t-caption text-primary">
                                 Agent
                             </span>
-                            <h2 className="mt-6 text-3xl font-semibold tracking-tight md:text-4xl">AI Director Employee</h2>
-                            <p className="mt-4 text-base leading-7 text-white/60">
-                                One idea, one prompt. Your fully autonomous AI Director Employee handles script editing, character turnaround setup, storyboarding, and final video edits — automatically.
+                            <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">One brief. One AI Director.</h2>
+                            <p className="mt-3 text-base leading-7 text-white/60">
+                                Script, storyboard, and video—at your chosen control level.
                             </p>
 
                             {/* Interactive Mock Chat & Action Log Card */}
-                            <div className="mt-8 rounded-2xl border border-white/10 bg-[#080a09] p-4 text-xs">
+                            <div className="mt-5 rounded-2xl border border-white/10 bg-[#080a09] p-4 text-xs">
                                 <div className="flex items-center justify-between border-b border-white/10 pb-3">
                                     <div className="flex items-center gap-2 font-bold text-primary">
                                         <Bot className="h-4 w-4" />
@@ -474,27 +494,27 @@ export default function LandingPage() {
                                 </div>
 
                                 <div className="mt-3 rounded-xl bg-white/[.04] p-3 text-white/80 italic">
-                                    &quot;Make a 60-second sci-fi short about an astronaut who discovers life on Mars.&quot;
+                                    &quot;Create a short sci-fi film about life on Mars.&quot;
                                 </div>
 
                                 <div className="mt-3 space-y-2 text-white/60">
                                     <div className="flex items-center gap-2 text-emerald-400 font-medium">
                                         <CheckCircle2 className="h-3.5 w-3.5" />
-                                        <span>Analyzing story structure & narrative arc</span>
+                                        <span>Writing the story</span>
                                     </div>
                                     <div className="flex items-center gap-2 text-emerald-400 font-medium">
                                         <CheckCircle2 className="h-3.5 w-3.5" />
-                                        <span>Building multi-angle character profiles & turnaround references</span>
+                                        <span>Building characters</span>
                                     </div>
                                     <div className="flex items-center gap-2 text-primary font-medium">
                                         <Sparkles className="h-3.5 w-3.5 animate-pulse" />
-                                        <span>Generating 6-shot camera storyboard & shot cards...</span>
+                                        <span>Planning the shots...</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="relative z-10 mt-10">
+                        <div className="relative z-10 mt-6">
                             <Link href="/studio" className="inline-flex min-h-[44px] items-center gap-2 text-sm font-medium text-primary transition group-hover:translate-x-1 sm:min-h-0">
                                 Meet Your Agent <ArrowRight className="h-4 w-4" />
                             </Link>
@@ -504,26 +524,21 @@ export default function LandingPage() {
             </section>
 
             {/* SECTION 3: VISUAL PRODUCTION PIPELINE ("HOW IT WORKS") */}
-            <section className="mx-auto max-w-[1540px] px-4 py-16 md:px-6">
-                <div className="rounded-xl border border-white/10 bg-[#0d0f0e] p-6 md:p-12">
+            <section className="mx-auto max-w-[1540px] px-4 py-8 md:px-6 md:py-10">
+                <div className="rounded-xl border border-white/10 bg-[#0d0f0e] p-6 md:p-8">
                     <div className="text-center">
                         <span className="t-caption text-primary">HOW IT WORKS</span>
-                        <h2 className="mt-4 text-4xl font-semibold tracking-tight md:text-6xl">
-                            Create a highly consistent short film in 10 minutes — fully automated
-                        </h2>
-                        <p className="mx-auto mt-4 max-w-2xl text-base text-white/60">
-                            From prompt to final cut, watch your AI Creative Employee orchestrate every stage of video production.
-                        </p>
+                        <h2 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">From brief to video.</h2>
                     </div>
 
                     {/* Pipeline Selector Steps Tabs */}
-                    <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                         {pipelineSteps.map((step, idx) => (
                             <button
                                 key={step.id}
                                 onClick={() => setActivePipelineStep(idx)}
                                 className={cn(
-                                    "relative flex flex-col justify-between rounded-2xl border p-6 text-left transition duration-300",
+                                    "relative flex flex-col justify-between rounded-2xl border p-4 text-left transition duration-300",
                                     activePipelineStep === idx
                                         ? "border-primary bg-primary/[.08] shadow-[0_0_30px_rgba(185,244,46,0.15)]"
                                         : "border-white/10 bg-white/[.03] hover:border-white/20 hover:bg-white/[.05]"
@@ -534,8 +549,7 @@ export default function LandingPage() {
                                         <span className="text-2xl font-semibold italic text-primary">{step.num}</span>
                                         <span className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold text-white/70">{step.label}</span>
                                     </div>
-                                    <h3 className="mt-6 text-xl font-semibold">{step.title}</h3>
-                                    <p className="mt-3 text-xs leading-6 text-white/50">{step.description}</p>
+                                    <h3 className="mt-4 text-lg font-semibold">{step.title}</h3>
                                 </div>
                             </button>
                         ))}
@@ -545,7 +559,7 @@ export default function LandingPage() {
             </section>
 
             {/* SECTION 4: HIGH-CONVERTING VIDEO ADS & CONTENT FORMATS (VERTICAL UGC 9:16 Showcase) */}
-            <section className="mx-auto max-w-[1540px] px-4 py-16 md:px-6">
+            <section id="showcase" className="mx-auto max-w-[1540px] scroll-mt-24 px-4 py-16 md:px-6">
                 <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-end">
                     <div>
                         <span className="t-caption text-primary">COMMERCIAL & SOCIAL CREATIVES</span>
@@ -634,33 +648,33 @@ export default function LandingPage() {
             </section>
 
             {/* SECTION 5: FINAL HIGH-CONVERTING STUDIO CTA BANNER */}
-            <section className="mx-auto max-w-[1540px] px-4 py-16 md:px-6">
-                <div className="relative overflow-hidden rounded-xl border border-primary/30 bg-[linear-gradient(135deg,#152014,#0b0d0c_60%,#1a2a11)] p-8 text-center md:p-16">
+            <section className="mx-auto max-w-[1540px] px-4 py-10 md:px-6 md:py-12">
+                <div className="relative overflow-hidden rounded-xl border border-primary/30 bg-[linear-gradient(135deg,#152014,#0b0d0c_60%,#1a2a11)] p-8 text-center md:p-12">
                     <div className="pointer-events-none absolute left-1/2 top-1/2 h-[400px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/10 blur-[100px]" />
 
                     <div className="relative z-10 mx-auto max-w-3xl">
-                        <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-primary text-black">
-                            <Wand2 className="h-8 w-8" />
+                        <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-primary text-black">
+                            <Wand2 className="h-6 w-6" />
                         </div>
-                        <h2 className="mt-6 text-4xl font-semibold tracking-tight text-white md:text-6xl">
-                            Build your next AI video with an AI Creative Employee.
+                        <h2 className="mt-4 text-3xl font-semibold tracking-tight text-white md:text-5xl">
+                            Ready to make your next video?
                         </h2>
-                        <p className="mt-5 text-lg font-medium text-white/60">
-                            Upload references, ask the Director for a script, generate images instantly, approve videos when ready, and keep the whole production organized.
+                        <p className="mt-3 text-base font-medium text-white/60">
+                            One workspace, from idea to final clip.
                         </p>
 
-                        <div className="mt-10 flex flex-col justify-center gap-4 sm:flex-row">
+                        <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
                             {user ? (
                                 <Link href="/studio" className="btn-primary px-9 py-4 text-base font-semibold">
-                                    Open AI Director Studio <ArrowRight className="ml-2 h-5 w-5 inline" />
+                                    Create a video <ArrowRight className="ml-2 h-5 w-5 inline" />
                                 </Link>
                             ) : (
                                 <button onClick={() => signInWithGoogle()} className="btn-primary px-9 py-4 text-base font-semibold">
-                                    Start Free Now <ArrowRight className="ml-2 h-5 w-5 inline" />
+                                    Create a video <ArrowRight className="ml-2 h-5 w-5 inline" />
                                 </button>
                             )}
                             <Link href="/billing" className="rounded-2xl border border-white/20 bg-white/[.05] px-9 py-4 font-bold text-white transition hover:border-primary/50 hover:text-primary">
-                                See Credits & Plans
+                                See plans
                             </Link>
                         </div>
                     </div>

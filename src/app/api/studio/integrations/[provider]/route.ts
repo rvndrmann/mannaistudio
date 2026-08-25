@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { deleteCredential, recordCredentialEvent, saveCredential } from "@/lib/byok/credential-service"
+import { deleteCredential, hasByokSubscription, recordCredentialEvent, saveCredential } from "@/lib/byok/credential-service"
 import { byokIsConfigured } from "@/lib/byok/kms"
 import { credentialSchemaFor, isByokProvider } from "@/lib/byok/providers"
 import { validateCredential } from "@/lib/byok/validate"
@@ -24,6 +24,9 @@ async function authorize(request: NextRequest, provider: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) } as const
+  if (!(await hasByokSubscription(user.id))) {
+    return { error: NextResponse.json({ error: "An active subscription is required to use your own API keys." }, { status: 403 }) } as const
+  }
   const limited = await consumeCredentialRateLimit(user.id, request)
   if (limited) return { error: limited } as const
   return { user, provider } as const

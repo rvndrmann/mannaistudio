@@ -5531,7 +5531,16 @@ function ShotMediaWorkspace({
 
   // Determine what to show in the main preview
   const previewSource = activeGen?.videoUrl || source;
-  const previewError = activeGen?.status === "failed" ? activeGen.error : generationError;
+  const rawPreviewError = activeGen?.status === "failed" ? activeGen.error : generationError;
+  // Once the rejected image has been registered, the old provider response is
+  // historical. Keeping it on screen made the successful verification look as
+  // though it had failed and invited the user to click the now-disabled button
+  // again. A new render will still show any fresh error normally.
+  const previewError = useMemo(() => {
+    const rejected = rawPreviewError ? parseSeedanceRejectedReference(rawPreviewError) : null;
+    const path = rejected ? activeGen?.referenceImages?.[rejected.referenceIndex] : null;
+    return path && verifiedReferencePaths.has(path) ? null : rawPreviewError;
+  }, [activeGen?.referenceImages, rawPreviewError, verifiedReferencePaths]);
   const previewGenerating = activeGen?.status === "generating";
   const rejectedReference = useMemo(() => {
     if (!previewError) return null;

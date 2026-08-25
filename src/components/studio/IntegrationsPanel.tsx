@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 
 /**
  * Connect, test, replace and disconnect provider keys.
@@ -47,6 +48,7 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
 export function IntegrationsPanel() {
   const [rows, setRows] = useState<ProviderRow[]>([]);
   const [configured, setConfigured] = useState(true);
+  const [subscriptionRequired, setSubscriptionRequired] = useState(false);
   const [vaultReadable, setVaultReadable] = useState(true);
   const [ownKeysOnly, setOwnKeysOnly] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -62,6 +64,7 @@ export function IntegrationsPanel() {
       const data = await readJson(response);
       setRows((data.providers as ProviderRow[]) || []);
       setConfigured(Boolean(data.configured));
+      setSubscriptionRequired(Boolean(data.subscriptionRequired));
       setVaultReadable(data.vaultReadable !== false);
       setOwnKeysOnly(Boolean(data.ownKeysOnly));
     } finally {
@@ -133,6 +136,16 @@ export function IntegrationsPanel() {
     return (
       <div className="rounded-xl border border-white/10 bg-[#1d1f1e] p-5 text-sm text-zinc-400">
         Your own provider keys are not enabled on this server yet.
+      </div>
+    );
+  }
+
+  if (subscriptionRequired) {
+    return (
+      <div className="rounded-xl border border-primary/30 bg-primary/[.06] p-5 text-sm text-zinc-300">
+        <h3 className="font-semibold text-white">Bring your own API keys is for subscribers.</h3>
+        <p className="mt-2 leading-6 text-zinc-400">Subscribe to use your OpenAI, Google, BytePlus, or fal.ai keys at provider rates.</p>
+        <Link href="/billing" className="mt-4 inline-flex rounded-lg bg-primary px-4 py-2 font-semibold text-black">View subscriptions</Link>
       </div>
     );
   }

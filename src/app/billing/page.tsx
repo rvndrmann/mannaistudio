@@ -17,6 +17,7 @@ import {
   CreditCard,
   History,
   Image as ImageIcon,
+  KeyRound,
   Layers3,
   Loader2,
   Lock,
@@ -34,11 +35,13 @@ const faqs = [
   ["How do credits work?", "Credits are used when generating AI images and videos. Planning, script writing, workflow instructions, and chat guidance are included in your plan."],
   ["How do Razorpay subscriptions work?", "When you subscribe, Razorpay securely establishes a monthly recurring payment mandate. Your plan automatically renews each month, granting fresh credits to your account upon every successful charge."],
   ["Can I cancel my subscription anytime?", "Yes. You can cancel your subscription anytime directly from your billing dashboard. Your membership access and remaining credits stay active until the end of your current billing period."],
-  ["Can I buy extra credits anytime?", `Yes. You can purchase additional credits starting from 1,000 credits (${formatUsdWithInr(1000)}) up to any custom amount whenever your production needs grow.`],
+  ["Can I buy extra credits anytime?", `Active subscribers can purchase additional credits starting from 1,000 credits (${formatUsdWithInr(1000)}) up to any custom amount whenever their production needs grow. Free accounts cannot buy credits.`],
+  ["Can I use my own API keys?", "Yes, with an active paid subscription. Bring your own OpenAI, Google, BytePlus, or fal.ai API keys and pay the provider directly at its rates, or use studio credits when you prefer. Free accounts cannot use BYO API keys."],
   ["Why is my card charged in rupees?", `Prices are shown in US dollars for convenience, but AI Director Hub bills through Razorpay, an Indian payment gateway, so the charge settles in rupees and that is the amount your statement will show. International cards are accepted. Your bank applies its own exchange rate, so the dollar total may differ by a few cents from the figure shown here (currently converted at ₹${INR_PER_USD} to the dollar).`],
 ]
 
 const billingHighlights = [
+  { icon: KeyRound, label: "BYO API on every plan" },
   { icon: Bot, label: "AI Director Agent" },
   { icon: ImageIcon, label: "AI Image Creation" },
   { icon: Video, label: "AI Video Production" },
@@ -195,6 +198,11 @@ export default function BillingPage() {
   const handleBuyCustomCredits = async (amountInr: number) => {
     if (!user) {
       signInWithGoogle()
+      return
+    }
+
+    if (!subscription?.active) {
+      setSubError("An active subscription is required to buy generation credits.")
       return
     }
 
@@ -369,6 +377,16 @@ export default function BillingPage() {
           </div>
         )}
 
+        <div className="mb-8 flex flex-col gap-3 rounded-2xl border border-primary/30 bg-primary/[.06] p-5 sm:flex-row sm:items-center">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary text-black">
+            <KeyRound className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="font-semibold text-white">Bring your own API keys — included with every paid subscription.</p>
+            <p className="mt-1 text-sm text-white/55">Use OpenAI, Google, BytePlus, or fal.ai and pay provider rates directly. Free accounts cannot use BYO API keys.</p>
+          </div>
+        </div>
+
         <div className="grid gap-5 lg:grid-cols-3">
           {orderedBillingTiers.map((tier) => {
             const isStudio = tier.id === "studio"
@@ -472,7 +490,7 @@ export default function BillingPage() {
                 Buy Extra Generation Credits
               </h2>
               <p className="mt-2 max-w-xl text-sm leading-6 text-white/60">
-                Need more credits? Buy top-up credits anytime — <strong className="text-primary font-bold">1,000 credits for {formatUsd(1000)}</strong>.
+                Need more credits? Active subscribers can buy top-up credits anytime — <strong className="text-primary font-bold">1,000 credits for {formatUsd(1000)}</strong>.
                 Minimum purchase is 1,000 credits — add as much as you need.
               </p>
             </div>
@@ -484,11 +502,12 @@ export default function BillingPage() {
                   key={preset}
                   type="button"
                   onClick={() => setCustomCreditAmount(preset)}
+                  disabled={!subscription?.active}
                   className={`rounded-2xl border px-4 py-2.5 text-xs font-bold transition ${
                     customCreditAmount === preset
                       ? "border-primary bg-primary text-black"
                       : "border-white/10 bg-white/[.04] text-white hover:border-white/20"
-                  }`}
+                  } disabled:cursor-not-allowed disabled:opacity-40`}
                 >
                   {formatUsd(preset)} ({preset.toLocaleString()} Cr)
                 </button>
@@ -506,6 +525,7 @@ export default function BillingPage() {
                 <input
                   id="custom-credits"
                   type="number"
+                  disabled={!subscription?.active}
                   min={1000}
                   step={100}
                   value={customCreditAmount}
@@ -522,7 +542,7 @@ export default function BillingPage() {
 
             <div className="flex items-end">
               <button
-                disabled={topUpLoading || customCreditAmount < 1000}
+                disabled={topUpLoading || customCreditAmount < 1000 || !subscription?.active}
                 onClick={() => handleBuyCustomCredits(customCreditAmount)}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-8 py-4 text-base font-semibold text-black transition hover:bg-primary/90 disabled:opacity-40 md:w-auto"
               >
@@ -537,6 +557,9 @@ export default function BillingPage() {
               </button>
             </div>
           </div>
+          {!subscription?.active && (
+            <p className="mt-4 text-sm text-amber-300">Subscribe to a plan before buying generation credits.</p>
+          )}
         </div>
       </section>
 
@@ -672,6 +695,7 @@ export default function BillingPage() {
 
           {[
             ["Monthly credits", "1,000", "3,500", "12,000"],
+            ["Bring your own API keys (paid plans only)", "Yes", "Yes", "Yes"],
             ["AI Director chat", "Yes", "Yes", "Yes"],
             ["AI Director voice", "No", "Yes", "Yes"],
             ["MCP & CLI access", "No", "Yes", "Yes"],
