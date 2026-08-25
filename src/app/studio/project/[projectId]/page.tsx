@@ -815,6 +815,9 @@ export default function WorkspacePage({
       let buffer = "";
       let json: Record<string, unknown> = {};
       let streamError = "";
+      // Whether the stream reached its own ending. A stream simply stopping is
+      // not an ending: see the check after the read loop.
+      let closedProperly = false;
       // Keep the stream's working copy outside React. SSE events can arrive in
       // the same turn as a render; deriving the next reply through a React
       // state updater here caused React to repeatedly replay that updater and
@@ -860,6 +863,7 @@ export default function WorkspacePage({
           streamError = String(event.error || "AI Director could not respond");
         } else if (event.type === "done") {
           json = event;
+          closedProperly = true;
         }
       };
 
@@ -877,6 +881,21 @@ export default function WorkspacePage({
       }
       setStreamingReply(null);
       if (streamError) throw new Error(streamError);
+      // A stream that stops without saying it is done did not finish, and this
+      // is where that used to be indistinguishable from success: the loop broke,
+      // nothing threw, no reply was added, and the turn was quietly counted as
+      // having worked.
+      //
+      // Autopilot read that as a turn which produced no next step and asked
+      // again — three runs in the time one was still going, each of them real
+      // work being paid for and thrown away. Saying so instead is what stops it:
+      // the loop hands back on an error, and the user sees why.
+      //
+      // The run itself is very likely still going. Nothing here cancels it, and
+      // the workspace rejoins it the moment it writes its reply.
+      if (!closedProperly) {
+        throw new Error("The connection to the Director closed before the reply finished. The run may still be going — this page will show the reply if it lands.");
+      }
       notifyCreditBalanceChanged(typeof json.creditBalance === "number" ? json.creditBalance : undefined);
       if (json.sessionId) setChatSessionId(json.sessionId as string);
       setData((current) => current && json.assistantMessage ? {
