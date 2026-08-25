@@ -76,7 +76,24 @@ export async function registerAssetOnce(input: {
 
   const known = input.knownAssetId?.trim()
   if (known) {
-    const info = await activeAsset(known)
+    // Only if this asset is not already the registration of some other image.
+    //
+    // The id is handed in from whatever the entity or shot happens to have
+    // stored, and that stays behind when the picture changes: swap a
+    // character's chosen image and the entity still points at the asset made
+    // from the previous one. Adopting it registered nothing, wrote the new
+    // path against the old asset, and reported success — so "Verify for
+    // Seedance" appeared to work, the image never reached the Asset Library,
+    // and the provider went on rejecting it. Worse, the false row then looked
+    // like a valid registration, so every later attempt reused it too and the
+    // character could never be verified again.
+    const { data: claimedByAnother } = await supabase
+      .from("creator_byteplus_assets")
+      .select("source_path")
+      .eq("asset_id", known)
+      .neq("source_path", sourcePath)
+      .maybeSingle()
+    const info = claimedByAnother ? null : await activeAsset(known)
     if (info) {
       // It exists at the provider but may predate this registry, so adopt it:
       // it occupies a slot either way and has to be accounted for.

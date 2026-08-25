@@ -25,6 +25,8 @@ function fakeSupabase(rows: Row[] = []) {
     rows,
     from() {
       let match = ""
+      let assetMatch = ""
+      let excludedPath = ""
       let pending: "select" | "update" | "delete" | null = null
       let patch: Record<string, unknown> = {}
       const builder = {
@@ -41,8 +43,9 @@ function fakeSupabase(rows: Row[] = []) {
           else rows.push({ id: `row-${rows.length}`, use_count: 1, ...values } as Row)
           return Promise.resolve({ data: null, error: null })
         },
-        eq(_column: string, value: string) {
+        eq(column: string, value: string) {
           match = value
+          if (column === "asset_id") { assetMatch = value; return builder }
           if (pending === "update") {
             const row = rows.find((item) => item.source_path === match || item.id === match)
             if (row) Object.assign(row, patch)
@@ -55,7 +58,12 @@ function fakeSupabase(rows: Row[] = []) {
           }
           return builder
         },
+        neq(_column: string, value: string) { excludedPath = value; return builder },
         maybeSingle() {
+          if (assetMatch) {
+            const claimed = rows.find((row) => row.asset_id === assetMatch && row.source_path !== excludedPath) || null
+            return Promise.resolve({ data: claimed, error: null })
+          }
           return Promise.resolve({ data: rows.find((row) => row.source_path === match || row.id === match) || null, error: null })
         },
       }
@@ -176,5 +184,52 @@ describe("registerAssetOnce", () => {
     expect(second.assetId).toBe(first.assetId)
     expect(createBytePlusAsset).toHaveBeenCalledTimes(1)
     expect((supabase as unknown as { rows: Row[] }).rows).toHaveLength(1)
+  })
+})
+
+describe("a character whose chosen image changed", () => {
+  /**
+   * The entity keeps pointing at the asset made from its previous picture, so
+   * that id arrives here describing an image this one is not. Adopting it
+   * registered nothing while reporting success: the new face never reached the
+   * Asset Library, the provider kept rejecting it, and the row written against
+   * the old asset made every later attempt reuse it too.
+   */
+  it("registers the new image instead of adopting the old image's asset", async () => {
+    const supabase = fakeSupabase([
+      { id: "row-0", source_path: "user/project/ethan-old.png", asset_id: "asset-old", asset_uri: "asset://asset-old", use_count: 1 },
+    ])
+    createBytePlusAsset.mockResolvedValue({ assetId: "asset-fresh" })
+    getBytePlusAsset.mockResolvedValue(active("asset-fresh"))
+
+    const result = await registerAssetOnce({
+      supabase,
+      sourcePath: "user/project/ethan-new.png",
+      imageUrl: "https://signed.example/ethan-new.png?token=one",
+      knownAssetId: "asset-old",
+    })
+
+    expect(result.reused).toBe(false)
+    expect(result.assetId).toBe("asset-fresh")
+    expect(createBytePlusAsset).toHaveBeenCalledTimes(1)
+    const rows = (supabase as unknown as { rows: Row[] }).rows
+    expect(rows.find((row) => row.source_path === "user/project/ethan-new.png")?.asset_id).toBe("asset-fresh")
+    // The old image keeps its own registration; nothing is taken from it.
+    expect(rows.find((row) => row.source_path === "user/project/ethan-old.png")?.asset_id).toBe("asset-old")
+  })
+
+  it("still adopts an id that no other image has claimed", async () => {
+    const supabase = fakeSupabase()
+    getBytePlusAsset.mockResolvedValue(active("asset-predates-registry"))
+
+    const result = await registerAssetOnce({
+      supabase,
+      sourcePath: "user/project/lena.png",
+      imageUrl: "https://signed.example/lena.png?token=one",
+      knownAssetId: "asset-predates-registry",
+    })
+
+    expect(result.reused).toBe(true)
+    expect(createBytePlusAsset).not.toHaveBeenCalled()
   })
 })
