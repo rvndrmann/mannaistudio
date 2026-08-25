@@ -59,7 +59,7 @@ import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, ty
 import { getModelLabel, imageGenerationModels, supportedVideoModel, videoDurationOptions, videoGenerationModels, videoModelMaxDuration, type ImageGenerationModelId } from "@/lib/studio/generation-models";
 import { resolveShotSeconds } from "@/lib/studio/shot-duration";
 import { defaultDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows";
-import { abandonedRunSilentAfterMs } from "@/lib/studio/workflow-runs";
+import { isAbandonedRun } from "@/lib/studio/workflow-runs";
 import { videoPromptFor } from "@/lib/studio/shot-video-prompt";
 import { buildInsertShotDraft } from "@/lib/studio/shot-intent";
 import { isVideoReferencePath } from "@/lib/studio/media-reference";
@@ -576,11 +576,10 @@ export default function WorkspacePage({
     if (latest.completed_at || !latest.started_at) return null;
     if (latest.status !== "planning" && latest.status !== "running") return null;
     // A run whose server died never gets completed_at. The workspace read closes
-    // those out, and the same rule is applied here so the chat stops waiting at
-    // the moment the run stops writing rather than on a guess about how long a
-    // run ought to take.
-    const lastWrite = new Date(latest.updated_at || latest.started_at).getTime();
-    return lastWrite > Date.now() - abandonedRunSilentAfterMs ? latest : null;
+    // those out, and the chat asks the same question with the same rule rather
+    // than restating it — two copies of "is this run dead" are two answers to
+    // drift apart, and the chat's copy is the one the user sits in front of.
+    return isAbandonedRun(latest) ? null : latest;
   }, [latestSessionRun, repliedRunIds]);
 
   // A rejoined run has no stream to show progress from, and these runs can
@@ -1571,7 +1570,12 @@ export default function WorkspacePage({
               generationJobs={data.production?.generationJobs || []}
               creditBalance={data.production?.creditAccount?.balance ?? null}
               busy={chatSending || Boolean(resumedRunAwaitingReply) || Boolean(proposalBusy)}
-              chatError={chatError}
+              // A run killed mid-flight fails no fetch the browser made, so
+              // without this the loop saw a turn that simply produced no next
+              // step and asked again — three dead runs, each invisible for
+              // minutes, before the repeat guard gave up. The run's own reason
+              // is the one worth showing.
+              chatError={chatError || unansweredRun?.reason || null}
               sendDirectorMessage={sendDirectorMessage}
               approveProposal={(proposalId) => decideProposal(proposalId, "approved")}
               refresh={() => void load(true)}

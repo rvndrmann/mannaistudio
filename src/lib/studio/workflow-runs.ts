@@ -11,6 +11,23 @@ export type WorkflowRunStatus = "queued" | "planning" | "awaiting_approval" | "r
 // write its own ending.
 export const abandonedRunSilentAfterMs = 8 * 60 * 1000
 
+/**
+ * The longest a run can be alive at all, whatever it is writing.
+ *
+ * A run executes inside the request that created it, and that request is capped
+ * by the Director chat route's own `maxDuration` of 300s. Past that the process
+ * is gone, so a run still reading as in flight is not slow — it is dead, and no
+ * amount of further waiting will produce its reply.
+ *
+ * Silence alone could not see this. A run that wrote a step at four minutes and
+ * was killed at five stayed "running" for eight more minutes from that write,
+ * with the chat showing a bubble for a process that no longer existed. That is
+ * the wait this bound removes: three of those minutes were provably pointless.
+ *
+ * The grace is for the gap between the row being written and the work starting.
+ */
+export const runHardTimeoutMs = 300 * 1000 + 30 * 1000
+
 // Statuses a run only leaves by finishing. `awaiting_approval` and `blocked` are
 // deliberately absent: those wait on the user, for as long as the user takes.
 const inFlightRunStatuses = ["queued", "planning", "running", "retrying"]
@@ -24,6 +41,8 @@ export type AbandonableRun = { id: string; user_id?: string | null; status: stri
 
 export function isAbandonedRun(run: AbandonableRun, now = Date.now()) {
   if (run.completed_at || !inFlightRunStatuses.includes(run.status)) return false
+  const startedAt = new Date(run.started_at || 0).getTime()
+  if (startedAt && startedAt < now - runHardTimeoutMs) return true
   const lastWrite = new Date(run.updated_at || run.started_at || 0).getTime()
   return Boolean(lastWrite) && lastWrite < now - abandonedRunSilentAfterMs
 }

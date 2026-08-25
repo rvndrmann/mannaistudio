@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { abandonedRunSilentAfterMs, failAbandonedRuns, isAbandonedRun } from "./workflow-runs"
+import { abandonedRunSilentAfterMs, failAbandonedRuns, isAbandonedRun, runHardTimeoutMs } from "./workflow-runs"
 
 /**
  * A run outlives the browser that started it, so the chat rejoins whatever the
@@ -39,9 +39,13 @@ function supabaseRecording(calls: { filters: Array<[string, unknown]>; patch?: R
 describe("abandoned Director runs", () => {
   it("tells a dead run from a slow one by how long it has been silent", () => {
     expect(isAbandonedRun(run({ updated_at: minutesAgo(20) }))).toBe(true)
-    // Runs of several minutes finish successfully, so age alone proves nothing.
-    expect(isAbandonedRun(run({ started_at: minutesAgo(20), updated_at: minutesAgo(1) }))).toBe(false)
-    expect(isAbandonedRun(run({ updated_at: new Date(Date.now() - abandonedRunSilentAfterMs + 30_000).toISOString() }))).toBe(false)
+    // Runs of several minutes finish successfully, so age inside the cap proves
+    // nothing on its own — a run writing steps is a run still working.
+    expect(isAbandonedRun(run({ started_at: minutesAgo(4), updated_at: minutesAgo(1) }))).toBe(false)
+    expect(isAbandonedRun(run({
+      started_at: minutesAgo(4),
+      updated_at: new Date(Date.now() - abandonedRunSilentAfterMs + 30_000).toISOString(),
+    }))).toBe(false)
   })
 
   it("leaves alone the runs that are waiting on the user rather than on a server", () => {
@@ -53,7 +57,7 @@ describe("abandoned Director runs", () => {
   it("closes only the silent runs, and corrects them in place for the response that found them", async () => {
     const calls: { filters: Array<[string, unknown]>; patch?: Record<string, unknown> } = { filters: [] }
     const dead = run({ id: "dead" })
-    const alive = run({ id: "alive", updated_at: minutesAgo(1) })
+    const alive = run({ id: "alive", started_at: minutesAgo(4), updated_at: minutesAgo(1) })
     const somebodyElses = run({ id: "theirs", user_id: "user-2" })
 
     const closed = await failAbandonedRuns(supabaseRecording(calls), { projectId: "project-1", userId: "user-1", runs: [dead, alive, somebodyElses] })
@@ -71,9 +75,25 @@ describe("abandoned Director runs", () => {
 
   it("does not write at all when every run is accounted for", async () => {
     const calls: { filters: Array<[string, unknown]>; patch?: Record<string, unknown> } = { filters: [] }
-    const closed = await failAbandonedRuns(supabaseRecording(calls), { projectId: "project-1", userId: "user-1", runs: [run({ updated_at: minutesAgo(1) })] })
+    const closed = await failAbandonedRuns(supabaseRecording(calls), { projectId: "project-1", userId: "user-1", runs: [run({ started_at: minutesAgo(4), updated_at: minutesAgo(1) })] })
     expect(closed).toEqual([])
     expect(calls.patch).toBeUndefined()
     expect(calls.filters).toEqual([])
+  })
+})
+
+describe("a run that outlived the request that was running it", () => {
+  it("is abandoned once it passes the route's own duration cap, however recently it wrote", () => {
+    expect(isAbandonedRun(run({
+      started_at: new Date(Date.now() - runHardTimeoutMs - 1_000).toISOString(),
+      updated_at: new Date(Date.now() - 10_000).toISOString(),
+    }))).toBe(true)
+  })
+
+  it("leaves a long run alone while it is still inside that cap", () => {
+    expect(isAbandonedRun(run({
+      started_at: new Date(Date.now() - runHardTimeoutMs + 30_000).toISOString(),
+      updated_at: new Date(Date.now() - 10_000).toISOString(),
+    }))).toBe(false)
   })
 })
