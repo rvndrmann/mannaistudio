@@ -25,6 +25,7 @@ import { fetchDirectorRuntimeSettings } from "@/lib/studio/director-runtime-sett
 import { buildEntityMentionContext, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { collectDirectorVisionAttachments } from "@/lib/studio/director-vision"
 import { buildProjectStateSummary, loadProductionSnapshot } from "@/lib/studio/project-state-summary"
+import { autopilotInstructionBlock, readAutopilotSettings } from "@/lib/studio/autopilot"
 import { computePipelineStage } from "@/lib/studio/pipeline"
 import { buildProductionProgress, levelForXp, stagesReached } from "@/lib/studio/production-progress"
 import type { DirectorTimelineBlock } from "@/lib/studio/timeline"
@@ -168,6 +169,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         instructions: buildDirectorInstructions(project, globalInstructions, brandContext),
         projectState: [
           projectState,
+          // Read from the project rather than sent with the message: the mode
+          // belongs to the production, and a request that forgot to carry it
+          // would silently put an auto run back to manual phrasing.
+          autopilotInstructionBlock(readAutopilotSettings(context.project.metadata).mode),
           // Otherwise the model keeps waiting on an approval the user has
           // already answered with words, and asks them to press a card that is
           // no longer there.

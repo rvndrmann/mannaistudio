@@ -85,6 +85,8 @@ import {
 } from "@/lib/studio/camera-settings";
 import { CameraSettingsControl, CameraSettingsPicker } from "@/components/studio/CameraSettingsPicker";
 import { StyleDnaPanel } from "@/components/studio/StyleDnaPanel";
+import { AutopilotModeControl, AutopilotRunner, autopilotActionsFrom } from "@/components/studio/autopilot";
+import { defaultAutopilotBudget, readAutopilotSettings, type AutopilotBudget, type AutopilotMode } from "@/lib/studio/autopilot";
 import { RevisionNotes } from "@/components/studio/RevisionNotes";
 import { describeStyleDna, normalizeStyleDna, projectStyleDna, styleReferenceImagesOf, type StyleDna } from "@/lib/studio/style-dna";
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
@@ -369,6 +371,16 @@ export default function WorkspacePage({
   const [proposalBusy, setProposalBusy] = useState<string | null>(null);
   const [selectedChatAction, setSelectedChatAction] = useState<string | null>(null);
   const [chatUploading, setChatUploading] = useState(false);
+  // Who presses the pipeline's next step. Read from the project so a run's mode
+  // survives a reload, and held here because both the switch in the composer
+  // and the loop in the chat stream need it.
+  const [autopilotMode, setAutopilotMode] = useState<AutopilotMode>("manual");
+  const [autopilotBudget, setAutopilotBudget] = useState<AutopilotBudget>(defaultAutopilotBudget);
+  const autopilotLoadedRef = useRef(false);
+  // A stored mode is a remembered preference, not a running job. The loop waits
+  // until the user does something in this session, so opening a project that
+  // was left in Full auto does not start spending on its own.
+  const [autopilotEngaged, setAutopilotEngaged] = useState(false);
   const [directorModel, setDirectorModel] = useState<string>(defaultDirectorModelId);
   const [directorModels, setDirectorModels] = useState<DirectorModelConfig[]>(defaultDirectorModels.map((model) => ({ ...model })).filter((model) => model.status === "active"));
   const [voiceState, setVoiceState] = useState<"idle" | "connecting" | "connected" | "error">("idle");
@@ -666,6 +678,17 @@ export default function WorkspacePage({
     url.searchParams.delete("openSettings");
     window.history.replaceState(null, "", url.toString());
   }, [data]);
+  // The stored mode is the project's, so it is read once when the workspace
+  // first arrives. Re-reading on every reload would fight the switch: a user
+  // who changed the mode would have the saved value put back over their choice
+  // on the next silent refresh.
+  useEffect(() => {
+    if (!data || autopilotLoadedRef.current) return;
+    autopilotLoadedRef.current = true;
+    const stored = readAutopilotSettings(data.project.metadata);
+    setAutopilotMode(stored.mode);
+    setAutopilotBudget(stored.budget);
+  }, [data]);
   // Arriving from the website chat, where the user already approved the cost.
   // The parameter is cleared before the message is sent, so a reload cannot
   // start the Director a second time on the same production.
@@ -736,6 +759,15 @@ export default function WorkspacePage({
     // Setting the session id triggers the silent reload effect; loading here too
     // would fetch the same workspace twice.
     setChatSessionId(created.id);
+  };
+  const changeAutopilotMode = (next: AutopilotMode) => {
+    setAutopilotMode(next);
+    setAutopilotEngaged(true);
+    // The switch takes effect immediately; persisting is bookkeeping for the
+    // next visit. A failed write must not leave the user looking at a mode the
+    // loop is not actually in, so the local state is not rolled back.
+    void save({ action: "saveAutopilotMode", mode: next, maxSteps: autopilotBudget.maxSteps, maxCredits: autopilotBudget.maxCredits })
+      .catch((error) => console.warn("Could not save the run mode:", error));
   };
   const sendDirectorMessage = async (outgoing: string) => {
     if (!outgoing.trim() || chatSending) return;
@@ -855,13 +887,24 @@ export default function WorkspacePage({
       setChatSending(false);
     }
   };
+  // Anything the user presses themselves counts as taking part, so a mode left
+  // on from an earlier visit resumes from here. The loop calls
+  // sendDirectorMessage directly and so can never set this itself.
+  const sendDirectorMessageFromUser = (outgoing: string) => {
+    setAutopilotEngaged(true);
+    return sendDirectorMessage(outgoing);
+  };
   const chooseChatAction = (action: { id: string; intent: string }) => {
     if (chatSending) return;
+    setAutopilotEngaged(true);
     setSelectedChatAction(action.id);
     void sendDirectorMessage(action.intent).finally(() => setSelectedChatAction(null));
   };
   const sendChat = async (e: FormEvent) => {
     e.preventDefault();
+    // Typing is the user taking part, so a mode left on from a previous visit
+    // picks up from here. The loop's own sends must never set this.
+    setAutopilotEngaged(true);
     await sendDirectorMessage(message);
   };
   const uploadChatFiles = async (files: FileList | null) => {
@@ -1460,12 +1503,12 @@ export default function WorkspacePage({
               >
                 {item.content}
                 {item.role === "assistant" && item.workflow_run_id && <ChatRunStatus run={(data.production?.workflowRuns || []).find((run) => run.id === item.workflow_run_id)} />}
-                <ChatTimeline blocks={item.timeline_blocks} proposals={data.actionProposals} messageProposalIds={proposalIdsFromActions(item.suggested_actions)} onAction={sendDirectorMessage} disabled={chatSending} />
+                <ChatTimeline blocks={item.timeline_blocks} proposals={data.actionProposals} messageProposalIds={proposalIdsFromActions(item.suggested_actions)} onAction={sendDirectorMessageFromUser} disabled={chatSending} />
                 {item.role === "assistant" && item.id === data.chatMessages.filter((message) => message.role === "assistant").at(-1)?.id && (
                   <ChatInlineChoices blocks={item.timeline_blocks} selectedId={selectedChatAction} disabled={chatSending} onChoose={chooseChatAction} />
                 )}
                 <ChatMedia media={item.media} />
-                <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} entities={data.entities} shots={data.shots} projectId={projectId} busyId={proposalBusy} onDecide={decideProposal} onAction={sendDirectorMessage} onOpenTab={setTab} />
+                <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} entities={data.entities} shots={data.shots} projectId={projectId} busyId={proposalBusy} onDecide={decideProposal} onAction={sendDirectorMessageFromUser} onOpenTab={setTab} />
               </div>
             ))}
             {(chatSending || resumedRunAwaitingReply) && <ThinkingBubble reply={chatSending ? streamingReply : { content: "", status: `Picking up where the Director left off${rejoinedRunMinutes ? ` · ${rejoinedRunMinutes}m` : ""}` }} />}
@@ -1475,7 +1518,7 @@ export default function WorkspacePage({
                 {unansweredRun.objective && (
                   <button
                     type="button"
-                    onClick={() => sendDirectorMessage(unansweredRun.objective)}
+                    onClick={() => sendDirectorMessageFromUser(unansweredRun.objective)}
                     className="mt-2 rounded-full border border-amber-300/40 px-3 py-1 text-[12px] font-semibold text-amber-100 hover:bg-amber-400/20"
                   >
                     Send it again
@@ -1496,7 +1539,7 @@ export default function WorkspacePage({
               projectId={projectId}
               busyId={proposalBusy}
               onDecide={decideProposal}
-              onAction={sendDirectorMessage}
+              onAction={sendDirectorMessageFromUser}
               onOpenTab={setTab}
             />
             {/* Last thing in the stream, under the media and the approval cards
@@ -1508,7 +1551,31 @@ export default function WorkspacePage({
               shots={data.shots}
               sessionId={data.activeSessionId}
               busy={chatSending || resumedRunAwaitingReply}
-              onAction={sendDirectorMessage}
+              onAction={sendDirectorMessageFromUser}
+            />
+            {/* Under the next step, because that button is exactly what it
+                presses: the run's banner belongs where the step it took was. */}
+            <AutopilotRunner
+              mode={autopilotMode}
+              budget={autopilotBudget}
+              actions={autopilotActionsFrom(data.chatMessages.filter((item) => item.role === "assistant").at(-1)?.timeline_blocks)}
+              replyId={data.chatMessages.filter((item) => item.role === "assistant").at(-1)?.id ?? null}
+              engaged={autopilotEngaged}
+              shots={data.shots}
+              imageJobShotIds={(data.production?.generationJobs || [])
+                .filter((job) => job.type !== "video" && ["queued", "approved", "generating", "processing"].includes(String(job.status)))
+                .map((job) => job.shot_id)
+                .filter((id): id is string => Boolean(id))}
+              proposals={data.actionProposals}
+              activeSessionId={data.activeSessionId}
+              generationJobs={data.production?.generationJobs || []}
+              creditBalance={data.production?.creditAccount?.balance ?? null}
+              busy={chatSending || Boolean(resumedRunAwaitingReply) || Boolean(proposalBusy)}
+              chatError={chatError}
+              sendDirectorMessage={sendDirectorMessage}
+              approveProposal={(proposalId) => decideProposal(proposalId, "approved")}
+              refresh={() => void load(true)}
+              onModeChange={changeAutopilotMode}
             />
             {chatError && <p role="alert" className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-[12px] text-red-200">{chatError}</p>}
             {voiceState !== "idle" && <p className={`mt-3 rounded-lg border p-2.5 text-[12px] ${voiceState === "connected" ? "border-[#b9f42e]/30 bg-[#b9f42e]/10 text-[#d9ff84]" : "border-white/[0.06] bg-white/[0.03] text-zinc-300"}`}>{voiceState === "connecting" ? "Connecting your AI Voice Director…" : voiceState === "connected" ? "AI Voice Director is listening. You can speak naturally." : voiceError}</p>}
@@ -1582,6 +1649,7 @@ export default function WorkspacePage({
                 <button type="button" onClick={() => chatFileInputRef.current?.click()} disabled={chatUploading} className="rounded-md p-1 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300 disabled:opacity-50" aria-label="Upload image, video, or audio to AI Director chat">
                   <Plus className="h-3.5 w-3.5" />
                 </button>
+                <AutopilotModeControl mode={autopilotMode} onChange={changeAutopilotMode} disabled={chatUploading} />
                 <select
                   value={directorModel}
                   onChange={(event) => {

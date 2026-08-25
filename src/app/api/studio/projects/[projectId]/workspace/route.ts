@@ -4,6 +4,7 @@ import { describeError } from "@/lib/studio/errors"
 import { assetVerificationFor } from "@/lib/studio/asset-verification"
 import { assertShotPromptShape, normalizeShotColumns } from "@/lib/studio/shot-writes"
 import { normalizeEntityColumns } from "@/lib/studio/entity-writes"
+import { defaultAutopilotBudget, isAutopilotMode, writeAutopilotSettings } from "@/lib/studio/autopilot"
 
 async function context(projectId: string) {
   const supabase = await createClient()
@@ -121,6 +122,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const { error } = await supabase.from("creator_generation_jobs").delete().eq("id", body.jobId).eq("project_id", projectId)
       if (error) throw error
       return NextResponse.json({ success: true })
+    }
+    // Who presses the pipeline's next step. Stored on the project rather than
+    // in the browser so the mode a production is being run in survives a
+    // reload and is the same on every device the user opens it from.
+    if (body.action === "saveAutopilotMode") {
+      if (!isAutopilotMode(body.mode)) throw new Error("Unknown autopilot mode")
+      const { data: projectRecord } = await supabase.from("creator_projects").select("metadata").eq("id", projectId).single()
+      const budget = {
+        maxSteps: typeof body.maxSteps === "number" && body.maxSteps > 0 ? Math.min(200, Math.floor(body.maxSteps)) : defaultAutopilotBudget.maxSteps,
+        maxCredits: typeof body.maxCredits === "number" && body.maxCredits > 0 ? Math.min(100_000, Math.floor(body.maxCredits)) : defaultAutopilotBudget.maxCredits,
+        maxBatchShots: typeof body.maxBatchShots === "number" && body.maxBatchShots > 0 ? Math.min(100, Math.floor(body.maxBatchShots)) : defaultAutopilotBudget.maxBatchShots,
+      }
+      const { data, error } = await supabase
+        .from("creator_projects")
+        .update({ metadata: writeAutopilotSettings(projectRecord?.metadata, { mode: body.mode, budget }) })
+        .eq("id", projectId)
+        .eq("user_id", user.id)
+        .select("id,metadata")
+        .single()
+      if (error) throw error
+      return NextResponse.json(data)
     }
     if (body.action === "saveProjectSettings") {
       const selectedAspect = body.settings.aspectRatio || body.settings.canvasSpec?.split(" · ")[0] || "9:16"

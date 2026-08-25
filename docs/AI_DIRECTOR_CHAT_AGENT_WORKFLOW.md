@@ -11,7 +11,7 @@ The agent must feel like the AI Director already described in the platform, with
 - delete or replace workspace content when explicitly approved
 - show proposed work inside chat before applying sensitive changes
 - generate images directly when the user asks for image generation
-- require approval before video generation unless the project is in full-auto mode
+- require approval before video generation unless the project is in `full_auto` (see [Run modes](#run-modes))
 - support an OpenAI Realtime voice director that can execute the same validated tool registry as text chat, including approval proposals
 - end every turn on the one step the production is actually waiting for, so the user advances the pipeline by pressing a button rather than by working out what to ask for next
 
@@ -144,7 +144,7 @@ Rules that fall out of this design:
 - **One stage per turn.** The Director does the stage it is on and hands back. Keyframes and clips go one shot at a time, lowest-numbered first, so the user sees each shot before the next is paid for.
 - **Nothing is re-created.** The missing-entity set is a diff of the prompt sheet's names against the entity library, compared on handles, so "Detective Rao" and "detective rao" are one character. Entities that already have art are never regenerated unless the user asks by name.
 - **A saved script is enough to move on.** A script write saves the episode as `draft` and an accepted suggestion as `approved`, but the pipeline does not read that status. There is no separate approve-the-script step: every downstream stage is already a button the user presses, so gating the script only added a click in front of a chain that is consent-gated at every link.
-- **The user stays in the loop by pressing the button.** Full-auto, when it lands, is the same chain with the pressing done for it.
+- **The user stays in the loop by pressing the button — or delegates the pressing.** In `manual` the user presses every step. The auto modes are the same chain with the pressing done for them, decided by `src/lib/studio/autopilot.ts` from the same stage and the same `intent` text. See [Run modes](#run-modes) and [`SESSION_HANDOFF_2026-08-25.md`](SESSION_HANDOFF_2026-08-25.md).
 - **Nothing already running is offered.** A shot mid-render still has no keyframe, so on stored state alone it reads as the obvious next step — and pressing it pays for the same frame twice. Generations in flight are excluded from the step and from the batch. When everything outstanding is rendering there is no button, only what is rendering, which also stops the stage falling through to *Review* over shots that are not finished.
 - **Asset generation has the same visible lifecycle as storyboard generation.** Director-approved entity image jobs are included in workspace polling. Character and asset cards show a generating shimmer/spinner while queued or processing, update when the reference image is saved, and retain a failed state with the provider error so the user can retry.
 - **A dead job is not work in progress.** A generation that never reaches a terminal status stays `processing` for good, and treating that as in flight removed its shot from the pipeline permanently. Jobs older than twenty minutes are read as abandoned.
@@ -211,33 +211,48 @@ The storyboard's own video panel carries the same clip as a visible **motion ref
 | Edit saved asset records, shot prompts, or storyboard structure through a tool | Create proposal card | Yes |
 | Delete script sections, assets, shots, generated media, or jobs | Create proposal card | Yes |
 | Generate video | Create proposal card with cost/model/shot preview | Yes |
-| Generate video in full-auto mode | Run if full-auto is enabled and user has accepted mode guardrails | No per-job approval |
+| Generate a shot image in `semi_auto` or `full_auto` | Batched and approved by the run, inside the step, credit and batch caps | No per-card approval |
+| Generate video in `full_auto` | Approved by the run, one shot at a time, inside the same caps | No per-card approval |
+| Generate video in `semi_auto` | Create proposal card — this is the point the mode hands back | Yes |
 | Spend credits above configured project limit | Block or require extra confirmation | Yes |
 
 Important distinction: image generation can be immediate only when the user clearly asks for it. If the agent merely suggests an image, it should show a proposal or ask a short confirmation question.
 
-## Chat Modes
+## Run modes
 
-### Copilot
+Shipped 2026-08-25, replacing an earlier three-mode sketch (*Copilot / Assisted Auto / Full Auto*) that was never built. The switch sits in the chat composer beside the model picker; the mode persists on `creator_projects.metadata.ai_director_full_auto`.
 
-The default mode. The agent can read context, draft text, generate requested images, and prepare proposals. It cannot make persistent edits or generate video without explicit approval.
+| Mode | Runs unattended | Hands back at |
+| :--- | :--- | :--- |
+| `manual` | Nothing — today's behaviour | Every step |
+| `semi_auto` | `prompt_sheet` → `entities` → `entity_images` → `storyboard` → `keyframes` | The first clip |
+| `full_auto` | The same, plus `videos` one shot at a time | The end of the episode |
 
-### Assisted Auto
+Neither auto mode runs the `script` stage: with no script saved, the pipeline's own next step is to ask the user for the idea, and answering that would be inventing the story.
 
-The agent can apply low-risk workspace edits after showing a concise proposal. Video still requires approval. This is useful for batch script cleanup, shot prompt updates, and storyboard organization.
+`decideAutopilot` in `src/lib/studio/autopilot.ts` returns one of **run**, **approve**, **wait** or **stop** from the state the workspace already shows. The order of its checks is the safety property — stop conditions before work, prepared cards before new steps, and running jobs before anything that starts another — so a run can neither pay twice for a frame nor step past a card the user is owed.
 
-### Full Auto
+### What a run may approve without asking
 
-The user opts in at project level. The agent can execute the full production workflow from prompt to assets, storyboard images, video jobs, and revisions within configured guardrails.
+> **A mode may approve work that builds. Never work that changes or removes.**
 
-Full-auto should require:
+Auto-approved: `create_production_entity`, `create_production_entities_batch`, `create_storyboard_batch`, `write_episode_master_prompt`, `generate_entity_reference_art`, `accept_existing_art`, plus `submit_generation` and `attach_media_to_shot`. The last two are gated by media type, so a clip is approved only in `full_auto` — generating a video and attaching one are two halves of the same step and are held back together.
 
-- explicit user opt-in
-- credit cap
-- allowed model/provider set
-- max jobs per run
-- destructive actions disabled unless separately approved
-- audit log for every action
+Never auto-approved, in any mode: `update_script`, `update_shot`, `update_asset`, `delete_shot`, `delete_asset`, `fix_shot_aspect_mismatch`. A card outside the allowlist stops the run and is named to the user.
+
+### Guardrails
+
+- **Caps per run**: 40 steps, 500 credits, 20 shots per image batch (`max_jobs_per_run`). Stops on error, on insufficient balance, and if one step repeats three times without the production moving.
+- **A remembered mode does not resume spending.** Opening a project left in an auto mode does nothing until the user takes part — chooses the mode, sends a message, or presses a step. The loop's own sends never count as engagement.
+- **A stored step is spent once acted on.** Approving a card and landing a render moves the production without writing a new reply, so the block goes stale; the run asks the Director for live state rather than replaying it.
+- **Stop reverts to Manual**, so the control never reads "Full auto" while nothing runs.
+- **The loop runs in the browser.** Closing the tab stops it — nothing keeps spending after the window that started it is gone.
+
+### Batching
+
+Both auto modes ask for every outstanding shot image in one request rather than a Director turn per frame. This does not increase provider load: `execute-generation.ts` runs a batch's jobs serially (`for (const job of jobs) { await runJob() }`), so one call is in flight either way. What it removes is the round trip between frames.
+
+Because every generation is charged and a queued job cannot be recalled by Stop, the batch is built from live state — a shot is included only if it has a prompt, has no image, and has nothing rendering — de-duplicated, bounded by `maxBatchShots`, and still subject to the run's credit cap. **Videos are never batched**: a clip costs many times a frame, and serial video is what lets Stop prevent the next one being committed.
 
 ## Workflow Skills
 
@@ -363,7 +378,8 @@ Remaining increments:
 
 - The agent may not silently delete user content.
 - The agent may not claim generation succeeded until the provider confirms completion.
-- The agent may not spend video credits without approval unless full-auto is enabled.
+- The agent may not spend video credits without approval unless the project is in `full_auto`.
+- No run mode may approve a tool that changes or removes existing work, however routine the card looks.
 - The agent may generate images immediately only after a direct user request.
 - Locked or approved assets remain preserved during unrelated revisions.
 - Every persistent write, deletion, generation, and credit event must be auditable.
