@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { agentForStage, agentForTool, defaultDirectorTeam, directorAgentKeys, directorPipeline, normalizeDirectorTeam, teamInstructions } from "./director-team"
+import { activeAgentInstructions, agentForStage, agentForTool, defaultDirectorTeam, directorAgentKeys, directorPipeline, normalizeDirectorTeam, teamInstructions } from "./director-team"
 import { toolsForAgent } from "./director-agent"
 import type { DirectorToolName } from "./tool-registry"
 
@@ -149,7 +149,12 @@ describe("what a specialist may refuse for", () => {
    * missing keyframe as its worked example of work that genuinely cannot be
    * done, so a request the system could fulfil was turned down.
    */
-  it("does not tell a specialist that a shot video needs its keyframe", () => {
-    expect(teamInstructions(normalizeDirectorTeam(null))).not.toContain("a shot video needs its keyframe")
+  it("keeps keyframe-first as the default but honors an explicit direct-video request", () => {
+    const instructions = activeAgentInstructions(normalizeDirectorTeam(null), "video_prompt")
+
+    expect(instructions).toContain("normally filmed from its approved keyframe")
+    expect(instructions).toContain("right default whenever nobody has said otherwise")
+    expect(instructions).toContain("said to skip the frame and film the shot directly")
+    expect(instructions).toContain("missing one is a reason to recommend building it, never a reason to refuse")
   })
 })
