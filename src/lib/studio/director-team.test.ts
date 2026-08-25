@@ -137,3 +137,19 @@ describe("every stage's opening agent can reach the tool that stage needs", () =
     expect(agentForTool("write_shot_video_prompts")).toBe("video_prompt")
   })
 })
+
+describe("what a specialist may refuse for", () => {
+  /**
+   * Asked to skip shot 2's image and film the shot directly, the Director
+   * refused: "Shot 2 cannot be filmed directly because it has no approved
+   * keyframe; the video workflow requires that frame as its first image." The
+   * workflow requires no such thing — the keyframe is added as a reference when
+   * a shot has one, and multi-image mode films from the shot's own references
+   * when it does not. The refusal came from this instruction, which offered a
+   * missing keyframe as its worked example of work that genuinely cannot be
+   * done, so a request the system could fulfil was turned down.
+   */
+  it("does not tell a specialist that a shot video needs its keyframe", () => {
+    expect(teamInstructions(normalizeDirectorTeam(null))).not.toContain("a shot video needs its keyframe")
+  })
+})
