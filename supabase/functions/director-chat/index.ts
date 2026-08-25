@@ -97,12 +97,43 @@ Deno.serve(async (request: Request) => {
       idempotencyKey: body.idempotencyKey,
     })
 
-    // No streaming here on purpose. A stream is what tied a turn's life to the
-    // browser watching it, and the workspace already follows a run over
-    // Realtime — so the reply is persisted and the page picks it up, whether or
-    // not anyone stayed to watch.
-    const result = await executeDirectorTurn(prepared)
-    return Response.json(result, { headers: cors })
+    if (!body.stream) {
+      const result = await executeDirectorTurn(prepared)
+      return Response.json(result, { headers: cors })
+    }
+
+    // The same event stream the Next.js route speaks, so the workspace reads
+    // this path with the code it already has: text deltas as they arrive, each
+    // tool as it starts and finishes, then one closing event.
+    //
+    // Streaming here does not put the turn back at the mercy of the browser.
+    // The run is persisted as it goes and this runtime keeps working when a
+    // reader leaves, so a closed tab costs the live text and nothing else — the
+    // reply still lands, and the workspace still picks it up over Realtime.
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const send = (event: Record<string, unknown>) => {
+          try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`)) } catch { /* the reader left */ }
+        }
+        try {
+          send({ type: "start", sessionId: resolved.sessionId })
+          send({ type: "done", ...(await executeDirectorTurn(prepared, send)) })
+        } catch (error) {
+          console.error("director-chat stream failed:", error)
+          send({ type: "error", error: describeError(error, "AI Director chat failed") })
+        } finally {
+          controller.close()
+        }
+      },
+    })
+    return new Response(stream, {
+      headers: {
+        ...cors,
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+      },
+    })
   } catch (error) {
     console.error("director-chat failed:", error)
     const status = (error as { status?: number })?.status

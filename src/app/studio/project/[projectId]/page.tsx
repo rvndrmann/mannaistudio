@@ -786,10 +786,21 @@ export default function WorkspacePage({
       ],
     } : current);
     try {
-      const response = await fetch(`/api/studio/projects/${projectId}/director/chat`, {
+      // The turn runs on Supabase rather than on the app's own host, and the
+      // reason is a measured one: that host stops a request at thirty seconds
+      // while real turns take thirty-six to fifty-one, so it killed them
+      // mid-flight after the work was done and paid for. Here the budget is a
+      // hundred and fifty seconds.
+      //
+      // The token goes in the header rather than a cookie because this is a
+      // different origin. It is the user's own session token, so the turn runs
+      // with exactly their permissions — nothing is elevated to make this work.
+      const { data: { session } } = await createClient().auth.getSession();
+      if (!session?.access_token) throw new Error("Your session has expired. Sign in again to keep going.");
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/director-chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ episodeId: episode.id, sessionId: data.activeSessionId || chatSessionId || undefined, message: outgoing, mentionedEntityIds, model: directorModel, idempotencyKey: crypto.randomUUID(), stream: true, automated }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ projectId, episodeId: episode.id, sessionId: data.activeSessionId || chatSessionId || undefined, message: outgoing, mentionedEntityIds, model: directorModel, idempotencyKey: crypto.randomUUID(), stream: true, automated }),
       });
       if (!response.ok || !response.body) {
         const failed = await response.json().catch(() => ({}));
