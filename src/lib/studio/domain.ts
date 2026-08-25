@@ -51,6 +51,10 @@ export const directorChatInputSchema = z.object({
   idempotencyKey: z.string().trim().min(8).max(200),
   // Opt-in so existing callers keep receiving one JSON body.
   stream: z.boolean().default(false),
+  // The autopilot loop pressed this step rather than the user typing it. Only
+  // these turns are eligible to run in the background, because only these have
+  // nobody watching the text arrive.
+  automated: z.boolean().default(false),
 }).strict()
 
 export const createStudioProjectInputSchema = z.object({

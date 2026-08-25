@@ -26,6 +26,7 @@ import { buildEntityMentionContext, type MentionableEntity } from "@/lib/studio/
 import { collectDirectorVisionAttachments } from "@/lib/studio/director-vision"
 import { buildProjectStateSummary, loadProductionSnapshot } from "@/lib/studio/project-state-summary"
 import { autopilotInstructionBlock, readAutopilotSettings } from "@/lib/studio/autopilot"
+import { backgroundRunSecretEnv, dispatchBackgroundRun, shouldRunInBackground } from "@/lib/studio/background-run"
 import { computePipelineStage } from "@/lib/studio/pipeline"
 import { buildProductionProgress, levelForXp, stagesReached } from "@/lib/studio/production-progress"
 import type { DirectorTimelineBlock } from "@/lib/studio/timeline"
@@ -98,6 +99,47 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { data: existingSession } = await context.supabase.from("creator_chat_sessions").select("id").eq("episode_id", episode.id).eq("user_id", context.user.id).order("created_at", { ascending: false }).limit(1).maybeSingle()
     const sessionId = body.sessionId || existingSession?.id || (await context.supabase.from("creator_chat_sessions").insert({ episode_id: episode.id, user_id: context.user.id, title: "AI Director", model }).select("id").single()).data?.id
     if (!sessionId) throw new Error("Could not create an AI Director chat session")
+
+    // Hand an unattended turn to the worker, before any of the turn's own work
+    // is done — there is no point building a context here that the worker is
+    // about to build for itself.
+    //
+    // Inert unless the worker's secret is set, so an install that has not
+    // deployed one behaves exactly as it did. The header is what stops this
+    // recursing: the worker reaches this same route, and its turn must run
+    // here rather than being handed onward to another worker.
+    const fromWorker = request.headers.get("x-director-background") === "1"
+    const backgroundSecret = process.env[backgroundRunSecretEnv]
+    if (!fromWorker) {
+      const dispatch = shouldRunInBackground({
+        mode: readAutopilotSettings(context.project.metadata).mode,
+        automated: body.automated,
+        secret: backgroundSecret,
+      })
+      if (dispatch.background && backgroundSecret) {
+        const { data: { session } } = await context.supabase.auth.getSession()
+        const accessToken = session?.access_token
+        if (accessToken) {
+          const handedOff = await dispatchBackgroundRun({
+            origin: new URL(request.url).origin,
+            secret: backgroundSecret,
+            job: {
+              projectId,
+              episodeId: episode.id,
+              sessionId,
+              message: body.message,
+              model,
+              mentionedEntityIds: uniqueMentionIds,
+              accessToken,
+              issuedAt: Date.now(),
+            },
+          })
+          // A worker that could not be reached is not a reason to drop the
+          // turn: fall through and run it here, the way it has always run.
+          if (handedOff) return NextResponse.json({ background: true, sessionId, reason: dispatch.reason })
+        }
+      }
+    }
     // Everything the turn needs before the agent can start, in one batch. The
     // session's model stamp, the run row, the history page and the withdrawal
     // of superseded cards were four sequential round trips and none of them

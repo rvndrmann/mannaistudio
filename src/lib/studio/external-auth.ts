@@ -1,9 +1,28 @@
 import { createHash, randomBytes } from "crypto"
 import type { SupabaseClient, User } from "@supabase/supabase-js"
+import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/service"
 import type { AuthenticatedProjectContext } from "./server-context"
-import { StudioAccessError } from "./server-context"
+import { requireAuthenticatedProject, StudioAccessError } from "./server-context"
+
+/**
+ * A Supabase client that acts as the holder of one access token.
+ *
+ * Row-level security sees the token's user, so every read and write is bounded
+ * exactly as it would be in that user's browser. This is the opposite of the
+ * service client, which sees everything and is why it is not used here.
+ */
+function createTokenClient(accessToken: string) {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      global: { headers: { Authorization: `Bearer ${accessToken}` } },
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
+  )
+}
 
 export const externalTokenPrefix = "aih_"
 
@@ -27,7 +46,11 @@ export function bearerToken(request: Request) {
 
 export async function validateExternalRequest(request: Request, requiredScope: string) {
   const token = bearerToken(request)
-  if (!token) return null
+  // Only tokens this app minted are looked up here. Without the prefix check a
+  // bearer of any other kind — a Supabase access token, say — was hashed,
+  // missed, and rejected as an invalid external token rather than being left
+  // for whoever else can read it.
+  if (!token || !token.startsWith(externalTokenPrefix)) return null
   const supabase = createServiceClient()
   const { data, error } = await supabase
     .from("creator_external_access_tokens")
@@ -53,6 +76,15 @@ export async function requireProjectFromRequest(
 ): Promise<AuthenticatedProjectContext> {
   const external = await validateExternalRequest(request, requiredScope)
   if (external) return requireProjectForUser(external.supabase, external.user, projectId)
+
+  // A caller that is not a browser and holds the user's own access token — the
+  // background worker, which is handed one so the turn it runs is the user's
+  // turn. Deliberately the same access check as the cookie path below, through
+  // a client carrying the same token: a project shared with someone reads the
+  // same way here as it does in their tab, because it is the same credential
+  // asking. Nothing is trusted from the request beyond the token itself.
+  const accessToken = bearerToken(request)
+  if (accessToken) return requireAuthenticatedProject(projectId, createTokenClient(accessToken))
 
   const supabase = await createClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()

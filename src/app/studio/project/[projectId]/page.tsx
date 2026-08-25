@@ -768,7 +768,7 @@ export default function WorkspacePage({
     void save({ action: "saveAutopilotMode", mode: next, maxSteps: autopilotBudget.maxSteps, maxCredits: autopilotBudget.maxCredits })
       .catch((error) => console.warn("Could not save the run mode:", error));
   };
-  const sendDirectorMessage = async (outgoing: string) => {
+  const sendDirectorMessage = async (outgoing: string, automated = false) => {
     if (!outgoing.trim() || chatSending) return;
     outgoing = outgoing.trim();
     const mentionedEntityIds = findMentionedEntityIds(outgoing, data.entities);
@@ -789,11 +789,22 @@ export default function WorkspacePage({
       const response = await fetch(`/api/studio/projects/${projectId}/director/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ episodeId: episode.id, sessionId: data.activeSessionId || chatSessionId || undefined, message: outgoing, mentionedEntityIds, model: directorModel, idempotencyKey: crypto.randomUUID(), stream: true }),
+        body: JSON.stringify({ episodeId: episode.id, sessionId: data.activeSessionId || chatSessionId || undefined, message: outgoing, mentionedEntityIds, model: directorModel, idempotencyKey: crypto.randomUUID(), stream: true, automated }),
       });
       if (!response.ok || !response.body) {
         const failed = await response.json().catch(() => ({}));
         throw new Error(failed.error || "AI Director could not respond");
+      }
+
+      // The turn was taken by the background worker, so there is no stream to
+      // read: it answers with one JSON body instead of an event stream. The run
+      // is already going, and the workspace follows it the same way it follows
+      // a run it reloaded into — over Realtime, and by rejoining. Nothing here
+      // waits on it, which is the entire point of having handed it over.
+      if (!(response.headers.get("content-type") || "").includes("text/event-stream")) {
+        await response.json().catch(() => ({}));
+        await load(true);
+        return;
       }
 
       // The run answers as it goes: assistant text arrives as deltas and each
@@ -1576,7 +1587,9 @@ export default function WorkspacePage({
               // minutes, before the repeat guard gave up. The run's own reason
               // is the one worth showing.
               chatError={chatError || unansweredRun?.reason || null}
-              sendDirectorMessage={sendDirectorMessage}
+              // Every turn from here is one the loop pressed, not one the user
+              // typed — which is what makes it eligible to leave the browser.
+              sendDirectorMessage={(message: string) => sendDirectorMessage(message, true)}
               approveProposal={(proposalId) => decideProposal(proposalId, "approved")}
               refresh={() => void load(true)}
               onModeChange={changeAutopilotMode}
