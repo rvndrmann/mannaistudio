@@ -152,12 +152,57 @@ export function shotsWithStaleKeyframe(snapshot: ProductionSnapshot): SnapshotSh
   return snapshot.shots.filter((shot) => !shot.skipped && shot.hasKeyframe && shot.keyframeIsStale && !shot.imageInFlight)
 }
 
+/**
+ * Words that carry no identity, so they never decide whether two names match.
+ * "The Ambulance" and "Ambulance" are one asset.
+ */
+const nameNoiseWords = new Set(["the", "a", "an", "of", "and"])
+
+function nameTokens(name: string): string[] {
+  return entityHandle(name).split("-").filter((token) => token && !nameNoiseWords.has(token))
+}
+
+function isSubset(inner: string[], outer: string[]): boolean {
+  if (!inner.length) return false
+  const set = new Set(outer)
+  return inner.every((token) => set.has(token))
+}
+
+/**
+ * Whether the prompt sheet is asking for an entity the library already holds.
+ *
+ * Handles alone cover case and spacing. They do not cover the real mismatch:
+ * the sheet and the library are written independently, so the sheet says
+ * "Detective Rao" where the library has "Rao", and an exact comparison then
+ * reports a character that is sitting right there as missing. The pipeline
+ * parks on the entities stage asking for it, the Character & Asset Agent is
+ * told never to duplicate what exists and so creates nothing, and the
+ * production cannot reach the storyboard — the stall this guards against.
+ *
+ * A name therefore also matches when one name's words are contained in the
+ * other's, and only when exactly one entity matches that way. An ambiguous
+ * match — "Rao" against both "Detective Rao" and "Rao's Brother" — is left
+ * missing on purpose: asking is better than silently binding the sheet to the
+ * wrong character.
+ */
+function findExistingEntity(name: string, entities: SnapshotEntity[]): SnapshotEntity | null {
+  const handle = entityHandle(name)
+  const exact = entities.find((entity) => entityHandle(entity.name) === handle)
+  if (exact) return exact
+  const tokens = nameTokens(name)
+  const overlapping = entities.filter((entity) => {
+    const other = nameTokens(entity.name)
+    return isSubset(tokens, other) || isSubset(other, tokens)
+  })
+  return overlapping.length === 1 ? overlapping[0] : null
+}
+
 export function missingEntityNames(snapshot: ProductionSnapshot): string[] {
-  const existing = new Set(snapshot.entities.map((entity) => entityHandle(entity.name)))
   const missing = new Map<string, string>()
   for (const name of snapshot.promptSheetEntityNames) {
     const handle = entityHandle(name)
-    if (existing.has(handle) || missing.has(handle)) continue
+    if (missing.has(handle)) continue
+    if (findExistingEntity(name, snapshot.entities)) continue
     missing.set(handle, name)
   }
   return Array.from(missing.values())
@@ -401,7 +446,23 @@ export function computePipelineStage(snapshot: ProductionSnapshot): PipelineStag
         risk: "write",
         recommended: true,
       },
-      alternatives: [],
+      alternatives: snapshot.entities.length
+        ? [
+            // The way out when the sheet and the library disagree by name
+            // rather than by content. Without it a sheet naming a character
+            // the library holds under a name too different to match parks the
+            // production here for good: the agent will not duplicate what
+            // exists, so pressing the step above changes nothing however many
+            // times it is pressed.
+            {
+              id: "pipeline-entities-already-exist",
+              label: "They already exist — match them to the sheet",
+              intent: `The project's characters and assets already cover ${list(missing, 24)} under different names. Do not create anything. List the existing library, decide which saved entity each of those sheet names refers to, and rewrite the prompt sheet's entity names to the library's exact names with save_script_prompts, leaving every prompt's wording untouched. If one genuinely has no match, say which and stop.`,
+              risk: "write",
+              recommended: false,
+            },
+          ]
+        : [],
     }
   }
 

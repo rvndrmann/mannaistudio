@@ -63,6 +63,41 @@ describe("production pipeline stages", () => {
     }))).toEqual([])
   })
 
+  it("treats a sheet name qualified by a role as the character the library holds", () => {
+    expect(missingEntityNames(snapshot({
+      promptSheetEntityNames: ["Detective Rao", "The Ambulance"],
+      entities: [withArt("Rao"), withArt("Ambulance", "prop")],
+    }))).toEqual([])
+  })
+
+  it("still asks for a name that could be either of two saved entities", () => {
+    expect(missingEntityNames(snapshot({
+      promptSheetEntityNames: ["Rao"],
+      entities: [withArt("Detective Rao"), withArt("Rao's Brother")],
+    }))).toEqual(["Rao"])
+  })
+
+  it("moves past the entities stage once the sheet's names all resolve", () => {
+    const stage = computePipelineStage(snapshot({
+      hasScript: true,
+      promptSheetCount: 4,
+      promptSheetEntityNames: ["Detective Rao", "Sana Iyer"],
+      entities: [withArt("Rao"), withArt("Sana")],
+    }))
+    expect(stage.key).not.toBe("entities")
+  })
+
+  it("offers a way out of the entities stage when a name cannot be matched", () => {
+    const stage = computePipelineStage(snapshot({
+      hasScript: true,
+      promptSheetCount: 4,
+      promptSheetEntityNames: ["Neon Alley"],
+      entities: [withArt("Detective Rao")],
+    }))
+    expect(stage.key).toBe("entities")
+    expect(stage.alternatives.map((item) => item.id)).toContain("pipeline-entities-already-exist")
+  })
+
   it("generates reference art only for entities that have none", () => {
     const stage = computePipelineStage(snapshot({
       hasScript: true,
