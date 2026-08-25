@@ -274,24 +274,49 @@ function AdminDashboardContent() {
     const handleEditCourse = (course: Course) => {
         setEditingId(course.id)
         setEditForm({ ...course })
+        // Otherwise a file picked for one course, then abandoned, is uploaded
+        // onto the next course opened for editing.
+        setCourseThumbnailFile(null)
+        setCourseThumbnailError("")
     }
+
+    // Picked in the course editor, uploaded on save.
+    const [courseThumbnailFile, setCourseThumbnailFile] = useState<File | null>(null)
+    const [courseThumbnailUploading, setCourseThumbnailUploading] = useState(false)
+    const [courseThumbnailError, setCourseThumbnailError] = useState("")
 
     const handleSaveCourse = async () => {
         if (!editForm) return
+        setCourseThumbnailError("")
         try {
             const supabase = await getServiceRequestClient()
             if (!supabase) return
+            // A picked file becomes the thumbnail, replacing whatever URL the
+            // field holds. Uploaded first, because a course saved with the old
+            // URL and an upload that then failed would report success while
+            // showing the previous image.
+            let thumbnail = editForm.thumbnail
+            if (courseThumbnailFile) {
+                setCourseThumbnailUploading(true)
+                thumbnail = await uploadAdminFile(courseThumbnailFile, 'courses', 'thumbnails')
+            }
             const { error } = await supabase.rpc('admin_upsert_course', {
                 p_id: editForm.id, p_title: editForm.title, p_description: editForm.description,
-                p_thumbnail: editForm.thumbnail, p_xp: editForm.xp, p_duration: editForm.duration,
+                p_thumbnail: thumbnail, p_xp: editForm.xp, p_duration: editForm.duration,
                 p_level: editForm.level, p_chapters: editForm.chapters, p_instructor: editForm.instructor,
                 p_price: editForm.price,
             })
             if (error) throw error
-            setMockCourses(prev => prev.map(c => c.id === editingId ? editForm : c))
+            const saved = { ...editForm, thumbnail }
+            setMockCourses(prev => prev.map(c => c.id === editingId ? saved : c))
             setEditingId(null)
+            setCourseThumbnailFile(null)
         } catch (err: any) {
-            alert('Failed to save course: ' + (err.message || 'Unknown error'))
+            // Shown inline under the thumbnail field; no alert, which would say
+            // the same thing twice.
+            setCourseThumbnailError('Failed to save course: ' + (err.message || 'Unknown error'))
+        } finally {
+            setCourseThumbnailUploading(false)
         }
     }
 
@@ -670,14 +695,16 @@ function AdminDashboardContent() {
         setIsLoadingShowcase(false)
     }
 
-    const uploadShowcaseFile = async (file: File, folder: string): Promise<string> => {
+    // Showcase assets stay in 'showcase-videos' so existing public URLs keep
+    // resolving; image-only uploads go to the smaller 'thumbnails' bucket.
+    const uploadAdminFile = async (file: File, folder: string, bucket = 'showcase-videos'): Promise<string> => {
         const supabase = await getServiceRequestClient()
         if (!supabase) throw new Error('No client')
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-')
         const path = `${folder}/${Date.now()}-${safeName}`
-        const { error } = await supabase.storage.from('showcase-videos').upload(path, file, { upsert: false })
+        const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: false })
         if (error) throw error
-        const { data } = supabase.storage.from('showcase-videos').getPublicUrl(path)
+        const { data } = supabase.storage.from(bucket).getPublicUrl(path)
         return data.publicUrl
     }
 
@@ -720,13 +747,13 @@ function AdminDashboardContent() {
             // Upload video file if selected
             if (showcaseVideoFile) {
                 setUploadStatus(`Uploading video (${(showcaseVideoFile.size / 1024 / 1024).toFixed(1)} MB)...`)
-                videoUrl = await uploadShowcaseFile(showcaseVideoFile, 'videos')
+                videoUrl = await uploadAdminFile(showcaseVideoFile, 'videos')
                 setUploadStatus("Video uploaded ✓")
             }
             // Upload thumbnail file if selected
             if (showcaseThumbnailFile) {
                 setUploadStatus("Uploading thumbnail...")
-                thumbnailUrl = await uploadShowcaseFile(showcaseThumbnailFile, 'thumbnails')
+                thumbnailUrl = await uploadAdminFile(showcaseThumbnailFile, 'thumbnails')
                 setUploadStatus("Thumbnail uploaded ✓")
             }
             setUploadStatus("Saving to database...")
@@ -1570,12 +1597,56 @@ function AdminDashboardContent() {
                                                                     className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full h-24"
                                                                     placeholder="Description"
                                                                 />
-                                                                <input
-                                                                    value={editForm?.thumbnail ?? ""}
-                                                                    onChange={(e) => setEditForm(prev => prev ? { ...prev, thumbnail: e.target.value } : prev)}
-                                                                    className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full"
-                                                                    placeholder="Thumbnail Image URL"
-                                                                />
+                                                                <div className="space-y-2">
+                                                                    <p className="text-[10px] font-bold text-white/30">Thumbnail</p>
+                                                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                                                        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-white/70 transition hover:border-primary/50 hover:text-white">
+                                                                            <input
+                                                                                type="file"
+                                                                                accept="image/*"
+                                                                                className="hidden"
+                                                                                onChange={(e) => {
+                                                                                    const file = e.target.files?.[0] || null
+                                                                                    setCourseThumbnailError("")
+                                                                                    // Rejected here rather than at upload, so the
+                                                                                    // admin finds out while they are still looking
+                                                                                    // at the picker.
+                                                                                    if (file && file.size > 5 * 1024 * 1024) {
+                                                                                        setCourseThumbnailError("That image is over 5MB. Please pick a smaller one.")
+                                                                                        setCourseThumbnailFile(null)
+                                                                                        return
+                                                                                    }
+                                                                                    setCourseThumbnailFile(file)
+                                                                                }}
+                                                                            />
+                                                                            {courseThumbnailFile ? "Choose a different image" : "Upload an image"}
+                                                                        </label>
+                                                                        {courseThumbnailFile && (
+                                                                            <span className="flex items-center gap-2 text-xs text-white/50">
+                                                                                <span className="max-w-[16rem] truncate">{courseThumbnailFile.name}</span>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => setCourseThumbnailFile(null)}
+                                                                                    className="text-white/40 underline hover:text-white"
+                                                                                >
+                                                                                    remove
+                                                                                </button>
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    {/* The picked file wins on save, so say so rather than
+                                                                        leaving two thumbnail inputs disagreeing silently. */}
+                                                                    <input
+                                                                        value={editForm?.thumbnail ?? ""}
+                                                                        onChange={(e) => setEditForm(prev => prev ? { ...prev, thumbnail: e.target.value } : prev)}
+                                                                        className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full disabled:opacity-40"
+                                                                        placeholder="Or paste a thumbnail image URL"
+                                                                        disabled={Boolean(courseThumbnailFile)}
+                                                                    />
+                                                                    {courseThumbnailFile && <p className="text-[10px] text-white/30">The uploaded image will replace the URL above when you save.</p>}
+                                                                    {courseThumbnailUploading && <p className="text-[10px] font-bold text-primary">Uploading thumbnail…</p>}
+                                                                    {courseThumbnailError && <p className="text-[10px] font-bold text-red-400">{courseThumbnailError}</p>}
+                                                                </div>
                                                                 <div className="space-y-2">
                                                                     <p className="text-[10px] font-bold text-white/30">Course Access</p>
                                                                     <div className="inline-flex rounded-xl border border-white/10 bg-white/5 p-1">

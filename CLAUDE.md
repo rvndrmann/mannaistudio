@@ -78,6 +78,7 @@ src/
 |--------|--------|---------|
 | `portfolio-media` | ✅ Done | portfolio.ts (file uploads) |
 | `videos` | ✅ Done | Course lesson videos, uploaded via admin ChapterEditor |
+| `thumbnails` | ✅ Done | Course thumbnails uploaded from admin (`thumbnails/courses/`), public read, admin write |
 
 ### SECURITY DEFINER RPC Functions (bypass RLS, check admin internally)
 All admin write operations use these to avoid nested RLS policy issues:
@@ -112,7 +113,6 @@ Located in `supabase/migrations/`:
 
 ## What Still Needs Work
 - `challenge_submissions` table — Not yet created (only mock data exists)
-- `thumbnails` storage bucket — Not yet created
 - Course enrollment payment flow — PayU routes exist but untested end-to-end
 - RLS policies for `enrollments` — users read/insert own, admin read all
 - Seeding initial data from `data.ts` into Supabase tables (if desired)
