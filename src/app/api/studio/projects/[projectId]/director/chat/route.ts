@@ -300,6 +300,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const encoder = new TextEncoder()
+    // Why a run stopped, when it stops for a reason the run itself never sees.
+    //
+    // A run that is swept up later can only be reported as "the server went
+    // away", because by then nobody knows what happened — and the two causes
+    // want opposite fixes. `cancel` fires the moment the browser lets go of the
+    // stream: a reload, a navigation, a closed tab. Recording it is what tells
+    // a client that hung up from a process that died.
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         const send = (event: Record<string, unknown>) => {
@@ -321,6 +328,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         } finally {
           controller.close()
         }
+      },
+      // Best effort, and deliberately not awaited by anything: the run carries
+      // on, because the work is worth finishing whether or not anyone is still
+      // watching it. This only leaves a note saying the watcher left.
+      cancel(reason) {
+        void noteClientDisconnect(context, { runId: workflowRun.id, reason: String(reason ?? "the browser closed the connection") })
       },
     })
     return new Response(stream, {
@@ -346,6 +359,38 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
  * the turn must carry a reply saying what went wrong, so the user's message is
  * not sitting there unanswered with no explanation.
  */
+/**
+ * Records that the browser watching a run let go of it.
+ *
+ * Written onto the run rather than into a log, because the question it answers
+ * is asked about one run: a run found dead later reads as "the server went
+ * away", and this is the only thing that can say it was the client instead. The
+ * run's status is deliberately untouched — a disconnect is not a failure, and a
+ * run that goes on to finish should still read as finished.
+ */
+async function noteClientDisconnect(
+  context: Awaited<ReturnType<typeof requireAuthenticatedProject>>,
+  input: { runId: string; reason: string },
+) {
+  try {
+    const { data } = await context.supabase
+      .from("creator_workflow_runs")
+      .select("summary")
+      .eq("id", input.runId)
+      .eq("user_id", context.user.id)
+      .maybeSingle()
+    const summary = (data?.summary as Record<string, unknown> | null) || {}
+    await context.supabase
+      .from("creator_workflow_runs")
+      .update({ summary: { ...summary, client_disconnected_at: new Date().toISOString(), client_disconnect_reason: input.reason } })
+      .eq("id", input.runId)
+      .eq("user_id", context.user.id)
+      .is("completed_at", null)
+  } catch (error) {
+    console.warn("Could not record the client disconnect for run", input.runId, error)
+  }
+}
+
 async function recordFailedRun(
   context: Awaited<ReturnType<typeof requireAuthenticatedProject>>,
   input: { runId: string; sessionId: string; message: string; projectId: string; episodeId: string },

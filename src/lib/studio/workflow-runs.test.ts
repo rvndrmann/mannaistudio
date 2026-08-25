@@ -97,3 +97,19 @@ describe("a run that outlived the request that was running it", () => {
     }))).toBe(false)
   })
 })
+
+describe("telling a lost browser from a lost server", () => {
+  it("closes a run whose page let go of it with a reason the user can act on", async () => {
+    const calls: { filters: Array<[string, unknown]>; patch?: Record<string, unknown> } = { filters: [] }
+    const disconnected = run({ id: "left", summary: { client_disconnected_at: minutesAgo(19) } })
+    await failAbandonedRuns(supabaseRecording(calls), { projectId: "project-1", userId: "user-1", runs: [disconnected] })
+    expect((disconnected as { error?: { code?: string } }).error?.code).toBe("run_disconnected")
+  })
+
+  it("still blames the server when nothing recorded a disconnect", async () => {
+    const calls: { filters: Array<[string, unknown]>; patch?: Record<string, unknown> } = { filters: [] }
+    const died = run({ id: "died" })
+    await failAbandonedRuns(supabaseRecording(calls), { projectId: "project-1", userId: "user-1", runs: [died] })
+    expect((died as { error?: { code?: string } }).error?.code).toBe("run_interrupted")
+  })
+})

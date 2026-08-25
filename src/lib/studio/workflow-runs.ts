@@ -37,7 +37,29 @@ export const abandonedRunError = {
   message: "This run stopped before it could reply — the server handling it went away. Nothing was charged for the unfinished work.",
 }
 
-export type AbandonableRun = { id: string; user_id?: string | null; status: string; completed_at?: string | null; started_at?: string | null; updated_at?: string | null }
+/**
+ * The same ending, for a run whose browser let go of it first.
+ *
+ * Worth telling apart in the chat and not only in the data: "the server went
+ * away" is nothing the user can act on, while a run lost to a reload is
+ * explained by something they just did, and sending it again will work.
+ */
+export const disconnectedRunError = {
+  code: "run_disconnected",
+  message: "This run stopped when the page it was streaming to was closed or reloaded. Nothing was charged for the unfinished work — send it again to pick up.",
+}
+
+/** Whether the browser watching this run was recorded as letting go of it. */
+function clientLeft(run: AbandonableRun): boolean {
+  const summary = run.summary as { client_disconnected_at?: unknown } | null | undefined
+  return Boolean(summary && typeof summary === "object" && summary.client_disconnected_at)
+}
+
+export function endingFor(run: AbandonableRun) {
+  return clientLeft(run) ? disconnectedRunError : abandonedRunError
+}
+
+export type AbandonableRun = { id: string; user_id?: string | null; status: string; completed_at?: string | null; started_at?: string | null; updated_at?: string | null; summary?: unknown }
 
 export function isAbandonedRun(run: AbandonableRun, now = Date.now()) {
   if (run.completed_at || !inFlightRunStatuses.includes(run.status)) return false
@@ -66,15 +88,25 @@ export async function failAbandonedRuns(supabase: SupabaseClient, input: { proje
   const abandoned = input.runs.filter((run) => run.user_id === input.userId && isAbandonedRun(run, now))
   if (!abandoned.length) return []
   const completedAt = new Date(now).toISOString()
-  const { error } = await supabase
-    .from("creator_workflow_runs")
-    .update({ status: "failed", error: abandonedRunError, completed_at: completedAt })
-    .eq("project_id", input.projectId)
-    .eq("user_id", input.userId)
-    .is("completed_at", null)
-    .in("id", abandoned.map((run) => run.id))
-  if (error) throw error
-  for (const run of abandoned) Object.assign(run, { status: "failed", error: abandonedRunError, completed_at: completedAt })
+  // Grouped by the ending each run has earned rather than written one by one:
+  // there are only two endings, and a sweep should cost two statements however
+  // many runs it closes.
+  const groups: Array<{ ending: typeof abandonedRunError; runs: AbandonableRun[] }> = [
+    { ending: disconnectedRunError, runs: abandoned.filter((run) => endingFor(run) === disconnectedRunError) },
+    { ending: abandonedRunError, runs: abandoned.filter((run) => endingFor(run) === abandonedRunError) },
+  ]
+  for (const { ending, runs } of groups) {
+    if (!runs.length) continue
+    const { error } = await supabase
+      .from("creator_workflow_runs")
+      .update({ status: "failed", error: ending, completed_at: completedAt })
+      .eq("project_id", input.projectId)
+      .eq("user_id", input.userId)
+      .is("completed_at", null)
+      .in("id", runs.map((run) => run.id))
+    if (error) throw error
+    for (const run of runs) Object.assign(run, { status: "failed", error: ending, completed_at: completedAt })
+  }
   return abandoned
 }
 
