@@ -90,3 +90,30 @@ describe("a video the provider never started", () => {
     expect(isStalledVideoJob(over, providerAt(STALLED_VIDEO_JOB_MS / 1000, STALLED_VIDEO_JOB_MS / 1000), now)).toBe(true)
   })
 })
+
+describe("a video job that never reached the provider", () => {
+  const now = Date.now()
+  const ago = (ms: number) => new Date(now - ms).toISOString()
+
+  /**
+   * Approved, then the process that would have submitted it went away. There is
+   * no provider task to ask about, so the checks written against the provider's
+   * clocks can never settle it: the status endpoint answered every poll with
+   * "missing provider details" while the workspace showed the shot generating,
+   * and the two took turns for ever with the credits still held.
+   */
+  it("settles one that has held no provider id past the submission window", () => {
+    const job = { status: "approved", approved_at: ago(7 * 60 * 1000), provider_job_id: null }
+    expect(isStalledVideoJob(job, null, now)).toBe(true)
+  })
+
+  it("gives a job still being submitted time to get there", () => {
+    const job = { status: "approved", approved_at: ago(30 * 1000), provider_job_id: null }
+    expect(isStalledVideoJob(job, null, now)).toBe(false)
+  })
+
+  it("leaves a submitted job to the provider checks", () => {
+    const job = { status: "processing", started_at: ago(60 * 1000), provider_job_id: "task-1" }
+    expect(isStalledVideoJob(job, { status: "running", created_at: Math.floor((now - 60_000) / 1000), updated_at: Math.floor((now - 30_000) / 1000) }, now)).toBe(false)
+  })
+})

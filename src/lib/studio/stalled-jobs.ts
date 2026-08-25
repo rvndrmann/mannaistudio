@@ -36,6 +36,11 @@ export function isStalledImageJob(
 // stall this exists to settle.
 export const STALLED_VIDEO_JOB_MS = 8 * 60 * 1000
 
+// Submission to the provider happens inside one request, which the host bounds
+// well below this. A video job still holding no provider id after it is one
+// nothing is going to submit.
+export const STALLED_SUBMISSION_MS = 6 * 60 * 1000
+
 /**
  * Whether a video job has been stalled by the provider's queue.
  *
@@ -49,11 +54,30 @@ export const STALLED_VIDEO_JOB_MS = 8 * 60 * 1000
  * rendering, however slowly, and is left alone — the queue picked the task up.
  */
 export function isStalledVideoJob(
-  job: { status?: string | null; started_at?: string | null; created_at?: string | null },
+  job: { status?: string | null; started_at?: string | null; approved_at?: string | null; created_at?: string | null; provider_job_id?: string | null },
   provider: { status?: string; created_at?: number; updated_at?: number } | null | undefined,
   now: number = Date.now(),
 ): boolean {
   if (!job.status || !ACTIVE_JOB_STATUSES.includes(job.status)) return false
+
+  // A job that never reached the provider at all, which the checks below cannot
+  // see: they reason about the provider's own clocks, and a job with no id has
+  // none to fetch. Submission happens inside a single request, so past this
+  // window nothing is coming — the process that would have submitted it is
+  // gone. Without this such a job stayed non-terminal for ever, and the status
+  // endpoint answered every poll with "missing provider details" while the
+  // workspace went on showing it as generating: a spinner and an error taking
+  // turns, with no way out and the credits still reserved.
+  //
+  // Both halves are required. A caller holding provider status has a provider
+  // to reason about however the row is shaped, and the checks below are the
+  // ones that apply to it.
+  if (!job.provider_job_id && !provider) {
+    const submitClock = Date.parse(job.started_at || job.approved_at || job.created_at || "")
+    if (Number.isNaN(submitClock)) return false
+    return now - submitClock >= STALLED_SUBMISSION_MS
+  }
+
   if (!provider || provider.status === "succeeded" || provider.status === "failed" || provider.status === "cancelled") return false
   // Provider clocks are in seconds and both must be present to reason about
   // whether the queue has ever touched the task. Without them we cannot tell a
