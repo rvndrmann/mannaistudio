@@ -37,6 +37,25 @@ export type ResolvedAsset = {
 
 const isActive = (status?: string | null) => status === "Active" || status === "active"
 
+const ASSET_ACTIVATION_ATTEMPTS = 10
+
+/** Wait briefly for a newly-created library asset before treating it as usable. */
+async function waitForActiveAsset(assetId: string) {
+  let latest: Awaited<ReturnType<typeof getBytePlusAsset>> | null = null
+  for (let attempt = 0; attempt < ASSET_ACTIVATION_ATTEMPTS; attempt += 1) {
+    try {
+      latest = await getBytePlusAsset(assetId)
+    } catch {
+      // A missing/deleted asset cannot become active by waiting. Let the caller
+      // replace its stale registry entry immediately.
+      return null
+    }
+    if (latest && isActive(latest.status)) return latest
+    if (attempt < ASSET_ACTIVATION_ATTEMPTS - 1) await new Promise((resolve) => setTimeout(resolve, 1000))
+  }
+  return latest
+}
+
 /** The live asset for an id, or null if the provider no longer has it. */
 async function activeAsset(assetId: string) {
   const info = await getBytePlusAsset(assetId).catch(() => null)
@@ -164,8 +183,8 @@ export async function registerAssetOnce(input: {
       .eq("asset_id", known)
       .neq("source_path", sourcePath)
       .maybeSingle()
-    const info = claimedByAnother ? null : await activeAsset(known)
-    if (info) {
+    const info = claimedByAnother ? null : await waitForActiveAsset(known)
+    if (info && isActive(info.status)) {
       // It exists at the provider but may predate this registry, so adopt it:
       // it occupies a slot either way and has to be accounted for.
       await recordExistingAsset({
@@ -179,6 +198,9 @@ export async function registerAssetOnce(input: {
       })
       return { assetId: known, assetUri: info.assetUri || `asset://${known}`, reused: true }
     }
+    if (info) {
+      throw new Error("Seedance is still processing this verified image. Please try again in a moment.")
+    }
   }
 
   const { data: existing } = await supabase
@@ -189,13 +211,19 @@ export async function registerAssetOnce(input: {
 
   if (existing?.asset_uri) {
     // Verify that the cached asset still exists and is active on BytePlus.
-    const info = await activeAsset(existing.asset_id)
-    if (info) {
+    const info = await waitForActiveAsset(existing.asset_id)
+    if (info && isActive(info.status)) {
       await supabase
         .from("creator_byteplus_assets")
         .update({ last_used_at: new Date().toISOString(), use_count: (existing.use_count || 0) + 1 })
         .eq("id", existing.id)
       return { assetId: existing.asset_id, assetUri: info.assetUri || existing.asset_uri, reused: true }
+    }
+    // Do not turn a still-processing verification into another registration.
+    // A second asset burns another one of the provider's scarce library slots
+    // and leaves the original Verify action looking successful but unusable.
+    if (info) {
+      throw new Error("Seedance is still processing this verified image. Please try again in a moment.")
     }
     // Asset is deleted or missing from BytePlus — remove stale registry record so it re-registers freshly.
     await supabase.from("creator_byteplus_assets").delete().eq("id", existing.id)
@@ -209,14 +237,8 @@ export async function registerAssetOnce(input: {
   let assetUri = `asset://${created.assetId}`
   // An asset is not usable the instant it is created, and the URI the provider
   // reports once it is active is the one to keep.
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    const info = await getBytePlusAsset(created.assetId)
-    if (isActive(info.status)) {
-      assetUri = info.assetUri || assetUri
-      break
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-  }
+  const activated = await waitForActiveAsset(created.assetId)
+  if (activated && isActive(activated.status)) assetUri = activated.assetUri || assetUri
 
   await rememberRegistration(supabase, {
     source_path: sourcePath,
@@ -228,6 +250,10 @@ export async function registerAssetOnce(input: {
     created_by: input.userId || null,
     last_used_at: new Date().toISOString(),
   })
+
+  if (!activated || !isActive(activated.status)) {
+    throw new Error("Seedance is still processing this verified image. Please try again in a moment.")
+  }
 
   return { assetId: created.assetId, assetUri, reused: false }
 }

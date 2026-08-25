@@ -157,10 +157,10 @@ describe("registerAssetOnce", () => {
     expect(rows[0].asset_id).toBe("asset-fresh")
   })
 
-  it("ignores a stored id the provider reports as inactive", async () => {
+  it("registers afresh when a stored id is gone from the provider", async () => {
     const supabase = fakeSupabase()
     getBytePlusAsset.mockImplementation(async (assetId: string) =>
-      assetId === "asset-pending" ? { assetId, status: "Processing", assetUri: "" } : active(assetId))
+      assetId === "asset-pending" ? Promise.reject(new Error("AssetNotFound")) : active(assetId))
     createBytePlusAsset.mockResolvedValue({ assetId: "asset-fresh" })
 
     const result = await registerAssetOnce({
