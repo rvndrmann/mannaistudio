@@ -1,6 +1,7 @@
 "use client"
 
 import Footer from "@/components/Footer"
+import { isFreeCourse } from "@/lib/course-price"
 import LeadChatWidget from "@/components/LeadChatWidget"
 import Navbar from "@/components/Navbar"
 import HoverSoundVideo from "@/components/HoverSoundVideo"
@@ -146,6 +147,10 @@ export default function LandingPage() {
     // link alone and needs no measuring.
     const [heroIsVertical, setHeroIsVertical] = useState(false)
     const [activePipelineStep, setActivePipelineStep] = useState(0)
+    // The free course to point the Academy button at. Looked up rather than
+    // hard-coded, so renaming or replacing the free course in admin does not
+    // leave a home-page button pointing at a course that no longer exists.
+    const [freeCourse, setFreeCourse] = useState<{ id: string; title: string } | null>(null)
 
     useEffect(() => {
         const load = async () => {
@@ -169,6 +174,24 @@ export default function LandingPage() {
             } catch {}
         }
         load()
+    }, [])
+
+    useEffect(() => {
+        const loadFreeCourse = async () => {
+            try {
+                const supabase = createClient()
+                const { data, error } = await supabase
+                    .from("courses")
+                    .select("id, title, price, is_paused")
+                    .order("created_at", { ascending: true })
+                if (error || !data) return
+                // "Free" is price 0 or unset. A paused course is not on offer,
+                // so linking to it would send people to a page that hides it.
+                const free = data.find((course: any) => !course.is_paused && isFreeCourse(course.price))
+                if (free) setFreeCourse({ id: free.id, title: free.title })
+            } catch {}
+        }
+        loadFreeCourse()
     }, [])
 
     const heroFeatured = adminShowcase[0]
@@ -341,6 +364,43 @@ export default function LandingPage() {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* ACADEMY: learning sits beside the tool, high on the page, because a
+                first-time visitor who is not ready to generate anything still has
+                somewhere to go. Both routes are gated by middleware, so a signed-out
+                visitor is sent to sign in and returned to the exact page after. */}
+            <section className="mx-auto max-w-[1540px] px-4 md:px-6">
+                <div className="flex flex-col gap-6 rounded-lg border border-white/10 bg-[#111312] p-8 md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <span className="inline-flex rounded-full border border-white/10 bg-white/[.04] px-3 py-1 t-caption text-white/60">
+                            Learn
+                        </span>
+                        <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">
+                            AI Director Hub <span className="text-primary">Academy</span>
+                        </h2>
+                        <p className="mt-3 max-w-xl text-base leading-7 text-white/60">
+                            Learn the craft behind the tool — scripting, characters, storyboards and
+                            shot-by-shot direction. Start with the free course, no card needed.
+                        </p>
+                    </div>
+                    <div className="flex shrink-0 flex-col gap-3 sm:flex-row md:flex-col lg:flex-row">
+                        {/* Falls back to the listing when nothing free is published,
+                            rather than rendering a button that goes nowhere. */}
+                        <Link
+                            href={freeCourse ? `/courses/${freeCourse.id}` : "/courses"}
+                            className="btn-primary flex items-center justify-center gap-2.5 whitespace-nowrap px-7 py-3.5 text-[15px]"
+                        >
+                            Start the Free Course <ArrowRight className="h-5 w-5" />
+                        </Link>
+                        <Link
+                            href="/courses"
+                            className="btn-secondary flex items-center justify-center gap-2 whitespace-nowrap px-7 py-3.5 text-[15px]"
+                        >
+                            Browse the Academy <ArrowUpRight className="h-5 w-5" />
+                        </Link>
                     </div>
                 </div>
             </section>

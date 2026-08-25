@@ -1,6 +1,7 @@
 "use client"
 
 import Navbar from "@/components/Navbar"
+import { isFreeCourse } from "@/lib/course-price"
 import { motion } from "framer-motion"
 import { Play, Clock, Sparkles, Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
@@ -57,7 +58,7 @@ export default function CoursesPage() {
             return
         }
 
-        const isFree = course.price === "Free" || course.price === "$0" || course.price === 0 || course.price === "0" || !course.price
+        const isFree = isFreeCourse(course.price)
         if (isFree) {
             router.push(`/courses/${course.id}`)
             return
@@ -176,7 +177,7 @@ export default function CoursesPage() {
                                             <span>{course.duration}</span>
                                         </div>
                                         <span className="text-sm font-bold text-emerald-400">
-                                            {course.price === "Free" || course.price === "$0" || course.price === 0 || course.price === "0" || !course.price
+                                            {isFreeCourse(course.price)
                                                 ? "Free"
                                                 : isNaN(Number(course.price)) ? course.price : `₹${course.price}`}
                                         </span>
