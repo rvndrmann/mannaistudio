@@ -79,6 +79,43 @@ async function activeAsset(assetId: string) {
  * collision path is what the upsert was reaching for — two verifications racing
  * on one image must not lose the row — and it is kept.
  */
+/** Where the studio's one shared asset group id is kept between processes. */
+const ASSET_GROUP_SETTING = "byteplus_asset_group_id"
+
+/**
+ * The asset group every registration should go into.
+ *
+ * The provider requires a group and the id was held in a module variable, which
+ * on a serverless host is per invocation and on a dev machine is per restart —
+ * so "one group for the whole studio" became a new group per registration. That
+ * is twenty-eight groups holding the same few faces, and an account at 42 of its
+ * 50 assets with nothing to show for it.
+ *
+ * Kept in the database instead, which is the only thing here that outlives a
+ * process. A group named in the environment still wins: an operator pointing at
+ * a specific group is being deliberate, and that must not be overridden by
+ * something this created earlier.
+ */
+export async function sharedAssetGroupId(supabase: SupabaseClient): Promise<string | undefined> {
+  const fromEnv = process.env.ARK_ASSET_GROUP_ID?.trim()
+  if (fromEnv) return fromEnv
+  const { data } = await supabase
+    .from("site_settings")
+    .select("value")
+    .eq("key", ASSET_GROUP_SETTING)
+    .maybeSingle()
+  const stored = (data?.value as { group_id?: unknown } | null)?.group_id
+  return typeof stored === "string" && stored.trim() ? stored.trim() : undefined
+}
+
+/** Remembers a group the provider just made, so the next process reuses it. */
+export async function rememberAssetGroupId(supabase: SupabaseClient, groupId: string) {
+  const { error } = await supabase
+    .from("site_settings")
+    .upsert({ key: ASSET_GROUP_SETTING, value: { group_id: groupId } }, { onConflict: "key" })
+  if (error) console.warn("Could not remember the BytePlus asset group id:", error.message)
+}
+
 async function rememberRegistration(supabase: SupabaseClient, row: Record<string, unknown>) {
   const { error } = await supabase.from("creator_byteplus_assets").insert(row)
   if (!error) return
@@ -164,7 +201,11 @@ export async function registerAssetOnce(input: {
     await supabase.from("creator_byteplus_assets").delete().eq("id", existing.id)
   }
 
-  const created = await createBytePlusAsset({ imageUrl: input.imageUrl, name: input.name })
+  // The group is resolved here rather than inside the provider call, because
+  // only this side can remember it: the provider module has no database.
+  const groupId = await sharedAssetGroupId(supabase)
+  const created = await createBytePlusAsset({ imageUrl: input.imageUrl, name: input.name, groupId })
+  if (!groupId && created.groupId) await rememberAssetGroupId(supabase, created.groupId)
   let assetUri = `asset://${created.assetId}`
   // An asset is not usable the instant it is created, and the URI the provider
   // reports once it is active is the one to keep.

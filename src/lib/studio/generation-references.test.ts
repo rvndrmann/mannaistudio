@@ -117,3 +117,49 @@ describe("a shot that never named its location still has one", () => {
     expect(repairs.size).toBe(0)
   })
 })
+
+/**
+ * Which references must be registered with the provider before sending.
+ *
+ * Seedance rejects an unregistered picture that may show a person, and both
+ * submit paths have to agree about which pictures those are. They did not: the
+ * chat path treated every shot reference as a face, while the panel's own route
+ * treated only cast members that way. A character attached through the
+ * multi-image strip rather than the cast therefore went as a plain URL and was
+ * rejected however many times it had been verified — verification registered
+ * the picture, and the request never asked for it.
+ */
+function facePathsFor(input: {
+  castReferences: Array<{ path: string; type: string }>
+  shotReferences: Array<{ path: string; registeredAssetUri?: string | null }>
+}) {
+  const faces = new Set<string>()
+  for (const entity of input.castReferences) {
+    if (entity.type === "character") faces.add(entity.path)
+  }
+  for (const reference of input.shotReferences) {
+    // An already-registered reference carries its asset uri and has nothing
+    // left to resolve.
+    if (!reference.registeredAssetUri) faces.add(reference.path)
+  }
+  return faces
+}
+
+describe("references that must be registered before the provider sees them", () => {
+  it("registers a character attached through the strip, not only the cast", () => {
+    const faces = facePathsFor({
+      castReferences: [{ path: "lena.png", type: "character" }],
+      shotReferences: [{ path: "ethan.png" }],
+    })
+    expect(faces.has("ethan.png")).toBe(true)
+    expect(faces.has("lena.png")).toBe(true)
+  })
+
+  it("leaves an already-registered reference alone", () => {
+    const faces = facePathsFor({
+      castReferences: [],
+      shotReferences: [{ path: "ethan.png", registeredAssetUri: "asset://asset-1" }],
+    })
+    expect(faces.size).toBe(0)
+  })
+})

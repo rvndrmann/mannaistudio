@@ -413,7 +413,10 @@ export async function createBytePlusAsset(input: { imageUrl: string; name?: stri
 
   const assetId = json.Result?.Id
   if (!assetId) throw new BytePlusProviderError("CreateAsset did not return an Asset ID.")
-  return { assetId }
+  // The group is returned so the caller can remember it. Only the caller has a
+  // database, and a group id that outlives nothing but this process is what
+  // made a new group per registration.
+  return { assetId, groupId }
 }
 
 export async function getBytePlusAsset(assetId: string) {

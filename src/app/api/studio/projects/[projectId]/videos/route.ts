@@ -220,6 +220,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
       const registeredAssetUri = provider === "byteplus" ? seedanceReferenceAssetUri(shotReferenceAssets[refPath]) : null
       combinedReferencePaths.push(registeredAssetUri || refPath)
+      // A picture attached to the shot itself is as likely to show a person as
+      // one belonging to a cast member — it is usually a character's photo or a
+      // rendered frame of one. Only cast references were treated as faces here,
+      // so a character added through the multi-image strip rather than the cast
+      // was never registered, went to the provider as a plain URL, and was
+      // rejected as a real person no matter how many times it was verified:
+      // verification registered the picture, and this never asked for it.
+      //
+      // Already-registered references are skipped: they carry an asset uri and
+      // have nothing left to resolve.
+      if (!registeredAssetUri) facePaths.add(refPath)
       displayReferencePaths.push(refPath)
     }
 
