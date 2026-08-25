@@ -15,7 +15,9 @@ import { actionMatchesRequestedShots, parseTargetShotNumbers } from "./shot-inte
 import { createWorkflowRun } from "./workflow-runs"
 import { episodeFootageInstructions, fetchEpisodeFootage } from "./episode-continuity"
 import { fetchDirectorWorkflows } from "./workflows"
-import type { MentionableEntity } from "./entity-mentions"
+import { buildEntityMentionContext, type MentionableEntity } from "./entity-mentions"
+import { activeDirectorModels } from "./ai-models"
+import { defaultOpenAIDirectorModel } from "./openai"
 import { chatModelProvider } from "@/lib/byok/chat-source"
 import { hasCredential, withCredential } from "@/lib/byok/credential-service"
 import { runWithCredential } from "@/lib/byok/active-credential"
@@ -41,6 +43,72 @@ import { deductUserCredits } from "./credits"
 
 /** How many recent messages are read back per turn. */
 const HISTORY_PAGE = 40
+
+
+/**
+ * Everything a turn must be true about before it starts: the episode belongs to
+ * this project, every @mention belongs to it too, the model is one an admin has
+ * left switched on, and there is a session to write into.
+ *
+ * Extracted for one reason, and it is a security reason rather than a tidiness
+ * one: a second caller that checked these for itself would be a second set of
+ * checks to keep in step, and the day they drift is the day one caller accepts
+ * an episode, an entity or a paused model the other would refuse. There is one
+ * set, and both callers use it.
+ *
+ * Refusals come back as data rather than thrown, because the two callers answer
+ * them differently — one with a Next response, one with a plain one — and the
+ * status belongs to the rule, not to the transport.
+ */
+export async function resolveDirectorTurn(context: AuthenticatedProjectContext, body: {
+  episodeId?: string
+  sessionId?: string
+  message: string
+  model?: string
+  mentionedEntityIds: string[]
+}) {
+  const projectId = context.project.id
+// The episode, the entities the message mentions and the admin's model list
+// are three independent reads that were run one after another, ahead of
+// everything else, on every turn. Their checks still happen in the same
+// order below, so a bad episode is still answered with 404 before anything
+// is said about entities.
+const uniqueMentionIds = Array.from(new Set(body.mentionedEntityIds))
+const [episodeRes, mentionedRes, modelSettingsRes] = await Promise.all([
+  context.supabase.from("creator_episodes").select("id").eq("id", body.episodeId).eq("project_id", projectId).maybeSingle(),
+  uniqueMentionIds.length
+    ? context.supabase.from("creator_entities").select("*").eq("project_id", projectId).in("id", uniqueMentionIds)
+    : Promise.resolve({ data: [], error: null }),
+  context.supabase.from("site_settings").select("value").eq("key", "ai_director_models").maybeSingle(),
+])
+const episode = episodeRes.data
+if (!episode) return { refused: { error: "Episode not found", status: 404 } } as const
+const mentionedEntities = mentionedRes.data
+if (mentionedRes.error) throw mentionedRes.error
+if ((mentionedEntities || []).length !== uniqueMentionIds.length) {
+  return { refused: { error: "One or more mentioned entities do not belong to this project.", status: 400 } } as const
+}
+const mentionContext = buildEntityMentionContext((mentionedEntities || []) as MentionableEntity[])
+const modelMessage = mentionContext ? `${body.message}\n\n${mentionContext}` : body.message
+const activeModels = activeDirectorModels(modelSettingsRes.data?.value)
+const fallbackModel = activeModels.find((item) => item.id === defaultOpenAIDirectorModel())?.id || activeModels[0]?.id || defaultOpenAIDirectorModel()
+const model = body.model || fallbackModel
+if (!activeModels.some((item) => item.id === model)) {
+  return { refused: { error: "This AI Director model is paused by an admin.", status: 403 } } as const
+}
+const { data: existingSession } = await context.supabase.from("creator_chat_sessions").select("id").eq("episode_id", episode.id).eq("user_id", context.user.id).order("created_at", { ascending: false }).limit(1).maybeSingle()
+const sessionId = body.sessionId || existingSession?.id || (await context.supabase.from("creator_chat_sessions").insert({ episode_id: episode.id, user_id: context.user.id, title: "AI Director", model }).select("id").single()).data?.id
+if (!sessionId) throw new Error("Could not create an AI Director chat session")
+  return {
+    refused: null,
+    episode,
+    sessionId,
+    model,
+    modelMessage,
+    mentionedEntities: (mentionedEntities || []) as MentionableEntity[],
+    uniqueMentionIds,
+  } as const
+}
 
 export type DirectorTurnInput = {
   context: AuthenticatedProjectContext

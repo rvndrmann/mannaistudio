@@ -26,13 +26,12 @@ import { buildEntityMentionContext, type MentionableEntity } from "@/lib/studio/
 import { collectDirectorVisionAttachments } from "@/lib/studio/director-vision"
 import { buildProjectStateSummary, loadProductionSnapshot } from "@/lib/studio/project-state-summary"
 import { autopilotInstructionBlock, readAutopilotSettings } from "@/lib/studio/autopilot"
-import { backgroundRunSecretEnv, dispatchBackgroundRun, shouldRunInBackground } from "@/lib/studio/background-run"
 import { computePipelineStage } from "@/lib/studio/pipeline"
 import { buildProductionProgress, levelForXp, stagesReached } from "@/lib/studio/production-progress"
 import type { DirectorTimelineBlock } from "@/lib/studio/timeline"
 import { actionMatchesRequestedShots, parseTargetShotNumbers } from "@/lib/studio/shot-intent"
 import { createWorkflowRun } from "@/lib/studio/workflow-runs"
-import { nextStepBlock, prepareDirectorTurn } from "@/lib/studio/director-turn"
+import { nextStepBlock, prepareDirectorTurn, resolveDirectorTurn } from "@/lib/studio/director-turn"
 import { episodeFootageInstructions, fetchEpisodeFootage } from "@/lib/studio/episode-continuity"
 
 // A Director run can take minutes, and it must finish even when the browser
@@ -69,78 +68,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { projectId } = await params
     const context = await requireProjectFromRequest(request, projectId, "director:chat")
     const body = directorChatInputSchema.parse({ ...(await request.json()), projectId })
-    // The episode, the entities the message mentions and the admin's model list
-    // are three independent reads that were run one after another, ahead of
-    // everything else, on every turn. Their checks still happen in the same
-    // order below, so a bad episode is still answered with 404 before anything
-    // is said about entities.
-    const uniqueMentionIds = Array.from(new Set(body.mentionedEntityIds))
-    const [episodeRes, mentionedRes, modelSettingsRes] = await Promise.all([
-      context.supabase.from("creator_episodes").select("id").eq("id", body.episodeId).eq("project_id", projectId).maybeSingle(),
-      uniqueMentionIds.length
-        ? context.supabase.from("creator_entities").select("*").eq("project_id", projectId).in("id", uniqueMentionIds)
-        : Promise.resolve({ data: [], error: null }),
-      context.supabase.from("site_settings").select("value").eq("key", "ai_director_models").maybeSingle(),
-    ])
-    const episode = episodeRes.data
-    if (!episode) return NextResponse.json({ error: "Episode not found" }, { status: 404 })
-    const mentionedEntities = mentionedRes.data
-    if (mentionedRes.error) throw mentionedRes.error
-    if ((mentionedEntities || []).length !== uniqueMentionIds.length) {
-      return NextResponse.json({ error: "One or more mentioned entities do not belong to this project." }, { status: 400 })
-    }
-    const mentionContext = buildEntityMentionContext((mentionedEntities || []) as MentionableEntity[])
-    const modelMessage = mentionContext ? `${body.message}\n\n${mentionContext}` : body.message
-    const activeModels = activeDirectorModels(modelSettingsRes.data?.value)
-    const fallbackModel = activeModels.find((item) => item.id === defaultOpenAIDirectorModel())?.id || activeModels[0]?.id || defaultOpenAIDirectorModel()
-    const model = body.model || fallbackModel
-    if (!activeModels.some((item) => item.id === model)) {
-      return NextResponse.json({ error: "This AI Director model is paused by an admin." }, { status: 403 })
-    }
-    const { data: existingSession } = await context.supabase.from("creator_chat_sessions").select("id").eq("episode_id", episode.id).eq("user_id", context.user.id).order("created_at", { ascending: false }).limit(1).maybeSingle()
-    const sessionId = body.sessionId || existingSession?.id || (await context.supabase.from("creator_chat_sessions").insert({ episode_id: episode.id, user_id: context.user.id, title: "AI Director", model }).select("id").single()).data?.id
-    if (!sessionId) throw new Error("Could not create an AI Director chat session")
+    const resolved = await resolveDirectorTurn(context, body)
+    if (resolved.refused) return NextResponse.json({ error: resolved.refused.error }, { status: resolved.refused.status })
+    const { episode, sessionId, model, modelMessage, mentionedEntities, uniqueMentionIds } = resolved
 
-    // Hand an unattended turn to the worker, before any of the turn's own work
-    // is done — there is no point building a context here that the worker is
-    // about to build for itself.
-    //
-    // Inert unless the worker's secret is set, so an install that has not
-    // deployed one behaves exactly as it did. The header is what stops this
-    // recursing: the worker reaches this same route, and its turn must run
-    // here rather than being handed onward to another worker.
-    const fromWorker = request.headers.get("x-director-background") === "1"
-    const backgroundSecret = process.env[backgroundRunSecretEnv]
-    if (!fromWorker) {
-      const dispatch = shouldRunInBackground({
-        mode: readAutopilotSettings(context.project.metadata).mode,
-        automated: body.automated,
-        secret: backgroundSecret,
-      })
-      if (dispatch.background && backgroundSecret) {
-        const { data: { session } } = await context.supabase.auth.getSession()
-        const accessToken = session?.access_token
-        if (accessToken) {
-          const handedOff = await dispatchBackgroundRun({
-            origin: new URL(request.url).origin,
-            secret: backgroundSecret,
-            job: {
-              projectId,
-              episodeId: episode.id,
-              sessionId,
-              message: body.message,
-              model,
-              mentionedEntityIds: uniqueMentionIds,
-              accessToken,
-              issuedAt: Date.now(),
-            },
-          })
-          // A worker that could not be reached is not a reason to drop the
-          // turn: fall through and run it here, the way it has always run.
-          if (handedOff) return NextResponse.json({ background: true, sessionId, reason: dispatch.reason })
-        }
-      }
-    }
     // The turn itself lives in the studio library, not here: it is the same
     // work wherever it runs, and this route is no longer the only place that
     // can run it.
