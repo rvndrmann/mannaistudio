@@ -69,7 +69,9 @@ export async function middleware(request: NextRequest) {
         const user = userResult.data?.user
         if (!user) {
             const redirectUrl = new URL('/login', request.url)
-            redirectUrl.searchParams.set('next', request.nextUrl.pathname)
+            // Path and query, so a link carrying its own parameters survives the
+            // sign-in that interrupted it.
+            redirectUrl.searchParams.set('next', `${request.nextUrl.pathname}${request.nextUrl.search}`)
             return NextResponse.redirect(redirectUrl)
         }
 

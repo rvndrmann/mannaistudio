@@ -173,7 +173,7 @@ export default function QuickVideoPage() {
             <div className="rounded-xl border border-[#b9f42e]/30 bg-[#b9f42e]/[0.05] p-4 text-center">
               <p className="text-sm text-zinc-300">Sign in to generate video.</p>
               <button
-                onClick={signInWithGoogle}
+                onClick={() => signInWithGoogle()}
                 className="mt-3 w-full rounded-lg bg-[#b9f42e] px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-[#a5de25]"
               >
                 Sign in with Google

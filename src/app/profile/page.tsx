@@ -269,7 +269,7 @@ export default function ProfilePage() {
                         <h1 className="text-3xl font-bold">Sign In to View Your Profile</h1>
                         <p className="text-white/50">Access your profile, track your progress, and manage your portfolio.</p>
                         <button
-                            onClick={signInWithGoogle}
+                            onClick={() => signInWithGoogle()}
                             className="btn-primary mx-auto flex items-center gap-3 px-8 py-3"
                         >
                             <LogIn className="w-5 h-5" />

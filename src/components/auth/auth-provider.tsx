@@ -1,13 +1,14 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState } from 'react'
+import { safeNextPath } from '@/lib/auth-redirect'
 import { User } from '@supabase/supabase-js'
 import { claimOnce } from '@/lib/track-once'
 
 type AuthContextType = {
     user: User | null
     loading: boolean
-    signInWithGoogle: () => Promise<void>
+    signInWithGoogle: (next?: string) => Promise<void>
     signOut: () => Promise<void>
 }
 
@@ -75,17 +76,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         })
     }, [])
 
-    const signInWithGoogle = async () => {
+    /**
+     * @param next Where to land afterwards. Defaults to the page the user is on,
+     *   which is what makes a shared link work: somebody sent `/courses/abc`
+     *   signs in and arrives at `/courses/abc` rather than at the home page
+     *   having lost what they were sent. The callback has always read this
+     *   parameter; nothing ever set it.
+     */
+    const signInWithGoogle = async (next?: string) => {
         if (!isSupabaseConfigured()) {
             alert('Supabase is not configured. Please add your credentials to .env.local')
             return
         }
         const { createClient } = await import('@/lib/supabase/client')
         const supabase = createClient()
+        const callback = new URL('/auth/callback', window.location.origin)
+        // safeNextPath rather than the raw location: this ends up in a URL that
+        // a signed-out visitor can be handed, and the callback redirects to it.
+        const target = safeNextPath(next ?? `${window.location.pathname}${window.location.search}`)
+        if (target !== '/') callback.searchParams.set('next', target)
         await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo: `${window.location.origin}/auth/callback`,
+                redirectTo: callback.toString(),
             },
         })
     }

@@ -10,7 +10,7 @@ const legalLinks = [
 ]
 
 const siteLinks = [
-    { href: "/courses", label: "Courses" },
+    { href: "/courses", label: "AI Director Hub Academy" },
     // Paused: Challenges, AI Jobs
     { href: "/billing", label: "Pricing" },
     { href: "/about", label: "About Us" },

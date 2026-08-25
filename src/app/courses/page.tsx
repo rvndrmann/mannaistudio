@@ -105,7 +105,7 @@ export default function CoursesPage() {
                         animate={{ opacity: 1, x: 0 }}
                         className="text-4xl font-bold mb-4"
                     >
-                        Explore <span className="text-primary">Courses</span>
+                        AI Director Hub <span className="text-primary">Academy</span>
                     </motion.h1>
                     <motion.p
                         initial={{ opacity: 0, x: -20 }}

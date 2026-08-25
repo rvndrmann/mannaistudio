@@ -136,7 +136,7 @@ export default function StudioHome() {
                 Sign in with Google to create AI projects, generate videos, and chat with your AI Director Employee.
               </p>
               <button
-                onClick={signInWithGoogle}
+                onClick={() => signInWithGoogle()}
                 className="mt-6 rounded-xl bg-[#b9f42e] px-8 py-3.5 text-sm font-semibold text-black hover:bg-[#a5de25] transition"
               >
                 Sign In with Google

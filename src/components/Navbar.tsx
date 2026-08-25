@@ -20,7 +20,7 @@ const baseNavLinks = [
     { key: "analytics", name: "Analytics", href: "/analytics", icon: CreditCard },
     { key: "ads", name: "Ads Manager", href: "/ads", icon: ShieldCheck },
     { key: "competitors", name: "Competitors", href: "/competitors", icon: ShieldCheck },
-    { key: "courses", name: "Courses", href: "/courses", icon: Play },
+    { key: "courses", name: "AI Director Hub Academy", href: "/courses", icon: Play },
     { key: "blog", name: "Blog", href: "/blog", icon: BookOpen },
     { key: "billing", name: "Billing", href: "/billing", icon: CreditCard },
     { key: "mcp", name: "MCP & CLI", href: "/studio/external", icon: PlugZap },

@@ -159,7 +159,7 @@ export default function MessagesPage() {
                     <MessageSquare className="w-16 h-16 text-white/15 mx-auto mb-6" />
                     <h1 className="text-3xl font-bold mb-3">Messages</h1>
                     <p className="text-white/50 mb-8">Sign in to see your project conversations.</p>
-                    <button onClick={signInWithGoogle} className="btn-primary px-8 py-3">Sign In</button>
+                    <button onClick={() => signInWithGoogle()} className="btn-primary px-8 py-3">Sign In</button>
                 </div>
             </main>
         )

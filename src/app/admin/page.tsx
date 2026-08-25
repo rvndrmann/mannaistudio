@@ -2914,7 +2914,7 @@ function AdminDashboardContent() {
                                         { key: "ads" as const, label: "Ads Manager", path: "/ads", desc: "Meta & LinkedIn Ad Campaign Manager" },
                                         { key: "competitors" as const, label: "Competitors", path: "/competitors", desc: "Competitor Intelligence & Ad Radar" },
                                         { key: "social" as const, label: "Social", path: "/social", desc: "Social Media Accounts & Publishing" },
-                                        { key: "courses" as const, label: "Courses", path: "/courses", desc: "Public Courses Listing Section" },
+                                        { key: "courses" as const, label: "AI Director Hub Academy", path: "/courses", desc: "Public course listing, shown in the header as AI Director Hub Academy" },
                                         { key: "blog" as const, label: "Blog", path: "/blog", desc: "Blog Articles & Guides" },
                                     ].map((feat) => {
                                         const isPaused = !siteFeatures[feat.key]

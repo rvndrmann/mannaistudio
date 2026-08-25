@@ -238,7 +238,7 @@ export default function LandingPage() {
                                         Open Creator Studio <ArrowRight className="h-5 w-5" />
                                     </Link>
                                 ) : (
-                                    <button onClick={signInWithGoogle} className="btn-primary flex items-center gap-2.5 px-7 py-3.5 text-[15px]">
+                                    <button onClick={() => signInWithGoogle()} className="btn-primary flex items-center gap-2.5 px-7 py-3.5 text-[15px]">
                                         Start Free Now <ArrowRight className="h-5 w-5" />
                                     </button>
                                 )}
@@ -595,7 +595,7 @@ export default function LandingPage() {
                                     Open AI Director Studio <ArrowRight className="ml-2 h-5 w-5 inline" />
                                 </Link>
                             ) : (
-                                <button onClick={signInWithGoogle} className="btn-primary px-9 py-4 text-base font-semibold">
+                                <button onClick={() => signInWithGoogle()} className="btn-primary px-9 py-4 text-base font-semibold">
                                     Start Free Now <ArrowRight className="ml-2 h-5 w-5 inline" />
                                 </button>
                             )}

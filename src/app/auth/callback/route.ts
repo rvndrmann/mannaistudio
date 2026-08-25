@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { isAuthRetryableFetchError, type AuthError } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { safeNextPath } from '@/lib/auth-redirect'
 
 /**
  * Exchange the OAuth code, retrying only when the request never reached
@@ -40,7 +41,10 @@ async function exchangeCodeWithRetry(code: string, attempts = 3) {
 export async function GET(request: Request) {
     const { searchParams, origin } = new URL(request.url)
     const code = searchParams.get('code')
-    const next = searchParams.get('next') ?? '/'
+    // Validated, not trusted. This parameter is now set on real sign-in links,
+    // so it is also reachable by anyone who can hand a visitor a link to our
+    // own sign-in — an unchecked value here is an open redirect.
+    const next = safeNextPath(searchParams.get('next'))
 
     const errorParam = searchParams.get('error')
     const errorDescription = searchParams.get('error_description')

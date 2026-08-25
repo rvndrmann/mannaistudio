@@ -187,7 +187,7 @@ export default function CertificatePage({ params }: { params: Promise<{ id: stri
                         <Share2 className="w-4 h-4" /> Share Achievement
                     </button>
                     <Link href="/courses" className="text-white/40 hover:text-white transition-colors text-sm flex items-center gap-2">
-                        <ArrowLeft className="w-4 h-4" /> Back to Courses
+                        <ArrowLeft className="w-4 h-4" /> Back to Academy
                     </Link>
                 </div>
             </section>
