@@ -419,6 +419,31 @@ export async function createBytePlusAsset(input: { imageUrl: string; name?: stri
   return { assetId, groupId }
 }
 
+type BytePlusAssetResponse = {
+  Id?: string
+  Status?: string
+  AssetUri?: string
+  AssetURI?: string
+  Result?: {
+    Id?: string
+    Status?: string
+    AssetUri?: string
+    AssetURI?: string
+    Asset?: { Id?: string; Status?: string; AssetUri?: string; AssetURI?: string }
+  }
+  Items?: Array<{ Id?: string; Status?: string; AssetUri?: string; AssetURI?: string }>
+  ResponseMetadata?: { Error?: { Message?: string } }
+}
+
+/** Normalizes the response shapes used by the global and console Asset APIs. */
+export function parseBytePlusAssetResponse(json: BytePlusAssetResponse, fallbackId: string) {
+  const asset = json.Result?.Asset || json.Result || json.Items?.[0] || json
+  const id = asset.Id || json.Id || fallbackId
+  const status = asset.Status || json.Status || "Unknown"
+  const assetUri = asset.AssetUri || asset.AssetURI || json.AssetUri || json.AssetURI || `asset://${id}`
+  return { id, status, assetUri }
+}
+
 export async function getBytePlusAsset(assetId: string) {
   const { ak, sk } = assetSigningKeys()
 
@@ -436,11 +461,11 @@ export async function getBytePlusAsset(assetId: string) {
     body,
   })
 
-  const json = (await res.json().catch(() => ({}))) as { Result?: { Status?: string; AssetUri?: string }; Items?: Array<{ Status?: string; AssetUri?: string }> }
-  const status = json.Result?.Status || json.Items?.[0]?.Status || "Unknown"
-  const assetUri = json.Result?.AssetUri || json.Items?.[0]?.AssetUri || `asset://${assetId}`
-
-  return { id: assetId, status, assetUri }
+  const json = (await res.json().catch(() => ({}))) as BytePlusAssetResponse
+  if (!res.ok || json.ResponseMetadata?.Error) {
+    throw new BytePlusProviderError(`GetAsset failed: ${json.ResponseMetadata?.Error?.Message || res.statusText}`, res.status)
+  }
+  return parseBytePlusAssetResponse(json, assetId)
 }
 
 /**

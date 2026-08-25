@@ -1,6 +1,6 @@
 import { generationRequestSchema } from "./model-routing"
 import { describe, expect, it } from "vitest"
-import { formatBytePlusError, formatBytePlusMediaUrl, bytePlusVideoRatio, bytePlusVideoReferenceLimit, formatBytePlusReferencePrompt } from "./byteplus"
+import { formatBytePlusError, formatBytePlusMediaUrl, bytePlusVideoRatio, bytePlusVideoReferenceLimit, formatBytePlusReferencePrompt, parseBytePlusAssetResponse } from "./byteplus"
 
 describe("formatBytePlusError", () => {
   it("uses nested BytePlus error messages and redacts provider identifiers", () => {
@@ -24,6 +24,22 @@ describe("formatBytePlusMediaUrl", () => {
 
   it("preserves already formatted asset:// URIs", () => {
     expect(formatBytePlusMediaUrl("asset://asset-20260222234430-mxpgh")).toBe("asset://asset-20260222234430-mxpgh")
+  })
+})
+
+describe("BytePlus asset status responses", () => {
+  it("reads the top-level shape returned by the Asset API", () => {
+    expect(parseBytePlusAssetResponse({
+      Id: "asset-ethan",
+      Status: "Active",
+      AssetUri: "asset://asset-ethan",
+    }, "fallback")).toEqual({ id: "asset-ethan", status: "Active", assetUri: "asset://asset-ethan" })
+  })
+
+  it("also accepts the nested console response shape", () => {
+    expect(parseBytePlusAssetResponse({
+      Result: { Asset: { Id: "asset-lena", Status: "Active", AssetURI: "asset://asset-lena" } },
+    }, "fallback")).toEqual({ id: "asset-lena", status: "Active", assetUri: "asset://asset-lena" })
   })
 })
 

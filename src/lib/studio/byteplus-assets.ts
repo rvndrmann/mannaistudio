@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { createBytePlusAsset, getBytePlusAsset } from "./byteplus"
+import { createServiceClient } from "@/lib/supabase/service"
 
 /**
  * The BytePlus Asset Library, remembered.
@@ -129,10 +130,24 @@ export async function sharedAssetGroupId(supabase: SupabaseClient): Promise<stri
 
 /** Remembers a group the provider just made, so the next process reuses it. */
 export async function rememberAssetGroupId(supabase: SupabaseClient, groupId: string) {
-  const { error } = await supabase
+  // This is server-owned provider configuration. The request client correctly
+  // cannot write site_settings under RLS, so use the service client after the
+  // route has already authenticated project access.
+  let settingsClient = supabase
+  try { settingsClient = createServiceClient() } catch { /* tests/local setups without a service key */ }
+  const { error } = await settingsClient
     .from("site_settings")
     .upsert({ key: ASSET_GROUP_SETTING, value: { group_id: groupId } }, { onConflict: "key" })
   if (error) console.warn("Could not remember the BytePlus asset group id:", error.message)
+}
+
+async function forgetAssetGroupId(supabase: SupabaseClient) {
+  let settingsClient = supabase
+  try { settingsClient = createServiceClient() } catch { /* tests/local setups without a service key */ }
+  const { error } = await settingsClient
+    .from("site_settings")
+    .upsert({ key: ASSET_GROUP_SETTING, value: { group_id: null } }, { onConflict: "key" })
+  if (error) throw new Error(`Could not clear the missing BytePlus asset group: ${error.message}`)
 }
 
 async function rememberRegistration(supabase: SupabaseClient, row: Record<string, unknown>) {
@@ -232,8 +247,22 @@ export async function registerAssetOnce(input: {
   // The group is resolved here rather than inside the provider call, because
   // only this side can remember it: the provider module has no database.
   const groupId = await sharedAssetGroupId(supabase)
-  const created = await createBytePlusAsset({ imageUrl: input.imageUrl, name: input.name, groupId })
-  if (!groupId && created.groupId) await rememberAssetGroupId(supabase, created.groupId)
+  let created
+  try {
+    created = await createBytePlusAsset({ imageUrl: input.imageUrl, name: input.name, groupId })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : ""
+    const missingStoredGroup = Boolean(groupId) && /asset[_ ]group.+not found|specified asset_group.+not found/i.test(message)
+    // The operator-owned environment setting is deliberate and cannot safely
+    // be rewritten here. A database-owned group, however, may have been removed
+    // during console cleanup; recover once by replacing that dead shared group.
+    if (!missingStoredGroup || process.env.ARK_ASSET_GROUP_ID?.trim()) throw error
+    await forgetAssetGroupId(supabase)
+    created = await createBytePlusAsset({ imageUrl: input.imageUrl, name: input.name })
+  }
+  if ((!groupId || created.groupId !== groupId) && created.groupId) {
+    await rememberAssetGroupId(supabase, created.groupId)
+  }
   let assetUri = `asset://${created.assetId}`
   // An asset is not usable the instant it is created, and the URI the provider
   // reports once it is active is the one to keep.
