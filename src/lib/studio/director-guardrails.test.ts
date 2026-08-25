@@ -4,6 +4,12 @@ import { directorTools } from "./tool-registry"
 import { agentForStage, agentForTool } from "./director-team"
 
 const chatRoute = readFileSync("src/app/api/studio/projects/[projectId]/director/chat/route.ts", "utf8")
+// The turn moved out of the route so that something other than a Next.js route
+// could run it. The guarantees below are about the turn, not about the file it
+// happens to live in, so they are checked against both — a charge site creeping
+// back into either one is the mistake this guards against.
+const directorTurn = readFileSync("src/lib/studio/director-turn.ts", "utf8")
+const turnCode = `${chatRoute}\n${directorTurn}`
 
 /**
  * The Director chat route decides nothing about what the user wants, and spends
@@ -32,24 +38,24 @@ describe("the chat route cannot spend the user's credits on generation", () => {
   // deduction is allowed, and pinned instead to the shape that makes it safe.
   it("prices nothing from the generation rate card", () => {
     for (const primitive of ["refundGenerationCredits", "calculateCreditCost"]) {
-      expect(chatRoute).not.toContain(primitive)
+      expect(turnCode).not.toContain(primitive)
     }
   })
 
   it("charges only for measured token usage, through one function", () => {
-    expect(chatRoute).toContain("chatTurnCredits")
+    expect(turnCode).toContain("chatTurnCredits")
     // One charge site. Two would be a turn billed twice on the streaming path.
-    expect((chatRoute.match(/deductUserCredits\(/g) || []).length).toBe(1)
+    expect((turnCode.match(/deductUserCredits\(/g) || []).length).toBe(1)
   })
 
   it("charges nothing for a turn the customer's own provider billed them for", () => {
-    expect(chatRoute).toContain("ranOnCustomerKey")
-    expect(chatRoute).toMatch(/if \(ranOnCustomerKey\) return 0/)
+    expect(turnCode).toContain("ranOnCustomerKey")
+    expect(turnCode).toMatch(/if \(ranOnCustomerKey\) return 0/)
   })
 
   it("calls no generation provider directly", () => {
     for (const entry of ["generateProjectImage", "createBytePlusAsset", "execute-generation"]) {
-      expect(chatRoute).not.toContain(entry)
+      expect(turnCode).not.toContain(entry)
     }
   })
 
