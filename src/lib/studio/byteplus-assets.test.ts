@@ -34,6 +34,9 @@ function fakeSupabase(rows: Row[] = []) {
         update(values: Record<string, unknown>) { pending = "update"; patch = values; return builder },
         delete() { pending = "delete"; return builder },
         insert(values: Record<string, unknown>) {
+          const mode = (table as unknown as { failInsert?: boolean | string }).failInsert
+          if (mode === true) return Promise.resolve({ data: null, error: { code: "42P10", message: "no unique or exclusion constraint matching the ON CONFLICT specification" } })
+          if (mode === "conflict") return Promise.resolve({ data: null, error: { code: "23505", message: "duplicate key value" } })
           rows.push({ id: `row-${rows.length}`, use_count: 1, ...values } as Row)
           return Promise.resolve({ data: null, error: null })
         },
@@ -231,5 +234,42 @@ describe("a character whose chosen image changed", () => {
 
     expect(result.reused).toBe(true)
     expect(createBytePlusAsset).not.toHaveBeenCalled()
+  })
+})
+
+describe("recording a registration", () => {
+  /**
+   * The write used ON CONFLICT ("source_path") against an index that is on
+   * (source_path, coalesce(credential_id, ...)). Postgres rejects a conflict
+   * target matching no constraint, and nothing looked at the result — so every
+   * registration was forgotten, the same face was registered again on the next
+   * generation, and the fifty-image library filled with duplicates while
+   * verified characters were still rejected.
+   */
+  it("fails loudly when the row cannot be written", async () => {
+    const supabase = fakeSupabase()
+    ;(supabase as unknown as { failInsert: boolean }).failInsert = true
+    createBytePlusAsset.mockResolvedValue({ assetId: "asset-new" })
+    getBytePlusAsset.mockResolvedValue(active("asset-new"))
+
+    await expect(registerAssetOnce({
+      supabase,
+      sourcePath: "user/project/lena.png",
+      imageUrl: "https://signed.example/lena.png?token=one",
+    })).rejects.toThrow(/could not record it/i)
+  })
+
+  it("keeps the row when a racing registration got there first", async () => {
+    const supabase = fakeSupabase()
+    ;(supabase as unknown as { failInsert: "conflict" }).failInsert = "conflict"
+    createBytePlusAsset.mockResolvedValue({ assetId: "asset-new" })
+    getBytePlusAsset.mockResolvedValue(active("asset-new"))
+
+    const result = await registerAssetOnce({
+      supabase,
+      sourcePath: "user/project/lena.png",
+      imageUrl: "https://signed.example/lena.png?token=one",
+    })
+    expect(result.assetId).toBe("asset-new")
   })
 })

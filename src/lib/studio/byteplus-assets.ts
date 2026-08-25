@@ -62,6 +62,40 @@ async function activeAsset(assetId: string) {
  * path (or the external URL) — never a signed URL, whose token is different on
  * every request and would defeat the lookup entirely.
  */
+/**
+ * Writes the registry row for an image that has just been registered.
+ *
+ * This was an upsert naming `source_path` as its conflict target, and there is
+ * no unique constraint by that name — the index is on `(source_path,
+ * coalesce(credential_id, ...))`, so a customer's key and the platform's can
+ * each hold the same picture. Postgres rejects an ON CONFLICT that matches no
+ * constraint, the result was never inspected, and so every registration since
+ * has been silently forgotten: the asset was created at the provider, nothing
+ * recorded it, and the next generation registered the same face again. That is
+ * the fifty-image library filling up, and a character that verifies
+ * successfully and is rejected anyway.
+ *
+ * Insert first, update on collision, and never ignore either error. The
+ * collision path is what the upsert was reaching for — two verifications racing
+ * on one image must not lose the row — and it is kept.
+ */
+async function rememberRegistration(supabase: SupabaseClient, row: Record<string, unknown>) {
+  const { error } = await supabase.from("creator_byteplus_assets").insert(row)
+  if (!error) return
+  // 23505 is a unique violation: someone else registered this image between
+  // the lookup above and this write.
+  if (error.code !== "23505") {
+    throw new Error(`Registered ${row.asset_id} with the provider but could not record it: ${error.message}`)
+  }
+  const { error: updateError } = await supabase
+    .from("creator_byteplus_assets")
+    .update(row)
+    .eq("source_path", row.source_path as string)
+  if (updateError) {
+    throw new Error(`Registered ${row.asset_id} with the provider but could not record it: ${updateError.message}`)
+  }
+}
+
 export async function registerAssetOnce(input: {
   supabase: SupabaseClient
   sourcePath: string
@@ -143,10 +177,7 @@ export async function registerAssetOnce(input: {
     await new Promise((resolve) => setTimeout(resolve, 1000))
   }
 
-  // Upsert, not insert: two verifications racing on the same path would
-  // otherwise fail the second write on the unique index and lose the row,
-  // leaving a registered asset with nothing pointing at it.
-  await supabase.from("creator_byteplus_assets").upsert({
+  await rememberRegistration(supabase, {
     source_path: sourcePath,
     asset_id: created.assetId,
     asset_uri: assetUri,
@@ -155,7 +186,7 @@ export async function registerAssetOnce(input: {
     entity_id: input.entityId || null,
     created_by: input.userId || null,
     last_used_at: new Date().toISOString(),
-  }, { onConflict: "source_path" })
+  })
 
   return { assetId: created.assetId, assetUri, reused: false }
 }
