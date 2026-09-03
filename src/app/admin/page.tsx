@@ -10,7 +10,7 @@ import {
     Save, X, Download, FileText, Video, Trophy,
     Inbox, Mail, Clock, DollarSign, Loader2, Phone,
     ChevronLeft, ChevronRight, Calendar, Pause, PauseCircle, PlayCircle,
-    Image as ImageIcon, RefreshCw, FolderKanban
+    Image as ImageIcon, RefreshCw, FolderKanban, Clapperboard
 } from "lucide-react"
 import { courses, adminShowcase, challenges } from "@/lib/data"
 import { useEffect, useState } from "react"
@@ -39,6 +39,8 @@ import { defaultDirectorTeam, directorAgentKeys, fetchDirectorTeam, normalizeDir
 import AdminEnterpriseOrders from "@/components/enterprise/AdminEnterpriseOrders"
 import { defaultVoiceInstructions, fetchVoiceInstructions } from "@/lib/studio/voice-instructions"
 import BlogManager from "@/components/admin/BlogManager"
+import OriginalsManager from "@/components/admin/OriginalsManager"
+import { defaultHomeVariant, fetchHomeVariant, type HomeVariant } from "@/lib/home-variant"
 
 type EnrolledStudent = {
     profile_id: string
@@ -229,6 +231,45 @@ function AdminDashboardContent() {
     const [siteFeatures, setSiteFeatures] = useState<SiteFeatures>(defaultSiteFeatures)
     const [isSavingSiteFeatures, setIsSavingSiteFeatures] = useState(false)
     const [siteFeaturesMessage, setSiteFeaturesMessage] = useState("")
+    const [homeVariant, setHomeVariant] = useState<HomeVariant>(defaultHomeVariant)
+    const [isSavingHomeVariant, setIsSavingHomeVariant] = useState(false)
+    const [homeVariantMessage, setHomeVariantMessage] = useState("")
+
+    const loadHomeVariant = async () => {
+        const supabase = await getServiceRequestClient()
+        if (!supabase) return
+        setHomeVariant(await fetchHomeVariant(supabase))
+    }
+
+    // Saved on click rather than behind a Save button: there are two states and
+    // picking one is the whole action. A variant left selected but unsaved would
+    // read as live when it is not.
+    const handleSelectHomeVariant = async (variant: HomeVariant) => {
+        if (variant === homeVariant) return
+        const previous = homeVariant
+        setHomeVariant(variant)
+        setIsSavingHomeVariant(true)
+        setHomeVariantMessage("")
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) throw new Error("No Supabase client")
+            // Through the RPC, not a direct upsert: site_settings is publicly
+            // readable and has no write policy, so writes go via a function that
+            // checks admin_users itself.
+            const { error } = await supabase.rpc("admin_set_home_variant", { p_variant: variant })
+            if (error) throw error
+            setHomeVariantMessage(
+                variant === "originals"
+                    ? "Homepage now shows Originals."
+                    : "Homepage now shows the Creator Studio pitch."
+            )
+        } catch (err: any) {
+            setHomeVariant(previous)
+            setHomeVariantMessage(`Could not switch: ${err.message}`)
+        } finally {
+            setIsSavingHomeVariant(false)
+        }
+    }
 
     const loadSiteFeatures = async () => {
         const supabase = await getServiceRequestClient()
@@ -1247,6 +1288,7 @@ function AdminDashboardContent() {
         loadDirectorRuntimeSettings()
         loadStudioFeatureFlags()
         loadSiteFeatures()
+        loadHomeVariant()
         loadAdminData()
         loadShowcaseItems()
     }, [])
@@ -1286,6 +1328,15 @@ function AdminDashboardContent() {
                                 )}
                             >
                                 <Tv className="w-4 h-4" /> Showcase Manager
+                            </button>
+                            <button
+                                onClick={() => setActiveTab("originals")}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
+                                    activeTab === "originals" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                )}
+                            >
+                                <Clapperboard className="w-4 h-4" /> Originals
                             </button>
                             <button
                                 onClick={() => setActiveTab("blog")}
@@ -1948,6 +1999,18 @@ function AdminDashboardContent() {
                                 </div>
                             </motion.div>
                         )}
+                        {activeTab === "originals" && (
+                            <motion.div
+                                key="originals"
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                className="space-y-8"
+                            >
+                                <OriginalsManager />
+                            </motion.div>
+                        )}
+
                         {activeTab === "blog" && (
                             <motion.div
                                 key="blog"
@@ -2973,12 +3036,69 @@ function AdminDashboardContent() {
                                 className="space-y-8"
                             >
                                 <header>
-                                    <h1 className="text-3xl font-bold tracking-tight mb-2">Pause Features & Navigation</h1>
-                                    <p className="text-white/40 text-sm">Pause any platform feature tab. Once paused, it immediately stops showing in the main page navigation bar.</p>
+                                    <h1 className="text-3xl font-bold tracking-tight mb-2">Homepage & Navigation</h1>
+                                    <p className="text-white/40 text-sm">Choose which landing page visitors see at /, and pause any platform feature tab. Once paused, it immediately stops showing in the main page navigation bar.</p>
                                 </header>
 
                                 <div className="glass-card p-6 rounded-2xl border-white/10 space-y-4 max-w-4xl">
+                                    <div>
+                                        <h2 className="text-lg font-bold">Homepage</h2>
+                                        <p className="mt-1 text-xs text-white/40">
+                                            Which landing page <span className="font-mono text-primary">/</span> serves. One at a time — switching takes effect on the next page load.
+                                        </p>
+                                    </div>
+
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        {[
+                                            {
+                                                id: "studio" as const,
+                                                label: "Creator Studio pitch",
+                                                desc: "The current homepage: AI Director agent, frontier models, showcase reel, Creator Studio call to action.",
+                                            },
+                                            {
+                                                id: "originals" as const,
+                                                label: "Originals",
+                                                desc: "Short-drama funnel: featured series, poster grid, free episodes, credit packs. Does not mention Creator Studio at all.",
+                                            },
+                                        ].map((option) => {
+                                            const isLive = homeVariant === option.id
+                                            return (
+                                                <button
+                                                    key={option.id}
+                                                    type="button"
+                                                    disabled={isSavingHomeVariant}
+                                                    onClick={() => handleSelectHomeVariant(option.id)}
+                                                    className={cn(
+                                                        "rounded-xl border p-4 text-left transition disabled:opacity-60",
+                                                        isLive
+                                                            ? "border-primary bg-primary/10"
+                                                            : "border-white/10 bg-white/[0.03] hover:border-white/25"
+                                                    )}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="font-bold text-base">{option.label}</p>
+                                                        {isLive && (
+                                                            <span className="rounded-full border border-primary/30 bg-primary/15 px-2.5 py-0.5 text-[10px] font-bold text-primary">
+                                                                Live
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="mt-1.5 text-xs leading-relaxed text-white/45">{option.desc}</p>
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
+
+                                    {homeVariantMessage && <p className="text-sm font-bold text-primary">{homeVariantMessage}</p>}
+
+                                    <p className="rounded-xl border border-white/10 bg-black/20 p-4 text-xs text-white/45">
+                                        Both pages stay reachable while you test: Originals is always at <span className="font-mono text-primary">/originals</span>, whichever homepage is live.
+                                    </p>
+                                </div>
+
+                                <div className="glass-card p-6 rounded-2xl border-white/10 space-y-4 max-w-4xl">
                                     {[
+                                        { key: "originals" as const, label: "Originals", path: "/originals", desc: "Episodic series watched with credits" },
                                         { key: "mcp" as const, label: "MCP & CLI", path: "/studio/external", desc: "External AI Client Integration Setup" },
                                         { key: "calendar" as const, label: "Calendar", path: "/calendar", desc: "Content Calendar & Post Scheduler" },
                                         { key: "analytics" as const, label: "Analytics", path: "/analytics", desc: "Social Media & Video Analytics Dashboard" },
