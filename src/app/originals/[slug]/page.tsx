@@ -1,11 +1,10 @@
 "use client"
 
-import { use, useCallback, useEffect, useState } from "react"
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { AnimatePresence, motion } from "framer-motion"
-import { AlertCircle, ArrowLeft, Check, Film, Loader2, Lock, Play, X, Zap } from "lucide-react"
+import { AlertCircle, ArrowLeft, Bookmark, Film, Loader2, Lock, Maximize, Pause, Play, Share2, SkipForward, Volume2, VolumeX, Zap } from "lucide-react"
 import Navbar from "@/components/Navbar"
-import Footer from "@/components/Footer"
 import CreditPackModal from "@/components/originals/CreditPackModal"
 import { useAuth } from "@/components/auth/auth-provider"
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events"
@@ -16,6 +15,17 @@ import {
   type OriginalsSeriesDetail,
 } from "@/lib/originals"
 
+/** Episodes per page in the number grid, matching how long series are browsed. */
+const GRID_PAGE = 50
+
+/** Seconds as m:ss, the way a player clock reads. */
+function formatClock(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00"
+  const m = Math.floor(seconds / 60)
+  const s = Math.floor(seconds % 60)
+  return `${m}:${String(s).padStart(2, "0")}`
+}
+
 export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params)
   const { user, signInWithGoogle } = useAuth()
@@ -24,11 +34,27 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
   const [credits, setCredits] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
   const [openingId, setOpeningId] = useState<string | null>(null)
   const [unlockError, setUnlockError] = useState<string | null>(null)
   const [showPacks, setShowPacks] = useState(false)
   const [playing, setPlaying] = useState<{ episode: OriginalsEpisodeSummary; videoUrl: string } | null>(null)
+  /** The episode whose card is selected but not yet paid for. */
+  const [previewing, setPreviewing] = useState<OriginalsEpisodeSummary | null>(null)
+  const [ended, setEnded] = useState(false)
+  const [gridPage, setGridPage] = useState(0)
+  const [copied, setCopied] = useState(false)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [muted, setMuted] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
+
+  const togglePlay = () => {
+    const el = videoRef.current
+    if (!el) return
+    if (el.paused) void el.play()
+    else el.pause()
+  }
 
   const load = useCallback(async () => {
     try {
@@ -44,24 +70,60 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
     }
   }, [slug])
 
-  useEffect(() => {
-    load()
-  }, [load, user?.id])
+  useEffect(() => { load() }, [load, user?.id])
 
   const episodePrice = series?.episodePrice ?? DEFAULT_EPISODE_PRICE
+  const episodes = useMemo(() => series?.episodes ?? [], [series])
 
-  const openEpisode = async (episode: OriginalsEpisodeSummary) => {
-    if (!user) {
-      signInWithGoogle()
+  /** The episode on screen, whether it is playing or waiting to be unlocked. */
+  const current = playing?.episode ?? previewing
+  const currentIndex = current ? episodes.findIndex((e) => e.id === current.id) : -1
+  const nextEpisode = currentIndex >= 0 ? episodes[currentIndex + 1] : undefined
+
+  const openEpisode = useCallback(async (episode: OriginalsEpisodeSummary) => {
+    setPreviewing(episode)
+    setEnded(false)
+    setUnlockError(null)
+
+    // A locked episode shows its price on the player rather than charging on a
+    // tap: the card grid is browsed, and a click there should never be the
+    // thing that spends credits.
+    const playsFree = episode.isFree || episode.isUnlocked
+    if (!playsFree) {
+      setPlaying(null)
       return
     }
+    if (!user) { signInWithGoogle(); return }
+
     setOpeningId(episode.id)
-    setUnlockError(null)
     try {
       const res = await fetch("/api/originals/unlock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ episodeId: episode.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Could not open this episode")
+      setCredits(Number(data.balance))
+      setPlaying({ episode, videoUrl: data.videoUrl })
+    } catch (err) {
+      setUnlockError(err instanceof Error ? err.message : "Could not open this episode")
+    } finally {
+      setOpeningId(null)
+    }
+  }, [user, signInWithGoogle])
+
+  /** Pays for the episode on screen and starts it. */
+  const unlockCurrent = async () => {
+    if (!current) return
+    if (!user) { signInWithGoogle(); return }
+    setOpeningId(current.id)
+    setUnlockError(null)
+    try {
+      const res = await fetch("/api/originals/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ episodeId: current.id }),
       })
       const data = await res.json()
 
@@ -73,39 +135,53 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
         setShowPacks(true)
         return
       }
-      if (!res.ok) throw new Error(data.error || "Could not open this episode")
+      if (!res.ok) throw new Error(data.error || "Could not unlock this episode")
 
       setCredits(Number(data.balance))
       if (data.status === "purchased") {
         notifyCreditBalanceChanged(Number(data.balance))
-        // Mark it owned locally so the list redraws without a round trip.
-        setSeries((current) =>
-          current
-            ? {
-                ...current,
-                episodes: current.episodes.map((item) =>
-                  item.id === episode.id ? { ...item, isUnlocked: true } : item,
-                ),
-              }
-            : current,
-        )
+        setSeries((s) => s ? {
+          ...s,
+          episodes: s.episodes.map((e) => e.id === current.id ? { ...e, isUnlocked: true } : e),
+        } : s)
       }
-      setPlaying({ episode, videoUrl: data.videoUrl })
+      setEnded(false)
+      setPlaying({ episode: { ...current, isUnlocked: true }, videoUrl: data.videoUrl })
     } catch (err) {
-      setUnlockError(err instanceof Error ? err.message : "Could not open this episode")
+      setUnlockError(err instanceof Error ? err.message : "Could not unlock this episode")
     } finally {
       setOpeningId(null)
     }
+  }
+
+  // Open the first episode once the series arrives, so the page starts on
+  // something watchable rather than an empty frame. Signed-out visitors get it
+  // selected but not started — auto-opening would fire the Google redirect at
+  // someone who has done nothing but load the page.
+  useEffect(() => {
+    if (!series || current || episodes.length === 0) return
+    if (!user) { setPreviewing(episodes[0]); return }
+    openEpisode(episodes[0])
+  }, [series, current, episodes, openEpisode, user])
+
+  // Keep the grid on the page holding whatever is playing.
+  useEffect(() => {
+    if (currentIndex >= 0) setGridPage(Math.floor(currentIndex / GRID_PAGE))
+  }, [currentIndex])
+
+  const share = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch { /* clipboard blocked; nothing useful to say */ }
   }
 
   if (loading) {
     return (
       <main className="min-h-screen bg-[#0a0a0f]">
         <Navbar />
-        <div className="flex items-center justify-center gap-3 pt-48 text-white/40">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          <span className="text-sm">Loading series…</span>
-        </div>
+        <div className="grid min-h-screen place-items-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
       </main>
     )
   }
@@ -114,14 +190,10 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
     return (
       <main className="min-h-screen bg-[#0a0a0f]">
         <Navbar />
-        <div className="mx-auto max-w-2xl px-6 pt-40 text-center">
-          <Film className="mx-auto h-10 w-10 text-white/20" />
-          <h1 className="mt-4 text-xl font-semibold text-white">{error || "Series not found"}</h1>
-          <Link
-            href="/originals"
-            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-black"
-          >
-            <ArrowLeft className="h-4 w-4" />
+        <div className="mx-auto max-w-md px-6 pt-40 text-center">
+          <AlertCircle className="mx-auto h-8 w-8 text-red-400" />
+          <p className="mt-4 text-white/70">{error || "Series not found"}</p>
+          <Link href="/originals" className="mt-6 inline-block rounded-xl bg-primary px-6 py-2.5 text-sm font-semibold text-black">
             Back to Originals
           </Link>
         </div>
@@ -129,226 +201,368 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
     )
   }
 
+  const pageCount = Math.max(1, Math.ceil(episodes.length / GRID_PAGE))
+  const pageEpisodes = episodes.slice(gridPage * GRID_PAGE, (gridPage + 1) * GRID_PAGE)
+  const locked = Boolean(current && !current.isFree && !current.isUnlocked)
+
   return (
-    <main className="min-h-screen bg-[#0a0a0f] pb-20">
+    <main className="min-h-screen bg-[#0a0a0f] text-white">
       <Navbar />
 
-      {/* Hero */}
-      <div className="relative">
-        <div className="absolute inset-0 h-[420px] overflow-hidden">
-          {series.bannerUrl || series.posterUrl ? (
-            <img
-              src={series.bannerUrl || series.posterUrl || ""}
-              alt=""
-              aria-hidden
-              className="h-full w-full object-cover opacity-30 blur-2xl"
-            />
-          ) : null}
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0a0a0f]/70 to-[#0a0a0f]" />
-        </div>
-
-        <div className="relative mx-auto max-w-6xl px-6 pt-28">
-          <Link
-            href="/originals"
-            className="inline-flex items-center gap-2 text-xs font-semibold text-white/50 transition hover:text-white"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            All Originals
-          </Link>
-
-          <div className="mt-6 flex flex-col gap-8 md:flex-row">
-            <div className="w-40 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-[#111] sm:w-52">
-              <div className="aspect-[9/16]">
-                {series.posterUrl ? (
-                  <img src={series.posterUrl} alt={series.title} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="grid h-full w-full place-items-center">
-                    <Film className="h-8 w-8 text-white/20" />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex-1">
-              {series.genre && (
-                <span className="inline-block rounded-full border border-white/15 bg-white/[0.06] px-3 py-1 text-[11px] font-semibold text-white/70">
-                  {series.genre}
-                </span>
-              )}
-              <h1 className="mt-3 text-3xl font-semibold tracking-[-0.02em] text-white md:text-4xl">{series.title}</h1>
-              <p className="mt-2 text-sm text-white/50">
-                {series.episodeCount} {series.episodeCount === 1 ? "episode" : "episodes"} · first{" "}
-                {series.freeEpisodes} free · {episodePrice} credits each after
-              </p>
-              {series.description && (
-                <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/70">{series.description}</p>
-              )}
-
-              <div className="mt-6 flex flex-wrap items-center gap-3">
-                {series.episodes[0] && (
-                  <button
-                    type="button"
-                    onClick={() => openEpisode(series.episodes[0])}
-                    disabled={openingId !== null}
-                    className="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
-                  >
-                    {openingId === series.episodes[0].id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Play className="h-4 w-4 fill-black" />
-                    )}
-                    Start watching free
-                  </button>
-                )}
-                <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 py-3 text-sm font-bold text-primary">
-                  <Zap className="h-4 w-4 fill-primary" />
-                  {credits !== null ? `${credits.toLocaleString()} credits` : "Sign in"}
-                </div>
-                {user && (
-                  <button
-                    type="button"
-                    onClick={() => setShowPacks(true)}
-                    className="rounded-xl border border-white/15 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white/80 transition hover:bg-white/10 hover:text-white"
-                  >
-                    Get credits
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Episodes */}
-      <div className="mx-auto mt-12 max-w-6xl px-6">
-        <h2 className="text-lg font-semibold text-white">Episodes</h2>
-
-        {unlockError && (
-          <div className="mt-4 flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs font-semibold text-amber-300">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>{unlockError}</span>
-          </div>
-        )}
-
-        <div className="mt-4 space-y-2">
-          {series.episodes.map((episode) => {
-            const locked = !episode.isFree && !episode.isUnlocked
-            const busy = openingId === episode.id
-            return (
-              <button
-                key={episode.id}
-                type="button"
-                onClick={() => openEpisode(episode)}
-                disabled={busy}
-                className="group flex w-full items-center gap-4 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3 text-left transition hover:border-white/20 hover:bg-white/[0.05] disabled:opacity-60"
-              >
-                <div className="relative h-16 w-28 shrink-0 overflow-hidden rounded-xl bg-[#111]">
-                  {episode.thumbnailUrl ? (
-                    <img src={episode.thumbnailUrl} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="grid h-full w-full place-items-center">
-                      <Film className="h-4 w-4 text-white/20" />
-                    </div>
-                  )}
-                  <div className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition group-hover:opacity-100">
-                    {locked ? <Lock className="h-4 w-4 text-white" /> : <Play className="h-4 w-4 fill-white text-white" />}
-                  </div>
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-white">
-                    <span className="text-white/40">E{episode.episodeNumber}</span> {episode.title}
-                  </p>
-                  {episode.description && (
-                    <p className="mt-0.5 line-clamp-1 text-xs text-white/50">{episode.description}</p>
-                  )}
-                  {episode.durationSeconds ? (
-                    <p className="mt-0.5 text-[11px] text-white/35">{formatEpisodeDuration(episode.durationSeconds)}</p>
-                  ) : null}
-                </div>
-
-                <div className="shrink-0">
-                  {busy ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-white/50" />
-                  ) : episode.isFree ? (
-                    <span className="rounded-md bg-primary/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-primary">
-                      Free
-                    </span>
-                  ) : episode.isUnlocked ? (
-                    <span className="flex items-center gap-1 rounded-md bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white/70">
-                      <Check className="h-3 w-3" />
-                      Owned
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary">
-                      <Zap className="h-3 w-3 fill-primary" />
-                      {episodePrice}
-                    </span>
-                  )}
-                </div>
-              </button>
-            )
-          })}
-
-          {series.episodes.length === 0 && (
-            <p className="rounded-2xl border border-white/10 bg-white/[0.02] px-6 py-12 text-center text-sm text-white/40">
-              No episodes published yet.
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Player */}
-      <AnimatePresence>
-        {playing && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] grid place-items-center bg-black/90 p-4 backdrop-blur-sm"
-            onClick={() => setPlaying(null)}
-          >
-            <div
-              className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-white/15 bg-black"
-              onClick={(event) => event.stopPropagation()}
+      <div className="mx-auto max-w-7xl px-4 pb-16 pt-28 sm:px-6">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,460px)]">
+          {/* Player */}
+          <div className="flex gap-4">
+            <Link
+              href="/originals"
+              aria-label="Back to Originals"
+              className="hidden h-11 w-11 shrink-0 place-items-center rounded-full bg-white/[0.06] text-white/70 transition hover:bg-white/10 hover:text-white sm:grid"
             >
-              <button
-                onClick={() => setPlaying(null)}
-                aria-label="Close player"
-                className="absolute right-3 top-3 z-10 rounded-xl bg-black/60 p-2 text-white/70 transition hover:bg-black/80 hover:text-white"
-              >
-                <X className="h-5 w-5" />
-              </button>
-              <video
-                src={playing.videoUrl}
-                controls
-                autoPlay
-                playsInline
-                className="aspect-[9/16] w-full bg-black"
-              />
-              <div className="border-t border-white/10 p-4">
-                <p className="text-sm font-semibold text-white">
-                  <span className="text-white/40">E{playing.episode.episodeNumber}</span> {playing.episode.title}
-                </p>
-                <p className="mt-0.5 text-xs text-white/40">{series.title}</p>
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+
+            {/* Sized by height, not width: a 9:16 frame at full column width is
+                taller than the viewport, which pushed the controls off screen. */}
+            <div className="relative mx-auto aspect-[9/16] h-[min(calc(100vh-9rem),740px)] max-w-full overflow-hidden rounded-2xl bg-black">
+              <div className="relative h-full w-full">
+                {playing && !locked ? (
+                  <video
+                    ref={videoRef}
+                    key={playing.episode.id}
+                    src={playing.videoUrl}
+                    autoPlay
+                    playsInline
+                    onEnded={() => { setEnded(true); setIsPlaying(false) }}
+                    onPlay={() => { setEnded(false); setIsPlaying(true) }}
+                    onPause={() => setIsPlaying(false)}
+                    onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
+                    onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+                    onClick={togglePlay}
+                    className="h-full w-full cursor-pointer bg-black object-contain"
+                  />
+                ) : (
+                  <div className="absolute inset-0">
+                    {current?.thumbnailUrl || series.posterUrl ? (
+                      <img
+                        src={current?.thumbnailUrl || series.posterUrl || ""}
+                        alt=""
+                        className="h-full w-full object-cover opacity-40"
+                      />
+                    ) : (
+                      <div className="grid h-full w-full place-items-center"><Film className="h-10 w-10 text-white/15" /></div>
+                    )}
+                  </div>
+                )}
+
+                {/* Selected but not started — the tap that begins playback,
+                    and the one that asks a signed-out visitor to sign in. */}
+                {current && !playing && !locked && (
+                  <button
+                    type="button"
+                    onClick={() => openEpisode(current)}
+                    disabled={openingId === current.id}
+                    className="absolute inset-0 grid place-items-center bg-black/40 transition hover:bg-black/25"
+                  >
+                    <span className="grid h-16 w-16 place-items-center rounded-full bg-primary text-black shadow-xl">
+                      {openingId === current.id
+                        ? <Loader2 className="h-6 w-6 animate-spin" />
+                        : <Play className="ml-1 h-6 w-6 fill-black" />}
+                    </span>
+                    {!user && (
+                      <span className="absolute bottom-8 text-xs font-medium text-white/70">
+                        Sign in to watch — Episode {current.episodeNumber} is free
+                      </span>
+                    )}
+                  </button>
+                )}
+
+                {/* Paywall */}
+                {locked && (
+                  <div className="absolute inset-0 grid place-items-center bg-black/70 px-6 text-center backdrop-blur-[2px]">
+                    <div>
+                      <Lock className="mx-auto h-7 w-7 text-white/70" />
+                      <p className="mt-3 text-lg font-semibold leading-snug">
+                        This is a paid episode.
+                        <br />Unlock it to watch.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={unlockCurrent}
+                        disabled={openingId === current?.id}
+                        className="mx-auto mt-5 flex items-center gap-2 rounded-xl bg-primary px-7 py-3 text-sm font-bold text-black transition hover:brightness-110 disabled:opacity-60"
+                      >
+                        {openingId === current?.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <><Zap className="h-4 w-4 fill-black" />{episodePrice} — Unlock now</>
+                        )}
+                      </button>
+                      <p className="mt-3 text-xs text-white/45">
+                        {credits !== null ? `Balance: ${credits.toLocaleString()} credits` : ""}
+                      </p>
+                      {unlockError && <p className="mt-2 text-xs font-medium text-red-300">{unlockError}</p>}
+                    </div>
+                  </div>
+                )}
+
+                {/* End of episode — the way on to the next one */}
+                <AnimatePresence>
+                  {ended && !locked && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="absolute inset-0 grid place-items-center bg-black/80 px-6 text-center"
+                    >
+                      <div>
+                        {nextEpisode ? (
+                          <>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-white/45">Up next</p>
+                            <p className="mt-1.5 text-lg font-semibold">
+                              Episode {nextEpisode.episodeNumber}
+                            </p>
+                            {/* Most episodes are titled "Episode N", which the
+                                line above already says. */}
+                            {nextEpisode.title && nextEpisode.title.trim() !== `Episode ${nextEpisode.episodeNumber}` && (
+                              <p className="mt-0.5 line-clamp-1 text-sm text-white/55">{nextEpisode.title}</p>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => openEpisode(nextEpisode)}
+                              disabled={openingId === nextEpisode.id}
+                              className="mx-auto mt-5 flex items-center gap-2 rounded-xl bg-primary px-7 py-3 text-sm font-bold text-black transition hover:brightness-110 disabled:opacity-60"
+                            >
+                              {openingId === nextEpisode.id
+                                ? <Loader2 className="h-4 w-4 animate-spin" />
+                                : <><SkipForward className="h-4 w-4 fill-black" />Next episode</>}
+                            </button>
+                            {!nextEpisode.isFree && !nextEpisode.isUnlocked && (
+                              <p className="mt-2.5 text-xs text-white/45">Costs {episodePrice} credits</p>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-lg font-semibold">That&apos;s the last episode.</p>
+                            <Link
+                              href="/originals"
+                              className="mx-auto mt-5 flex w-fit items-center gap-2 rounded-xl bg-primary px-7 py-3 text-sm font-bold text-black transition hover:brightness-110"
+                            >
+                              <Play className="h-4 w-4 fill-black" />Browse more series
+                            </Link>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => { setEnded(false); videoRef.current?.play() }}
+                          className="mt-3 text-xs font-medium text-white/50 underline-offset-2 hover:text-white hover:underline"
+                        >
+                          Watch again
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
+
+              {/* Player controls. Built by hand rather than using the native
+                  bar, because Next has to sit beside play/pause and a native
+                  control set cannot be added to. */}
+              {playing && !locked && (
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-3 pb-3 pt-8">
+                  <input
+                    type="range"
+                    min={0}
+                    max={duration || 0}
+                    step={0.1}
+                    value={currentTime}
+                    onChange={(e) => {
+                      const next = Number(e.target.value)
+                      if (videoRef.current) videoRef.current.currentTime = next
+                      setCurrentTime(next)
+                    }}
+                    aria-label="Seek"
+                    className="mb-2 h-1 w-full cursor-pointer appearance-none rounded-full bg-white/25 accent-[#b9f42e] [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary"
+                  />
+
+                  <div className="flex items-center gap-3 text-white">
+                    <button type="button" onClick={togglePlay} aria-label={isPlaying ? "Pause" : "Play"} className="transition hover:text-primary">
+                      {isPlaying ? <Pause className="h-5 w-5 fill-current" /> : <Play className="h-5 w-5 fill-current" />}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => nextEpisode && openEpisode(nextEpisode)}
+                      disabled={!nextEpisode || openingId === nextEpisode?.id}
+                      aria-label="Next episode"
+                      title={nextEpisode ? `Next: Episode ${nextEpisode.episodeNumber}` : "Last episode"}
+                      className="transition hover:text-primary disabled:opacity-30 disabled:hover:text-white"
+                    >
+                      {openingId && nextEpisode && openingId === nextEpisode.id
+                        ? <Loader2 className="h-5 w-5 animate-spin" />
+                        : <SkipForward className="h-5 w-5 fill-current" />}
+                    </button>
+
+                    <span className="text-xs tabular-nums text-white/80">
+                      {formatClock(currentTime)} / {formatClock(duration)}
+                    </span>
+
+                    <div className="ml-auto flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!videoRef.current) return
+                          videoRef.current.muted = !videoRef.current.muted
+                          setMuted(videoRef.current.muted)
+                        }}
+                        aria-label={muted ? "Unmute" : "Mute"}
+                        className="transition hover:text-primary"
+                      >
+                        {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const el = videoRef.current
+                          if (!el) return
+                          if (document.fullscreenElement) document.exitFullscreen()
+                          else el.requestFullscreen?.()
+                        }}
+                        aria-label="Fullscreen"
+                        className="transition hover:text-primary"
+                      >
+                        <Maximize className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+
+          {/* Details */}
+          <div>
+            <nav className="flex flex-wrap items-center gap-1.5 text-sm text-white/45">
+              <Link href="/" className="hover:text-white">Home</Link>
+              <span>/</span>
+              <Link href="/originals" className="hover:text-white">Originals</Link>
+              <span>/</span>
+              <span className="text-white/70">{series.title}</span>
+              {current && (<><span>/</span><span className="text-white/70">Episode {current.episodeNumber}</span></>)}
+            </nav>
+
+            <h1 className="mt-4 text-2xl font-semibold leading-tight sm:text-3xl">
+              {current ? `Episode ${current.episodeNumber} — ${series.title}` : series.title}
+            </h1>
+
+            {(current?.description || series.description) && (
+              <div className="mt-5">
+                <p className="text-sm font-semibold text-white/80">
+                  {current ? `Plot of Episode ${current.episodeNumber}` : "About this series"}
+                </p>
+                <p className="mt-2 text-sm leading-relaxed text-white/55">
+                  {current?.description || series.description}
+                </p>
+              </div>
+            )}
+
+            {(series.genre || series.tags.length > 0) && (
+              <div className="mt-5 flex flex-wrap gap-2">
+                {[series.genre, ...series.tags].filter(Boolean).map((tag) => (
+                  <span key={tag as string} className="rounded-full bg-white/[0.06] px-3.5 py-1.5 text-xs font-medium text-white/65">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-6 flex items-center gap-8 border-y border-white/[0.08] py-4">
+              <div className="text-center">
+                <Bookmark className="mx-auto h-5 w-5 text-white/60" />
+                <p className="mt-1 text-xs text-white/45">{episodes.length} episodes</p>
+              </div>
+              <div className="text-center">
+                <Zap className="mx-auto h-5 w-5 text-primary" />
+                <p className="mt-1 text-xs text-white/45">{episodePrice} per episode</p>
+              </div>
+              <button type="button" onClick={share} className="text-center">
+                <Share2 className="mx-auto h-5 w-5 text-white/60" />
+                <p className="mt-1 text-xs text-white/45">{copied ? "Copied!" : "Share"}</p>
+              </button>
+            </div>
+
+            {/* Episode grid */}
+            <div className="mt-6">
+              <div className="flex flex-wrap items-center gap-4">
+                {Array.from({ length: pageCount }, (_, i) => {
+                  const from = i * GRID_PAGE + 1
+                  const to = Math.min((i + 1) * GRID_PAGE, episodes.length)
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setGridPage(i)}
+                      className={`text-sm font-semibold transition ${gridPage === i ? "text-white" : "text-white/40 hover:text-white/70"}`}
+                    >
+                      {from} - {to}
+                    </button>
+                  )
+                })}
+                <span className="ml-auto text-xs text-white/35">
+                  {series.freeEpisodes} free, then {episodePrice} credits each
+                </span>
+              </div>
+
+              <div className="mt-4 grid grid-cols-6 gap-2.5">
+                {pageEpisodes.map((episode) => {
+                  const isCurrent = current?.id === episode.id
+                  const isLocked = !episode.isFree && !episode.isUnlocked
+                  return (
+                    <button
+                      key={episode.id}
+                      type="button"
+                      onClick={() => openEpisode(episode)}
+                      title={episode.title}
+                      className={`relative grid h-12 place-items-center rounded-lg text-sm font-semibold transition ${
+                        isCurrent
+                          ? "bg-primary/20 text-primary ring-1 ring-primary"
+                          : "bg-white/[0.05] text-white/70 hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      {openingId === episode.id
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : episode.episodeNumber}
+                      {isLocked && (
+                        <Lock className="absolute right-1 top-1 h-3 w-3 text-white/35" />
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {episodes.length === 0 && (
+                <p className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.02] p-6 text-center text-sm text-white/45">
+                  No episodes published yet.
+                </p>
+              )}
+            </div>
+
+            {current && (
+              <p className="mt-4 text-xs text-white/35">
+                {formatEpisodeDuration(current.durationSeconds)}
+                {current.isFree ? " · Free episode" : current.isUnlocked ? " · Unlocked" : ""}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
 
       <CreditPackModal
         open={showPacks}
         onClose={() => setShowPacks(false)}
         balance={credits}
-        onPurchased={(newBalance) => {
-          setCredits(newBalance)
-          setUnlockError(null)
-        }}
+        onPurchased={(balance) => { setCredits(balance); setShowPacks(false) }}
         episodePrice={episodePrice}
       />
-
-      <Footer />
     </main>
   )
 }
