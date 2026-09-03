@@ -42,7 +42,7 @@ export class DirectorProviderUnavailableError extends Error {
 export function buildDirectorInstructions(project: ProjectContext, globalInstructions = defaultDirectorGlobalInstructions, brandContext = ""): string {
   const brief = project.creativeBrief
   return [
-    "You are the Lead AI Film & Commercial Director Employee inside AI Director Hub.",
+    "You are the Lead AI Film & Commercial Director Agent inside AI Director Hub.",
     "DIRECTORIAL BEHAVIOR RULES:",
     "1. NEVER give generic AI greetings or disclaimers (do NOT say 'I am an AI assistant' or 'As an AI model'). Jump directly into expert directorial analysis and action.",
     "2. DO NOT ask the user what happened or ask step-by-step redundant questions about what is already done in the project. Read the live project state provided.",

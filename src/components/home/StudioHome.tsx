@@ -214,7 +214,7 @@ export default function StudioHome() {
                         url: "https://www.aidirectorhub.com",
                         logo: "https://www.aidirectorhub.com/logo.png",
                         description:
-                            "AI Director Hub is an autonomous AI video creation platform powered by an AI Creative Director Employee for scripts, storyboards, characters, and high-converting ads.",
+                            "AI Director Hub is an autonomous AI video creation platform powered by an AI Creative Director Agent for scripts, storyboards, characters, and high-converting ads.",
                     }),
                 }}
             />
@@ -345,7 +345,7 @@ export default function StudioHome() {
                                     <div>
                                         <span className="rounded-full bg-primary px-3 py-1 text-[11px] font-semibold text-black">Featured Production</span>
                                         <h2 className="mt-2 text-xl font-semibold">{heroFeatured?.title || "Border Run — 60s AI Short"}</h2>
-                                        <p className="line-clamp-1 text-xs text-white/60">{heroFeatured?.description || "Created with AI Director Employee & Veo 3"}</p>
+                                        <p className="line-clamp-1 text-xs text-white/60">{heroFeatured?.description || "Created with AI Director Agent & Veo 3"}</p>
                                     </div>
                                     <button
                                         type="button"
@@ -684,7 +684,7 @@ export default function StudioHome() {
             {/* Bottom Tag Bar */}
             <section className="border-y border-white/5 bg-white/[0.01] py-8">
                 <div className="mx-auto flex max-w-[1540px] flex-wrap items-center justify-between gap-4 px-6 t-caption text-white/30">
-                    <span>AI Director Employee</span>
+                    <span>AI Director Agent</span>
                     <span>Multi-Model Engine</span>
                     <span>Storyboard Workflow</span>
                     <span>Guarded Approvals</span>

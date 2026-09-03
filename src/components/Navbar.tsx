@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import { springUI, materialize } from "@/lib/motion"
-import { Clapperboard, Play, Zap, User, Menu, X, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, MessageSquare, BookOpen, PlugZap, Sparkles, Users, KeyRound, ChevronDown} from "lucide-react"
+import { Clapperboard, Play, User, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, BookOpen, PlugZap, Sparkles, Users, KeyRound, ChevronDown } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -31,10 +31,13 @@ const baseNavLinks = [
 const adminLink = { key: "admin", name: "Admin", href: "/admin", icon: ShieldCheck }
 
 export default function Navbar() {
-    const [isOpen, setIsOpen] = useState(false)
     const [isAdmin, setIsAdmin] = useState(false)
     const [offerText, setOfferText] = useState("")
-    const [siteFeatures, setSiteFeatures] = useState<SiteFeatures>(defaultSiteFeatures)
+    // null until the real setting arrives. Starting from the defaults — which
+    // are all true — meant every page first painted the full nav and then
+    // removed the paused links when the fetch landed, so a paused feature was
+    // briefly clickable on every load.
+    const [siteFeatures, setSiteFeatures] = useState<SiteFeatures | null>(null)
     const { user, loading, signInWithGoogle, signOut } = useAuth()
     const pathname = usePathname()
     const [moreOpen, setMoreOpen] = useState(false)
@@ -82,12 +85,17 @@ export default function Navbar() {
                 setSiteFeatures(feats)
             } catch {
                 setOfferText(defaultBillingSettings.offerEnabled ? defaultBillingSettings.offerText : "")
+                // Settings unreadable: fall back to the defaults rather than
+                // leaving the nav permanently empty.
+                setSiteFeatures(defaultSiteFeatures)
             }
         }
         loadSettings()
     }, [])
 
-    const activeBaseNavLinks = baseNavLinks.filter((link) => {
+    // Nothing is shown until it is known what is paused: a nav that fills in a
+    // beat late is better than one that offers a paused feature and retracts it.
+    const activeBaseNavLinks = siteFeatures === null ? [] : baseNavLinks.filter((link) => {
         if (link.key in siteFeatures) {
             return (siteFeatures as any)[link.key] !== false
         }
@@ -128,9 +136,8 @@ export default function Navbar() {
                     <span className="whitespace-nowrap text-xl font-semibold tracking-[-0.02em] text-white">AI Director <span className="text-primary">Hub</span></span>
                 </Link>
 
-                {/* Originals: one button, everything behind it */}
-                {compactHeader && (
-                    <div className="flex shrink-0 items-center gap-2">
+                {/* Account controls, collapsed into one button at every width */}
+                    <div className="order-last flex shrink-0 items-center gap-2">
                     {/* Signing in and out stays in the bar. Sign In is the whole
                         job of this page for a visitor, and hiding it a click
                         deep costs conversions; Sign Out is the one control
@@ -191,26 +198,32 @@ export default function Navbar() {
                                                 </div>
                                             </div>
 
-                                            <Link
-                                                href="/studio"
-                                                className="mb-1 flex min-h-[44px] items-center gap-2.5 rounded-md bg-primary px-3 text-sm font-semibold text-black transition hover:brightness-110"
-                                            >
-                                                <Sparkles className="h-4 w-4" />
-                                                Creator Studio
-                                            </Link>
-
-                                            <div className="my-1 border-t border-white/10" />
-
-                                            {navLinks.map((link) => (
+                                            {/* Inline in the bar on wide screens
+                                                everywhere but Originals, so they
+                                                appear here only when they are not
+                                                already visible. */}
+                                            <div className={compactHeader ? "" : "md:hidden"}>
                                                 <Link
-                                                    key={link.name}
-                                                    href={link.href}
-                                                    className="flex min-h-[44px] items-center gap-2.5 rounded-md px-3 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+                                                    href="/studio"
+                                                    className="mb-1 flex min-h-[44px] items-center gap-2.5 rounded-md bg-primary px-3 text-sm font-semibold text-black transition hover:brightness-110"
                                                 >
-                                                    <link.icon className="h-4 w-4 text-primary" />
-                                                    {link.name}
+                                                    <Sparkles className="h-4 w-4" />
+                                                    Creator Studio
                                                 </Link>
-                                            ))}
+
+                                                <div className="my-1 border-t border-white/10" />
+
+                                                {navLinks.map((link) => (
+                                                    <Link
+                                                        key={link.name}
+                                                        href={link.href}
+                                                        className="flex min-h-[44px] items-center gap-2.5 rounded-md px-3 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+                                                    >
+                                                        <link.icon className="h-4 w-4 text-primary" />
+                                                        {link.name}
+                                                    </Link>
+                                                ))}
+                                            </div>
 
                                             <div className="my-1 border-t border-white/10" />
 
@@ -264,10 +277,10 @@ export default function Navbar() {
                         </button>
                     )}
                     </div>
-                )}
 
-                {/* Desktop Nav — not rendered under the compact header, so the
-                    credit badge and bell do not mount twice and poll twice. */}
+                {/* Nav links and the studio CTA. The account controls all live
+                    in the More menu above: eight chips in the bar overflowed the
+                    right edge and clipped the avatar. */}
                 {!compactHeader && (<>
                 <div className="hidden md:flex shrink-0 items-center gap-5">
                     {visibleNavLinks.map((link) => (
@@ -290,128 +303,11 @@ export default function Navbar() {
                         </Link>
                     )}
 
-                    {loading ? (
-                        <div className="flex items-center gap-2 px-4 py-2 bg-white/10 rounded-md">
-                            <Loader2 className="w-4 h-4 animate-spin text-white/70" />
-                        </div>
-                    ) : user ? (
-                        <div className="flex items-center gap-3">
-                            <CreditBadge />
-                            <BillingModeToggle compact />
-                            {/* Next to the credit badge, because it is the
-                                alternative to spending them: connect a key and
-                                that provider stops costing credits. */}
-                            <Link
-                                href="/studio/integrations"
-                                title="Use your own provider API keys instead of studio credits"
-                                className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-white/10 px-3 text-sm font-medium text-white/70 transition duration-press ease-out hover:bg-white/10 hover:text-white active:scale-[0.97]"
-                            >
-                                <KeyRound className="h-4 w-4 shrink-0" />
-                                <span className="hidden xl:inline">API keys</span>
-                            </Link>
-                            <Link
-                                href="/studio/team"
-                                title="Add and manage team members"
-                                className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-white/10 px-3 text-sm font-medium text-white/70 transition duration-press ease-out hover:bg-white/10 hover:text-white active:scale-[0.97]"
-                            >
-                                <Users className="h-4 w-4 shrink-0" />
-                                <span className="hidden xl:inline">Team</span>
-                            </Link>
-                            <NotificationBell />
-                            <Link href="/profile" className="flex items-center gap-2 px-4 py-2 bg-white/10 rounded-md transition duration-press ease-out hover:bg-white/20 active:scale-[0.97] group">
-                                {user.user_metadata?.avatar_url ? (
-                                    <img src={user.user_metadata.avatar_url} alt="Avatar" className="w-5 h-5 rounded-full" />
-                                ) : (
-                                    <User className="w-4 h-4 text-white/70 group-hover:text-white" />
-                                )}
-                                <span className="text-sm font-medium">{user.user_metadata?.full_name?.split(' ')[0] || 'Profile'}</span>
-                            </Link>
-                            <button
-                                onClick={signOut}
-                                className="flex items-center gap-2 px-3 py-2 text-white/50 hover:text-white hover:bg-white/10 rounded-md transition duration-press ease-out active:scale-[0.97]"
-                                title="Sign Out"
-                            >
-                                <LogOut className="w-4 h-4" />
-                            </button>
-                        </div>
-                    ) : (
-                        <Link
-                            href="/login"
-                            className="flex items-center gap-2 px-4 py-2 border border-white/15 bg-white/[.04] rounded-md transition duration-press ease-out hover:bg-white/10 active:scale-[0.97] group"
-                        >
-                            <LogIn className="w-4 h-4 text-white/70 group-hover:text-white" />
-                            <span className="text-sm font-medium text-white/80 group-hover:text-white">Sign In</span>
-                        </Link>
-                    )}
                 </div>
 
-                {/* Mobile Toggle */}
-                <button
-                    aria-label={isOpen ? "Close menu" : "Open menu"}
-                    aria-expanded={isOpen}
-                    className="md:hidden -mr-2.5 grid h-11 w-11 place-items-center text-white transition-transform duration-press ease-out active:scale-90"
-                    onClick={() => setIsOpen(!isOpen)}
-                >
-                    {isOpen ? <X /> : <Menu />}
-                </button>
                 </>)}
             </motion.div>
 
-            {/* Mobile Menu */}
-            <AnimatePresence>
-            {isOpen && !compactHeader && (
-                <motion.div
-                    {...materialize}
-                    style={{ transformOrigin: "top right" }}
-                    className="md:hidden absolute top-20 left-4 right-4 material-sheet p-6 rounded-lg flex flex-col gap-4"
-                >
-                    {!loading && (
-                        <Link
-                            href="/studio"
-                            onClick={() => setIsOpen(false)}
-                            className="flex min-h-[44px] items-center gap-3 text-lg font-medium text-primary"
-                        >
-                            <Sparkles className="h-5 w-5" />
-                            Creator Studio
-                        </Link>
-                    )}
-                    {visibleNavLinks.map((link) => (
-                        <Link
-                            key={link.name}
-                            href={link.href}
-                            onClick={() => setIsOpen(false)}
-                            className="flex min-h-[44px] items-center gap-3 text-lg font-medium text-white/70"
-                        >
-                            <link.icon className="w-5 h-5 text-primary" />
-                            {link.name}
-                        </Link>
-                    ))}
-                    <div className="border-t border-white/10 pt-4 mt-2">
-                        {user ? (
-                            <div className="flex flex-col gap-3">
-                                <Link href="/studio/integrations" onClick={() => setIsOpen(false)} className="flex min-h-[44px] items-center gap-3 text-lg font-medium text-white/70">
-                                    <KeyRound className="h-5 w-5" />
-                                    API keys
-                                </Link>
-                                <Link href="/profile" onClick={() => setIsOpen(false)} className="flex min-h-[44px] items-center gap-3 text-lg font-medium text-white/70">
-                                    <User className="w-5 h-5 text-primary" />
-                                    Profile
-                                </Link>
-                                <button onClick={() => { signOut(); setIsOpen(false); }} className="flex min-h-[44px] items-center gap-3 text-lg font-medium text-red-400">
-                                    <LogOut className="w-5 h-5" />
-                                    Sign Out
-                                </button>
-                            </div>
-                        ) : (
-                            <Link href="/login" onClick={() => setIsOpen(false)} className="flex min-h-[44px] items-center gap-3 text-lg font-medium text-primary">
-                                <LogIn className="w-5 h-5" />
-                                Sign In
-                            </Link>
-                        )}
-                    </div>
-                </motion.div>
-            )}
-            </AnimatePresence>
         </nav>
     )
 }

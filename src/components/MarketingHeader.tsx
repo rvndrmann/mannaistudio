@@ -8,13 +8,17 @@ import { defaultSiteFeatures, fetchSiteFeatures, type SiteFeatures } from "@/lib
 
 export function MarketingHeader() {
     const pathname = usePathname()
-    const [features, setFeatures] = useState<SiteFeatures>(defaultSiteFeatures)
+    // null until known, so paused tabs are never shown and then withdrawn.
+    const [features, setFeatures] = useState<SiteFeatures | null>(null)
 
     useEffect(() => {
         const load = async () => {
             const supabase = createClient()
-            const data = await fetchSiteFeatures(supabase)
-            setFeatures(data)
+            try {
+                setFeatures(await fetchSiteFeatures(supabase))
+            } catch {
+                setFeatures(defaultSiteFeatures)
+            }
         }
         load()
     }, [])
@@ -24,7 +28,7 @@ export function MarketingHeader() {
         { name: "Analytics", href: "/analytics", key: "analytics" },
         { name: "Ads Manager", href: "/ads", key: "ads" },
         { name: "Competitors", href: "/competitors", key: "competitors" },
-    ].filter(item => (features as any)[item.key] !== false)
+    ].filter(item => features !== null && (features as any)[item.key] !== false)
 
     if (items.length === 0) return null
 

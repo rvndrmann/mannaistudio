@@ -9,7 +9,7 @@ export const metadata = {
 }
 
 const pillars = [
-    { icon: Bot, title: "AI Director Agent", text: "A creative employee inside your studio that can plan, write, revise, organize, and guide the whole production workflow." },
+    { icon: Bot, title: "AI Director Agent", text: "A creative agent inside your studio that can plan, write, revise, organize, and guide the whole production workflow." },
     { icon: ImageIcon, title: "AI Images", text: "Generate character references, product visuals, storyboard keyframes, thumbnails, and campaign assets from chat." },
     { icon: Video, title: "AI Video", text: "Prepare video generations from storyboard shots and references with approval-first controls or full-auto mode." },
     { icon: Layers3, title: "Assets & Storyboards", text: "Keep scripts, assets, uploaded media, storyboard images, prompts, and video outputs connected to each episode." },
@@ -37,7 +37,7 @@ export default function AboutPage() {
                             About AI Director Hub
                         </div>
                         <h1 className="mt-6 text-5xl font-semibold leading-none tracking-tight md:text-7xl">
-                            We are building an AI creative employee for video production.
+                            We are building an AI creative agent for video production.
                         </h1>
                         <p className="mt-6 max-w-3xl text-lg leading-8 text-white/55">
                             AI Director Hub helps creators go from a simple request to scripts, reusable assets,

@@ -133,7 +133,7 @@ export default function StudioHome() {
               <Sparkles className="mx-auto h-10 w-10 text-[#b9f42e] mb-3" />
               <h2 className="text-2xl font-semibold text-white">Sign In to Access Studio</h2>
               <p className="mt-2 text-sm text-zinc-400">
-                Sign in with Google to create AI projects, generate videos, and chat with your AI Director Employee.
+                Sign in with Google to create AI projects, generate videos, and chat with your AI Director Agent.
               </p>
               <button
                 onClick={() => signInWithGoogle()}
