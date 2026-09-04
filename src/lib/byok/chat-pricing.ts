@@ -34,10 +34,8 @@ export type TokenRate = {
 /**
  * Published provider rates, verified August 2026.
  *
- * Gemini 3.6 Flash is on introductory pricing that **doubles on 1 January
- * 2027** — $0.75/$3.75 becomes $1.50/$7.50. Left as the current figure
- * deliberately rather than pre-empted, because charging tomorrow's price today
- * overcharges every turn until then. It has to be changed on the day.
+ * Only models the Director actually offers are quoted here. Anything else is
+ * priced by FALLBACK_TOKEN_RATE below.
  */
 export const CHAT_TOKEN_RATES: Record<string, TokenRate> = {
   "gpt-5.6-luna": {
@@ -45,26 +43,30 @@ export const CHAT_TOKEN_RATES: Record<string, TokenRate> = {
     outputPerMillion: 1.2,
     source: "OpenAI, after the 30 July 2026 reduction",
   },
-  "gemini-3.6-flash": {
-    inputPerMillion: 0.75,
-    outputPerMillion: 3.75,
-    source: "Google introductory pricing, rises to 1.50/7.50 on 2027-01-01",
-  },
 }
 
 /**
  * The rate to use for a model with no entry.
  *
- * The most expensive card rather than the cheapest: an unpriced model is
- * usually a newer one, and guessing low means serving it at a loss with nothing
- * to notice the mistake.
+ * Deliberately expensive: an unpriced model is usually a newer one, and
+ * guessing low means serving it at a loss with nothing to notice the mistake.
+ *
+ * Stated as a constant rather than derived from the dearest card entry, which
+ * is how it used to work. That derivation quietly depended on an expensive
+ * model staying in the card — when Gemini 3.6 Flash was retired, the card was
+ * left holding only Luna and the fallback would have collapsed from $3.75 to
+ * $1.20 per million output tokens, undercharging every future model by three
+ * times. The figure is Gemini's post-January-2027 rate, kept as a ceiling
+ * precisely because nothing in the card has to justify it any more.
  */
+export const FALLBACK_TOKEN_RATE: TokenRate = {
+  inputPerMillion: 1.5,
+  outputPerMillion: 7.5,
+  source: "Deliberate ceiling for an unpriced model; Google's 2027 Flash rate",
+}
+
 function rateFor(model: string): TokenRate {
-  const known = CHAT_TOKEN_RATES[model]
-  if (known) return known
-  const dearest = Object.values(CHAT_TOKEN_RATES).reduce((worst, rate) =>
-    rate.outputPerMillion > worst.outputPerMillion ? rate : worst)
-  return dearest
+  return CHAT_TOKEN_RATES[model] ?? FALLBACK_TOKEN_RATE
 }
 
 export type TokenUsage = {

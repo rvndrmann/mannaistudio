@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { CHAT_MARKUP, CHAT_TOKEN_RATES, chatTurnCredits, providerCostUsd } from "./chat-pricing"
+import { CHAT_MARKUP, CHAT_TOKEN_RATES, FALLBACK_TOKEN_RATE, chatTurnCredits, providerCostUsd } from "./chat-pricing"
 import { defaultDirectorModels } from "@/lib/studio/ai-models"
 
 describe("what a chat turn costs us", () => {
@@ -9,17 +9,25 @@ describe("what a chat turn costs us", () => {
     expect(cost).toBeCloseTo(0.02 + 0.006, 6)
   })
 
-  it("prices Gemini Flash at its published rate", () => {
-    const cost = providerCostUsd("gemini-3.6-flash", { input_tokens: 100_000, output_tokens: 5_000 })
-    expect(cost).toBeCloseTo(0.075 + 0.01875, 6)
-  })
-
-  it("charges the dearest known rate for a model with no entry", () => {
+  it("charges the fallback rate for a model with no entry", () => {
     // An unpriced model is usually a newer one. Guessing low serves it at a
     // loss with nothing to notice.
-    const unknown = providerCostUsd("some-new-model", { input_tokens: 100_000, output_tokens: 5_000 })
-    const dearest = providerCostUsd("gemini-3.6-flash", { input_tokens: 100_000, output_tokens: 5_000 })
-    expect(unknown).toBeCloseTo(dearest, 6)
+    const usage = { input_tokens: 100_000, output_tokens: 5_000 }
+    const unknown = providerCostUsd("some-new-model", usage)
+    expect(unknown).toBeCloseTo(
+      (100_000 / 1e6) * FALLBACK_TOKEN_RATE.inputPerMillion + (5_000 / 1e6) * FALLBACK_TOKEN_RATE.outputPerMillion,
+      6,
+    )
+  })
+
+  it("never lets the fallback undercut a model the card prices", () => {
+    // The fallback used to be derived from the dearest card entry, so retiring
+    // an expensive model silently made every unpriced model cheaper. It is a
+    // fixed ceiling now, and this is the property that has to hold.
+    for (const rate of Object.values(CHAT_TOKEN_RATES)) {
+      expect(FALLBACK_TOKEN_RATE.inputPerMillion).toBeGreaterThanOrEqual(rate.inputPerMillion)
+      expect(FALLBACK_TOKEN_RATE.outputPerMillion).toBeGreaterThanOrEqual(rate.outputPerMillion)
+    }
   })
 })
 
@@ -40,12 +48,13 @@ describe("what we charge for it", () => {
     expect(chatTurnCredits("gpt-5.6-luna", { input_tokens: 100, output_tokens: 10 })).toBe(1)
   })
 
-  it("costs several times more on Gemini than on Luna for the same turn", () => {
-    // Worth knowing before choosing a default: Gemini Flash output is more than
-    // three times Luna's, so a long agent turn can cost as much as the image it
-    // was arranging.
+  it("costs more on an unpriced model than on the one the card quotes", () => {
+    // The direction that matters: an unknown model must never come out cheaper
+    // than a known one, or adding a model to the selector and forgetting its
+    // rate would quietly discount it.
     const usage = { input_tokens: 80_000, output_tokens: 3_000 }
-    expect(chatTurnCredits("gemini-3.6-flash", usage)).toBeGreaterThan(chatTurnCredits("gpt-5.6-luna", usage) * 2)
+    expect(chatTurnCredits("some-unlisted-model", usage))
+      .toBeGreaterThan(chatTurnCredits("gpt-5.6-luna", usage))
   })
 })
 
