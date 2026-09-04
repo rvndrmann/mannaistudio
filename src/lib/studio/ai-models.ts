@@ -1,8 +1,11 @@
 export const defaultDirectorModelId = "gpt-5.6-luna"
 
+// The Director runs on one model. Gemini 3.6 Flash was retired from the chat
+// catalog deliberately: `normalizeDirectorModels` below drops any stored id it
+// does not find here, so taking it out of this list also takes it out of the
+// Studio selector and out of any model list an admin saved earlier.
 export const defaultDirectorModels = [
   { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", status: "active" },
-  { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash", status: "active" },
 ] as const
 
 export type DirectorModelStatus = "active" | "paused"

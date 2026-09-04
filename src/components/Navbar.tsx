@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import { springUI, materialize } from "@/lib/motion"
-import { Clapperboard, Play, User, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, BookOpen, PlugZap, Sparkles, Users, KeyRound, ChevronDown } from "lucide-react"
+import { Clapperboard, Play, User, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, BookOpen, PlugZap, Sparkles, Users, KeyRound, ChevronDown, Menu } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -127,7 +127,10 @@ export default function Navbar() {
                     // gap-6 rather than justify-between alone: the right-hand cluster grew
                     // by two controls, and without a floor on the spacing the brand
                     // ends up touching the first nav link.
-                    "material-chrome flex items-center justify-between gap-6 w-full max-w-6xl px-6 py-3 rounded-lg",
+                    // Tighter on a phone: the bar carries the brand, Originals and the
+                    // account controls at 375px, and gap-6 with px-6 spent 72px of
+                    // that on air alone.
+                    "material-chrome flex items-center justify-between gap-2 px-3 sm:gap-6 sm:px-6 w-full max-w-6xl py-3 rounded-lg",
                     offerText && "mt-6"
                 )}
             >
@@ -135,6 +138,22 @@ export default function Navbar() {
                     <img src="/logo.png" alt="AI Director Hub" className="w-10 h-10 shrink-0 rounded-full transition-transform duration-press ease-out group-active:scale-95" />
                     <span className="hidden whitespace-nowrap text-xl font-semibold tracking-[-0.02em] text-white sm:inline">AI Director <span className="text-primary">Hub</span></span>
                 </Link>
+
+                {/* Originals, in the bar on a phone.
+                    The nav links live in a md-and-up row, so on a narrow screen
+                    the one destination this site is trying to send people to was
+                    reachable only by opening More. It is the whole funnel, so it
+                    gets a permanent seat. Hidden from md up, where the full nav
+                    already carries it, and skipped on Originals itself. */}
+                {!compactHeader && visibleNavLinks.some((link) => link.key === "originals") && (
+                    <Link
+                        href="/originals"
+                        className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-white/15 bg-white/[0.06] px-3 text-sm font-medium text-white/85 transition duration-press ease-out hover:bg-white/10 hover:text-white active:scale-[0.97] md:hidden"
+                    >
+                        <Clapperboard className="h-4 w-4 shrink-0 text-primary" />
+                        Originals
+                    </Link>
+                )}
 
                 {/* Account controls, collapsed into one button at every width */}
                     <div className="order-last flex shrink-0 items-center gap-2">
@@ -158,10 +177,13 @@ export default function Navbar() {
                             onClick={() => setMoreOpen((open) => !open)}
                             aria-expanded={moreOpen}
                             aria-haspopup="menu"
-                            className="flex h-9 items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.06] px-4 text-sm font-medium text-white/80 transition duration-press ease-out hover:bg-white/10 hover:text-white active:scale-[0.97]"
+                            className="flex h-9 items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.06] px-2.5 text-sm font-medium text-white/80 transition duration-press ease-out hover:bg-white/10 hover:text-white active:scale-[0.97] sm:px-4"
                         >
-                            More
-                            <ChevronDown className={cn("h-4 w-4 transition-transform", moreOpen && "rotate-180")} />
+                            {/* A hamburger on a phone, where the word would
+                                cost the Originals button its seat in the bar. */}
+                            <Menu className="h-4 w-4 sm:hidden" />
+                            <span className="hidden sm:inline">More</span>
+                            <ChevronDown className={cn("hidden h-4 w-4 transition-transform sm:block", moreOpen && "rotate-180")} />
                         </button>
 
                         <AnimatePresence>
