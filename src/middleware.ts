@@ -2,7 +2,14 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 // Routes that require authentication (everything else is public).
-const protectedPaths = ['/courses', '/challenges', '/services', '/admin', '/profile', '/portfolio', '/billing', '/studio']
+//
+// Browsing is public; only the account-shaped pages are behind sign-in.
+// /courses, /billing and /originals came out of this list deliberately: a
+// stranger has to be able to read what a thing costs and watch the opening
+// episodes before being asked who they are. Sign-in is required at the point of
+// purchase or enrolment instead, which the pages and API routes enforce
+// themselves — the wall was in front of the shop window.
+const protectedPaths = ['/challenges', '/services', '/admin', '/profile', '/portfolio', '/studio']
 
 // Temporarily paused features — redirect to home (code kept; re-enable by emptying this list).
 const pausedPaths = ['/feed', '/services', '/challenges', '/messages']

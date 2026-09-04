@@ -16,8 +16,18 @@ export const ORIGINALS_CREDIT_PACKAGES: Record<string, { credits: number; priceI
 }
 
 /** Fallbacks for a series row that predates the per-series columns. */
-export const DEFAULT_EPISODE_PRICE = 20
+export const DEFAULT_EPISODE_PRICE = 25
 export const DEFAULT_FREE_EPISODES = 3
+
+/**
+ * The season pass: one series, thirty days, bought with money rather than
+ * credits so that someone with an empty balance can still say yes.
+ *
+ * It expires deliberately. A permanent pass on a login shared around a group
+ * is a viewer who never comes back, and keeping them is the point of the offer.
+ */
+export const SEASON_PASS_PRICE_INR = 149
+export const SEASON_PASS_DAYS = 30
 
 export type OriginalsSeriesSummary = {
   id: string
@@ -53,6 +63,8 @@ export type OriginalsEpisodeSummary = {
 
 export type OriginalsSeriesDetail = OriginalsSeriesSummary & {
   episodes: OriginalsEpisodeSummary[]
+  /** ISO timestamp while a season pass is live for this viewer, else null. */
+  passExpiresAt: string | null
 }
 
 export function formatEpisodeDuration(seconds: number | null): string {

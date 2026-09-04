@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import { AlertCircle, ArrowLeft, Bookmark, Film, Loader2, Lock, Maximize, Pause, Play, Share2, SkipForward, Volume2, VolumeX, Zap } from "lucide-react"
 import Navbar from "@/components/Navbar"
 import CreditPackModal from "@/components/originals/CreditPackModal"
+import EpisodePaywall from "@/components/originals/EpisodePaywall"
 import { useAuth } from "@/components/auth/auth-provider"
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events"
 import {
@@ -47,6 +48,8 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [muted, setMuted] = useState(false)
+  /** Seconds left on the auto-advance offer at the end of an episode. */
+  const [autoIn, setAutoIn] = useState<number | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
 
   const togglePlay = () => {
@@ -93,7 +96,6 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
       setPlaying(null)
       return
     }
-    if (!user) { signInWithGoogle(); return }
 
     setOpeningId(episode.id)
     try {
@@ -155,14 +157,35 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
   }
 
   // Open the first episode once the series arrives, so the page starts on
-  // something watchable rather than an empty frame. Signed-out visitors get it
-  // selected but not started — auto-opening would fire the Google redirect at
-  // someone who has done nothing but load the page.
+  // something watchable rather than an empty frame. Safe for signed-out
+  // visitors now that the opening episodes play without an account.
   useEffect(() => {
     if (!series || current || episodes.length === 0) return
-    if (!user) { setPreviewing(episodes[0]); return }
     openEpisode(episodes[0])
-  }, [series, current, episodes, openEpisode, user])
+  }, [series, current, episodes, openEpisode])
+
+  // The next episode offers itself rather than waiting to be found. Only when
+  // it will actually play — counting down to a paywall would be a countdown to
+  // a bill, which is not a thing to spring on someone.
+  useEffect(() => {
+    if (!ended || !nextEpisode) { setAutoIn(null); return }
+    const playsOn = nextEpisode.isFree || nextEpisode.isUnlocked
+    if (!playsOn) { setAutoIn(null); return }
+
+    setAutoIn(5)
+    const timer = setInterval(() => {
+      setAutoIn((left) => {
+        if (left === null) return null
+        if (left <= 1) {
+          clearInterval(timer)
+          openEpisode(nextEpisode)
+          return null
+        }
+        return left - 1
+      })
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [ended, nextEpisode, openEpisode])
 
   // Keep the grid on the page holding whatever is playing.
   useEffect(() => {
@@ -268,41 +291,31 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
                         ? <Loader2 className="h-6 w-6 animate-spin" />
                         : <Play className="ml-1 h-6 w-6 fill-black" />}
                     </span>
-                    {!user && (
+                    {current.isFree && (
                       <span className="absolute bottom-8 text-xs font-medium text-white/70">
-                        Sign in to watch — Episode {current.episodeNumber} is free
+                        Episode {current.episodeNumber} — free to watch
                       </span>
                     )}
                   </button>
                 )}
 
                 {/* Paywall */}
-                {locked && (
-                  <div className="absolute inset-0 grid place-items-center bg-black/70 px-6 text-center backdrop-blur-[2px]">
-                    <div>
-                      <Lock className="mx-auto h-7 w-7 text-white/70" />
-                      <p className="mt-3 text-lg font-semibold leading-snug">
-                        This is a paid episode.
-                        <br />Unlock it to watch.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={unlockCurrent}
-                        disabled={openingId === current?.id}
-                        className="mx-auto mt-5 flex items-center gap-2 rounded-xl bg-primary px-7 py-3 text-sm font-bold text-black transition hover:brightness-110 disabled:opacity-60"
-                      >
-                        {openingId === current?.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <><Zap className="h-4 w-4 fill-black" />{episodePrice} — Unlock now</>
-                        )}
-                      </button>
-                      <p className="mt-3 text-xs text-white/45">
-                        {credits !== null ? `Balance: ${credits.toLocaleString()} credits` : ""}
-                      </p>
-                      {unlockError && <p className="mt-2 text-xs font-medium text-red-300">{unlockError}</p>}
-                    </div>
-                  </div>
+                {locked && current && (
+                  <EpisodePaywall
+                    episode={current}
+                    seriesId={series.id}
+                    seriesTitle={series.title}
+                    posterUrl={series.posterUrl}
+                    episodePrice={episodePrice}
+                    balance={credits}
+                    signedIn={Boolean(user)}
+                    onSignIn={() => signInWithGoogle()}
+                    onUnlock={unlockCurrent}
+                    unlocking={openingId === current.id}
+                    onBalanceChange={setCredits}
+                    onPassPurchased={async () => { await load(); openEpisode(current) }}
+                    error={unlockError}
+                  />
                 )}
 
                 {/* End of episode — the way on to the next one */}
@@ -334,7 +347,8 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
                             >
                               {openingId === nextEpisode.id
                                 ? <Loader2 className="h-4 w-4 animate-spin" />
-                                : <><SkipForward className="h-4 w-4 fill-black" />Next episode</>}
+                                : <><SkipForward className="h-4 w-4 fill-black" />
+                                    {autoIn !== null ? `Next episode in ${autoIn}` : "Next episode"}</>}
                             </button>
                             {!nextEpisode.isFree && !nextEpisode.isUnlocked && (
                               <p className="mt-2.5 text-xs text-white/45">Costs {episodePrice} credits</p>
@@ -353,10 +367,10 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
                         )}
                         <button
                           type="button"
-                          onClick={() => { setEnded(false); videoRef.current?.play() }}
+                          onClick={() => { setAutoIn(null); setEnded(false); videoRef.current?.play() }}
                           className="mt-3 text-xs font-medium text-white/50 underline-offset-2 hover:text-white hover:underline"
                         >
-                          Watch again
+                          {autoIn !== null ? "Stay here" : "Watch again"}
                         </button>
                       </div>
                     </motion.div>

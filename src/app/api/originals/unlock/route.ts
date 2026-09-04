@@ -27,16 +27,34 @@ const unlockSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: "Sign in to watch Originals." }, { status: 401 })
-    }
+    const { data: { user } } = await supabase.auth.getUser()
 
     const body = await request.json().catch(() => null)
     if (body === null) {
       return NextResponse.json({ error: "An episode is required." }, { status: 400 })
     }
     const input = unlockSchema.parse(body)
+
+    // No account: the opening episodes still play. `originals_free_episode_url`
+    // returns a URL only for an episode inside a published series' free window,
+    // so naming a paid episode here yields nothing rather than a way around the
+    // paywall. Nothing is charged and no entitlement is written.
+    if (!user) {
+      const anon = createServiceClient()
+      const { data: freeUrl, error: freeError } = await anon.rpc("originals_free_episode_url", {
+        p_episode_id: input.episodeId,
+      })
+      if (freeError) {
+        return NextResponse.json({ error: freeError.message }, { status: 400 })
+      }
+      if (!freeUrl) {
+        return NextResponse.json(
+          { error: "Sign in to unlock this episode.", status: "signin" },
+          { status: 401 },
+        )
+      }
+      return NextResponse.json({ status: "free", videoUrl: freeUrl, creditsCharged: 0, balance: null })
+    }
 
     // Service role: the function is SECURITY DEFINER and accepts the account as
     // a parameter, so it is called with the id proven by the session above

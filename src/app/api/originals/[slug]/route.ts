@@ -43,18 +43,21 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const { data: { user } } = await supabase.auth.getUser()
 
     let credits: number | null = null
+    let passExpiresAt: string | null = null
     const unlockedIds = new Set<string>()
     if (user) {
-      const [{ data: profile }, { data: unlocks }] = await Promise.all([
+      const [{ data: profile }, { data: unlocks }, { data: pass }] = await Promise.all([
         admin.from("profiles").select("credits_balance").eq("id", user.id).maybeSingle(),
         admin
           .from("originals_unlocks")
           .select("episode_id")
           .eq("profile_id", user.id)
           .in("episode_id", (episodeRows || []).map((row) => row.id)),
+        admin.rpc("originals_pass_expiry", { p_profile_id: user.id, p_series_id: series.id }),
       ])
       credits = Number(profile?.credits_balance ?? 0)
       for (const unlock of unlocks || []) unlockedIds.add(unlock.episode_id)
+      passExpiresAt = (pass as string | null) ?? null
     }
 
     const freeEpisodes = series.free_episodes ?? DEFAULT_FREE_EPISODES
@@ -66,7 +69,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       thumbnailUrl: row.thumbnail_url,
       durationSeconds: row.duration_seconds,
       isFree: row.episode_number <= freeEpisodes,
-      isUnlocked: unlockedIds.has(row.id),
+      // A live pass plays the whole series, so the grid must not
+      // draw padlocks over episodes this viewer can already watch.
+      isUnlocked: unlockedIds.has(row.id) || Boolean(passExpiresAt),
     }))
 
     const detail: OriginalsSeriesDetail = {
@@ -82,6 +87,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       episodePrice: series.episode_price ?? DEFAULT_EPISODE_PRICE,
       episodeCount: episodes.length,
       episodes,
+      passExpiresAt,
     }
 
     return NextResponse.json({ series: detail, credits, signedIn: Boolean(user) })

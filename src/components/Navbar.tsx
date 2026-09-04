@@ -133,7 +133,7 @@ export default function Navbar() {
             >
                 <Link href="/" className="flex min-h-[44px] shrink-0 items-center gap-2.5 group">
                     <img src="/logo.png" alt="AI Director Hub" className="w-10 h-10 shrink-0 rounded-full transition-transform duration-press ease-out group-active:scale-95" />
-                    <span className="whitespace-nowrap text-xl font-semibold tracking-[-0.02em] text-white">AI Director <span className="text-primary">Hub</span></span>
+                    <span className="hidden whitespace-nowrap text-xl font-semibold tracking-[-0.02em] text-white sm:inline">AI Director <span className="text-primary">Hub</span></span>
                 </Link>
 
                 {/* Account controls, collapsed into one button at every width */}
