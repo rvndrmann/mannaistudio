@@ -2,7 +2,7 @@
 
 import Navbar from "@/components/Navbar"
 import { motion } from "framer-motion"
-import { Download, Share2, Award, ShieldCheck, ArrowLeft, User } from "lucide-react"
+import { Download, Share2, ArrowLeft, User } from "lucide-react"
 import Link from "next/link"
 import { useState, useEffect, use } from "react"
 import { createClient } from "@/lib/supabase/client"
@@ -80,9 +80,7 @@ export default function CertificatePage({ params }: { params: Promise<{ id: stri
                         className="glass-card p-10 rounded-3xl border-white/10 w-full text-center space-y-8"
                     >
                         <div className="flex justify-center">
-                            <div className="p-4 bg-amber-400/10 rounded-full border border-amber-400/20">
-                                <Award className="w-12 h-12 text-amber-500" />
-                            </div>
+                            <img src="/logo.png" alt="AI Director Hub" className="w-20 h-20 rounded-full" />
                         </div>
                         <div className="space-y-2">
                             <h1 className="text-2xl font-bold">Generate Your Certificate</h1>
@@ -135,36 +133,35 @@ export default function CertificatePage({ params }: { params: Promise<{ id: stri
 
                     {/* Watermark Logo */}
                     <div className="absolute inset-0 flex items-center justify-center opacity-[0.03] select-none pointer-events-none">
-                        <ShieldCheck className="w-96 h-96" />
+                        <img src="/logo.png" alt="" className="w-96 h-96 rounded-full" />
                     </div>
 
                     <div className="space-y-4">
-                        <div className="flex justify-center mb-6">
-                            <div className="p-4 bg-amber-400/10 rounded-full border border-amber-400/20">
-                                <Award className="w-12 h-12 text-amber-500" />
-                            </div>
+                        <div className="flex flex-col items-center gap-3 mb-6">
+                            <img src="/logo.png" alt="AI Director Hub" className="w-24 h-24 rounded-full" />
+                            <span className="text-[10px] md:text-xs tracking-[0.3em] text-white/40 font-bold">AI DIRECTOR HUB</span>
                         </div>
                         <h1 className="text-3xl md:text-5xl font-serif text-amber-500 font-bold tracking-tight">CERTIFICATE</h1>
                         <h2 className="text-lg md:text-xl font-medium tracking-widest text-white/40">OF COMPLETION</h2>
                     </div>
 
                     <div className="space-y-6">
-                        <p className="text-white/60 italic">This is to certify that</p>
+                        <p className="text-white/60 italic">Awarded to</p>
                         <h3 className="text-4xl md:text-6xl font-bold tracking-tight text-white border-b-2 border-white/10 pb-4 px-12">
                             {fullName}
                         </h3>
                         <p className="text-white/60 max-w-lg mx-auto">
-                            has successfully completed the professional course <br />
+                            for successfully completing the course <br />
                             <span className="text-white font-bold">{course.title}</span> <br />
-                            demonstrating mastery over AI video tools, workflows, and production techniques.
+                            covering AI video tools, workflows, and production techniques.
                         </p>
                     </div>
 
                     <div className="w-full flex justify-between items-end mt-12 pb-4">
                         <div className="text-left space-y-1">
                             <div className="h-0.5 w-32 bg-white/20 mb-2" />
-                            <p className="text-xs font-bold text-white/50">PLATFORM ADMIN</p>
-                            <p className="text-[10px] text-white/30">AI MASTERY INSTITUTE</p>
+                            <p className="text-xs font-bold text-white/50">COURSE INSTRUCTOR</p>
+                            <p className="text-[10px] text-white/30">AI DIRECTOR HUB</p>
                         </div>
                         <div className="text-right space-y-1">
                             <div className="h-0.5 w-32 bg-white/20 mb-2" />
@@ -173,10 +170,6 @@ export default function CertificatePage({ params }: { params: Promise<{ id: stri
                         </div>
                     </div>
 
-                    <div className="absolute bottom-8 flex items-center gap-2 opacity-20">
-                        <ShieldCheck className="w-4 h-4" />
-                        <span className="text-[10px] tracking-widest font-mono">VERIFY: AIM-{id.slice(-4).toUpperCase()}-{Date.now().toString(36).slice(-4).toUpperCase()}</span>
-                    </div>
                 </motion.div>
 
                 <div className="flex flex-col sm:flex-row items-center gap-4 mt-12">
