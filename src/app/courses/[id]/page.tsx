@@ -4,7 +4,7 @@ import Navbar from "@/components/Navbar"
 import { motion, AnimatePresence } from "framer-motion"
 import { Play, CheckCircle2, Trophy, ArrowLeft, Star, Clock, User, Share2, Info, Download, FileText, Sparkles, ShoppingCart, Loader2, Lock } from "lucide-react"
 import Link from "next/link"
-import { useState, useEffect, use } from "react"
+import { useState, useEffect, useRef, use } from "react"
 import { courses as mockCourses } from "@/lib/data"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/client"
 import { fbTrack } from "@/lib/fbpixel"
 import { claimOnce } from "@/lib/track-once"
 import { formatInr, formatUsd } from "@/lib/currency"
+import { readProgress, writeProgress } from "@/lib/course-progress"
 import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, hasPremiumAccess, isAdminUser } from "@/lib/membership"
 // @ts-ignore
 import confetti from "canvas-confetti"
@@ -94,6 +95,8 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
     const [billingSettings, setBillingSettings] = useState(defaultBillingSettings)
     const [enrollLoading, setEnrollLoading] = useState(false)
     const [checkingEnrollment, setCheckingEnrollment] = useState(true)
+    const ytHostRef = useRef<HTMLDivElement | null>(null)
+    const completeRef = useRef<() => void>(() => {})
 
     // Fetch course + lessons from Supabase
     useEffect(() => {
@@ -146,6 +149,12 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
         fbTrack('CourseStart', { content_type: 'course', content_ids: [course.id], content_name: course.title })
     }, [course, user?.id])
 
+    // Restore any chapters this person already finished.
+    useEffect(() => {
+        if (!course) return
+        setCompletedChapters(readProgress(course.id, user?.id))
+    }, [course?.id, user?.id])
+
     const isFree = course?.price === "Free" || course?.price === "$0" || course?.price === 0 || course?.price === "0" || !course?.price
     // Courses are gated behind Pro membership. Trial members (active membership) keep access; everyone else must subscribe.
     const hasCourseAccess = isFree || isEnrolled || isMember || isAdmin
@@ -181,7 +190,9 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
 
     const handleCompleteChapter = () => {
         if (!completedChapters.includes(activeChapter)) {
-            setCompletedChapters([...completedChapters, activeChapter])
+            const next = [...completedChapters, activeChapter]
+            setCompletedChapters(next)
+            if (course) writeProgress(course.id, next, user?.id)
             setShowXPAlert(true)
             confetti({
                 particleCount: 100,
@@ -192,6 +203,53 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
             setTimeout(() => setShowXPAlert(false), 3000)
         }
     }
+
+    completeRef.current = handleCompleteChapter
+
+    // A YouTube <iframe> never fires onEnded, so chapters backed by YouTube could
+    // never complete. Drive it through the IFrame API instead and watch for ENDED.
+    useEffect(() => {
+        if (!activeLessonYouTubeUrl || !ytHostRef.current) return
+        const videoId = activeLessonYouTubeUrl.split('/embed/')[1]?.split('?')[0]
+        if (!videoId) return
+
+        let player: any
+        let cancelled = false
+
+        const build = () => {
+            if (cancelled || !ytHostRef.current) return
+            player = new (window as any).YT.Player(ytHostRef.current, {
+                videoId,
+                playerVars: { rel: 0, modestbranding: 1 },
+                events: {
+                    onStateChange: (event: any) => {
+                        if (event.data === (window as any).YT.PlayerState.ENDED) completeRef.current()
+                    },
+                },
+            })
+        }
+
+        if ((window as any).YT?.Player) {
+            build()
+        } else {
+            const previous = (window as any).onYouTubeIframeAPIReady
+            ;(window as any).onYouTubeIframeAPIReady = () => {
+                previous?.()
+                build()
+            }
+            if (!document.getElementById('youtube-iframe-api')) {
+                const script = document.createElement('script')
+                script.id = 'youtube-iframe-api'
+                script.src = 'https://www.youtube.com/iframe_api'
+                document.body.appendChild(script)
+            }
+        }
+
+        return () => {
+            cancelled = true
+            try { player?.destroy() } catch {}
+        }
+    }, [activeLessonYouTubeUrl])
 
     const handleEnroll = async () => {
         if (!user) {
@@ -272,14 +330,9 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     </button>
                                 </div>
                             ) : activeLessonYouTubeUrl ? (
-                                <iframe
-                                    key={activeLessonYouTubeUrl}
-                                    src={activeLessonYouTubeUrl}
-                                    title={activeLesson?.title || "Course lesson video"}
-                                    className="w-full h-full"
-                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                                    allowFullScreen
-                                />
+                                <div key={activeLessonYouTubeUrl} className="w-full h-full">
+                                    <div ref={ytHostRef} className="w-full h-full" />
+                                </div>
                             ) : activeLessonDriveUrl ? (
                                 <iframe
                                     key={activeLessonDriveUrl}
@@ -351,14 +404,21 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                         <p className="text-xs text-white/40">{completedChapters.length} / {course.chapters} Chapters Completed</p>
                                     </div>
                                 </div>
-                                <div className={cn(
-                                    "px-6 py-2.5 rounded-xl font-bold text-sm",
-                                    completedChapters.includes(activeChapter)
-                                        ? "bg-emerald-500/20 text-emerald-500 border border-emerald-500/30"
-                                        : "bg-white/5 text-white/40 border border-white/10"
-                                )}>
-                                    {completedChapters.includes(activeChapter) ? "✓ Chapter Completed" : "Watch full video to complete"}
-                                </div>
+                                {completedChapters.includes(activeChapter) ? (
+                                    <div className="px-6 py-2.5 rounded-xl font-bold text-sm bg-emerald-500/20 text-emerald-500 border border-emerald-500/30">
+                                        ✓ Chapter Completed
+                                    </div>
+                                ) : (
+                                    // Chapters complete on their own when the video ends, but an
+                                    // embed that never reports back would otherwise strand people
+                                    // one chapter short of their certificate forever.
+                                    <button
+                                        onClick={handleCompleteChapter}
+                                        className="px-6 py-2.5 rounded-xl font-bold text-sm bg-white/5 text-white/60 border border-white/10 hover:bg-white/10 hover:text-white transition-colors"
+                                    >
+                                        Mark chapter complete
+                                    </button>
+                                )}
                             </div>
 
                             {/* Progress Bar */}
