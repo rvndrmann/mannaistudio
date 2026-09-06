@@ -6,6 +6,7 @@ import {
   DEFAULT_FREE_EPISODES,
   type OriginalsEpisodeSummary,
   type OriginalsSeriesDetail,
+  upcomingEpisodeNumbers,
 } from "@/lib/originals"
 
 export const dynamic = "force-dynamic"
@@ -24,7 +25,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     const { data: series, error } = await admin
       .from("originals_series")
-      .select("id, slug, title, description, poster_url, banner_url, genre, tags, free_episodes, episode_price")
+      .select("id, slug, title, description, poster_url, banner_url, genre, tags, free_episodes, episode_price, planned_episodes")
       .eq("slug", slug)
       .eq("is_published", true)
       .maybeSingle()
@@ -86,7 +87,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       freeEpisodes,
       episodePrice: series.episode_price ?? DEFAULT_EPISODE_PRICE,
       episodeCount: episodes.length,
+      plannedEpisodes: series.planned_episodes ?? null,
       episodes,
+      upcomingEpisodes: upcomingEpisodeNumbers(
+        episodes.map((episode) => episode.episodeNumber),
+        series.planned_episodes ?? null,
+      ),
       passExpiresAt,
     }
 

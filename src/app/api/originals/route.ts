@@ -20,7 +20,7 @@ export async function GET() {
 
     const { data: series, error } = await admin
       .from("originals_series")
-      .select("id, slug, title, description, poster_url, banner_url, genre, tags, free_episodes, episode_price")
+      .select("id, slug, title, description, poster_url, banner_url, genre, tags, free_episodes, episode_price, planned_episodes")
       .eq("is_published", true)
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: false })
@@ -52,6 +52,7 @@ export async function GET() {
       freeEpisodes: row.free_episodes ?? DEFAULT_FREE_EPISODES,
       episodePrice: row.episode_price ?? DEFAULT_EPISODE_PRICE,
       episodeCount: counts.get(row.id) || 0,
+      plannedEpisodes: row.planned_episodes ?? null,
     }))
 
     // The balance travels with the catalogue so the page can price a locked

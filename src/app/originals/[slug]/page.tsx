@@ -3,10 +3,11 @@
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { AnimatePresence, motion } from "framer-motion"
-import { AlertCircle, ArrowLeft, Bookmark, Film, Loader2, Lock, Maximize, Pause, Play, Share2, SkipForward, Volume2, VolumeX, Zap } from "lucide-react"
+import { AlertCircle, ArrowLeft, BellRing, Bookmark, Film, Loader2, Lock, Maximize, Pause, Play, Share2, SkipForward, Volume2, VolumeX, Zap } from "lucide-react"
 import Navbar from "@/components/Navbar"
 import CreditPackModal from "@/components/originals/CreditPackModal"
 import EpisodePaywall from "@/components/originals/EpisodePaywall"
+import NotifyMeSheet from "@/components/originals/NotifyMeSheet"
 import { useAuth } from "@/components/auth/auth-provider"
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events"
 import {
@@ -50,6 +51,8 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
   const [muted, setMuted] = useState(false)
   /** Seconds left on the auto-advance offer at the end of an episode. */
   const [autoIn, setAutoIn] = useState<number | null>(null)
+  /** The unreleased episode number a viewer has asked to be told about. */
+  const [notifyFor, setNotifyFor] = useState<number | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
 
   const togglePlay = () => {
@@ -77,6 +80,9 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
 
   const episodePrice = series?.episodePrice ?? DEFAULT_EPISODE_PRICE
   const episodes = useMemo(() => series?.episodes ?? [], [series])
+  const upcoming = useMemo(() => series?.upcomingEpisodes ?? [], [series])
+  /** The next number the season has promised but not published. */
+  const nextUpcoming = upcoming.length > 0 ? upcoming[0] : null
 
   /** The episode on screen, whether it is playing or waiting to be unlocked. */
   const current = playing?.episode ?? previewing
@@ -299,6 +305,18 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
                   </button>
                 )}
 
+                {/* The waiting list, over whatever the player was showing */}
+                {notifyFor !== null && (
+                  <NotifyMeSheet
+                    slug={slug}
+                    episodeNumber={notifyFor}
+                    seriesTitle={series.title}
+                    signedIn={Boolean(user)}
+                    knownEmail={user?.email}
+                    onClose={() => setNotifyFor(null)}
+                  />
+                )}
+
                 {/* Paywall */}
                 {locked && current && (
                   <EpisodePaywall
@@ -353,6 +371,30 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
                             {!nextEpisode.isFree && !nextEpisode.isUnlocked && (
                               <p className="mt-2.5 text-xs text-white/45">Costs {episodePrice} credits</p>
                             )}
+                          </>
+                        ) : nextUpcoming ? (
+                          // The season is not over, it just has not been shot
+                          // yet. Saying so — and offering to write — is worth
+                          // more here than sending them back to the catalogue.
+                          <>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-white/45">Up next</p>
+                            <p className="mt-1.5 text-lg font-semibold">Episode {nextUpcoming} · Coming soon</p>
+                            <p className="mt-1 text-sm text-white/55">
+                              That&apos;s everything we&apos;ve released so far.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setNotifyFor(nextUpcoming)}
+                              className="mx-auto mt-5 flex items-center gap-2 rounded-xl bg-primary px-7 py-3 text-sm font-bold text-black transition hover:brightness-110"
+                            >
+                              <BellRing className="h-4 w-4" />Notify me
+                            </button>
+                            <Link
+                              href="/originals"
+                              className="mx-auto mt-3 block w-fit text-xs font-medium text-white/50 underline-offset-2 hover:text-white hover:underline"
+                            >
+                              Browse more series
+                            </Link>
                           </>
                         ) : (
                           <>
@@ -551,9 +593,36 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
                     </button>
                   )
                 })}
+                {/* Announced but not yet uploaded. Shown only on the last
+                    page, where the released numbers actually run out. */}
+                {gridPage === pageCount - 1 && upcoming.map((number) => (
+                  <button
+                    key={`upcoming-${number}`}
+                    type="button"
+                    onClick={() => setNotifyFor(number)}
+                    title={`Episode ${number} — coming soon`}
+                    className="relative grid h-12 place-items-center rounded-lg border border-dashed border-white/15 bg-transparent text-sm font-semibold text-white/35 transition hover:border-primary/50 hover:text-primary"
+                  >
+                    {number}
+                    <BellRing className="absolute right-1 top-1 h-3 w-3" />
+                  </button>
+                ))}
               </div>
 
-              {episodes.length === 0 && (
+              {upcoming.length > 0 && (
+                <p className="mt-3 text-xs text-white/40">
+                  {episodes.length} of {series.plannedEpisodes} episodes are out.
+                  <button
+                    type="button"
+                    onClick={() => nextUpcoming && setNotifyFor(nextUpcoming)}
+                    className="ml-1.5 font-semibold text-primary underline-offset-2 hover:underline"
+                  >
+                    Notify me about episode {nextUpcoming}
+                  </button>
+                </p>
+              )}
+
+              {episodes.length === 0 && upcoming.length === 0 && (
                 <p className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.02] p-6 text-center text-sm text-white/45">
                   No episodes published yet.
                 </p>

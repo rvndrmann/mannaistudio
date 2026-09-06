@@ -41,6 +41,11 @@ export type OriginalsSeriesSummary = {
   freeEpisodes: number
   episodePrice: number
   episodeCount: number
+  /**
+   * How long the finished season will be, when that has been decided. Numbers
+   * past what is published are drawn as "coming soon" and can be waited on.
+   */
+  plannedEpisodes: number | null
 }
 
 /**
@@ -63,6 +68,8 @@ export type OriginalsEpisodeSummary = {
 
 export type OriginalsSeriesDetail = OriginalsSeriesSummary & {
   episodes: OriginalsEpisodeSummary[]
+  /** Announced-but-unreleased episode numbers, in order. Empty when the season is complete. */
+  upcomingEpisodes: number[]
   /** ISO timestamp while a season pass is live for this viewer, else null. */
   passExpiresAt: string | null
 }
@@ -73,4 +80,18 @@ export function formatEpisodeDuration(seconds: number | null): string {
   const rest = seconds % 60
   if (minutes === 0) return `${rest}s`
   return `${minutes}m ${String(rest).padStart(2, "0")}s`
+}
+
+/**
+ * The episode numbers a viewer can ask to be told about: everything between the
+ * last published episode and the end of the announced season.
+ */
+export function upcomingEpisodeNumbers(published: number[], plannedEpisodes: number | null): number[] {
+  if (!plannedEpisodes || plannedEpisodes <= 0) return []
+  const out: number[] = []
+  const have = new Set(published)
+  for (let n = 1; n <= plannedEpisodes; n += 1) {
+    if (!have.has(n)) out.push(n)
+  }
+  return out
 }

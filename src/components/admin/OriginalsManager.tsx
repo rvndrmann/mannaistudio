@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { AlertCircle, Check, ChevronDown, ChevronRight, Loader2, Plus, Save, Trash2, Upload } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
+import OriginalsNotifyList from "@/components/admin/OriginalsNotifyList"
 import { DEFAULT_EPISODE_PRICE, DEFAULT_FREE_EPISODES } from "@/lib/originals"
 
 type SeriesRow = {
@@ -18,6 +19,8 @@ type SeriesRow = {
   episode_price: number
   is_published: boolean
   sort_order: number
+  /** Length of the finished season, or null for "not saying yet". */
+  planned_episodes: number | null
 }
 
 type EpisodeRow = {
@@ -45,6 +48,7 @@ const blankSeries = (): SeriesRow => ({
   episode_price: DEFAULT_EPISODE_PRICE,
   is_published: false,
   sort_order: 0,
+  planned_episodes: null,
 })
 
 const MAX_POSTER_BYTES = 5 * 1024 * 1024
@@ -143,6 +147,7 @@ export default function OriginalsManager() {
         p_episode_price: draft.episode_price,
         p_is_published: draft.is_published,
         p_sort_order: draft.sort_order,
+        p_planned_episodes: draft.planned_episodes,
       })
       if (error) throw new Error(error.message)
       setStatus({ tone: "ok", message: `Saved "${draft.title}"` })
@@ -334,6 +339,23 @@ export default function OriginalsManager() {
               />
             </label>
             <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-white/50">Episodes in the season</span>
+              <input
+                type="number"
+                min={1}
+                placeholder="Leave blank if undecided"
+                className={inputClass}
+                value={draft.planned_episodes ?? ""}
+                onChange={(e) => setDraft({
+                  ...draft,
+                  planned_episodes: e.target.value.trim() === "" ? null : Math.max(1, parseInt(e.target.value) || 1),
+                })}
+              />
+              <span className="mt-1 block text-[11px] text-white/35">
+                Numbers past what you have uploaded show as &ldquo;coming soon&rdquo; with a Notify me button.
+              </span>
+            </label>
+            <label className="block">
               <span className="mb-1.5 block text-xs font-semibold text-white/50">Credits per episode</span>
               <input
                 type="number"
@@ -458,6 +480,7 @@ export default function OriginalsManager() {
                     <p className="truncate text-sm font-semibold text-white">{row.title}</p>
                     <p className="text-xs text-white/40">
                       /{row.slug} · {row.free_episodes} free · {row.episode_price} credits each
+                      {row.planned_episodes ? ` · ${row.planned_episodes} planned` : ""}
                     </p>
                   </div>
                 </button>
@@ -631,6 +654,14 @@ export default function OriginalsManager() {
                     {(episodes[row.id] || []).length === 0 && (
                       <p className="py-6 text-center text-xs text-white/30">No episodes yet.</p>
                     )}
+                  </div>
+
+                  {/* Who asked to hear about the episodes still to come. Kept
+                      next to the episode list because uploading one and
+                      announcing it are the same piece of work. */}
+                  <div className="mt-6 border-t border-white/[0.06] pt-4">
+                    <h4 className="px-4 text-sm font-semibold text-white">Waiting to be notified</h4>
+                    <OriginalsNotifyList seriesId={row.id} seriesTitle={row.title} />
                   </div>
                 </div>
               )}
