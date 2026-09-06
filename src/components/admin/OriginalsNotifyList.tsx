@@ -96,7 +96,13 @@ export default function OriginalsNotifyList({ seriesId, seriesTitle }: { seriesI
   }
 
   if (groups.length === 0) {
-    return (
+    // A failed load used to render as "nobody asked", which reads as an answer
+    // rather than a failure — and hid a broken query for a whole release.
+    return status?.tone === "error" ? (
+      <p className="px-4 py-6 text-sm text-red-400">
+        Could not load the waiting list: {status.message}
+      </p>
+    ) : (
       <p className="px-4 py-6 text-sm text-white/35">
         Nobody has asked to be notified about {seriesTitle} yet.
       </p>
