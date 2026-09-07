@@ -49,6 +49,7 @@ export function IntegrationsPanel() {
   const [rows, setRows] = useState<ProviderRow[]>([]);
   const [configured, setConfigured] = useState(true);
   const [subscriptionRequired, setSubscriptionRequired] = useState(false);
+  const [paused, setPaused] = useState<string | null>(null);
   const [vaultReadable, setVaultReadable] = useState(true);
   const [ownKeysOnly, setOwnKeysOnly] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -65,6 +66,7 @@ export function IntegrationsPanel() {
       setRows((data.providers as ProviderRow[]) || []);
       setConfigured(Boolean(data.configured));
       setSubscriptionRequired(Boolean(data.subscriptionRequired));
+      setPaused(data.paused ? String(data.pausedMessage || "This is paused right now.") : null);
       setVaultReadable(data.vaultReadable !== false);
       setOwnKeysOnly(Boolean(data.ownKeysOnly));
     } finally {
@@ -131,6 +133,17 @@ export function IntegrationsPanel() {
   };
 
   if (loading) return <p className="text-sm text-zinc-500">Loading integrations…</p>;
+
+  // Checked before everything else: while it is paused, whether this account
+  // could otherwise subscribe or connect is not the useful thing to say.
+  if (paused) {
+    return (
+      <div className="rounded-xl border border-amber-500/30 bg-amber-500/[.06] p-5 text-sm text-zinc-300">
+        <h3 className="font-semibold text-white">Paused for now</h3>
+        <p className="mt-2 leading-6 text-zinc-400">{paused}</p>
+      </div>
+    );
+  }
 
   if (!configured) {
     return (

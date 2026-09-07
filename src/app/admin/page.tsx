@@ -3100,6 +3100,7 @@ function AdminDashboardContent() {
                                     {[
                                         { key: "originals" as const, label: "Originals", path: "/originals", desc: "Episodic series watched with credits" },
                                         { key: "mcp" as const, label: "MCP & CLI", path: "/studio/external", desc: "External AI Client Integration Setup" },
+                                        { key: "byok" as const, label: "Bring your own API keys", path: "/studio/integrations", desc: "Customers connecting their own OpenAI / Google / BytePlus / fal.ai keys. Pausing also removes it from pricing, the billing page and plan features. Stored keys are kept." },
                                         { key: "calendar" as const, label: "Calendar", path: "/calendar", desc: "Content Calendar & Post Scheduler" },
                                         { key: "analytics" as const, label: "Analytics", path: "/analytics", desc: "Social Media & Video Analytics Dashboard" },
                                         { key: "ads" as const, label: "Ads Manager", path: "/ads", desc: "Meta & LinkedIn Ad Campaign Manager" },

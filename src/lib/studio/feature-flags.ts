@@ -94,6 +94,13 @@ export type SiteFeatures = {
   blog: boolean
   mcp: boolean
   originals: boolean
+  /**
+   * Bring-your-own provider keys. Off hides the offer everywhere it is sold —
+   * plan bullets, the billing banner and FAQ, the integrations screen — and
+   * closes the routes behind it. Keys already stored are left untouched, so
+   * turning it back on restores what people had rather than asking for it again.
+   */
+  byok: boolean
 }
 
 export const defaultSiteFeatures: SiteFeatures = {
@@ -106,6 +113,7 @@ export const defaultSiteFeatures: SiteFeatures = {
   blog: true,
   mcp: true,
   originals: true,
+  byok: true,
 }
 
 export async function fetchSiteFeatures(supabase: SupabaseClient): Promise<SiteFeatures> {
@@ -122,6 +130,7 @@ export async function fetchSiteFeatures(supabase: SupabaseClient): Promise<SiteF
       blog: data.value.blog !== false,
       mcp: data.value.mcp !== false,
       originals: data.value.originals !== false,
+      byok: data.value.byok !== false,
     }
   } catch {
     return defaultSiteFeatures

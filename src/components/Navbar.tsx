@@ -253,13 +253,15 @@ export default function Navbar() {
                                             <div className="flex min-h-[44px] items-center px-3">
                                                 <BillingModeToggle compact />
                                             </div>
-                                            <Link
-                                                href="/studio/integrations"
-                                                className="flex min-h-[44px] items-center gap-2.5 rounded-md px-3 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
-                                            >
-                                                <KeyRound className="h-4 w-4 text-primary" />
-                                                API keys
-                                            </Link>
+                                            {siteFeatures?.byok !== false && (
+                                                <Link
+                                                    href="/studio/integrations"
+                                                    className="flex min-h-[44px] items-center gap-2.5 rounded-md px-3 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+                                                >
+                                                    <KeyRound className="h-4 w-4 text-primary" />
+                                                    API keys
+                                                </Link>
+                                            )}
                                             <Link
                                                 href="/studio/team"
                                                 className="flex min-h-[44px] items-center gap-2.5 rounded-md px-3 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"

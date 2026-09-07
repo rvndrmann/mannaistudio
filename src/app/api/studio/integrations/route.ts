@@ -4,6 +4,7 @@ import { hasByokSubscription, listCredentials } from "@/lib/byok/credential-serv
 import { byokIsConfigured } from "@/lib/byok/kms"
 import { byokProviders, providerSpecs } from "@/lib/byok/providers"
 import { ownKeysOnly, setOwnKeysOnly } from "@/lib/byok/preferences"
+import { BYOK_PAUSED_MESSAGE, byokPaused } from "@/lib/byok/paused"
 
 /**
  * What the browser is allowed to know about connected credentials.
@@ -18,6 +19,16 @@ export async function GET() {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (await byokPaused()) {
+      return NextResponse.json({
+        configured: byokIsConfigured(),
+        paused: true,
+        pausedMessage: BYOK_PAUSED_MESSAGE,
+        vaultReadable: true,
+        ownKeysOnly: false,
+        providers: [],
+      })
+    }
     if (!(await hasByokSubscription(user.id))) {
       return NextResponse.json({
         configured: byokIsConfigured(),
@@ -78,9 +89,23 @@ export async function GET() {
  */
 export async function PATCH(request: Request) {
   try {
+    if (await byokPaused()) {
+      return NextResponse.json({ error: BYOK_PAUSED_MESSAGE }, { status: 503 })
+    }
+
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (await byokPaused()) {
+      return NextResponse.json({
+        configured: byokIsConfigured(),
+        paused: true,
+        pausedMessage: BYOK_PAUSED_MESSAGE,
+        vaultReadable: true,
+        ownKeysOnly: false,
+        providers: [],
+      })
+    }
     if (!(await hasByokSubscription(user.id))) {
       return NextResponse.json({ error: "An active subscription is required to use your own API keys." }, { status: 403 })
     }

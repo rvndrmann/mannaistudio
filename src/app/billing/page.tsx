@@ -4,7 +4,8 @@ import Footer from "@/components/Footer"
 import EnterpriseOrderForm from "@/components/enterprise/EnterpriseOrderForm"
 import Navbar from "@/components/Navbar"
 import { useAuth } from "@/components/auth/auth-provider"
-import { orderedBillingTiers, type BillingTierId } from "@/lib/billing-plans"
+import { orderedBillingTiers, tierFeatures, type BillingTierId } from "@/lib/billing-plans"
+import { useByokEnabled } from "@/lib/byok/use-byok-enabled"
 import { INR_PER_USD, formatInr, formatUsd, formatUsdWithInr } from "@/lib/currency"
 import {
   AlertCircle,
@@ -31,17 +32,17 @@ import {
 import Link from "next/link"
 import { useEffect, useState } from "react"
 
+const byokFaq: [string, string] = ["Can I use my own API keys?", "Yes, with an active paid subscription. Bring your own OpenAI, Google, BytePlus, or fal.ai API keys and pay the provider directly at its rates, or use studio credits when you prefer. Free accounts cannot use BYO API keys."]
+
 const faqs = [
   ["How do credits work?", "Credits are used when generating AI images and videos. Planning, script writing, workflow instructions, and chat guidance are included in your plan."],
   ["How do Razorpay subscriptions work?", "When you subscribe, Razorpay securely establishes a monthly recurring payment mandate. Your plan automatically renews each month, granting fresh credits to your account upon every successful charge."],
   ["Can I cancel my subscription anytime?", "Yes. You can cancel your subscription anytime directly from your billing dashboard. Your membership access and remaining credits stay active until the end of your current billing period."],
   ["Can I buy extra credits anytime?", `Active subscribers can purchase additional credits starting from 1,000 credits (${formatUsdWithInr(1000)}) up to any custom amount whenever their production needs grow. Free accounts cannot buy credits.`],
-  ["Can I use my own API keys?", "Yes, with an active paid subscription. Bring your own OpenAI, Google, BytePlus, or fal.ai API keys and pay the provider directly at its rates, or use studio credits when you prefer. Free accounts cannot use BYO API keys."],
   ["Why is my card charged in rupees?", `Prices are shown in US dollars for convenience, but AI Director Hub bills through Razorpay, an Indian payment gateway, so the charge settles in rupees and that is the amount your statement will show. International cards are accepted. Your bank applies its own exchange rate, so the dollar total may differ by a few cents from the figure shown here (currently converted at ₹${INR_PER_USD} to the dollar).`],
 ]
 
 const billingHighlights = [
-  { icon: KeyRound, label: "BYO API on every plan" },
   { icon: Bot, label: "AI Director Agent" },
   { icon: ImageIcon, label: "AI Image Creation" },
   { icon: Video, label: "AI Video Production" },
@@ -73,6 +74,11 @@ type UserSubscriptionInfo = {
 export default function BillingPage() {
   const { user, signInWithGoogle } = useAuth()
   const [openFaq, setOpenFaq] = useState(0)
+  // Bring-your-own-keys can be paused from the admin panel. When it is, every
+  // place this page sells it has to go quiet too — an offer still advertised on
+  // the pricing page is one support asks about all week. Hidden until the flag
+  // says otherwise, so a paused offer never renders and then vanishes.
+  const byokEnabled = useByokEnabled()
   const [loadingTier, setLoadingTier] = useState<string | null>(null)
   const [subSuccess, setSubSuccess] = useState<string | null>(null)
   const [subError, setSubError] = useState<string | null>(null)
@@ -107,6 +113,12 @@ export default function BillingPage() {
   useEffect(() => {
     loadBillingData()
   }, [user])
+
+
+  const visibleFaqs = byokEnabled ? [...faqs, byokFaq] : faqs
+  const visibleHighlights = byokEnabled
+    ? [{ icon: KeyRound, label: "BYO API on every plan" }, ...billingHighlights]
+    : billingHighlights
 
   const loadRazorpayScript = () =>
     new Promise<boolean>((resolve) => {
@@ -377,15 +389,17 @@ export default function BillingPage() {
           </div>
         )}
 
-        <div className="mb-8 flex flex-col gap-3 rounded-2xl border border-primary/30 bg-primary/[.06] p-5 sm:flex-row sm:items-center">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary text-black">
-            <KeyRound className="h-5 w-5" />
+        {byokEnabled && (
+          <div className="mb-8 flex flex-col gap-3 rounded-2xl border border-primary/30 bg-primary/[.06] p-5 sm:flex-row sm:items-center">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary text-black">
+              <KeyRound className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-semibold text-white">Bring your own API keys — included with every paid subscription.</p>
+              <p className="mt-1 text-sm text-white/55">Use OpenAI, Google, BytePlus, or fal.ai and pay provider rates directly. Free accounts cannot use BYO API keys.</p>
+            </div>
           </div>
-          <div>
-            <p className="font-semibold text-white">Bring your own API keys — included with every paid subscription.</p>
-            <p className="mt-1 text-sm text-white/55">Use OpenAI, Google, BytePlus, or fal.ai and pay provider rates directly. Free accounts cannot use BYO API keys.</p>
-          </div>
-        </div>
+        )}
 
         <div className="grid gap-5 lg:grid-cols-3">
           {orderedBillingTiers.map((tier) => {
@@ -463,7 +477,7 @@ export default function BillingPage() {
                     Included features
                   </div>
                   <ul className="space-y-3">
-                    {tier.features.map((feature) => (
+                    {tierFeatures(tier, byokEnabled).map((feature) => (
                       <li key={feature} className="flex items-start gap-3 text-sm text-white/75">
                         <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                         <span>{feature}</span>
@@ -695,7 +709,7 @@ export default function BillingPage() {
 
           {[
             ["Monthly credits", "1,000", "3,500", "12,000"],
-            ["Bring your own API keys (paid plans only)", "Yes", "Yes", "Yes"],
+            ...(byokEnabled ? [["Bring your own API keys (paid plans only)", "Yes", "Yes", "Yes"]] : []),
             ["AI Director chat", "Yes", "Yes", "Yes"],
             ["AI Director voice", "No", "Yes", "Yes"],
             ["MCP & CLI access", "No", "Yes", "Yes"],
@@ -717,7 +731,7 @@ export default function BillingPage() {
       <section className="mx-auto max-w-4xl px-4 py-20 md:px-6">
         <h2 className="text-center text-4xl font-semibold tracking-tight md:text-5xl">Frequently Asked Questions</h2>
         <div className="mt-10 space-y-3">
-          {faqs.map(([question, answer], index) => (
+          {visibleFaqs.map(([question, answer], index) => (
             <button
               key={question}
               onClick={() => setOpenFaq(openFaq === index ? -1 : index)}
@@ -735,7 +749,7 @@ export default function BillingPage() {
 
       <section className="mx-auto max-w-[1200px] px-4 pb-20 md:px-6">
         <div className="grid gap-4 rounded-[28px] border border-white/10 bg-white/[.04] p-6 md:grid-cols-4">
-          {billingHighlights.map((item) => (
+          {visibleHighlights.map((item) => (
             <div key={item.label} className="flex items-center gap-3 rounded-2xl bg-black/25 p-4">
               <item.icon className="h-5 w-5 text-primary" />
               <span className="text-sm font-bold text-white/70">{item.label}</span>

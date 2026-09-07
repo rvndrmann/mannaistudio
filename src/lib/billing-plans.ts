@@ -115,3 +115,17 @@ export function applyBillingOverrides(value: unknown): Record<BillingTierId, Bil
   }
   return merged
 }
+
+/**
+ * The bullet every tier carries about bring-your-own keys.
+ *
+ * Kept as a value rather than deleted from the tier lists so that pausing the
+ * offer and restoring it are the same one-line change, and the wording does not
+ * have to be reconstructed from memory when it comes back.
+ */
+export const BYOK_FEATURE_LINE = "Bring your own API keys (provider rates)"
+
+/** A tier's bullets, minus the BYOK line when the offer is paused. */
+export function tierFeatures(tier: BillingTier, byokEnabled: boolean): string[] {
+  return byokEnabled ? tier.features : tier.features.filter((line) => line !== BYOK_FEATURE_LINE)
+}

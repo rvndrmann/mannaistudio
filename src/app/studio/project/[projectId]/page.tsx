@@ -120,6 +120,7 @@ import { AdsManager } from "@/components/studio/marketing/AdsManager";
 import { CompetitorIntelligence } from "@/components/studio/marketing/CompetitorIntelligence";
 import { MarketingAgentHome } from "@/components/studio/marketing/MarketingAgentHome";
 import { IntegrationsSettings } from "@/components/studio/marketing/IntegrationsSettings";
+import { useByokEnabled } from "@/lib/byok/use-byok-enabled"
 
 type Entity = {
   id: string;
@@ -254,6 +255,7 @@ export default function WorkspacePage({
 }) {
   const { projectId } = use(params);
   const { user } = useAuth();
+  const byokEnabled = useByokEnabled();
   const [data, setData] = useState<Workspace | null>(null);
   const [tab, setTabState] = useState<string>("canvas");
   // Below xl the chat cannot sit beside the canvas, so it becomes a sheet the
@@ -1313,10 +1315,12 @@ export default function WorkspacePage({
           {/* Your own provider keys. Sits beside Credits because that is the
               choice it changes: connect a key and that provider stops spending
               them. */}
+          {byokEnabled && (
           <Link href="/studio/integrations" className="hidden items-center gap-1 rounded-full bg-[#141414] px-2.5 py-1.5 text-[11px] font-semibold text-zinc-300 hover:bg-[#1e1e1e] hover:text-white transition sm:flex" title="Use your own provider API keys instead of studio credits">
             <KeyRound className="h-3 w-3" />
             <span>API keys</span>
           </Link>
+          )}
 
           {/* Credits badge */}
           <Link href="/studio/credits" className="flex items-center gap-1 rounded-full bg-[#141414] px-2.5 py-1.5 text-[11px] font-bold text-[#b9f42e] hover:bg-[#1e1e1e] transition">

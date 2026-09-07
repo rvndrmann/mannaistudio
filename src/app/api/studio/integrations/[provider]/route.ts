@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { BYOK_PAUSED_MESSAGE, byokPaused } from "@/lib/byok/paused"
 import { createClient } from "@/lib/supabase/server"
 import { deleteCredential, hasByokSubscription, recordCredentialEvent, saveCredential } from "@/lib/byok/credential-service"
 import { byokIsConfigured } from "@/lib/byok/kms"
@@ -34,6 +35,11 @@ async function authorize(request: NextRequest, provider: string) {
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ provider: string }> }) {
   try {
+    // Paused means no new secrets come in. Stored ones stay put, so DELETE is
+    // deliberately left open: someone must always be able to withdraw a key.
+    if (await byokPaused()) {
+      return NextResponse.json({ error: BYOK_PAUSED_MESSAGE }, { status: 503 })
+    }
     return await saveProviderCredential(request, await params)
   } catch (error) {
     // Anything thrown here reached the browser as a 500 with no body, and the

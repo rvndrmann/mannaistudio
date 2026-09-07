@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { BYOK_PAUSED_MESSAGE, byokPaused } from "@/lib/byok/paused"
 import { createClient } from "@/lib/supabase/server"
 import { hasByokSubscription, recordCredentialEvent, withCredential } from "@/lib/byok/credential-service"
 import { byokIsConfigured } from "@/lib/byok/kms"
