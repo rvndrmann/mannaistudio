@@ -2,8 +2,21 @@ import { createHash } from "node:crypto"
 import { defaultDirectorModelId, defaultDirectorModels } from "@/lib/studio/ai-models"
 import { activeCredentialPart } from "@/lib/byok/active-credential"
 
-export const openAIImageModels = ["gpt-image-2", "gpt-image-1.5"] as const
+export const openAIImageModels = ["gpt-image-2", "gpt-image-2.5-sunburst", "gpt-image-1.5"] as const
 export type OpenAIImageModel = (typeof openAIImageModels)[number]
+
+/**
+ * Whether a model can be rendered through the Responses API's image_generation
+ * tool, which is what submitOpenAIImage uses to get a recoverable handle.
+ *
+ * gpt-image-2.5-sunburst cannot: OpenAI lists `/v1/responses` as unsupported for
+ * it, and only `/v1/images/generations` and `/v1/images/edits` are available. A
+ * model routed there anyway is rejected at submit time, so the caller has to
+ * fall back to the synchronous endpoints — see the image routes, which do.
+ */
+export function supportsBackgroundImageResponse(model: string) {
+  return model !== "gpt-image-2.5-sunburst"
+}
 
 export const openAIDirectorModels: string[] = defaultDirectorModels.map((model) => model.id)
 export type OpenAIDirectorModel = string
@@ -413,6 +426,13 @@ export async function generateOpenAIImage(input: { userId: string; model: OpenAI
  * instead of paying for it twice.
  */
 export async function submitOpenAIImage(input: { userId: string; model: OpenAIImageModel; prompt: string; referenceUrls?: string[]; aspectRatio?: string; quality?: OpenAIImageQuality }) {
+  // Loud here rather than an opaque 400 from OpenAI: a model that cannot run on
+  // /v1/responses has to take the synchronous path, and a caller that forgot
+  // should learn that from the message rather than from a provider error that
+  // names neither the model nor the reason.
+  if (!supportsBackgroundImageResponse(input.model)) {
+    throw new OpenAIProviderError(`${input.model} cannot render as a background response — use generateOpenAIImage for this model.`, 500)
+  }
   const size = openAIImageSizeForAspectRatio(input.aspectRatio)
   const quality = input.quality || "medium"
   const referenceUrls = input.referenceUrls || []

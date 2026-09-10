@@ -60,6 +60,12 @@ export const MODEL_CREDIT_RATES: Record<string, ModelCreditRate> = {
   // GPT Image bills by quality tier, and the spread is wide enough that a
   // single figure would be wrong at both ends: Low is 2 credits, High is 45.
   "gpt-image-2": { unit: "per image", base: 12, description: "GPT Image 2", byQuality: { Low: 2, Medium: 12, High: 45, Ultra: 45 } },
+  // Sunburst bills at exactly GPT Image 2's token rates ($5/$8/$30 per 1M for
+  // text in, image in, image out), so its tiers are carried across unchanged.
+  // Still marked estimated because credits-per-image also depends on how many
+  // output tokens a render actually emits, and the card does not quote that for
+  // this model — the figure needs a real per-image quote before it is trusted.
+  "gpt-image-2.5-sunburst": { unit: "per image", base: 12, description: "GPT Image 2.5 Sunburst", estimated: true, byQuality: { Low: 2, Medium: 12, High: 45, Ultra: 45 } },
   "gpt-image-1.5": { unit: "per image", base: 12, description: "GPT Image 1.5", estimated: true, byQuality: { Low: 2, Medium: 12, High: 45, Ultra: 45 } },
   "dola-seedream-5-0-pro-260628": { unit: "per image", base: 10, description: "Seedream 5.0 Pro" },
   // The card prices Nano Banana at 1K/2K/4K. The workspace stores video-style

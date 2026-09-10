@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { openAIImageModels, OpenAIProviderError, retrieveOpenAIImage, submitOpenAIImage } from "@/lib/studio/openai"
+import { generateOpenAIImage, openAIImageModels, OpenAIProviderError, retrieveOpenAIImage, submitOpenAIImage, supportsBackgroundImageResponse } from "@/lib/studio/openai"
 import { createBytePlusAsset, generateBytePlusImage, BytePlusProviderError } from "@/lib/studio/byteplus"
 import { FalProviderError, generateFalImage } from "@/lib/studio/fal"
 import { generateGoogleImage, GoogleProviderError } from "@/lib/studio/google"
@@ -470,7 +470,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // was set.
     const rendered: RenderResult = await runOnBillingAccount(async () => {
     let image: Buffer
-    if (provider === "openai") {
+    if (provider === "openai" && !supportsBackgroundImageResponse(input.model)) {
+      // GPT Image 2.5 Sunburst is only served by /v1/images/generations and
+      // /v1/images/edits, so there is no background response to hand back and no
+      // id to recover it by. The render is held on this connection instead, well
+      // inside the route's 300s budget, and a request that dies mid-call loses
+      // the image — which is why the recoverable path above stays the default
+      // for every model that can use it.
+      image = await generateOpenAIImage({
+        userId: context.user.id,
+        model: input.model as (typeof openAIImageModels)[number],
+        prompt: resolvedPrompt,
+        referenceUrls,
+        aspectRatio: effectiveAspectRatio,
+        quality: openAIImageQuality(quality === "Ultra" ? "High" : quality),
+      })
+    } else if (provider === "openai") {
       // Submitted as a background response, then waited on here.
       //
       // The render used to be one synchronous call, so a function killed

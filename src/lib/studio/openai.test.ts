@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { analyzeImagesAsJson, openAIImageSizeForAspectRatio, readOpenAIImageResponse } from "./openai"
+import { analyzeImagesAsJson, openAIImageModels, openAIImageSizeForAspectRatio, readOpenAIImageResponse, submitOpenAIImage, supportsBackgroundImageResponse } from "./openai"
+import { generationProvider, imageGenerationModels } from "./generation-models"
+import { projectStoryboardImageModel } from "./project-image-model"
+import { calculateCreditCost } from "./credits"
 
 describe("OpenAI image canvas routing", () => {
   it("uses the landscape canvas for cinematic landscape ratios", () => {
@@ -112,5 +115,44 @@ describe("reading back a background image render", () => {
   it("treats a completed response with no image as a failure", () => {
     const result = readOpenAIImageResponse({ status: "completed", output: [{ type: "message" }] })
     expect(result.status).toBe("failed")
+  })
+})
+
+describe("GPT Image 2.5 Sunburst endpoint support", () => {
+  it("renders through the synchronous image endpoints, not a background response", () => {
+    // OpenAI lists /v1/responses as unsupported for this model, so the
+    // recoverable background path the other GPT Image models use is not
+    // available to it.
+    expect(supportsBackgroundImageResponse("gpt-image-2.5-sunburst")).toBe(false)
+    expect(supportsBackgroundImageResponse("gpt-image-2")).toBe(true)
+    expect(supportsBackgroundImageResponse("gpt-image-1.5")).toBe(true)
+  })
+
+  it("is offered as an OpenAI image model", () => {
+    expect(openAIImageModels).toContain("gpt-image-2.5-sunburst")
+    expect(imageGenerationModels.find((model) => model.id === "gpt-image-2.5-sunburst")?.provider).toBe("openai")
+    expect(generationProvider("gpt-image-2.5-sunburst")).toBe("openai")
+  })
+
+  it("refuses a background submit by name rather than letting OpenAI reject it", async () => {
+    process.env.OPENAI_API_KEY = "test-key"
+    await expect(submitOpenAIImage({
+      userId: "user-1",
+      model: "gpt-image-2.5-sunburst",
+      prompt: "a lighthouse at dusk",
+    })).rejects.toThrow(/gpt-image-2\.5-sunburst cannot render as a background response/)
+  })
+
+  it("keeps the chosen OpenAI model instead of collapsing it to gpt-image-2", () => {
+    // Every OpenAI model that was not 1.5 used to be rewritten to gpt-image-2
+    // here, so a project set to Sunburst silently rendered on something else.
+    const project = { metadata: { basic_settings: { storyboardImageModel: "gpt-image-2.5-sunburst" } } }
+    expect(projectStoryboardImageModel(project)).toBe("gpt-image-2.5-sunburst")
+  })
+
+  it("is priced on the rate card rather than falling back to the unlisted-model rate", () => {
+    expect(calculateCreditCost("gpt-image-2.5-sunburst", "image", 5, { quality: "Low" })).toBe(2)
+    expect(calculateCreditCost("gpt-image-2.5-sunburst", "image", 5, { quality: "Medium" })).toBe(12)
+    expect(calculateCreditCost("gpt-image-2.5-sunburst", "image", 5, { quality: "High" })).toBe(45)
   })
 })

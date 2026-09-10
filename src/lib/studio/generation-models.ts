@@ -1,5 +1,6 @@
 export const imageGenerationModels = [
   { id: "gpt-image-2", label: "GPT Image 2", provider: "openai" },
+  { id: "gpt-image-2.5-sunburst", label: "GPT Image 2.5 Sunburst", provider: "openai" },
   { id: "gpt-image-1.5", label: "GPT Image 1.5", provider: "openai" },
   { id: "dola-seedream-5-0-pro-260628", label: "Seedream 5.0 Pro", provider: "byteplus" },
   { id: "google-nano-banana-2-pro", label: "Nano Banana 2 Pro (Google AI Studio)", provider: "google" },

@@ -1,5 +1,5 @@
 import { generateGoogleImage } from "./google"
-import { generateOpenAIImage, type OpenAIImageModel, type OpenAIImageQuality } from "./openai"
+import { generateOpenAIImage, openAIImageModels, type OpenAIImageModel, type OpenAIImageQuality } from "./openai"
 import { generationProvider, imageGenerationModels, isImageGenerationModel, type ImageGenerationModelId } from "./generation-models"
 
 /**
@@ -74,7 +74,9 @@ export async function generateProjectImage(input: {
   // Everything else renders on OpenAI. A model from another provider that has
   // no image path here would otherwise be sent to OpenAI under its own name and
   // rejected, so it falls back to the default GPT Image model instead.
-  const openAIModel: OpenAIImageModel = input.model === "gpt-image-1.5" ? "gpt-image-1.5" : "gpt-image-2"
+  const openAIModel: OpenAIImageModel = openAIImageModels.includes(input.model as OpenAIImageModel)
+    ? input.model as OpenAIImageModel
+    : "gpt-image-2"
   const buffer = await generateOpenAIImage({
     userId: input.userId,
     model: openAIModel,
