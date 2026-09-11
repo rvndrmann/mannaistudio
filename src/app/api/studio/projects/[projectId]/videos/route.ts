@@ -89,6 +89,29 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "One or more referenced entities do not belong to this project." }, { status: 400 })
     }
 
+    // Every picture in this project that already has a registered asset, keyed
+    // by the path it was registered from.
+    //
+    // A reference added through the Multi Image strip was resolved only against
+    // the shot's own asset map, and a character's registration lives on the
+    // entity — so a face that was verified minutes ago still went to the
+    // provider as a raw URL and was rejected as a real person. It also meant
+    // registering it again, spending one of the fifty slots on a duplicate of
+    // something already registered.
+    const { data: everyEntity } = await context.supabase
+      .from("creator_entities")
+      .select("reference_images,metadata")
+      .eq("project_id", projectId)
+    const entityAssetByPath = new Map<string, string>()
+    for (const entity of everyEntity || []) {
+      const meta = (entity.metadata || {}) as Record<string, unknown>
+      const assetId = typeof meta.byteplus_asset_id === "string" ? meta.byteplus_asset_id.trim() : ""
+      if (!assetId) continue
+      for (const path of (entity.reference_images || []) as string[]) {
+        if (typeof path === "string" && path) entityAssetByPath.set(path, assetId)
+      }
+    }
+
     // Validate the full request before reserving credits.
     const platformCost = calculateCreditCost(input.model, "video", input.durationSeconds, { resolution: input.resolution, aspectRatio: input.aspectRatio, quality: input.quality })
     // Same rule as every other charge path. This route billed directly and
@@ -233,7 +256,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       // the asset id is what clears the real-person check, and re-sending the
       // raw picture instead would have it rejected.
       const registeredAssetUri = provider === "byteplus"
-        ? (refPath === shot.keyframe_image && shotKeyframeAssetId ? shotKeyframeAssetId : seedanceReferenceAssetUri(shotReferenceAssets[refPath]))
+        ? (refPath === shot.keyframe_image && shotKeyframeAssetId
+            ? shotKeyframeAssetId
+            : seedanceReferenceAssetUri(shotReferenceAssets[refPath]) || entityAssetByPath.get(refPath) || null)
         : null
       combinedReferencePaths.push(registeredAssetUri || refPath)
       // A picture attached to the shot itself is as likely to show a person as
