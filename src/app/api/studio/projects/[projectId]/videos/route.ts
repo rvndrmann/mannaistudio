@@ -501,14 +501,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       //
       // Claimed with a conditional update so two polls cannot both submit it:
       // only the request that moves the row out of `approved` proceeds.
-      if (job.status === "approved") {
-        const { data: claimed } = await context.supabase
+      //
+      // A claim can itself be abandoned — the host kills the request between
+      // marking the row and reaching the provider — which left the job in
+      // `processing` with no id, where the first version of this looked only at
+      // `approved` and never came back for it. So a claim that has gone quiet
+      // for longer than any real submission takes is claimable again, and the
+      // re-claim is conditioned on the exact started_at that was read, which is
+      // what stops two pollers from both taking it.
+      const claimAgeMs = job.started_at ? Date.now() - Date.parse(job.started_at as string) : Infinity
+      const abandonedClaim = job.status === "processing" && Number.isFinite(claimAgeMs) && claimAgeMs > 90_000
+      if (job.status === "approved" || abandonedClaim) {
+        const claim = context.supabase
           .from("creator_generation_jobs")
           .update({ status: "processing", started_at: new Date().toISOString() })
           .eq("id", job.id)
-          .eq("status", "approved")
-          .select("id")
-          .maybeSingle()
+        const { data: claimed } = await (abandonedClaim
+          ? claim.eq("started_at", job.started_at as string)
+          : claim.eq("status", "approved")
+        ).select("id").maybeSingle()
         if (claimed) {
           await executeGenerationJobs(context, [job.id as string])
           const { data: ran } = await context.supabase
