@@ -43,6 +43,18 @@ export const CHAT_TOKEN_RATES: Record<string, TokenRate> = {
     outputPerMillion: 1.2,
     source: "OpenAI, after the 30 July 2026 reduction",
   },
+  "gemini-3.7-flash": {
+    inputPerMillion: 1.5,
+    outputPerMillion: 7.5,
+    source: "Google's standard Flash rate; recheck against their page when 3.7 pricing is published",
+  },
+  // Both efforts of a Claude model cost the same per token — effort changes how
+  // many tokens it spends, which the usage already reports. The variants are
+  // priced separately anyway because the charge is looked up by catalog id.
+  "claude-opus-5-high": { inputPerMillion: 5, outputPerMillion: 25, source: "Anthropic Opus-tier pricing" },
+  "claude-opus-5-low": { inputPerMillion: 5, outputPerMillion: 25, source: "Anthropic Opus-tier pricing" },
+  "claude-opus-4-8-high": { inputPerMillion: 5, outputPerMillion: 25, source: "Anthropic Opus-tier pricing" },
+  "claude-opus-4-8-low": { inputPerMillion: 5, outputPerMillion: 25, source: "Anthropic Opus-tier pricing" },
 }
 
 /**
@@ -56,13 +68,14 @@ export const CHAT_TOKEN_RATES: Record<string, TokenRate> = {
  * model staying in the card — when Gemini 3.6 Flash was retired, the card was
  * left holding only Luna and the fallback would have collapsed from $3.75 to
  * $1.20 per million output tokens, undercharging every future model by three
- * times. The figure is Gemini's post-January-2027 rate, kept as a ceiling
- * precisely because nothing in the card has to justify it any more.
+ * times. It was Gemini's post-January-2027 rate; adding Claude to the catalog
+ * raised it to the Opus tier, which is the dearest thing the Director now runs
+ * on. The number only ever moves up — it is a ceiling, not an average.
  */
 export const FALLBACK_TOKEN_RATE: TokenRate = {
-  inputPerMillion: 1.5,
-  outputPerMillion: 7.5,
-  source: "Deliberate ceiling for an unpriced model; Google's 2027 Flash rate",
+  inputPerMillion: 5,
+  outputPerMillion: 25,
+  source: "Deliberate ceiling for an unpriced model; Anthropic's Opus-tier rate",
 }
 
 function rateFor(model: string): TokenRate {

@@ -6,6 +6,7 @@ import { brandFunctionDefinitions, brandHandoffSchema, brandTeamRoster, describe
 import { activeDirectorModels } from "@/lib/studio/ai-models"
 import { buildVisionUserContent, inlineImage, type DirectorVisionAttachment } from "@/lib/studio/director-vision"
 import { createGoogleDirectorToolTurn, GoogleProviderError } from "@/lib/studio/google"
+import { createAnthropicDirectorToolTurn, isClaudeDirectorModel } from "@/lib/studio/anthropic"
 import { describeError } from "@/lib/studio/errors"
 import { createDirectorToolTurn, defaultOpenAIDirectorModel, OpenAIProviderError } from "@/lib/studio/openai"
 import { studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
@@ -95,7 +96,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
       const instructions = instructionsFor()
-      const turn = model.startsWith("gemini")
+      const turn = isClaudeDirectorModel(model)
+        ? await createAnthropicDirectorToolTurn({ userId: context.user.id, model, instructions, items, tools })
+        : model.startsWith("gemini")
         ? await createGoogleDirectorToolTurn({ userId: context.user.id, model, instructions, items, tools })
         : await createDirectorToolTurn({ userId: context.user.id, model, instructions, items, tools })
       if (turn.content) content = turn.content

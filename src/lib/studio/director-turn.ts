@@ -322,7 +322,7 @@ const persistAssistantMessage = async (response: Awaited<ReturnType<typeof runDi
     sessionId,
     userMessage,
     assistantMessage,
-    provider: model.startsWith("gemini") ? "google" : "openai",
+    provider: model.startsWith("claude") ? "anthropic" : model.startsWith("gemini") ? "google" : "openai",
     model,
     usage: response.usage,
     // Told to the client so the credit badge can move, and so a turn on the

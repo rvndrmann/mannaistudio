@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { createDirectorToolTurn, streamDirectorToolTurn, type OpenAIDirectorFunction } from "./openai"
 import { createGoogleDirectorToolTurn } from "./google"
+import { createAnthropicDirectorToolTurn, isClaudeDirectorModel } from "./anthropic"
 import { directorTools, type DirectorToolName } from "./tool-registry"
 import { requestDirectorTool } from "./tool-service"
 import type { AuthenticatedProjectContext } from "./server-context"
@@ -316,7 +317,15 @@ export async function runDirectorAgent(input: {
         ...controlToolDefinitions.filter((tool) => tool.name !== HAND_OFF_TOOL || handoffs < runtimeSettings.maxHandoffs),
       ]
 
-      turn = input.model.startsWith("gemini")
+      turn = isClaudeDirectorModel(input.model)
+        ? await createAnthropicDirectorToolTurn({
+            userId: input.context.user.id,
+            model: input.model,
+            instructions: fullInstructions,
+            items,
+            tools: toolDefs,
+          })
+        : input.model.startsWith("gemini")
         ? await createGoogleDirectorToolTurn({
             userId: input.context.user.id,
             model: input.model,

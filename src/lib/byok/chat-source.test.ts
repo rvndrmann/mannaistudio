@@ -3,11 +3,21 @@ import { chatModelProvider } from "./chat-source"
 import { defaultDirectorModels } from "@/lib/studio/ai-models"
 
 describe("which provider serves a chat turn", () => {
-  it("maps every model the studio actually offers", () => {
+  it("maps every model the studio offers on a customer key", () => {
     // A model nobody can route is a turn that silently runs on the platform
-    // account, which is the whole failure this exists to prevent.
-    for (const model of defaultDirectorModels) {
+    // account, which is the whole failure this exists to prevent. The catalog
+    // says which models have a customer-key route at all, so a new one cannot
+    // slip past this by simply not being listed here.
+    for (const model of defaultDirectorModels.filter((entry) => entry.byok)) {
       expect(chatModelProvider(model.id)).not.toBeNull()
+    }
+  })
+
+  it("has nowhere to route a model marked as platform-only", () => {
+    // Claude is deliberately platform-only: there is no Anthropic BYOK
+    // provider, so these turns are ours to pay for and the catalog says so.
+    for (const model of defaultDirectorModels.filter((entry) => !entry.byok)) {
+      expect(chatModelProvider(model.id)).toBeNull()
     }
   })
 

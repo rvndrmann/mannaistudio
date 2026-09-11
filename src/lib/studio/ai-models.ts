@@ -1,11 +1,22 @@
 export const defaultDirectorModelId = "gpt-5.6-luna"
 
-// The Director runs on one model. Gemini 3.6 Flash was retired from the chat
-// catalog deliberately: `normalizeDirectorModels` below drops any stored id it
-// does not find here, so taking it out of this list also takes it out of the
-// Studio selector and out of any model list an admin saved earlier.
+// This list is the whole catalog: `normalizeDirectorModels` below drops any
+// stored id it does not find here, so a model is in the Studio selector only
+// while it is in this list, whatever an admin saved earlier.
+// `byok: false` marks a model with no customer-key route, so every turn on it
+// bills the platform. It is catalog truth, not a setting: `normalizeDirectorModels`
+// rebuilds each entry from the id, label and status alone, so nothing stored in
+// site_settings can flip it.
 export const defaultDirectorModels = [
-  { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", status: "active" },
+  { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", status: "active", byok: true },
+  { id: "gemini-3.7-flash", label: "Gemini 3.7 Flash", status: "active", byok: true },
+  // Claude runs at two efforts, and the effort is part of the id because every
+  // consumer downstream — the rate card, the credit charge, the pause switch —
+  // keys on the id alone. See `claudeDirectorModel` in studio/anthropic.ts.
+  { id: "claude-opus-5-high", label: "Claude Opus 5 (High)", status: "active", byok: false },
+  { id: "claude-opus-5-low", label: "Claude Opus 5 (Low)", status: "active", byok: false },
+  { id: "claude-opus-4-8-high", label: "Claude Opus 4.8 (High)", status: "active", byok: false },
+  { id: "claude-opus-4-8-low", label: "Claude Opus 4.8 (Low)", status: "active", byok: false },
 ] as const
 
 export type DirectorModelStatus = "active" | "paused"
