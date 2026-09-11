@@ -156,7 +156,6 @@ export const tools = [
           id: entity.id, name: entity.name, type: entity.type,
           referenceImages: entity.reference_images || [],
         })),
-        creditBalance: state.creditAccount?.balance ?? null,
       })
     },
   },
@@ -322,9 +321,13 @@ export const tools = [
     },
     async run({ projectId, episodeId }) {
       const state = await projectState(projectId, episodeId)
-      const jobs = (state.generationJobs || []).slice(0, 20)
+      const jobs = (state.production?.generationJobs || state.generationJobs || []).slice(0, 20)
       return text({
-        creditBalance: state.creditAccount?.balance ?? null,
+        // Not the balance: `creditAccount` is an unused table and reads null for
+        // everyone, so reporting it said "no credits" to an account holding
+        // tens of thousands. What this endpoint does know is what the work has
+        // actually cost, which is the more useful number anyway.
+        episodeSpend: state.production?.spend?.episode ?? null,
         pendingProposals: (state.actionProposals || [])
           .filter((proposal) => proposal.status === "pending")
           .map((proposal) => ({

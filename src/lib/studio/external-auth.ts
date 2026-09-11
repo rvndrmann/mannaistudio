@@ -44,6 +44,61 @@ export function bearerToken(request: Request) {
   return match?.[1]?.trim() || ""
 }
 
+/**
+ * Sessions minted for token holders, kept until shortly before they expire.
+ *
+ * Minting costs a round trip to the auth server, so doing it per request would
+ * add a second to every call and lean on an endpoint that rate-limits. One
+ * session per user per hour is enough.
+ */
+const actingSessions = new Map<string, { client: SupabaseClient; expiresAt: number }>()
+
+/**
+ * A client that genuinely *is* the token's owner, rather than one acting on
+ * their behalf.
+ *
+ * The service client was the obvious way to serve a token holder and the wrong
+ * one. Postgres sees no `auth.uid()` through it, and fourteen SECURITY DEFINER
+ * functions on this path — approvals, credit reservation, job claiming, XP —
+ * read a missing identity as "refuse". Each would have had to learn to take an
+ * id it could not verify, and each is a place where passing the wrong id spends
+ * someone else's money.
+ *
+ * So the identity is made real instead: a session is minted for the user the
+ * token belongs to, and every query runs under it. `auth.uid()` resolves, RLS
+ * applies exactly as it does in that user's browser, and the functions need no
+ * changes at all. It is also strictly narrower than what this path had before —
+ * a token no longer reaches anything its owner could not.
+ */
+async function sessionClientFor(user: User): Promise<SupabaseClient | null> {
+  const cached = actingSessions.get(user.id)
+  if (cached && cached.expiresAt > Date.now() + 60_000) return cached.client
+  if (!user.email) return null
+
+  const admin = createServiceClient()
+  const link = await admin.auth.admin.generateLink({ type: "magiclink", email: user.email })
+  const hashedToken = link.data?.properties?.hashed_token
+  if (link.error || !hashedToken) return null
+
+  // Verified through the anon client, because that is the exchange a browser
+  // makes; the admin client cannot hold the resulting session.
+  const anon = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  )
+  const verified = await anon.auth.verifyOtp({ type: "magiclink", token_hash: hashedToken })
+  const session = verified.data?.session
+  if (verified.error || !session) return null
+
+  const client = createTokenClient(session.access_token)
+  actingSessions.set(user.id, {
+    client,
+    expiresAt: (session.expires_at ? session.expires_at * 1000 : Date.now() + 3_600_000),
+  })
+  return client
+}
+
 export async function validateExternalRequest(request: Request, requiredScope: string) {
   const token = bearerToken(request)
   // Only tokens this app minted are looked up here. Without the prefix check a
@@ -66,7 +121,12 @@ export async function validateExternalRequest(request: Request, requiredScope: s
     .eq("id", data.id)
   const { data: user, error: userError } = await supabase.auth.admin.getUserById(data.user_id)
   if (userError || !user.user) throw new StudioAccessError("External token user was not found", 401)
-  return { supabase, user: user.user }
+
+  // Falls back to the service client only if a session cannot be minted, so a
+  // token keeps working for reads rather than failing outright — writes that
+  // need an identity will still refuse, which is the safe direction.
+  const acting = await sessionClientFor(user.user).catch(() => null)
+  return { supabase: acting || supabase, user: user.user }
 }
 
 export async function requireProjectFromRequest(
