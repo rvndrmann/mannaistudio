@@ -9,17 +9,45 @@ import { NextResponse, type NextRequest } from 'next/server'
 // episodes before being asked who they are. Sign-in is required at the point of
 // purchase or enrolment instead, which the pages and API routes enforce
 // themselves — the wall was in front of the shop window.
+// /account is deliberately absent: it draws its own sign-in card, the same way
+// /originals does. Bouncing a signed-out visitor to /login instead would put
+// the wall in front of the page that explains what they are signing in for.
 const protectedPaths = ['/challenges', '/services', '/admin', '/profile', '/portfolio', '/studio']
 
 // Temporarily paused features — redirect to home (code kept; re-enable by emptying this list).
 const pausedPaths = ['/feed', '/services', '/challenges', '/messages']
 
+/**
+ * The SaaS-era surfaces, kept for the people who run the site.
+ *
+ * This is a micro-drama catalogue now. A viewer's whole account is /originals
+ * and /account; the studio, the course platform, the portfolio and the old
+ * membership billing are operator tools that were never rebuilt for them, and
+ * a viewer who lands on one sees a product that is not for sale.
+ *
+ * Listed here rather than gated inside each page because there are a dozen of
+ * them: a per-page gate is a dozen chances to forget one, and the one that gets
+ * forgotten is the one someone finds.
+ */
+const adminOnlyPaths = [
+    '/billing', '/studio', '/profile', '/courses', '/portfolio', '/credits',
+    '/social', '/marketing', '/analytics', '/ads', '/calendar', '/competitors', '/blog',
+]
+
+function matchesPath(pathname: string, paths: string[]): boolean {
+    return paths.some(path => pathname === path || pathname.startsWith(path + '/'))
+}
+
+function isAdminOnlyRoute(pathname: string): boolean {
+    return matchesPath(pathname, adminOnlyPaths)
+}
+
 function isProtectedRoute(pathname: string): boolean {
-    return protectedPaths.some(path => pathname === path || pathname.startsWith(path + '/'))
+    return matchesPath(pathname, protectedPaths) || isAdminOnlyRoute(pathname)
 }
 
 function isPausedRoute(pathname: string): boolean {
-    return pausedPaths.some(path => pathname === path || pathname.startsWith(path + '/'))
+    return matchesPath(pathname, pausedPaths)
 }
 
 export async function middleware(request: NextRequest) {
@@ -69,8 +97,15 @@ export async function middleware(request: NextRequest) {
         ])
 
         // Timed out (null) -> let the request through; the client/page handles auth.
+        //
+        // An admin-only route is the exception. Failing open there does not
+        // degrade gracefully — it shows a viewer the operator tooling, which is
+        // the exact thing this list exists to prevent. A wrongly bounced admin
+        // reloads and gets in; a wrongly admitted viewer does not un-see it.
         if (userResult === null) {
-            return res
+            return isAdminOnlyRoute(request.nextUrl.pathname)
+                ? NextResponse.redirect(new URL('/originals', request.url))
+                : res
         }
 
         const user = userResult.data?.user
@@ -82,10 +117,25 @@ export async function middleware(request: NextRequest) {
             return NextResponse.redirect(redirectUrl)
         }
 
+        if (isAdminOnlyRoute(request.nextUrl.pathname)) {
+            const { data: admin } = await supabase
+                .from('admin_users')
+                .select('id')
+                .eq('id', user.id)
+                .maybeSingle()
+            // To the catalogue, not to /: the point is to put them where the
+            // product is, rather than bounce them to a landing page they have
+            // already been past.
+            if (!admin) return NextResponse.redirect(new URL('/originals', request.url))
+        }
+
         return res
     } catch {
-        // On any error, fail open rather than taking the site down.
-        return response
+        // On any error, fail open rather than taking the site down — with the
+        // same admin-only exception as the timeout above.
+        return isAdminOnlyRoute(request.nextUrl.pathname)
+            ? NextResponse.redirect(new URL('/originals', request.url))
+            : response
     }
 }
 

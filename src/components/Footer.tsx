@@ -9,10 +9,13 @@ const legalLinks = [
     { href: "/contact#grievance", label: "Grievance Redressal" },
 ]
 
+// The footer is rendered for everyone, so it can only carry links everyone can
+// follow. The Academy and the old Pricing page are admin-only since the move to
+// a drama catalogue — leaving them here would put two dead ends on every page,
+// because middleware bounces a viewer straight back to /originals.
 const siteLinks = [
-    { href: "/courses", label: "AI Director Hub Academy" },
-    // Paused: Challenges, AI Jobs
-    { href: "/billing", label: "Pricing" },
+    { href: "/originals", label: "Originals" },
+    { href: "/account", label: "My Account" },
     { href: "/about", label: "About Us" },
 ]
 

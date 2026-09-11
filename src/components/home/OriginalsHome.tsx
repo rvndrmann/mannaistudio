@@ -21,7 +21,7 @@ import {
 } from "lucide-react"
 import { useAuth } from "@/components/auth/auth-provider"
 import CreditPackModal from "@/components/originals/CreditPackModal"
-import { ORIGINALS_CREDIT_PACKAGES, type OriginalsSeriesSummary } from "@/lib/originals"
+import { DEFAULT_EPISODE_PRICE, DEFAULT_FREE_EPISODES, ORIGINALS_CREDIT_PACKAGES, UNLOCK_WINDOW_DAYS, type OriginalsSeriesSummary } from "@/lib/originals"
 import { formatUsdWithInr } from "@/lib/currency"
 
 /**
@@ -72,8 +72,11 @@ export default function OriginalsHome() {
 
     const featured = series[0] || null
     const rest = useMemo(() => series.slice(1), [series])
-    const episodePrice = featured?.episodePrice ?? 20
-    const freeEpisodes = featured?.freeEpisodes ?? 3
+    // The shared fallback, not a second hardcoded number: this one still said 20
+    // after the catalogue moved to 25, so the landing page quoted a price no
+    // series charged whenever the catalogue had not loaded yet.
+    const episodePrice = featured?.episodePrice ?? DEFAULT_EPISODE_PRICE
+    const freeEpisodes = featured?.freeEpisodes ?? DEFAULT_FREE_EPISODES
 
     return (
         <main className="min-h-screen bg-black text-white">
@@ -110,7 +113,7 @@ export default function OriginalsHome() {
                                     {credits !== null ? credits.toLocaleString() : "…"}
                                 </button>
                                 <Link
-                                    href="/profile"
+                                    href="/account"
                                     className="flex items-center gap-2 rounded-md bg-white/10 px-3 py-2 transition hover:bg-white/20"
                                 >
                                     {user.user_metadata?.avatar_url ? (
@@ -119,7 +122,7 @@ export default function OriginalsHome() {
                                         <User className="h-4 w-4 text-white/70" />
                                     )}
                                     <span className="hidden text-sm font-medium sm:inline">
-                                        {user.user_metadata?.full_name?.split(" ")[0] || "Profile"}
+                                        {user.user_metadata?.full_name?.split(" ")[0] || "Account"}
                                     </span>
                                 </Link>
                                 <button
@@ -189,7 +192,7 @@ export default function OriginalsHome() {
                         <ul className="mt-8 space-y-2.5">
                             {[
                                 `${freeEpisodes} free episodes on every series`,
-                                `${episodePrice} credits per episode after that — yours to keep forever`,
+                                `${episodePrice} credits per episode after that — ${UNLOCK_WINDOW_DAYS} days to watch it`,
                                 "No subscription. Buy credits only when you want to.",
                             ].map((line) => (
                                 <li key={line} className="flex items-start gap-2.5 text-sm text-white/55">
@@ -303,7 +306,7 @@ export default function OriginalsHome() {
                         {[
                             { icon: Play, title: "Watch free", body: `Every series opens with ${freeEpisodes} free episodes. Sign in and press play.` },
                             { icon: Zap, title: "Unlock with credits", body: `Hooked? Each episode after that is ${episodePrice} credits. One tap, no subscription.` },
-                            { icon: Check, title: "Keep it forever", body: "An unlocked episode stays unlocked. Rewatch it whenever you like." },
+                            { icon: Check, title: `Yours for ${UNLOCK_WINDOW_DAYS} days`, body: `An unlocked episode stays open for ${UNLOCK_WINDOW_DAYS} days — rewatch it as often as you like in that window.` },
                         ].map((step, i) => (
                             <div key={step.title} className="text-center">
                                 <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl border border-primary/25 bg-primary/10 text-primary">
@@ -330,7 +333,7 @@ export default function OriginalsHome() {
                         </p>
                     </div>
 
-                    <div className="mt-10 grid gap-4 sm:grid-cols-3">
+                    <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                         {Object.entries(ORIGINALS_CREDIT_PACKAGES).map(([id, pack]) => {
                             const popular = id === "500"
                             return (

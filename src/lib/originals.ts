@@ -10,13 +10,21 @@
  */
 
 export const ORIGINALS_CREDIT_PACKAGES: Record<string, { credits: number; priceInr: number; episodes: number }> = {
-  "200": { credits: 200, priceInr: 200, episodes: 10 },
-  "500": { credits: 500, priceInr: 500, episodes: 25 },
-  "1000": { credits: 1000, priceInr: 1000, episodes: 50 },
+  "10": { credits: 10, priceInr: 10, episodes: 1 },
+  "50": { credits: 50, priceInr: 50, episodes: 5 },
+  "200": { credits: 200, priceInr: 200, episodes: 20 },
+  "500": { credits: 500, priceInr: 500, episodes: 50 },
 }
 
-/** Fallbacks for a series row that predates the per-series columns. */
-export const DEFAULT_EPISODE_PRICE = 25
+/**
+ * Fallbacks for a series row that predates the per-series columns.
+ *
+ * Display only. What a viewer is actually charged is `episode_price` on the
+ * series row, read inside the unlock function — so this constant and that
+ * column have to be moved together or the paywall quotes one price and the
+ * balance loses another.
+ */
+export const DEFAULT_EPISODE_PRICE = 10
 export const DEFAULT_FREE_EPISODES = 3
 
 /**
@@ -62,8 +70,35 @@ export type OriginalsEpisodeSummary = {
   durationSeconds: number | null
   /** Inside the series' free window — plays without spending anything. */
   isFree: boolean
-  /** Already bought by this viewer. */
+  /** Bought by this viewer and still inside its window. */
   isUnlocked: boolean
+  /**
+   * When this viewer's access to the episode lapses — the rental's own expiry,
+   * or the season pass's when one is covering it. Null when access has no end:
+   * a free episode, a locked one, or an unlock sold before the rental window
+   * existed.
+   */
+  unlockExpiresAt: string | null
+}
+
+/** How long a bought episode stays playable. Mirrors originals_unlock_window(). */
+export const UNLOCK_WINDOW_DAYS = 60
+
+/**
+ * "12 days left" for a rental that is running out.
+ *
+ * Returns null when there is nothing worth saying — no expiry at all, or one
+ * far enough away that a countdown is just noise on the page. The warning is
+ * the point; a permanent-looking label on day one is not.
+ */
+export function unlockTimeRemaining(expiresAt: string | null, warnWithinDays = 14): string | null {
+  if (!expiresAt) return null
+  const msLeft = new Date(expiresAt).getTime() - Date.now()
+  if (Number.isNaN(msLeft) || msLeft <= 0) return "Expired"
+  const daysLeft = Math.ceil(msLeft / 86_400_000)
+  if (daysLeft > warnWithinDays) return null
+  if (daysLeft === 1) return "Last day"
+  return `${daysLeft} days left`
 }
 
 export type OriginalsSeriesDetail = OriginalsSeriesSummary & {

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Check, Crown, Loader2, Lock, Zap } from "lucide-react"
-import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events"
+import { useCreditPackCheckout } from "./use-credit-pack-checkout"
 import {
   ORIGINALS_CREDIT_PACKAGES,
   SEASON_PASS_DAYS,
@@ -116,58 +116,18 @@ export default function EpisodePaywall({
     }
   }
 
-  const buyPack = async (packageId: string) => {
-    if (!signedIn) { onSignIn(); return }
-    setBusy(packageId)
-    setLocalError(null)
-    try {
-      const ok = await loadRazorpay()
-      if (!ok) throw new Error("Could not reach the payment gateway.")
-      const res = await fetch("/api/originals/credits", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packageId }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Could not start checkout")
+  // Packs go through the shared checkout; the season pass above does not,
+  // because it buys a different thing from a different endpoint.
+  const { buyPack: startPackCheckout, pendingPackId, error: packError } = useCreditPackCheckout({
+    onPurchased: (newBalance) => { onBalanceChange(newBalance); setShowPacks(false) },
+  })
 
-      const rzp = new (window as any).Razorpay({
-        key: data.keyId,
-        order_id: data.orderId,
-        amount: data.amount,
-        currency: "INR",
-        name: "AI Director Hub Originals",
-        description: `${data.credits} credits`,
-        prefill: { email: data.email, name: data.name },
-        theme: { color: "#b9f42e" },
-        handler: async (r: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
-          try {
-            const verify = await fetch("/api/credits/verify", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(r),
-            })
-            const vd = await verify.json()
-            if (!verify.ok) throw new Error(vd.error || "Payment verification failed")
-            notifyCreditBalanceChanged(vd.newBalance)
-            onBalanceChange(vd.newBalance)
-            setShowPacks(false)
-          } catch (e) {
-            setLocalError(e instanceof Error ? e.message : "Payment verification failed")
-          } finally {
-            setBusy(null)
-          }
-        },
-        modal: { ondismiss: () => setBusy(null) },
-      })
-      rzp.open()
-    } catch (e) {
-      setLocalError(e instanceof Error ? e.message : "Could not start checkout")
-      setBusy(null)
-    }
+  const buyPack = (packageId: string) => {
+    if (!signedIn) { onSignIn(); return }
+    void startPackCheckout(packageId)
   }
 
-  const shown = error || localError
+  const shown = error || localError || packError
 
   return (
     <div className="absolute inset-0 overflow-hidden">
@@ -239,16 +199,16 @@ export default function EpisodePaywall({
 
               {/* Packs, inline: leaving the player is where people stop. */}
               {showPacks && signedIn && (
-                <div className="mt-3 grid grid-cols-3 gap-2">
+                <div className="mt-3 grid grid-cols-4 gap-2">
                   {Object.entries(ORIGINALS_CREDIT_PACKAGES).map(([id, pack]) => (
                     <button
                       key={id}
                       type="button"
                       onClick={() => buyPack(id)}
-                      disabled={busy === id}
+                      disabled={pendingPackId !== null}
                       className="min-h-[64px] rounded-xl border border-white/15 bg-white/[0.04] px-2 py-2.5 text-center transition hover:border-primary/60 disabled:opacity-60"
                     >
-                      {busy === id ? (
+                      {pendingPackId === id ? (
                         <Loader2 className="mx-auto h-4 w-4 animate-spin text-white/70" />
                       ) : (
                         <>

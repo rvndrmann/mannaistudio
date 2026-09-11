@@ -15,18 +15,25 @@ import { createClient } from "@/lib/supabase/client"
 import { defaultBillingSettings, fetchBillingSettings, isAdminUser } from "@/lib/membership"
 import { defaultSiteFeatures, fetchSiteFeatures, type SiteFeatures } from "@/lib/studio/feature-flags"
 
+/**
+ * `adminOnly` marks the SaaS-era surfaces that survived the move to a
+ * micro-drama catalogue. It mirrors `adminOnlyPaths` in middleware.ts, which is
+ * what actually enforces the rule — this flag only stops the nav offering a
+ * viewer a link that would bounce them straight back to /originals.
+ */
 const baseNavLinks = [
     { key: "originals", name: "Originals", href: "/originals", icon: Clapperboard },
-    { key: "social", name: "Social", href: "/social", icon: Play },
-    { key: "calendar", name: "Calendar", href: "/calendar", icon: BookOpen },
-    { key: "analytics", name: "Analytics", href: "/analytics", icon: CreditCard },
-    { key: "ads", name: "Ads Manager", href: "/ads", icon: ShieldCheck },
-    { key: "competitors", name: "Competitors", href: "/competitors", icon: ShieldCheck },
-    { key: "courses", name: "AI Director Hub Academy", href: "/courses", icon: Play },
-    { key: "blog", name: "Blog", href: "/blog", icon: BookOpen },
-    { key: "billing", name: "Billing", href: "/billing", icon: CreditCard },
-    { key: "mcp", name: "MCP & CLI", href: "/studio/external", icon: PlugZap },
-]
+    { key: "account", name: "My Account", href: "/account", icon: CreditCard, needsUser: true },
+    { key: "social", name: "Social", href: "/social", icon: Play, adminOnly: true },
+    { key: "calendar", name: "Calendar", href: "/calendar", icon: BookOpen, adminOnly: true },
+    { key: "analytics", name: "Analytics", href: "/analytics", icon: CreditCard, adminOnly: true },
+    { key: "ads", name: "Ads Manager", href: "/ads", icon: ShieldCheck, adminOnly: true },
+    { key: "competitors", name: "Competitors", href: "/competitors", icon: ShieldCheck, adminOnly: true },
+    { key: "courses", name: "AI Director Hub Academy", href: "/courses", icon: Play, adminOnly: true },
+    { key: "blog", name: "Blog", href: "/blog", icon: BookOpen, adminOnly: true },
+    { key: "billing", name: "Billing", href: "/billing", icon: CreditCard, adminOnly: true },
+    { key: "mcp", name: "MCP & CLI", href: "/studio/external", icon: PlugZap, adminOnly: true },
+] as Array<{ key: string; name: string; href: string; icon: typeof Clapperboard; adminOnly?: boolean; needsUser?: boolean }>
 
 const adminLink = { key: "admin", name: "Admin", href: "/admin", icon: ShieldCheck }
 
@@ -102,7 +109,16 @@ export default function Navbar() {
         return true
     })
 
-    const navLinks = isAdmin ? [...activeBaseNavLinks, adminLink] : activeBaseNavLinks
+    // The operator surfaces leave the nav entirely for a viewer. Middleware
+    // would bounce them anyway; offering the link first is just a worse way to
+    // say no.
+    const permittedNavLinks = activeBaseNavLinks.filter((link) => {
+        if (link.adminOnly && !isAdmin) return false
+        if (link.needsUser && !user) return false
+        return true
+    })
+
+    const navLinks = isAdmin ? [...permittedNavLinks, adminLink] : permittedNavLinks
 
     // Originals is the one surface that works signed out — the catalogue is
     // public and the first episodes of every series play free, which is the
@@ -208,7 +224,7 @@ export default function Navbar() {
                                                 <div className="flex items-center gap-2">
                                                     <NotificationBell />
                                                     <Link
-                                                        href="/profile"
+                                                        href={isAdmin ? "/profile" : "/account"}
                                                         className="flex items-center gap-2 rounded-md bg-white/10 px-3 py-2 transition hover:bg-white/20"
                                                     >
                                                         {user.user_metadata?.avatar_url ? (
@@ -225,15 +241,19 @@ export default function Navbar() {
                                                 appear here only when they are not
                                                 already visible. */}
                                             <div className={compactHeader ? "" : "md:hidden"}>
-                                                <Link
-                                                    href="/studio"
-                                                    className="mb-1 flex min-h-[44px] items-center gap-2.5 rounded-md bg-primary px-3 text-sm font-semibold text-black transition hover:brightness-110"
-                                                >
-                                                    <Sparkles className="h-4 w-4" />
-                                                    Creator Studio
-                                                </Link>
+                                                {isAdmin && (
+                                                    <>
+                                                        <Link
+                                                            href="/studio"
+                                                            className="mb-1 flex min-h-[44px] items-center gap-2.5 rounded-md bg-primary px-3 text-sm font-semibold text-black transition hover:brightness-110"
+                                                        >
+                                                            <Sparkles className="h-4 w-4" />
+                                                            Creator Studio
+                                                        </Link>
 
-                                                <div className="my-1 border-t border-white/10" />
+                                                        <div className="my-1 border-t border-white/10" />
+                                                    </>
+                                                )}
 
                                                 {navLinks.map((link) => (
                                                     <Link
@@ -249,35 +269,42 @@ export default function Navbar() {
 
                                             <div className="my-1 border-t border-white/10" />
 
-                                            {/* Renders its own "My API" label, so it carries the row alone. */}
-                                            <div className="flex min-h-[44px] items-center px-3">
-                                                <BillingModeToggle compact />
-                                            </div>
-                                            {siteFeatures?.byok !== false && (
-                                                <Link
-                                                    href="/studio/integrations"
-                                                    className="flex min-h-[44px] items-center gap-2.5 rounded-md px-3 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
-                                                >
-                                                    <KeyRound className="h-4 w-4 text-primary" />
-                                                    API keys
-                                                </Link>
+                                            {/* Studio plumbing — the billing-mode switch, connected keys
+                                                and the team roster are all Creator Studio settings, so they
+                                                follow the studio itself out of a viewer's menu. */}
+                                            {isAdmin && (
+                                                <>
+                                                    {/* Renders its own "My API" label, so it carries the row alone. */}
+                                                    <div className="flex min-h-[44px] items-center px-3">
+                                                        <BillingModeToggle compact />
+                                                    </div>
+                                                    {siteFeatures?.byok !== false && (
+                                                        <Link
+                                                            href="/studio/integrations"
+                                                            className="flex min-h-[44px] items-center gap-2.5 rounded-md px-3 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+                                                        >
+                                                            <KeyRound className="h-4 w-4 text-primary" />
+                                                            API keys
+                                                        </Link>
+                                                    )}
+                                                    <Link
+                                                        href="/studio/team"
+                                                        className="flex min-h-[44px] items-center gap-2.5 rounded-md px-3 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+                                                    >
+                                                        <Users className="h-4 w-4 text-primary" />
+                                                        Team
+                                                    </Link>
+
+                                                    <div className="my-1 border-t border-white/10" />
+                                                </>
                                             )}
-                                            <Link
-                                                href="/studio/team"
-                                                className="flex min-h-[44px] items-center gap-2.5 rounded-md px-3 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
-                                            >
-                                                <Users className="h-4 w-4 text-primary" />
-                                                Team
-                                            </Link>
-
-                                            <div className="my-1 border-t border-white/10" />
 
                                             <Link
-                                                href="/profile"
+                                                href={isAdmin ? "/profile" : "/account"}
                                                 className="flex min-h-[44px] items-center gap-2.5 rounded-md px-3 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
                                             >
                                                 <User className="h-4 w-4 text-primary" />
-                                                Profile
+                                                {isAdmin ? "Profile" : "My Account"}
                                             </Link>
                                         </>
                                     ) : (
@@ -317,7 +344,7 @@ export default function Navbar() {
                         </Link>
                     ))}
 
-                    {!loading && (
+                    {!loading && isAdmin && (
                         <Link
                             href="/studio"
                             className="flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md bg-primary px-4 text-sm font-medium text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"

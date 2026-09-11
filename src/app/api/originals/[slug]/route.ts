@@ -45,19 +45,25 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     let credits: number | null = null
     let passExpiresAt: string | null = null
-    const unlockedIds = new Set<string>()
+    // Episode id -> when the unlock lapses, null for a legacy permanent one.
+    const unlockExpiry = new Map<string, string | null>()
     if (user) {
       const [{ data: profile }, { data: unlocks }, { data: pass }] = await Promise.all([
         admin.from("profiles").select("credits_balance").eq("id", user.id).maybeSingle(),
         admin
           .from("originals_unlocks")
-          .select("episode_id")
+          .select("episode_id, expires_at")
           .eq("profile_id", user.id)
-          .in("episode_id", (episodeRows || []).map((row) => row.id)),
+          .in("episode_id", (episodeRows || []).map((row) => row.id))
+          // A lapsed unlock is not an unlock. Filtered in the query rather than
+          // after it, so an expired row can never reach the grid as a padlock
+          // that is already open — the same rule unlock_originals_episode
+          // applies before it decides whether to charge.
+          .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`),
         admin.rpc("originals_pass_expiry", { p_profile_id: user.id, p_series_id: series.id }),
       ])
       credits = Number(profile?.credits_balance ?? 0)
-      for (const unlock of unlocks || []) unlockedIds.add(unlock.episode_id)
+      for (const unlock of unlocks || []) unlockExpiry.set(unlock.episode_id, unlock.expires_at ?? null)
       passExpiresAt = (pass as string | null) ?? null
     }
 
@@ -72,7 +78,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       isFree: row.episode_number <= freeEpisodes,
       // A live pass plays the whole series, so the grid must not
       // draw padlocks over episodes this viewer can already watch.
-      isUnlocked: unlockedIds.has(row.id) || Boolean(passExpiresAt),
+      isUnlocked: unlockExpiry.has(row.id) || Boolean(passExpiresAt),
+      // The pass covers the episode for as long as the pass lasts, so when one
+      // is live it — not the rental — is what the countdown should describe.
+      unlockExpiresAt: passExpiresAt ?? unlockExpiry.get(row.id) ?? null,
     }))
 
     const detail: OriginalsSeriesDetail = {

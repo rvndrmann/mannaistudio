@@ -7,7 +7,7 @@ import { ChevronLeft, ChevronRight, Film, Loader2, Play, Zap } from "lucide-reac
 import Navbar from "@/components/Navbar"
 import Footer from "@/components/Footer"
 import CreditPackModal from "@/components/originals/CreditPackModal"
-import { DEFAULT_EPISODE_PRICE, type OriginalsSeriesSummary } from "@/lib/originals"
+import { DEFAULT_EPISODE_PRICE, UNLOCK_WINDOW_DAYS, type OriginalsSeriesSummary } from "@/lib/originals"
 import { useAuth } from "@/components/auth/auth-provider"
 
 /** A horizontally scrolling shelf of posters, the way a catalogue is browsed. */
@@ -272,7 +272,7 @@ export default function OriginalsPage() {
               <Zap className="mx-auto h-7 w-7 text-primary" />
               <h2 className="mt-3 text-xl font-semibold">Out of credits?</h2>
               <p className="mx-auto mt-2 max-w-md text-sm text-white/50">
-                Every series opens free. After that it&apos;s {headlinePrice} credits an episode, yours to keep — no subscription.
+                Every series opens free. After that it&apos;s {headlinePrice} credits an episode, playable for {UNLOCK_WINDOW_DAYS} days — no subscription.
               </p>
               <button
                 type="button"
