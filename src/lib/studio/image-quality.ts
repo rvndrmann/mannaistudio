@@ -25,7 +25,10 @@ export function openAIImageQualityCeiling(model: string): OpenAIImageQuality[] {
   // happens to be the one model that cannot run on /v1/responses, and keying
   // this off that would tie two unrelated facts together — the next model to
   // differ on one but not the other would silently get the wrong ladder.
-  return model === "gpt-image-2.5-sunburst"
+  // Both routes to Sunburst, direct and through fal, are the same model and
+  // accept the same tiers. Listing only the direct id would have clamped the
+  // fal one to "high" and quietly dropped the two tiers it is worth using.
+  return model === "gpt-image-2.5-sunburst" || model === "fal-gpt-image-2-5-sunburst-edit"
     ? ["low", "medium", "high", "xhigh", "max"]
     : ["low", "medium", "high"]
 }

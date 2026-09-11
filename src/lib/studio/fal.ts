@@ -1,5 +1,6 @@
 import { fal } from "@fal-ai/client"
 import { videoModelMaxDuration, type ImageGenerationModelId, type VideoGenerationModelId } from "@/lib/studio/generation-models"
+import type { OpenAIImageQuality } from "@/lib/studio/image-quality"
 import { activeCredentialPart } from "@/lib/byok/active-credential"
 
 export class FalProviderError extends Error {
@@ -18,26 +19,56 @@ function getFalKey() {
   return key
 }
 
+/** Sunburst Edit takes up to sixteen reference images; the Flux models take one. */
+const SUNBURST_EDIT_ENDPOINT = "openai/gpt-image-2.5/sunburst/edit"
+const SUNBURST_EDIT_MAX_REFERENCES = 16
+
 export async function generateFalImage(input: {
   model: ImageGenerationModelId
   prompt: string
   referenceUrls?: string[]
+  quality?: OpenAIImageQuality
+  aspectRatio?: string
 }) {
   const falKey = getFalKey()
   fal.config({ credentials: falKey })
 
+  const isSunburstEdit = input.model === "fal-gpt-image-2-5-sunburst-edit"
   let endpoint = "fal-ai/flux/dev"
   if (input.model === "fal-flux-3") endpoint = "fal-ai/flux-pro/v1.1"
   else if (input.model === "fal-flux-realism") endpoint = "fal-ai/flux-realism"
+  else if (isSunburstEdit) endpoint = SUNBURST_EDIT_ENDPOINT
 
-  try {
-    const res = await fal.subscribe(endpoint, {
-      input: {
+  // An edit model with nothing to edit is a 422 from the provider and a charged
+  // job here. Said plainly instead, because the fix is to attach a reference.
+  if (isSunburstEdit && !input.referenceUrls?.length) {
+    throw new FalProviderError(
+      "GPT Image 2.5 Sunburst Edit edits an existing picture, so it needs at least one reference image. Attach one, or pick a text-to-image model.",
+      400,
+    )
+  }
+
+  // The Flux endpoints take `image_url` and a named size; Sunburst Edit takes
+  // `image_urls` and infers its canvas from them, which is what keeps an edit
+  // the same shape as the picture it came from. Sending square_hd here would
+  // silently reframe every edit to 1:1.
+  const payload = isSunburstEdit
+    ? {
+        prompt: input.prompt,
+        image_urls: input.referenceUrls!.slice(0, SUNBURST_EDIT_MAX_REFERENCES),
+        image_size: "auto",
+        quality: input.quality || "high",
+        num_images: 1,
+        output_format: "png",
+      }
+    : {
         prompt: input.prompt,
         image_size: "square_hd",
         ...(input.referenceUrls?.length ? { image_url: input.referenceUrls[0] } : {}),
-      },
-    })
+      }
+
+  try {
+    const res = await fal.subscribe(endpoint, { input: payload })
     const data = res.data as Record<string, unknown>
     const images = data?.images as Array<{ url?: string }> | undefined
     const url = images?.[0]?.url || (data?.image_url as string | undefined)
@@ -45,6 +76,7 @@ export async function generateFalImage(input: {
     if (!url) throw new FalProviderError("fal.ai image model did not return an image URL.")
     return { url, contentType: "image/png" }
   } catch (error) {
+    if (error instanceof FalProviderError) throw error
     const msg = error instanceof Error ? error.message : "fal.ai image generation failed"
     throw new FalProviderError(`fal.ai request failed: ${msg}`)
   }

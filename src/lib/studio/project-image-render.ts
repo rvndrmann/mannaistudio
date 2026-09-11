@@ -459,7 +459,7 @@ export async function renderProjectImage(
       }
       image = await waitForOpenAIImage(submitted.responseId, context.user.id)
     } else if (provider === "fal") {
-      const generated = await generateFalImage({ model: input.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls })
+      const generated = await generateFalImage({ model: input.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls, quality: openAIImageQuality(quality, input.model), aspectRatio: effectiveAspectRatio })
       const download = await fetch(generated.url)
       if (!download.ok) throw new FalProviderError(`Could not download fal.ai output (${download.status}).`)
       image = Buffer.from(await download.arrayBuffer())

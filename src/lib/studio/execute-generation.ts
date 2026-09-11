@@ -375,7 +375,7 @@ export async function executeGenerationJobsInBackground(
             const generated = await withGenerationRetry(context, job, () => job.provider === "google"
               ? generateGoogleImage({ model: job.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls })
               : job.provider === "fal"
-                ? generateFalImage({ model: job.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls })
+                ? generateFalImage({ model: job.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls, quality: openAIImageQuality(projectImageQuality(context.project), job.model as string), aspectRatio: effectiveAspectRatio })
                 : generateBytePlusImage({ model: job.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls }))
             
             let byteplusAssetId: string | null = null

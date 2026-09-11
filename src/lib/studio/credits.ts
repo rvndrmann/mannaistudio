@@ -93,6 +93,14 @@ export const MODEL_CREDIT_RATES: Record<string, ModelCreditRate> = {
     description: "GPT Image 2.5 Sunburst",
     byQuality: { Low: 2, Medium: 3, High: 12, Ultra: 20, Max: 45 },
   },
+  // The same model and the same token rates as the direct route above; fal
+  // resells OpenAI's pricing rather than setting its own.
+  "fal-gpt-image-2-5-sunburst-edit": {
+    unit: "per image",
+    base: 3,
+    description: "GPT Image 2.5 Sunburst Edit (fal.ai)",
+    byQuality: { Low: 2, Medium: 3, High: 12, Ultra: 20, Max: 45 },
+  },
   "gpt-image-1.5": { unit: "per image", base: 12, description: "GPT Image 1.5", estimated: true, byQuality: { Low: 2, Medium: 12, High: 45, Ultra: 45, Max: 45 } },
   "dola-seedream-5-0-pro-260628": { unit: "per image", base: 10, description: "Seedream 5.0 Pro" },
   // The card prices Nano Banana at 1K/2K/4K. The workspace stores video-style

@@ -5,6 +5,7 @@ export const imageGenerationModels = [
   { id: "dola-seedream-5-0-pro-260628", label: "Seedream 5.0 Pro", provider: "byteplus" },
   { id: "google-nano-banana-2-pro", label: "Nano Banana 2 Pro (Google AI Studio)", provider: "google" },
   { id: "google-nano-banana-2", label: "Nano Banana 2 (Google AI Studio)", provider: "google" },
+  { id: "fal-gpt-image-2-5-sunburst-edit", label: "GPT Image 2.5 Sunburst Edit (fal.ai)", provider: "fal" },
   { id: "fal-flux-3", label: "Flux 3 (fal.ai)", provider: "fal" },
   { id: "fal-flux-dev", label: "Flux Dev (fal.ai)", provider: "fal" },
   { id: "fal-flux-realism", label: "Flux Realism (fal.ai)", provider: "fal" },

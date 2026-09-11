@@ -2471,7 +2471,10 @@ function ModelMenu({
   const families = type === "image"
     ? [
       { label: "Google AI Studio", icon: Sparkles, models: imageGenerationModels.filter((m) => m.provider === "google") },
-      { label: "fal.ai Flux Series", icon: Sparkles, models: imageGenerationModels.filter((m) => m.provider === "fal") },
+      // Not "Flux Series" any more — the fal group also carries Sunburst Edit,
+      // and a picker that files an OpenAI editor under Flux is one the user has
+      // to second-guess.
+      { label: "fal.ai", icon: Sparkles, models: imageGenerationModels.filter((m) => m.provider === "fal") },
       { label: "OpenAI Images", icon: Sparkles, models: imageGenerationModels.filter((m) => m.provider === "openai") },
       { label: "Seedream Series (BytePlus)", icon: WandSparkles, models: imageGenerationModels.filter((m) => m.provider === "byteplus") },
     ]

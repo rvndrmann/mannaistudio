@@ -211,7 +211,7 @@ export async function POST(request: NextRequest) {
         return { image, contentType: "image/png", byteplusAssetId: null, registeredAsset: null }
       }
       if (provider === "fal") {
-        const generated = await generateFalImage({ model: input.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls })
+        const generated = await generateFalImage({ model: input.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls, quality: openAIImageQuality(input.quality, input.model), aspectRatio: input.aspectRatio })
         const download = await fetch(generated.url)
         if (!download.ok) throw new FalProviderError(`Could not download fal.ai output (${download.status}).`)
         return { image: Buffer.from(await download.arrayBuffer()), contentType: generated.contentType, byteplusAssetId: null, registeredAsset: null }
