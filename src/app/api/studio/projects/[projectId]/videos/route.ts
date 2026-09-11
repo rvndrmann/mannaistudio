@@ -531,15 +531,31 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       if (!isStalledVideoJob(job, null)) {
         return NextResponse.json({ ...job, status: job.status, providerStatus: "submitting" })
       }
+      // Says the refund happened, because it does happen four lines below. The
+      // previous wording carried it and this one had dropped it, which leaves a
+      // user who has just watched three attempts fail wondering whether they
+      // have now paid for four.
+      const error = "Video submission timed out: no provider task ID was received, so the server never finished submitting this request. Nothing was rendered and the credits have been returned. Try generating it again."
+      let failure = context.supabase.from("creator_generation_jobs")
+        .update({ status: "failed", error, completed_at: new Date().toISOString() })
+        .eq("id", job.id).eq("status", job.status).is("provider_job_id", null)
+      failure = job.started_at ? failure.eq("started_at", job.started_at) : failure.is("started_at", null)
+      const { data: failed, error: failureError } = await failure.select("id").maybeSingle()
+      if (failureError) throw failureError
+      // Another poll renewed the claim or saved its provider handle. Never
+      // overwrite that work or refund a request which has just been submitted.
+      if (!failed) {
+        const { data: current, error: currentError } = await context.supabase.from("creator_generation_jobs").select("*").eq("id", job.id).single()
+        if (currentError) throw currentError
+        return NextResponse.json(current)
+      }
       const charged = refundableCredits(job as { billing_mode?: string | null; credits_used?: number | null; estimated_credits?: number | null })
       const refund = charged > 0
         ? await refundGenerationCredits(context.user.id, charged, `generation-job:${job.id}`, "Refund: video generation was never submitted", job.id, context.supabase)
         : { refunded: false, newBalance: 0 }
-      const error = "This video was approved but never reached the provider — the server handling it went away. Nothing was rendered and the credits have been returned. Try generating it again."
-      await Promise.all([
-        context.supabase.from("creator_generation_jobs").update({ status: "failed", error, completed_at: new Date().toISOString() }).eq("id", job.id),
-        job.shot_id ? context.supabase.from("creator_shots").update({ video_status: "failed" }).eq("id", job.shot_id) : Promise.resolve(),
-      ])
+      if (job.shot_id) {
+        await context.supabase.from("creator_shots").update({ video_status: "failed" }).eq("id", job.shot_id)
+      }
       return NextResponse.json({ ...job, status: "failed", error, creditsRefunded: refund.refunded ? charged : 0, creditBalance: refund.newBalance })
     }
     if (!isVideoGenerationModel(job.model)) return NextResponse.json({ error: "Generation job is missing provider details" }, { status: 409 })

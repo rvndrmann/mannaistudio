@@ -12,8 +12,16 @@ type SubmissionJob = {
   created_at?: string | null
 }
 
+// Recovery must have an end: renewing started_at forever hid submission failures.
+export function submissionRecoveryExpired(job: SubmissionJob, now = Date.now()): boolean {
+  if (job.provider_job_id) return false
+  const approved = Date.parse(job.approved_at || job.created_at || "")
+  return Number.isFinite(approved) && now - approved >= 2 * STALLED_SUBMISSION_MS
+}
+
 export function canClaimGeneration(job: SubmissionJob, now = Date.now()): boolean {
   if (job.provider_job_id) return false
+  if (submissionRecoveryExpired(job, now)) return false
   // Direct submissions already own their approved row while the POST runs.
   if (job.status === "approved" && !job.started_at && !job.requested_at) return true
   if (job.type !== "video" || !["approved", "generating", "processing"].includes(job.status)) return false

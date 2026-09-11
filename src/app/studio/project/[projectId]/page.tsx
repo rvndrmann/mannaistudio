@@ -218,7 +218,7 @@ type Workspace = {
     referenceAssets: Array<Record<string, unknown>>;
     continuityIssues: Array<Record<string, unknown>>;
     revisions: Array<Record<string, unknown>>;
-    generationJobs: Array<{ id: string; workflow_run_id?: string | null; shot_id?: string | null; entity_id?: string | null; type?: string; status: string; model?: string | null; prompt?: string | null; input_images?: string[] | null; result_url?: string | null; error?: string | null; settings?: Record<string, unknown> | null; target_snapshot?: Record<string, unknown>; verification?: Record<string, unknown>; estimated_credits?: number | null; credits_used?: number | null; credits_refunded?: number | null; created_at?: string; completed_at?: string | null }>;
+    generationJobs: Array<{ id: string; workflow_run_id?: string | null; shot_id?: string | null; entity_id?: string | null; type?: string; status: string; provider_job_id?: string | null; model?: string | null; prompt?: string | null; input_images?: string[] | null; result_url?: string | null; error?: string | null; settings?: Record<string, unknown> | null; target_snapshot?: Record<string, unknown>; verification?: Record<string, unknown>; estimated_credits?: number | null; credits_used?: number | null; credits_refunded?: number | null; created_at?: string; completed_at?: string | null }>;
     creditAccount: { balance: number; reserved: number } | null;
     /** Every job this project ever ran, netted of refunds and split by episode. */
     spend?: SpendBreakdown;
@@ -5196,6 +5196,8 @@ function ShotMediaWorkspace({
 
   // --- Generation History ---
   type GenEntry = {
+    providerJobId?: string | null;
+    progressMessage?: string;
     id: string;
     type: string;
     status: "generating" | "completed" | "failed";
@@ -5341,13 +5343,13 @@ function ShotMediaWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeGenId]);
 
-  // Poll in-progress job until finished or failed
+  const pollingVideoJobs = useRef(new Set<string>());
+  // One polling loop per job, even when workspace snapshots refresh.
   const pollJobStatus = async (jobId: string, generatingModel?: string) => {
+    if (pollingVideoJobs.current.has(jobId)) return;
+    pollingVideoJobs.current.add(jobId);
     setBusy(true);
-    // Named after the model that is actually rendering. It said BytePlus
-    // whatever the user had picked, so a Veo or fal render looked like it had
-    // been quietly switched to another provider.
-    setGenerationStatus(`${getModelLabel(generatingModel || model) || "The model"} is generating the video…`);
+    setGenerationStatus("Checking video submission…");
     try {
       let finalJob: Record<string, unknown> = {};
       for (let attempt = 0; attempt < 180; attempt += 1) {
@@ -5355,10 +5357,18 @@ function ShotMediaWorkspace({
         const statusResponse = await fetch(`/api/studio/projects/${projectId}/videos?jobId=${encodeURIComponent(jobId)}`, { cache: "no-store" });
         finalJob = await statusResponse.json();
         if (!statusResponse.ok) throw new Error((finalJob.error as string) || "Could not check video status");
+        setGenHistory((prev) => prev.map((g) => g.id === jobId ? {
+          ...g,
+          providerJobId: typeof finalJob.provider_job_id === "string" ? finalJob.provider_job_id : null,
+          progressMessage: !finalJob.provider_job_id ? "Waiting for submission — the provider has not confirmed this request."
+            : finalJob.providerStatus === "queued" ? "Queued at the provider…"
+            : finalJob.providerStatus === "running" ? `${getModelLabel(generatingModel || model)} is rendering the video…`
+            : "Video submitted. Waiting for the provider result…",
+        } : g));
         if (finalJob.status === "completed") break;
         if (finalJob.status === "failed" || finalJob.status === "cancelled") throw new Error((finalJob.error as string) || `Video generation ${finalJob.status}`);
       }
-      if (finalJob.status !== "completed") throw new Error("Video generation is still running. Reopen this shot to check again.");
+      if (finalJob.status !== "completed") throw new Error("Status checking timed out. The latest result could not be confirmed. Reopen this shot to check again before starting another generation.");
       const videoUrl = (finalJob.result_url as string) || (finalJob.videoUrl as string) || source;
       setGenHistory((prev) => prev.map((g) => g.id === jobId ? { ...g, status: "completed" as const, videoUrl } : g));
       setGenerationStatus("Video ready ✓");
@@ -5367,7 +5377,12 @@ function ShotMediaWorkspace({
       const errorMsg = error instanceof Error ? error.message : "Generation failed";
       setGenerationError(errorMsg);
       setGenHistory((prev) => prev.map((g) => g.id === jobId ? { ...g, status: "failed" as const, error: errorMsg } : g));
+      // Cleared here rather than in `finally`, which ran after the success
+      // branch had already written "Video ready ✓" and wiped it: the clip
+      // landed and the panel said nothing.
+      setGenerationStatus(null);
     } finally {
+      pollingVideoJobs.current.delete(jobId);
       setBusy(false);
     }
   };
@@ -5433,6 +5448,7 @@ function ShotMediaWorkspace({
 
           return {
             id: job.id,
+            providerJobId: job.provider_job_id || null,
             type: job.type || media.type,
             status: (job.status === "completed" ? "completed" : job.status === "failed" || job.status === "cancelled" ? "failed" : "generating") as "generating" | "completed" | "failed",
             prompt: job.prompt || "",
@@ -6014,11 +6030,11 @@ function ShotMediaWorkspace({
                       {gen.status === "generating" ? (
                         <div className="grid aspect-[3/4] place-items-center bg-black/40">
                           <div className="flex flex-col items-center gap-2">
-                            <svg className="h-6 w-6 animate-spin text-[#b9f42e]" viewBox="0 0 24 24" fill="none">
+                            <svg className={`h-6 w-6 text-[#b9f42e] ${gen.type !== "video" || gen.providerJobId ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none">
                               <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-20" />
                               <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
                             </svg>
-                            <span className="text-[10px] text-zinc-400">Generating…</span>
+                            <span className="text-[10px] text-zinc-400">{gen.type === "video" && !gen.providerJobId ? "Waiting for submission" : "Generating…"}</span>
                           </div>
                         </div>
                       ) : gen.status === "failed" ? (
@@ -6170,12 +6186,12 @@ function ShotMediaWorkspace({
               {previewGenerating ? (
                 <div className={`grid place-items-center p-8 ${aspectRatio === "9:16" ? "aspect-[9/16] h-[55vh] max-h-[580px]" : "aspect-[16/9] w-full max-w-[640px]"}`}>
                   <div className="flex flex-col items-center gap-4">
-                    <svg className="h-12 w-12 animate-spin text-[#b9f42e]" viewBox="0 0 24 24" fill="none">
+                    <svg className={`h-12 w-12 text-[#b9f42e] ${isImage || activeGen?.providerJobId ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none">
                       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="opacity-20" />
                       <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
                     </svg>
-                    <p className="text-sm text-zinc-400">{generationStatus || "Generating…"}</p>
-                    <p className="max-w-xs text-center text-xs text-zinc-600">This may take 30–90 seconds for video generation</p>
+                    <p className="text-sm text-zinc-400">{isImage ? generationStatus || "Generating…" : activeGen?.progressMessage || (activeGen?.providerJobId ? "Video submitted. Waiting for the provider result…" : "Waiting for submission — the provider has not confirmed this request.")}</p>
+                    <p className="max-w-xs text-center text-xs text-zinc-600">{isImage ? "Waiting for the generated image." : activeGen?.providerJobId ? "We are checking the provider for the result." : "If submission times out, the failure reason will appear here."}</p>
                   </div>
                 </div>
               ) : previewError ? (
