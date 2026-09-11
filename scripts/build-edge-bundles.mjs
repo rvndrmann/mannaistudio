@@ -54,6 +54,9 @@ for (const bundle of bundles) {
     mainFields: ["module", "main"],
     conditions: ["import", "module", "default"],
     external,
+    banner: {
+      js: 'import { Buffer } from "node:buffer";\nif (typeof globalThis.Buffer === "undefined") { globalThis.Buffer = Buffer; }',
+    },
     alias: {
       "server-only": resolve(root, "supabase/functions/_shims/server-only.ts"),
       "@/lib/supabase/server": resolve(root, "supabase/functions/_shims/next-server-client.ts"),

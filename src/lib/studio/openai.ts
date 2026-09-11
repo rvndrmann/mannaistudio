@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer"
 import { createHash } from "node:crypto"
 import { defaultDirectorModelId, defaultDirectorModels } from "@/lib/studio/ai-models"
 import { activeCredentialPart } from "@/lib/byok/active-credential"
