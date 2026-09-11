@@ -54,6 +54,7 @@ export type ProjectImageResult = {
   jobId: string | null
   provider: string
   model: string
+  quality?: string
   byteplusAssetId: string | null
   byteplusAssetUri: string | null
   cameraSettingsUsed: ReturnType<typeof resolveCameraSettings> | null
@@ -374,6 +375,7 @@ export async function renderProjectImage(
             resolved_prompt: resolvedPrompt,
             camera_settings_used: cameraSettings,
             style,
+            quality,
             aspect_ratio: effectiveAspectRatio,
             reference_images: combinedReferencePaths,
             mentioned_entity_ids: input.mentionedEntityIds,
@@ -559,7 +561,7 @@ export async function renderProjectImage(
         // switching the look override off has to be remembered as firmly as
         // switching it on, or the panel reopens still overridden.
         ...(input.drawEdit && input.styleDna === undefined ? {} : { style_dna_override: input.styleDna === undefined ? null : styleDna }),
-          image_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, camera_settings_used: cameraSettings, style_dna_used: styleDna, style,  reference_images: combinedReferencePaths, mentioned_entity_ids: input.mentionedEntityIds, status: "completed", completed_at: new Date().toISOString() },
+          image_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, camera_settings_used: cameraSettings, style_dna_used: styleDna, style, quality, reference_images: combinedReferencePaths, mentioned_entity_ids: input.mentionedEntityIds, status: "completed", completed_at: new Date().toISOString() },
         },
       }).eq("id", input.targetId)
       if (error) throw error
@@ -605,6 +607,7 @@ export async function renderProjectImage(
       jobId: generationJobId,
       provider,
       model: input.model,
+      quality,
       byteplusAssetId,
       byteplusAssetUri,
       cameraSettingsUsed: cameraSettings,

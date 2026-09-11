@@ -1423,6 +1423,9 @@ export default function WorkspacePage({
                 storyboardImageModel={typeof (data.project.metadata as Record<string, unknown> | null)?.basic_settings === "object"
                   ? String(((data.project.metadata as Record<string, unknown>).basic_settings as Record<string, unknown>).storyboardImageModel || imageGenerationModels[0].id)
                   : imageGenerationModels[0].id}
+                imageQuality={typeof (data.project.metadata as Record<string, unknown> | null)?.basic_settings === "object"
+                  ? String(((data.project.metadata as Record<string, unknown>).basic_settings as Record<string, unknown>).imageQuality || "Medium")
+                  : "Medium"}
                 videoModel={typeof (data.project.metadata as Record<string, unknown> | null)?.basic_settings === "object"
                   ? supportedVideoModel(((data.project.metadata as Record<string, unknown>).basic_settings as Record<string, unknown>).videoModel)
                   : supportedVideoModel(undefined)}
@@ -3709,7 +3712,7 @@ function AssetWorkspace({
                         </span>
                       )}
                       <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-[11px] font-bold text-[#b9f42e]">
-                        Model: {getModelLabel(activeAttempt?.model || model)}
+                        Model: {getModelLabel(activeAttempt?.model || model)}{quality ? ` · ${quality}` : ""}
                       </span>
                     </span>
                   </div>
@@ -4364,6 +4367,7 @@ function Storyboard({
   cameraDefaults,
   projectStyleDnaValue,
   storyboardImageModel,
+  imageQuality = "Medium",
   videoModel,
   save,
   reload,
@@ -4379,6 +4383,7 @@ function Storyboard({
   cameraDefaults: CameraSettings | null;
   projectStyleDnaValue: StyleDna | null;
   storyboardImageModel: string;
+  imageQuality?: string;
   videoModel: string;
   save: (b: unknown) => Promise<void>;
   // Silent when true: swaps the data in place instead of blanking the whole
@@ -4984,6 +4989,7 @@ function Storyboard({
            cameraDefaults={cameraDefaults}
            projectStyleDnaValue={projectStyleDnaValue}
            storyboardImageModel={storyboardImageModel}
+           imageQuality={imageQuality}
            videoModel={videoModel}
           generationJobs={generationJobs}
           projectId={projectId}
@@ -5003,6 +5009,7 @@ function ShotMediaWorkspace({
   cameraDefaults,
   projectStyleDnaValue,
   storyboardImageModel,
+  imageQuality = "Medium",
   videoModel,
   generationJobs,
   projectId,
@@ -5017,6 +5024,7 @@ function ShotMediaWorkspace({
   cameraDefaults: CameraSettings | null;
   projectStyleDnaValue: StyleDna | null;
   storyboardImageModel: string;
+  imageQuality?: string;
   videoModel: string;
   generationJobs: NonNullable<Workspace["production"]>["generationJobs"];
   projectId: string;
@@ -5068,6 +5076,8 @@ function ShotMediaWorkspace({
   });
   const savedAspectRatio = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "aspect_ratio" in media.shot.metadata.video_generation ? (media.shot.metadata.video_generation as { aspect_ratio?: string }).aspect_ratio : null;
   const savedResolution = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "resolution" in media.shot.metadata.video_generation ? (media.shot.metadata.video_generation as { resolution?: string }).resolution : null;
+  const savedQuality = (media.shot.metadata?.image_generation && typeof media.shot.metadata.image_generation === "object" && "quality" in media.shot.metadata.image_generation ? (media.shot.metadata.image_generation as { quality?: string }).quality : null)
+    || (media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "quality" in media.shot.metadata.video_generation ? (media.shot.metadata.video_generation as { quality?: string }).quality : null);
   const savedAudio = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "audio_enabled" in media.shot.metadata.video_generation ? Boolean((media.shot.metadata.video_generation as { audio_enabled?: boolean }).audio_enabled) : true;
   const [aspectRatio, setAspectRatio] = useState<string>(savedAspectRatio || media.shot.aspect_ratio || "9:16");
   const [resolution, setResolution] = useState<string>(savedResolution || media.shot.resolution || "720p");
@@ -5163,6 +5173,10 @@ function ShotMediaWorkspace({
     status: "generating" | "completed" | "failed";
     prompt: string;
     model: string;
+    quality?: string | null;
+    aspectRatio?: string | null;
+    resolution?: string | null;
+    durationSeconds?: number | null;
     referenceImages: string[];
     videoUrl: string | null;
     error: string | null;
@@ -5184,12 +5198,20 @@ function ShotMediaWorkspace({
   const [genHistory, setGenHistory] = useState<GenEntry[]>(() => {
     const initial: GenEntry[] = [];
     if (source) {
+      const shotMeta = (media.shot.metadata as Record<string, unknown>) || {};
+      const imgGen = shotMeta.image_generation && typeof shotMeta.image_generation === "object" ? shotMeta.image_generation as Record<string, unknown> : {};
+      const vidGen = shotMeta.video_generation && typeof shotMeta.video_generation === "object" ? shotMeta.video_generation as Record<string, unknown> : {};
+      const initQuality = typeof imgGen.quality === "string" ? imgGen.quality : typeof vidGen.quality === "string" ? vidGen.quality : (media.type === "image" ? imageQuality : null);
       initial.push({
         id: "original",
         type: media.type,
         status: "completed",
         prompt: media.shot.prompt || "",
         model: media.type === "image" ? storyboardImageModel : supportedVideoModel(videoModel),
+        quality: initQuality,
+        aspectRatio: media.shot.aspect_ratio || aspectRatio,
+        resolution: media.shot.resolution || null,
+        durationSeconds: Number(media.shot.duration_seconds) || null,
         referenceImages: [],
         rawReferenceImages: [],
         videoUrl: source,
@@ -5379,12 +5401,20 @@ function ShotMediaWorkspace({
         });
 
         if (source && !entries.some((e) => e.videoUrl === source)) {
+          const shotMeta = (media.shot.metadata as Record<string, unknown>) || {};
+          const imgGen = shotMeta.image_generation && typeof shotMeta.image_generation === "object" ? shotMeta.image_generation as Record<string, unknown> : {};
+          const vidGen = shotMeta.video_generation && typeof shotMeta.video_generation === "object" ? shotMeta.video_generation as Record<string, unknown> : {};
+          const initQuality = typeof imgGen.quality === "string" ? imgGen.quality : typeof vidGen.quality === "string" ? vidGen.quality : (media.type === "image" ? imageQuality : null);
           entries.push({
             id: "original",
             type: media.type,
             status: "completed",
             prompt: media.shot.prompt || "",
             model: media.type === "image" ? storyboardImageModel : supportedVideoModel(videoModel),
+            quality: initQuality,
+            aspectRatio: media.shot.aspect_ratio || aspectRatio,
+            resolution: media.shot.resolution || null,
+            durationSeconds: Number(media.shot.duration_seconds) || null,
             referenceImages: [],
             videoUrl: source,
             error: null,
@@ -5462,6 +5492,10 @@ function ShotMediaWorkspace({
 
   const loadPromptFromGen = (gen: GenEntry) => {
     setPrompt(gen.prompt);
+    if (gen.model) setModel(gen.model);
+    if (gen.quality && ["Low", "Medium", "High", "Ultra", "Max"].includes(gen.quality)) {
+      setQuality(gen.quality as CreditQuality);
+    }
     if (gen.referenceImages.length) setReferences(gen.referenceImages);
     if (gen.videoReferencePaths?.length) setVideoReferencePaths(gen.videoReferencePaths);
   };
@@ -5483,6 +5517,10 @@ function ShotMediaWorkspace({
       status: "generating",
       prompt,
       model,
+      quality: quality || null,
+      resolution: media.type === "video" ? resolution : null,
+      durationSeconds: media.type === "video" ? durationSeconds : null,
+      aspectRatio,
       referenceImages: [...videoReferenceImages],
       generationMode: media.type === "video" ? videoInputMode : null,
       startFrame,
@@ -5521,6 +5559,7 @@ function ShotMediaWorkspace({
           id: savedJobId,
           status: "completed" as const,
           videoUrl: outputPath,
+          quality: quality || g.quality || null,
           completedAt: new Date().toISOString(),
         } : g));
         setActiveGenId(savedJobId);
@@ -5765,7 +5804,15 @@ function ShotMediaWorkspace({
     }
   };
 
-  const [quality, setQuality] = useState<CreditQuality>("Medium");
+  const [quality, setQuality] = useState<CreditQuality>(() => {
+    if (savedQuality && ["Low", "Medium", "High", "Ultra", "Max"].includes(savedQuality)) {
+      return savedQuality as CreditQuality;
+    }
+    if (isImage && imageQuality && ["Low", "Medium", "High", "Ultra", "Max"].includes(imageQuality)) {
+      return imageQuality as CreditQuality;
+    }
+    return "Medium";
+  });
 
   const currentActiveChosenSource = isImage ? media.shot.keyframe_image : media.shot.video_url;
   const isCurrentlyChosen = Boolean(previewSource && previewSource === currentActiveChosenSource);
@@ -5896,7 +5943,14 @@ function ShotMediaWorkspace({
                         setActiveGenId(gen.id);
                         if (gen.prompt) setPrompt(gen.prompt);
                         if (gen.model) setModel(gen.model);
+                        if (gen.quality && ["Low", "Medium", "High", "Ultra", "Max"].includes(gen.quality)) {
+                          setQuality(gen.quality as CreditQuality);
+                        }
+                        if (gen.aspectRatio) setAspectRatio(gen.aspectRatio);
+                        if (gen.resolution) setResolution(gen.resolution);
+                        if (gen.durationSeconds) setDurationSeconds(gen.durationSeconds);
                         if (gen.referenceImages && gen.referenceImages.length) setReferences(gen.referenceImages);
+                        if (gen.videoReferencePaths?.length) setVideoReferencePaths(gen.videoReferencePaths);
                         if (gen.status === "failed") setGenerationError(gen.error);
                         else setGenerationError(null);
                       }}
@@ -5931,6 +5985,13 @@ function ShotMediaWorkspace({
                         <div className="grid aspect-[3/4] place-items-center bg-black/30 text-xs text-zinc-500">No output</div>
                       )}
 
+                      {/* Quality badge (top left) */}
+                      {gen.quality && (
+                        <span className="absolute left-1 top-1 z-10 rounded bg-black/85 border border-[#b9f42e]/40 px-1.5 py-0.5 text-[9px] font-bold text-[#b9f42e] shadow-md">
+                          {gen.quality}
+                        </span>
+                      )}
+
                       {/* Chosen Badge */}
                       {isGenChosen && (
                         <span className="absolute right-1 top-1 z-10 rounded-md bg-[#b9f42e] px-1 py-0.5 text-[10px] font-bold leading-none text-black shadow-md lg:right-1.5 lg:top-1.5 lg:px-1.5">
@@ -5938,12 +5999,15 @@ function ShotMediaWorkspace({
                         </span>
                       )}
 
-                      {/* Prompt preview badge */}
-                      {gen.prompt && (
-                        <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/90 to-transparent px-2 py-1.5 text-[10px] text-zinc-300">
-                          {gen.id === "original" ? "Original" : gen.prompt}
-                        </span>
-                      )}
+                      {/* Prompt & quality preview badge */}
+                      <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/95 via-black/80 to-transparent px-2 py-1.5 text-[10px] text-zinc-300">
+                        {gen.quality && (
+                          <span className="mr-1 inline-block rounded bg-[#b9f42e]/25 px-1 py-0.2 text-[9px] font-bold text-[#b9f42e]">
+                            {gen.quality}
+                          </span>
+                        )}
+                        {gen.id === "original" ? "Original" : (gen.prompt || "Shot")}
+                      </span>
                     </button>
 
                     {/* Delete hover button for non-original items */}
@@ -6118,6 +6182,16 @@ function ShotMediaWorkspace({
                       {activeGen.model && (
                         <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-[11px] font-bold text-[#b9f42e]">
                           Model: {getModelLabel(activeGen.model)}
+                          {(() => {
+                            const effectiveQuality = activeGen.quality
+                              || (activeGen.id === "original" ? (typeof (media.shot.metadata as Record<string, unknown>)?.image_generation === "object" ? ((media.shot.metadata as Record<string, unknown>).image_generation as Record<string, unknown>)?.quality as string : null) : null)
+                              || (activeGen.type === "image" ? quality : null);
+                            const parts: string[] = [];
+                            if (effectiveQuality) parts.push(effectiveQuality);
+                            if (activeGen.type === "video" && activeGen.resolution) parts.push(activeGen.resolution);
+                            if (activeGen.type === "video" && activeGen.durationSeconds) parts.push(`${activeGen.durationSeconds}s`);
+                            return parts.length > 0 ? ` · ${parts.join(" · ")}` : "";
+                          })()}
                         </span>
                       )}
                     </span>
@@ -6822,6 +6896,10 @@ function readGenerationSettings(value: unknown) {
     styleReferenceImages: Array.isArray(settings.styleReferenceImages)
       ? (settings.styleReferenceImages as unknown[]).filter((item): item is string => typeof item === "string")
       : [],
+    quality: typeof settings.quality === "string" && settings.quality.trim() ? settings.quality.trim() : null,
+    aspectRatio: typeof settings.aspectRatio === "string" ? settings.aspectRatio : typeof settings.displayRatio === "string" ? settings.displayRatio : typeof settings.ratio === "string" ? settings.ratio : null,
+    resolution: typeof settings.resolution === "string" ? settings.resolution : null,
+    durationSeconds: typeof settings.duration === "number" ? settings.duration : typeof settings.durationSeconds === "number" ? settings.durationSeconds : null,
   };
 }
 
