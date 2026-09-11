@@ -138,12 +138,23 @@ async function withGenerationRetry<T>(context: AuthenticatedProjectContext, job:
   throw lastError
 }
 
-export async function executeGenerationJobsInBackground(
+/**
+ * Runs approved jobs to completion, and can be waited on.
+ *
+ * The background form below starts this and returns, which is right when the
+ * caller is a chat turn that must answer now — and is why a job can be left
+ * approved and untouched: a serverless host freezes the function once its
+ * response is sent, so a floating promise is killed mid-flight. The work then
+ * has no provider id, nothing to recover it by, and ages out into a refund.
+ *
+ * Exposed as an awaitable so the poll route can pick such a job up and finish
+ * it deliberately rather than settle it as lost.
+ */
+export async function executeGenerationJobs(
   context: AuthenticatedProjectContext,
   jobIds: string[]
 ) {
-  // We run this without awaiting to not block the request
-  void (async () => {
+  {
     try {
       const { data: jobs, error: jobsError } = await context.supabase
         .from("creator_generation_jobs")
@@ -557,5 +568,14 @@ export async function executeGenerationJobsInBackground(
     } catch (err) {
       console.error("Background generation loop failed:", err)
     }
-  })()
+  }
+}
+
+export function executeGenerationJobsInBackground(
+  context: AuthenticatedProjectContext,
+  jobIds: string[]
+) {
+  // Deliberately not awaited: the caller is answering a user and cannot wait
+  // for a render. Anything this loses is recovered by the poll route.
+  void executeGenerationJobs(context, jobIds)
 }

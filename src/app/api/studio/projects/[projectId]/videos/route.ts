@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
+import { executeGenerationJobs } from "@/lib/studio/execute-generation"
 import { z, ZodError } from "zod"
 import { BytePlusProviderError, bytePlusVideoRatio, bytePlusVideoReferenceLimit, createBytePlusAsset, getBytePlusAsset, getBytePlusVideoTask, resolveBytePlusReferenceUrl, submitBytePlusVideo } from "@/lib/studio/byteplus"
 import { falVideoEndpoint, FalProviderError, getFalVideoTask, submitFalVideo } from "@/lib/studio/fal"
@@ -492,6 +493,33 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // There is no provider to ask about it, so it is settled here on its own
     // age, the same way the queue-stall below is settled.
     if (!job.provider_job_id) {
+      // An approved job nobody is carrying. The request that approved it fired
+      // the work as a floating promise and returned, and the host froze the
+      // function before it reached the provider — so this is not a render in
+      // flight, it is one that never started. Finishing it here is better than
+      // waiting six minutes to refund something no one attempted.
+      //
+      // Claimed with a conditional update so two polls cannot both submit it:
+      // only the request that moves the row out of `approved` proceeds.
+      if (job.status === "approved") {
+        const { data: claimed } = await context.supabase
+          .from("creator_generation_jobs")
+          .update({ status: "processing", started_at: new Date().toISOString() })
+          .eq("id", job.id)
+          .eq("status", "approved")
+          .select("id")
+          .maybeSingle()
+        if (claimed) {
+          await executeGenerationJobs(context, [job.id as string])
+          const { data: ran } = await context.supabase
+            .from("creator_generation_jobs")
+            .select("*")
+            .eq("id", job.id)
+            .maybeSingle()
+          if (ran) return NextResponse.json(ran)
+        }
+        return NextResponse.json({ ...job, status: "processing", providerStatus: "submitting" })
+      }
       if (!isStalledVideoJob(job, null)) {
         return NextResponse.json({ ...job, status: job.status, providerStatus: "submitting" })
       }

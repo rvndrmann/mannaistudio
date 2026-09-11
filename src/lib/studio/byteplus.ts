@@ -422,7 +422,10 @@ async function withCreateAssetRetry<T>(work: () => Promise<T>, attempts = 3): Pr
       lastError = error
       const message = error instanceof Error ? error.message : ""
       if (!/rate limit/i.test(message) || attempt === attempts - 1) throw error
-      await new Promise((resolve) => setTimeout(resolve, 2_000 * (attempt + 1) ** 2))
+      // Linear and short on purpose. A shot can need several registrations, and
+      // the host stops the request at thirty seconds — a generous backoff here
+      // would spend the budget the submission itself needs.
+      await new Promise((resolve) => setTimeout(resolve, 1_500 * (attempt + 1)))
     }
   }
   throw lastError
