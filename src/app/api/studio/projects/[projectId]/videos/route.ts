@@ -15,6 +15,7 @@ import { ownKeysOnly } from "@/lib/byok/preferences"
 import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
 import { trackGenerationActivation } from "@/lib/studio/activation"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
+import { canClaimGeneration } from "@/lib/studio/generation-claim"
 import { isStalledVideoJob } from "@/lib/studio/stalled-jobs"
 import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { projectVisualStyle } from "@/lib/studio/entity-image-workflow"
@@ -512,49 +513,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { data: job } = await context.supabase.from("creator_generation_jobs").select("*").eq("id", jobId).eq("project_id", projectId).eq("user_id", context.user.id).maybeSingle()
     if (!job) return NextResponse.json({ error: "Generation job not found" }, { status: 404 })
     if (["completed", "failed", "cancelled"].includes(job.status)) return NextResponse.json(job)
-    // A job that never reached the provider. This answered 409 on every poll
-    // while the workspace went on showing the shot as generating — a spinner
-    // and an error taking turns, for ever, with the credits still reserved.
-    // There is no provider to ask about it, so it is settled here on its own
-    // age, the same way the queue-stall below is settled.
+    // Recover submissions with no provider handle before considering a refund.
     if (!job.provider_job_id) {
-      // An approved job nobody is carrying. The request that approved it fired
-      // the work as a floating promise and returned, and the host froze the
-      // function before it reached the provider — so this is not a render in
-      // flight, it is one that never started. Finishing it here is better than
-      // waiting six minutes to refund something no one attempted.
-      //
-      // Claimed with a conditional update so two polls cannot both submit it:
-      // only the request that moves the row out of `approved` proceeds.
-      //
-      // A claim can itself be abandoned — the host kills the request between
-      // marking the row and reaching the provider — which left the job in
-      // `processing` with no id, where the first version of this looked only at
-      // `approved` and never came back for it. So a claim that has gone quiet
-      // for longer than any real submission takes is claimable again, and the
-      // re-claim is conditioned on the exact started_at that was read, which is
-      // what stops two pollers from both taking it.
-      const claimAgeMs = job.started_at ? Date.now() - Date.parse(job.started_at as string) : Infinity
-      const abandonedClaim = job.status === "processing" && Number.isFinite(claimAgeMs) && claimAgeMs > 90_000
-      if (job.status === "approved" || abandonedClaim) {
-        const claim = context.supabase
+      // The executor atomically claims approved or abandoned submissions.
+      // Never pre-mark processing: that used to make the executor skip them.
+      if (canClaimGeneration(job)) {
+        await executeGenerationJobs(context, [job.id as string])
+        const { data: ran, error: reloadError } = await context.supabase
           .from("creator_generation_jobs")
-          .update({ status: "processing", started_at: new Date().toISOString() })
+          .select("*")
           .eq("id", job.id)
-        const { data: claimed } = await (abandonedClaim
-          ? claim.eq("started_at", job.started_at as string)
-          : claim.eq("status", "approved")
-        ).select("id").maybeSingle()
-        if (claimed) {
-          await executeGenerationJobs(context, [job.id as string])
-          const { data: ran } = await context.supabase
-            .from("creator_generation_jobs")
-            .select("*")
-            .eq("id", job.id)
-            .maybeSingle()
-          if (ran) return NextResponse.json(ran)
-        }
-        return NextResponse.json({ ...job, status: "processing", providerStatus: "submitting" })
+          .maybeSingle()
+        if (reloadError) throw reloadError
+        if (ran) return NextResponse.json(ran)
+        return NextResponse.json({ ...job, providerStatus: "submitting" })
       }
       if (!isStalledVideoJob(job, null)) {
         return NextResponse.json({ ...job, status: job.status, providerStatus: "submitting" })

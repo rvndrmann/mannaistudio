@@ -20,6 +20,7 @@ import { runWithCredential } from "@/lib/byok/active-credential"
 import { byokProviderFor } from "@/lib/byok/providers"
 import { parseSeedanceMissingAssetError, purgeStaleBytePlusAsset } from "./seedance-reference-error"
 import { isVideoReferencePath } from "./media-reference"
+import { claimGeneration } from "./generation-claim"
 
 /**
  * Where a finished image is stored, and what it gets attached to.
@@ -164,6 +165,9 @@ export async function executeGenerationJobs(
       if (jobsError || !jobs?.length) return
 
       for (const job of jobs) {
+        // Claim here, not in the caller: pre-claiming as processing used to
+        // make this executor reject the very job the poll asked it to recover.
+        if (!await claimGeneration(context.supabase, job)) continue
         // A job the customer's own key is paying for runs inside that
         // credential's scope, so every provider call it makes — generation and
         // the Asset Library registration alike — authenticates as them. Outside
@@ -171,14 +175,6 @@ export async function executeGenerationJobs(
         // as before, which is what leaves the credit-paid path untouched.
         const runJob = async () => {
         try {
-          if (job.status !== "approved") return
-
-          // Mark as generating
-          await context.supabase
-            .from("creator_generation_jobs")
-            .update({ status: "generating", requested_at: new Date().toISOString() })
-            .eq("id", job.id)
-
           const style = projectVisualStyle(context.project)
           const projectDefaultAspect = typeof context.project.default_aspect === "string" ? context.project.default_aspect : null
           const settings = (job.settings as Record<string, unknown>) || {}

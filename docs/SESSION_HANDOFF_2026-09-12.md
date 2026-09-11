@@ -181,6 +181,33 @@ looked only at `approved` it never came back for its own abandoned claim. A clai
 quiet for longer than any real submission takes is now claimable again,
 conditioned on the exact `started_at` that was read.
 
+## Follow-up: submission recovery skipped its own jobs
+
+The screenshot's error led to two reproducible code defects. The video poll
+changed an approved job to `processing` before invoking `executeGenerationJobs`,
+but that executor immediately returned unless the row was still `approved`.
+Reclaiming the row repeated the same skip. Separately, the executor's initial
+update used `status: generating` and `requested_at`, neither of which is defined
+for generation jobs in the checked-in database migrations. Its result was ignored.
+
+The executor now owns the conditional claim, using `processing` and `started_at`
+and checking the database error. Both background execution and polling use it.
+The update matches status, the previous start timestamp (including null), and a
+null provider handle, so concurrent or stale polls cannot overwrite a renewed
+claim or a saved provider task. Recovery includes old `generating` rows for
+compatibility. A live submission gets the existing six-minute submission grace
+period; a newly approved, unclaimed job can start immediately. Terminal failures,
+including already-refunded attempts, are never restarted automatically.
+
+Regression tests exercise the actual executor through mocked BytePlus submission,
+including abandoned statuses, concurrency, existing provider handles, and active
+claims. This establishes the recovery defect locally; it does not establish why
+any earlier hosting request originally stopped. No paid render was triggered.
+
+Deployment requires the Next.js app update and rebuilding/redeploying
+`director-chat`, since its bundle also contains the executor. The local bundle
+was rebuilt. Production deployment and a live Scene 3 render remain unverified.
+
 ## Not resolved
 
 **Scene 3 of episode `1e700512` has still never rendered.** Six attempts, every
