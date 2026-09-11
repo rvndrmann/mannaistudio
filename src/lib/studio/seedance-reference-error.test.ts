@@ -1,11 +1,22 @@
 import { describe, expect, it } from "vitest"
-import { parseSeedanceMissingAssetError, parseSeedanceRejectedReference, seedanceReferenceAssetUri } from "./seedance-reference-error"
+import { isSeedanceRejectedVideo, parseSeedanceMissingAssetError, parseSeedanceRejectedReference, seedanceReferenceAssetUri } from "./seedance-reference-error"
 
 describe("Seedance rejected reference errors", () => {
+  it("parses a rejected motion video with isVideo: true", () => {
+    const message = "BytePlus request failed (400): The request failed because the input video 'content[5]' may contain real person."
+    expect(isSeedanceRejectedVideo(message)).toBe(true)
+    expect(parseSeedanceRejectedReference(message)).toEqual({
+      contentIndex: 5,
+      referenceIndex: 4,
+      isVideo: true,
+    })
+    expect(isSeedanceRejectedVideo("input image 'content[5]' may contain real person")).toBe(false)
+  })
   it("maps BytePlus content indexes past the text prompt", () => {
     expect(parseSeedanceRejectedReference("input image 'content[4]' may contain real person")).toEqual({
       contentIndex: 4,
       referenceIndex: 3,
+      isVideo: false,
     })
   })
 
@@ -29,4 +40,3 @@ describe("Seedance rejected reference errors", () => {
     })
   })
 })
-

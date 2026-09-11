@@ -115,23 +115,28 @@ export function formatBytePlusMediaUrl(url: string): string {
  * applies to faces. The Asset Library holds 50 images, so registering props and
  * locations spends a quota they never needed and fills it within one project.
  */
-export async function resolveBytePlusReferenceUrl(rawUrl: string, registerFace = false): Promise<string> {
+export async function resolveBytePlusReferenceUrl(rawUrl: string, registerFace = false, assetType?: "Image" | "Video"): Promise<string> {
   const formatted = formatBytePlusMediaUrl(rawUrl)
   if (/^asset:\/\//i.test(formatted)) return formatted
   if (!registerFace) return formatted
 
-  // If HTTP/HTTPS URL, register image to Asset Library to avoid PrivacyInformation real-person error
+  // If HTTP/HTTPS URL, register image or video to Asset Library to avoid PrivacyInformation real-person error
   if (/^https?:\/\//i.test(formatted)) {
     const signing = assetSigningKeys()
     if (!signing.ak || !signing.sk) {
       throw new BytePlusProviderError(
-        "BytePlus Direct requires ARK_ACCESS_KEY and ARK_SECRET_KEY in .env.local to register real-person face photos to the Asset Library. Please add ARK_ACCESS_KEY and ARK_SECRET_KEY to .env.local, or use the fal.ai Seedance model (Seedance 2.0 Mini via fal.ai).",
+        "BytePlus Direct requires ARK_ACCESS_KEY and ARK_SECRET_KEY in .env.local to register real-person face photos or motion reference videos to the Asset Library. Please add ARK_ACCESS_KEY and ARK_SECRET_KEY to .env.local, or use the fal.ai Seedance model (Seedance 2.0 Mini via fal.ai).",
         400
       )
     }
 
     try {
-      const assetRes = await createBytePlusAsset({ imageUrl: formatted })
+      const isVideo = assetType === "Video" || /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(formatted)
+      const assetRes = await createBytePlusAsset({
+        imageUrl: formatted,
+        name: isVideo ? "motion_reference" : undefined,
+        assetType: isVideo ? "Video" : "Image",
+      })
       for (let attempt = 0; attempt < 10; attempt++) {
         const assetInfo = await getBytePlusAsset(assetRes.assetId)
         if (assetInfo.status === "Active" || assetInfo.status === "active") {
@@ -142,7 +147,7 @@ export async function resolveBytePlusReferenceUrl(rawUrl: string, registerFace =
       return `asset://${assetRes.assetId}`
     } catch (err) {
       if (err instanceof BytePlusProviderError) throw err
-      console.warn("Could not auto-register image URL to BytePlus Asset Library:", err)
+      console.warn("Could not auto-register media URL to BytePlus Asset Library:", err)
       return formatted
     }
   }
@@ -215,11 +220,12 @@ export function bytePlusVideoRatio(requestedRatio: string, hasVideoReference: bo
 export async function submitBytePlusVideo(input: { model: VideoGenerationModelId; prompt: string; duration: number; resolution: string; ratio: string; referenceUrls?: string[]; faceReferenceUrls?: string[]; videoReferenceUrls?: string[]; generationMode?: "keyframe" | "multi_image"; audioEnabled?: boolean; subjects?: SeedanceSubject[]; mentionedNames?: string[]; compositionFrames?: number }) {
   // Only a character's reference is registered; everything else is sent as-is.
   const faces = new Set(input.faceReferenceUrls || [])
-  const resolvedUrls = await Promise.all((input.referenceUrls || []).map((url) => resolveBytePlusReferenceUrl(url, faces.has(url))))
-  const videoUrls = (input.videoReferenceUrls || []).filter((value) => typeof value === "string" && value.trim())
+  const resolvedUrls = await Promise.all((input.referenceUrls || []).map((url) => resolveBytePlusReferenceUrl(url, faces.has(url), "Image")))
+  const rawVideoUrls = (input.videoReferenceUrls || []).filter((value) => typeof value === "string" && value.trim())
+  const resolvedVideoUrls = await Promise.all(rawVideoUrls.map((url) => resolveBytePlusReferenceUrl(url, true, "Video")))
   const content: Array<Record<string, unknown>> = [{
     type: "text",
-    text: formatBytePlusReferencePrompt(input.prompt, { imageCount: resolvedUrls.length, videoCount: videoUrls.length, subjects: input.subjects, mentionedNames: input.mentionedNames }),
+    text: formatBytePlusReferencePrompt(input.prompt, { imageCount: resolvedUrls.length, videoCount: resolvedVideoUrls.length, subjects: input.subjects, mentionedNames: input.mentionedNames }),
   }]
 
   // Seedance rejects a request that mixes first_frame or last_frame with
@@ -247,7 +253,7 @@ export async function submitBytePlusVideo(input: { model: VideoGenerationModelId
   }))
 
   const videoLimit = bytePlusVideoReferenceLimit(input.model)
-  for (const url of videoUrls.slice(0, videoLimit.maxVideos)) {
+  for (const url of resolvedVideoUrls.slice(0, videoLimit.maxVideos)) {
     content.push({ type: "video_url", video_url: { url }, role: "reference_video" })
   }
   const maxDuration = videoModelMaxDuration(input.model)
@@ -259,7 +265,7 @@ export async function submitBytePlusVideo(input: { model: VideoGenerationModelId
       generate_audio: input.audioEnabled ?? true,
       duration: Math.min(maxDuration, Math.max(4, Math.round(input.duration))),
       resolution: input.resolution === "480p" ? "480p" : "720p",
-      ratio: bytePlusVideoRatio(input.ratio, videoUrls.length > 0),
+      ratio: bytePlusVideoRatio(input.ratio, resolvedVideoUrls.length > 0),
       watermark: false,
     }),
   })
@@ -357,7 +363,7 @@ export async function createBytePlusAssetGroup(name = "portrait_group", descript
   return groupId
 }
 
-export async function createBytePlusAsset(input: { imageUrl: string; name?: string; groupId?: string }) {
+export async function createBytePlusAsset(input: { imageUrl: string; name?: string; groupId?: string; assetType?: "Image" | "Video" }) {
   const { ak, sk } = assetSigningKeys()
 
   if (!ak || !sk) {
@@ -391,12 +397,15 @@ export async function createBytePlusAsset(input: { imageUrl: string; name?: stri
   }
   if (!groupId) throw new BytePlusProviderError("BytePlus returned no asset group id, so the image cannot be registered.")
 
+  const isVideo = input.assetType === "Video" || /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(input.imageUrl)
+  const assetType: "Image" | "Video" = input.assetType || (isVideo ? "Video" : "Image")
+
   const query = { Action: "CreateAsset", Version: "2024-01-01" }
   const body = JSON.stringify({
     GroupId: groupId,
     URL: input.imageUrl,
-    Name: input.name || "actor_portrait",
-    AssetType: "Image", // strictly 'Image'
+    Name: input.name || (assetType === "Video" ? "motion_clip" : "actor_portrait"),
+    AssetType: assetType,
   })
 
   const headers = signBytePlusRequest("POST", query, body, ak, sk)

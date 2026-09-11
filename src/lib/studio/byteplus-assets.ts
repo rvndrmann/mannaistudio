@@ -176,6 +176,7 @@ export async function registerAssetOnce(input: {
   entityId?: string | null
   userId?: string | null
   knownAssetId?: string | null
+  assetType?: "Image" | "Video"
 }): Promise<ResolvedAsset> {
   const { supabase, sourcePath } = input
 
@@ -247,9 +248,11 @@ export async function registerAssetOnce(input: {
   // The group is resolved here rather than inside the provider call, because
   // only this side can remember it: the provider module has no database.
   const groupId = await sharedAssetGroupId(supabase)
+  const isVideo = input.assetType === "Video" || /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(input.sourcePath || input.imageUrl)
+  const assetType: "Image" | "Video" = input.assetType || (isVideo ? "Video" : "Image")
   let created
   try {
-    created = await createBytePlusAsset({ imageUrl: input.imageUrl, name: input.name, groupId })
+    created = await createBytePlusAsset({ imageUrl: input.imageUrl, name: input.name, groupId, assetType })
   } catch (error) {
     const message = error instanceof Error ? error.message : ""
     const missingStoredGroup = Boolean(groupId) && /asset[_ ]group.+not found|specified asset_group.+not found/i.test(message)
@@ -258,7 +261,7 @@ export async function registerAssetOnce(input: {
     // during console cleanup; recover once by replacing that dead shared group.
     if (!missingStoredGroup || process.env.ARK_ASSET_GROUP_ID?.trim()) throw error
     await forgetAssetGroupId(supabase)
-    created = await createBytePlusAsset({ imageUrl: input.imageUrl, name: input.name })
+    created = await createBytePlusAsset({ imageUrl: input.imageUrl, name: input.name, assetType })
   }
   if ((!groupId || created.groupId !== groupId) && created.groupId) {
     await rememberAssetGroupId(supabase, created.groupId)
@@ -278,11 +281,9 @@ export async function registerAssetOnce(input: {
     entity_id: input.entityId || null,
     created_by: input.userId || null,
     last_used_at: new Date().toISOString(),
+    last_verified_at: new Date().toISOString(),
+    use_count: 1,
   })
-
-  if (!activated || !isActive(activated.status)) {
-    throw new Error("Seedance is still processing this verified image. Please try again in a moment.")
-  }
 
   return { assetId: created.assetId, assetUri, reused: false }
 }
@@ -301,6 +302,7 @@ export async function resolveRegisteredAsset(input: {
   entityId?: string | null
   userId?: string | null
   knownAssetId?: string | null
+  assetType?: "Image" | "Video"
 }): Promise<string | null> {
   try {
     return (await registerAssetOnce(input)).assetUri

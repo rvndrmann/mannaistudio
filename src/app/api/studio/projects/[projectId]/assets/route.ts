@@ -8,11 +8,12 @@ import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } fr
 const createSchema = z.object({
   entityId: z.string().uuid().optional(),
   shotId: z.string().uuid().optional(),
-  target: z.enum(["entity", "shot", "reference"]).default("entity"),
+  target: z.enum(["entity", "shot", "reference", "video"]).default("entity"),
   targetId: z.string().uuid().optional(),
   imageUrl: z.string().max(4000).optional(),
   imagePath: z.string().max(2000).optional(),
   name: z.string().max(200).optional(),
+  assetType: z.enum(["Image", "Video"]).optional(),
 }).strict()
 
 const statusSchema = z.object({
@@ -44,6 +45,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // already verified must reuse rather than register the same face again.
     let knownAssetId = ""
 
+    const isVideoFile = input.assetType === "Video" || /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(imagePathToResolve || input.imageUrl || "")
+    const resolvedAssetType: "Image" | "Video" = input.assetType || (isVideoFile ? "Video" : "Image")
+
     if (targetShotId) {
       const { data: shot } = await context.supabase.from("creator_shots").select("id, keyframe_image, metadata").eq("id", targetShotId).maybeSingle()
       if (!shot) return NextResponse.json({ error: "Shot not found" }, { status: 404 })
@@ -52,7 +56,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (input.target === "shot" && typeof shotMeta.byteplus_asset_id === "string") {
         knownAssetId = shotMeta.byteplus_asset_id
       }
-      if (input.target === "reference") {
+      if (input.target === "reference" || input.target === "video") {
         const mappings = shotMeta.byteplus_reference_assets
         const mapped = mappings && typeof mappings === "object" && !Array.isArray(mappings)
           ? (mappings as Record<string, unknown>)[imagePathToResolve]
@@ -95,11 +99,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       supabase: context.supabase,
       sourcePath,
       imageUrl: resolvedUrl,
-      name: input.name || "shot_portrait",
+      name: input.name || (resolvedAssetType === "Video" ? "motion_clip" : "shot_portrait"),
       projectId,
       entityId: targetEntityId || null,
       userId: context.user.id,
       knownAssetId,
+      assetType: resolvedAssetType,
     })
     const assetUri = result.assetUri
 
@@ -122,7 +127,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .eq("id", targetShotId)
     }
 
-    if (targetShotId && input.target === "reference") {
+    if (targetShotId && (input.target === "reference" || input.target === "video")) {
       const { data: shot } = await context.supabase.from("creator_shots").select("metadata").eq("id", targetShotId).single()
       const shotMeta = (shot?.metadata as Record<string, unknown>) || {}
       const existingMappings = shotMeta.byteplus_reference_assets && typeof shotMeta.byteplus_reference_assets === "object" && !Array.isArray(shotMeta.byteplus_reference_assets)

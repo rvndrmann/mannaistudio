@@ -291,10 +291,34 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (previousShot?.video_url) videoReferencePaths.unshift(previousShot.video_url)
     }
     const videoLimit = bytePlusVideoReferenceLimit(input.model)
+    const distinctVideoPaths = Array.from(new Set(videoReferencePaths)).slice(0, videoLimit.maxVideos)
+    const distinctVideoInputs = distinctVideoPaths.map((videoPath) => {
+      const registeredAssetUri = provider === "byteplus" ? seedanceReferenceAssetUri(shotReferenceAssets[videoPath]) : null
+      return registeredAssetUri || videoPath
+    })
     const videoReferences = await signedReferenceUrls(
       context,
-      Array.from(new Set(videoReferencePaths)).slice(0, videoLimit.maxVideos),
+      distinctVideoInputs,
     )
+    if (provider === "byteplus") {
+      for (let idx = 0; idx < distinctVideoInputs.length; idx += 1) {
+        const rawPath = distinctVideoPaths[idx]
+        const inputRef = distinctVideoInputs[idx]
+        if (/^asset:\/\//i.test(inputRef)) continue
+        const signed = videoReferences[idx]
+        if (!signed) continue
+        const assetUri = await resolveRegisteredAsset({
+          supabase: context.supabase,
+          sourcePath: rawPath,
+          imageUrl: signed,
+          name: rawPath.split("/").pop() || "motion_clip",
+          projectId,
+          userId: context.user.id,
+          assetType: "Video",
+        })
+        if (assetUri) videoReferences[idx] = assetUri
+      }
+    }
     const mentionContext = buildEntityMentionContext((resolvedEntities || []) as MentionableEntity[])
     const style = projectVisualStyle(context.project)
     const resolvedPrompt = [stripIdentityDescriptions(input.prompt), ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")

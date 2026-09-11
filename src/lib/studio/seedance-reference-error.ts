@@ -1,12 +1,17 @@
 export type SeedanceRejectedReference = {
   contentIndex: number
   referenceIndex: number
+  isVideo?: boolean
+}
+
+export function isSeedanceRejectedVideo(message: string): boolean {
+  return /real person/i.test(message) && /(?:input\s+video\b|content\s*\[\s*\d+\s*\]\.video_url)/i.test(message)
 }
 
 /**
- * BytePlus numbers the text prompt as content[0], followed by image references.
- * Convert a provider error such as content[4] into the zero-based reference
- * index used by the workspace.
+ * BytePlus numbers the text prompt as content[0], followed by image references
+ * and then video references. Convert a provider error such as content[4] into
+ * the zero-based reference index used by the workspace.
  */
 export function parseSeedanceRejectedReference(message: string): SeedanceRejectedReference | null {
   if (!/real person/i.test(message)) return null
@@ -14,7 +19,8 @@ export function parseSeedanceRejectedReference(message: string): SeedanceRejecte
   if (!match) return null
   const contentIndex = Number(match[1])
   if (!Number.isInteger(contentIndex) || contentIndex < 1) return null
-  return { contentIndex, referenceIndex: contentIndex - 1 }
+  const isVideo = isSeedanceRejectedVideo(message)
+  return { contentIndex, referenceIndex: contentIndex - 1, isVideo }
 }
 
 export function seedanceReferenceAssetUri(value: unknown): string | null {
@@ -70,4 +76,3 @@ export async function purgeStaleBytePlusAsset(supabase: { from: (table: string) 
     console.warn(`Could not purge stale BytePlus asset ${cleanId}:`, err)
   }
 }
-
