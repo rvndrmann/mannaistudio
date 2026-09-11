@@ -118,6 +118,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (error) throw error
       return NextResponse.json(data)
     }
+    if (body.action === "setShotKeyframeReference") {
+      // Whether the shot's own keyframe rides along as a reference image. A
+      // render-time removal did not survive a reopen — the strip re-seeded the
+      // keyframe from the shot — so the choice is kept on the shot itself.
+      const { data: current, error: currentError } = await supabase.from("creator_shots").select("metadata").eq("id", body.shotId).single()
+      if (currentError) throw currentError
+      const metadata = { ...((current?.metadata as Record<string, unknown>) || {}), keyframe_reference_removed: body.removed === true }
+      const { error } = await supabase.from("creator_shots").update({ metadata }).eq("id", body.shotId)
+      if (error) throw error
+      return NextResponse.json({ success: true })
+    }
     if (body.action === "deleteJob") {
       const { error } = await supabase.from("creator_generation_jobs").delete().eq("id", body.jobId).eq("project_id", projectId)
       if (error) throw error

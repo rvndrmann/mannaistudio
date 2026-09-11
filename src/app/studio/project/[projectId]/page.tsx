@@ -5134,25 +5134,50 @@ function ShotMediaWorkspace({
   const [referenceSourcePicker, setReferenceSourcePicker] = useState(false);
   const [referenceTarget, setReferenceTarget] = useState<"references" | "start" | "end" | "motion">("references");
   const [references, setReferences] = useState<string[]>(() => {
+    const seeded: string[] = [];
+    // The shot's own keyframe used to be attached by the server whether or not
+    // it was in this strip, so Multi Image showed a cast the render did not
+    // match and there was no way to film the shot without its still frame.
+    // It is a tile like any other now: visible, and deletable before a render.
+    const keyframeRemoved = media.shot.metadata?.keyframe_reference_removed === true;
+    if (media.type === "video" && media.shot.keyframe_image && !keyframeRemoved) seeded.push(media.shot.keyframe_image);
     if (media.shot.referenced_entities && media.shot.referenced_entities.length > 0) {
       // One image per entity — its chosen reference. Seeding every image an
       // entity owns filled the eight-reference budget with several angles of
       // one character and pushed the rest of the shot's cast out.
-      return entities
+      seeded.push(...entities
         .filter((e) => media.shot.referenced_entities!.includes(e.id))
         .map((e) => entityPrimaryReference(e))
-        .filter((url): url is string => typeof url === "string" && url.length > 0);
+        .filter((url): url is string => typeof url === "string" && url.length > 0));
     }
-    return [];
+    return Array.from(new Set(seeded));
   });
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>(media.shot.referenced_entities || []);
   // "Reference 2" says nothing; "@Lena" is what the user actually needs to
   // tell one square thumbnail from the next. The @mention hover preview in the
   // prompt text already resolves a reference this way — this labels the
   // strip's own thumbnails the same way instead of a generic ordinal.
+  // Remembered on the shot so a removed keyframe stays removed after a reopen,
+  // and so re-adding it puts it back for good rather than until the next reload.
+  const rememberKeyframeReference = (removed: boolean) => {
+    if (media.type !== "video" || !media.shot.id) return;
+    const meta = (media.shot.metadata || {}) as Record<string, unknown>;
+    if (meta.keyframe_reference_removed === removed) return;
+    media.shot.metadata = { ...meta, keyframe_reference_removed: removed };
+    save({ action: "setShotKeyframeReference", shotId: media.shot.id, removed }).catch(() => {});
+  };
+  const removeReferenceAt = (index: number) => {
+    setReferences((items) => {
+      if (items[index] === media.shot.keyframe_image) rememberKeyframeReference(true);
+      return items.filter((_, i) => i !== index);
+    });
+  };
+
   const referenceLabel = (path: string) => {
     const entity = entities.find((item) => entityPrimaryReference(item) === path);
-    return entity ? `@${entity.name}` : "Reference image";
+    if (entity) return `@${entity.name}`;
+    if (path === media.shot.keyframe_image) return `Scene ${shotNumber} keyframe`;
+    return "Reference image";
   };
   const videoReferenceImages = videoInputMode === "keyframe" ? [startFrame, endFrame].filter((item): item is string => Boolean(item)) : references;
   const selectedCharacterEntities = entities.filter((e) => e.type === "character" && selectedCharacterIds.includes(e.id));
@@ -5482,6 +5507,7 @@ function ShotMediaWorkspace({
       setStartFrame((current) => current || previewSrc);
       return;
     }
+    if (previewSrc === media.shot.keyframe_image) rememberKeyframeReference(false);
     setReferences((current) => current.includes(previewSrc) ? current : [...current, previewSrc]);
   };
   const toggleCharacterSelection = (id: string) => {
@@ -5568,7 +5594,7 @@ function ShotMediaWorkspace({
         await reload(true);
       } else {
         setGenerationStatus("Submitting video generation job…");
-        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, referenceVideos: videoReferencePaths, characterEntityIds, mentionedEntityIds, generationMode: videoInputMode, startFrame, endFrame, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
+        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, referenceVideos: videoReferencePaths, characterEntityIds, mentionedEntityIds, generationMode: videoInputMode, startFrame: videoInputMode === "keyframe" ? startFrame : null, endFrame: videoInputMode === "keyframe" ? endFrame : null, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
         const body = await readGenerationResponse(response);
         if (!response.ok) {
           const errorMsg = body.error || "Video generation failed";
@@ -5772,6 +5798,7 @@ function ShotMediaWorkspace({
       setVideoReferencePaths((current) => current.includes(path) ? current : [...current, path]);
       return;
     }
+    if (path === media.shot.keyframe_image) rememberKeyframeReference(false);
     setReferences((current) => current.includes(path) ? current : [...current, path]);
   };
   // A clip dropped where images go was sent for image registration and failed
@@ -6357,7 +6384,7 @@ function ShotMediaWorkspace({
                             <button
                               type="button"
                               aria-label={`Remove reference image ${index + 1}`}
-                              onClick={() => setReferences(items => items.filter((_, i) => i !== index))}
+                              onClick={() => removeReferenceAt(index)}
                               className="absolute inset-0 grid place-items-center bg-black/60 opacity-0 transition group-hover:opacity-100"
                             >
                               <Trash2 className="h-4 w-4 text-white" />
@@ -6645,7 +6672,10 @@ function ShotMediaWorkspace({
             if (referenceTarget === "start" && selectedImage) setStartFrame(selectedImage);
             else if (referenceTarget === "end" && selectedImage) setEndFrame(selectedImage);
             else if (referenceTarget === "motion") setVideoReferencePaths((current) => Array.from(new Set([...current, ...items])));
-            else setReferences(items);
+            else {
+              if (media.shot.keyframe_image) rememberKeyframeReference(!items.includes(media.shot.keyframe_image));
+              setReferences(items);
+            }
             setPicker(false);
           }}
         />

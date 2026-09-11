@@ -137,19 +137,29 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       ? shotMeta.byteplus_reference_assets as Record<string, unknown>
       : {}
 
+    // In Multi Image mode the keyframe is one of the tiles the user can see and
+    // delete, so it reaches here through input.referenceImages or not at all.
+    // Attaching it on the shot's behalf made a removed keyframe come back —
+    // silently, and at the front of the reference list where it weighed most.
+    const multiImage = input.generationMode === "multi_image"
+    let shotKeyframeAssetId: string | null = null
+
     if (provider === "byteplus" && shotBytePlusAssetId) {
       const info = await getBytePlusAsset(shotBytePlusAssetId).catch(() => null)
       if (info && (info.status === "Active" || info.status === "active")) {
-        combinedReferencePaths.push(shotBytePlusAssetId)
-        if (shot.keyframe_image) { rawImagesToOmit.add(shot.keyframe_image); displayReferencePaths.push(shot.keyframe_image) }
+        shotKeyframeAssetId = shotBytePlusAssetId
+        if (!multiImage) {
+          combinedReferencePaths.push(shotBytePlusAssetId)
+          if (shot.keyframe_image) { rawImagesToOmit.add(shot.keyframe_image); displayReferencePaths.push(shot.keyframe_image) }
+        }
       } else {
         const cleanMeta = { ...shotMeta }
         delete cleanMeta.byteplus_asset_id
         delete cleanMeta.byteplus_asset_uri
         await context.supabase.from("creator_shots").update({ metadata: cleanMeta }).eq("id", shot.id)
-        if (shot.keyframe_image) combinedReferencePaths.push(shot.keyframe_image)
+        if (shot.keyframe_image && !multiImage) combinedReferencePaths.push(shot.keyframe_image)
       }
-    } else if (shot.keyframe_image && !input.startFrame) {
+    } else if (shot.keyframe_image && !input.startFrame && !multiImage) {
       combinedReferencePaths.push(shot.keyframe_image)
     }
 
@@ -218,7 +228,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         pickedVideoPaths.push(refPath)
         continue
       }
-      const registeredAssetUri = provider === "byteplus" ? seedanceReferenceAssetUri(shotReferenceAssets[refPath]) : null
+      // A kept keyframe still goes to the provider as its registered asset —
+      // the asset id is what clears the real-person check, and re-sending the
+      // raw picture instead would have it rejected.
+      const registeredAssetUri = provider === "byteplus"
+        ? (refPath === shot.keyframe_image && shotKeyframeAssetId ? shotKeyframeAssetId : seedanceReferenceAssetUri(shotReferenceAssets[refPath]))
+        : null
       combinedReferencePaths.push(registeredAssetUri || refPath)
       // A picture attached to the shot itself is as likely to show a person as
       // one belonging to a cast member — it is usually a character's photo or a
