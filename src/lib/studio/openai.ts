@@ -388,8 +388,8 @@ export function openAIImageSizeForAspectRatio(aspectRatio?: string): "1024x1024"
   }
 }
 
-/** What the image endpoints accept, which is not what the UI calls it. */
-export type OpenAIImageQuality = "low" | "medium" | "high"
+export { openAIImageQualityCeiling, clampOpenAIImageQuality, type OpenAIImageQuality } from "./image-quality"
+import type { OpenAIImageQuality } from "./image-quality"
 
 export async function generateOpenAIImage(input: { userId: string; model: OpenAIImageModel; prompt: string; referenceUrls?: string[]; aspectRatio?: string; quality?: OpenAIImageQuality }) {
   const referenceUrls = input.referenceUrls || []

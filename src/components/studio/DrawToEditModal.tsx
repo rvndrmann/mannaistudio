@@ -1,5 +1,6 @@
 "use client";
 
+import { type CreditQuality } from "@/lib/studio/credits";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
@@ -87,7 +88,7 @@ export default function DrawToEditModal({
   targetId: string;
   episodeId?: string;
   model: string;
-  quality?: "Low" | "Medium" | "High" | "Ultra";
+  quality?: CreditQuality;
   title: string;
   close: () => void;
   /** Fires with the new version's storage path once the edit comes back. */

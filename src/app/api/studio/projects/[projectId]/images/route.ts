@@ -31,7 +31,7 @@ const imageRequestSchema = z.object({
   referenceImages: z.array(z.string().max(2_000)).max(8).default([]),
   mentionedEntityIds: z.array(z.string().uuid()).max(20).default([]),
   aspectRatio: z.string().max(20).optional(),
-  quality: z.enum(["Low", "Medium", "High", "Ultra"]).optional(),
+  quality: z.enum(["Low", "Medium", "High", "Ultra", "Max"]).optional(),
   // Which episode the request came from. A shot names its own episode, but
   // character and asset art does not, so without this its credits belong to no
   // episode and go missing from every per-episode total.
@@ -483,7 +483,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         prompt: resolvedPrompt,
         referenceUrls,
         aspectRatio: effectiveAspectRatio,
-        quality: openAIImageQuality(quality === "Ultra" ? "High" : quality),
+        quality: openAIImageQuality(quality, input.model),
       })
     } else if (provider === "openai") {
       // Submitted as a background response, then waited on here.
@@ -495,7 +495,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       // request that dies from here on leaves a recoverable handle rather than
       // a paid-for picture nobody can reach — see the GET route, which finishes
       // exactly these jobs.
-      const submitted = await submitOpenAIImage({ userId: context.user.id, model: input.model as (typeof openAIImageModels)[number], prompt: resolvedPrompt, referenceUrls, aspectRatio: effectiveAspectRatio, quality: openAIImageQuality(quality === "Ultra" ? "High" : quality) })
+      const submitted = await submitOpenAIImage({ userId: context.user.id, model: input.model as (typeof openAIImageModels)[number], prompt: resolvedPrompt, referenceUrls, aspectRatio: effectiveAspectRatio, quality: openAIImageQuality(quality, input.model) })
       if (pendingGenerationJobId) {
         await context.supabase
           .from("creator_generation_jobs")

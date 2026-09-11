@@ -19,8 +19,13 @@ export const CREDIT_EXCHANGE_RATE = {
  * Video is quoted per second everywhere, so a clip is billed for the runtime it
  * actually renders. Rates are held unrounded and the total is rounded up once,
  * which is what keeps a fractional per-second rate from being rounded twice.
+ *
+ * "Ultra" and "Max" reach the provider as xhigh and max, and only on a model
+ * that has them. Everything else clamps down to its own top tier — see
+ * clampOpenAIImageQuality — so a tier a model cannot serve costs what the tier
+ * it actually rendered at costs, or more, never less.
  */
-export type CreditQuality = "Low" | "Medium" | "High" | "Ultra"
+export type CreditQuality = "Low" | "Medium" | "High" | "Ultra" | "Max"
 export type CreditRateUnit = "per image" | "per second"
 
 export type ModelCreditRate = {
@@ -59,14 +64,36 @@ export const MODEL_CREDIT_RATES: Record<string, ModelCreditRate> = {
   // ---- Image models: credits per image ----
   // GPT Image bills by quality tier, and the spread is wide enough that a
   // single figure would be wrong at both ends: Low is 2 credits, High is 45.
-  "gpt-image-2": { unit: "per image", base: 12, description: "GPT Image 2", byQuality: { Low: 2, Medium: 12, High: 45, Ultra: 45 } },
-  // Sunburst bills at exactly GPT Image 2's token rates ($5/$8/$30 per 1M for
-  // text in, image in, image out), so its tiers are carried across unchanged.
-  // Still marked estimated because credits-per-image also depends on how many
-  // output tokens a render actually emits, and the card does not quote that for
-  // this model — the figure needs a real per-image quote before it is trusted.
-  "gpt-image-2.5-sunburst": { unit: "per image", base: 12, description: "GPT Image 2.5 Sunburst", estimated: true, byQuality: { Low: 2, Medium: 12, High: 45, Ultra: 45 } },
-  "gpt-image-1.5": { unit: "per image", base: 12, description: "GPT Image 1.5", estimated: true, byQuality: { Low: 2, Medium: 12, High: 45, Ultra: 45 } },
+  // Ultra and Max both clamp to "high" on this model, so they are priced at
+  // what High actually renders. Leaving them out would fall through to `base`
+  // and bill 12 for a 45-credit render.
+  "gpt-image-2": { unit: "per image", base: 12, description: "GPT Image 2", byQuality: { Low: 2, Medium: 12, High: 45, Ultra: 45, Max: 45 } },
+  // Measured, not carried. OpenAI publishes no per-image table for this model,
+  // so each tier was rendered and its output_tokens read back: the count is
+  // fixed per (size, quality) and independent of the prompt, checked three
+  // times per tier.
+  //
+  //   tier    tokens (1024x1024)   $30/1M      x2.2 at ₹95.4/$
+  //   low                    196   ₹0.56       2
+  //   medium                 439   ₹1.26       3
+  //   high                 1,756   ₹5.03      12
+  //   xhigh                3,122   ₹8.94      20
+  //   max                  7,024   ₹20.10     45
+  //
+  // Priced off the square canvas deliberately. It is the dearest of the three —
+  // 1024x1024 costs more tokens than either 1536 canvas, which is backwards but
+  // reproducible — so a portrait or landscape render can only ever come in
+  // under its quote.
+  //
+  // Carrying GPT Image 2's card here, as this entry first did, overcharged
+  // Medium by 4x and High by nearly 4x.
+  "gpt-image-2.5-sunburst": {
+    unit: "per image",
+    base: 3,
+    description: "GPT Image 2.5 Sunburst",
+    byQuality: { Low: 2, Medium: 3, High: 12, Ultra: 20, Max: 45 },
+  },
+  "gpt-image-1.5": { unit: "per image", base: 12, description: "GPT Image 1.5", estimated: true, byQuality: { Low: 2, Medium: 12, High: 45, Ultra: 45, Max: 45 } },
   "dola-seedream-5-0-pro-260628": { unit: "per image", base: 10, description: "Seedream 5.0 Pro" },
   // The card prices Nano Banana at 1K/2K/4K. The workspace stores video-style
   // resolutions, so 480p and 720p buy the 1K rate and 1080p buys 2K.

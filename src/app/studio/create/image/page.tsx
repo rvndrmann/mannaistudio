@@ -19,7 +19,7 @@ import { downloadSignedMedia } from "@/lib/studio/signed-media";
 import type { QuickHistoryItem } from "@/lib/studio/quick-media";
 
 const ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"] as const;
-const QUALITIES = ["Low", "Medium", "High", "Ultra"] as const;
+const QUALITIES = ["Low", "Medium", "High", "Ultra", "Max"] as const;
 const BATCH_SIZES = [1, 2, 3, 4] as const;
 
 export default function QuickImagePage() {

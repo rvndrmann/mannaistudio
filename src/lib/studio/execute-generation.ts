@@ -347,7 +347,7 @@ export async function executeGenerationJobsInBackground(
               prompt: resolvedPrompt,
               referenceUrls,
               aspectRatio: effectiveAspectRatio,
-              quality: openAIImageQuality(projectImageQuality(context.project)),
+              quality: openAIImageQuality(projectImageQuality(context.project), job.model as string),
             }))
             
             const path = generationStoragePath(context, job)

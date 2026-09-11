@@ -46,7 +46,7 @@ const imageRequestSchema = z.object({
   model: z.string().refine(isImageGenerationModel, "Unsupported image model"),
   referenceImages: z.array(z.string().max(2_000)).max(8).default([]),
   aspectRatio: z.enum(["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"]).default("1:1"),
-  quality: z.enum(["Low", "Medium", "High", "Ultra"]).default("Medium"),
+  quality: z.enum(["Low", "Medium", "High", "Ultra", "Max"]).default("Medium"),
 }).strict()
 
 // A High-quality gpt-image-2 render runs well past a default serverless
@@ -206,7 +206,7 @@ export async function POST(request: NextRequest) {
           prompt: resolvedPrompt,
           referenceUrls,
           aspectRatio: input.aspectRatio,
-          quality: openAIImageQuality(input.quality === "Ultra" ? "High" : input.quality),
+          quality: openAIImageQuality(input.quality, input.model),
         })
         return { image, contentType: "image/png", byteplusAssetId: null, registeredAsset: null }
       }

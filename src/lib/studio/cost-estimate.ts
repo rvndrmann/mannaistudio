@@ -1,4 +1,4 @@
-import { calculateCreditCost, creditRateFor } from "./credits"
+import { calculateCreditCost, creditRateFor, type CreditQuality } from "./credits"
 import { getModelLabel, imageGenerationModels, supportedVideoModel } from "./generation-models"
 import { resolveShotSeconds } from "./shot-duration"
 
@@ -16,7 +16,7 @@ import { resolveShotSeconds } from "./shot-duration"
 export type ProjectCostSettings = {
   imageModel: string
   videoModel: string
-  imageQuality: "Low" | "Medium" | "High" | "Ultra"
+  imageQuality: CreditQuality
   resolution: string
   aspectRatio: string
 }

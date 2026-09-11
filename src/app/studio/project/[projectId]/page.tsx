@@ -63,7 +63,7 @@ import { isAbandonedRun } from "@/lib/studio/workflow-runs";
 import { videoPromptFor } from "@/lib/studio/shot-video-prompt";
 import { buildInsertShotDraft } from "@/lib/studio/shot-intent";
 import { isVideoReferencePath } from "@/lib/studio/media-reference";
-import { calculateCreditCost, getUserCredits } from "@/lib/studio/credits";
+import { calculateCreditCost, getUserCredits, type CreditQuality } from "@/lib/studio/credits";
 import { blockedByCredits, resolveGenerationSource } from "@/lib/byok/generation-source";
 import { useConnectedProviders } from "@/lib/byok/use-connected-providers";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -2457,7 +2457,7 @@ function ModelMenu({
   type: "image" | "video";
   value: string;
   onChange: (value: string) => void;
-  options?: { quality?: "Low" | "Medium" | "High" | "Ultra"; aspectRatio?: string; resolution?: string; durationSeconds?: number };
+  options?: { quality?: CreditQuality; aspectRatio?: string; resolution?: string; durationSeconds?: number };
   inline?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -2778,7 +2778,7 @@ function BasicSettingsModal({
     () => estimateProjectCost(data.shots || [], {
       imageModel: storyboardImageModel,
       videoModel,
-      imageQuality: (["Low", "Medium", "High", "Ultra"].includes(imageQuality) ? imageQuality : "Medium") as "Low" | "Medium" | "High" | "Ultra",
+      imageQuality: (["Low", "Medium", "High", "Ultra", "Max"].includes(imageQuality) ? imageQuality : "Medium") as CreditQuality,
       resolution,
       aspectRatio,
     }),
@@ -2937,8 +2937,18 @@ function BasicSettingsModal({
               >
                 <option value="Low">Low (⚡ fastest, cheapest)</option>
                 <option value="Medium">Medium (balanced)</option>
-                <option value="High">High (⚡ slowest, most credits)</option>
+                <option value="High">High (slower, more credits)</option>
+                <option value="Ultra">Ultra (GPT Image 2.5 Sunburst only)</option>
+                <option value="Max">Max (⚡ slowest, most credits — Sunburst only)</option>
               </select>
+              {["Ultra", "Max"].includes(imageQuality) && storyboardImageModel !== "gpt-image-2.5-sunburst" && (
+                // Said plainly rather than left to be discovered in the output:
+                // every other model clamps these down to High and is billed at
+                // High, so the tier is chargeable but has no effect here.
+                <p className="mt-1.5 text-[11px] text-amber-300/80">
+                  {getModelLabel(storyboardImageModel)} renders {imageQuality} at High. Switch to GPT Image 2.5 Sunburst to use it.
+                </p>
+              )}
             </div>
           </div>
 
@@ -3132,7 +3142,7 @@ function AssetWorkspace({
   const [prompt, setPrompt] = useState(asset.description || "");
   const [model, setModel] = useState<string>(characterImageModel);
   const [aspectRatio, setAspectRatio] = useState<string>("9:16");
-  const [quality, setQuality] = useState<"Low" | "Medium" | "High" | "Ultra">("Medium");
+  const [quality, setQuality] = useState<CreditQuality>("Medium");
   // The camera package is opt-in. Off, the prompt is sent exactly as written —
   // no optics, no "professional photography, 8K" tail — because a user who has
   // not asked to shoot on a particular camera has not asked for their prompt to
@@ -3841,6 +3851,7 @@ function AssetWorkspace({
                       <option className="bg-[#1c1c1c]" value="Medium">Medium</option>
                       <option className="bg-[#1c1c1c]" value="High">High</option>
                       <option className="bg-[#1c1c1c]" value="Ultra">Ultra</option>
+                      <option className="bg-[#1c1c1c]" value="Max">Max</option>
                     </select>
                     <ChevronDown className="absolute right-0 h-3 w-3 opacity-50 pointer-events-none" />
                   </div>
@@ -5636,7 +5647,7 @@ function ShotMediaWorkspace({
     }
   };
 
-  const [quality, setQuality] = useState<"Low" | "Medium" | "High" | "Ultra">("Medium");
+  const [quality, setQuality] = useState<CreditQuality>("Medium");
 
   const currentActiveChosenSource = isImage ? media.shot.keyframe_image : media.shot.video_url;
   const isCurrentlyChosen = Boolean(previewSource && previewSource === currentActiveChosenSource);
@@ -6324,6 +6335,7 @@ function ShotMediaWorkspace({
                       <option className="bg-[#1c1c1c]" value="Medium">Medium</option>
                       <option className="bg-[#1c1c1c]" value="High">High</option>
                       <option className="bg-[#1c1c1c]" value="Ultra">Ultra</option>
+                      <option className="bg-[#1c1c1c]" value="Max">Max</option>
                     </select>
                     <ChevronDown className="absolute right-0 h-3 w-3 opacity-50 pointer-events-none" />
                   </div>

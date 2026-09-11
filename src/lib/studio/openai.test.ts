@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { analyzeImagesAsJson, openAIImageModels, openAIImageSizeForAspectRatio, readOpenAIImageResponse, submitOpenAIImage, supportsBackgroundImageResponse } from "./openai"
+import { analyzeImagesAsJson, clampOpenAIImageQuality, openAIImageModels, openAIImageQualityCeiling, openAIImageSizeForAspectRatio, readOpenAIImageResponse, submitOpenAIImage, supportsBackgroundImageResponse } from "./openai"
 import { generationProvider, imageGenerationModels } from "./generation-models"
 import { projectStoryboardImageModel } from "./project-image-model"
 import { calculateCreditCost } from "./credits"
@@ -150,9 +150,38 @@ describe("GPT Image 2.5 Sunburst endpoint support", () => {
     expect(projectStoryboardImageModel(project)).toBe("gpt-image-2.5-sunburst")
   })
 
-  it("is priced on the rate card rather than falling back to the unlisted-model rate", () => {
+  it("is priced from its own measured token counts, not GPT Image 2's card", () => {
+    // Measured on the square canvas, the dearest of the three. Carrying
+    // gpt-image-2's figures here overcharged Medium 4x and High nearly 4x.
     expect(calculateCreditCost("gpt-image-2.5-sunburst", "image", 5, { quality: "Low" })).toBe(2)
-    expect(calculateCreditCost("gpt-image-2.5-sunburst", "image", 5, { quality: "Medium" })).toBe(12)
-    expect(calculateCreditCost("gpt-image-2.5-sunburst", "image", 5, { quality: "High" })).toBe(45)
+    expect(calculateCreditCost("gpt-image-2.5-sunburst", "image", 5, { quality: "Medium" })).toBe(3)
+    expect(calculateCreditCost("gpt-image-2.5-sunburst", "image", 5, { quality: "High" })).toBe(12)
+    expect(calculateCreditCost("gpt-image-2.5-sunburst", "image", 5, { quality: "Ultra" })).toBe(20)
+    expect(calculateCreditCost("gpt-image-2.5-sunburst", "image", 5, { quality: "Max" })).toBe(45)
+  })
+
+  it("offers xhigh and max only on the model that has them", () => {
+    expect(openAIImageQualityCeiling("gpt-image-2.5-sunburst")).toContain("max")
+    expect(openAIImageQualityCeiling("gpt-image-2")).not.toContain("max")
+    expect(openAIImageQualityCeiling("gpt-image-1.5")).not.toContain("xhigh")
+  })
+
+  it("clamps a tier a model cannot serve down to its top one", () => {
+    // Rather than letting an unsupported tier reach OpenAI as a 400 that names
+    // neither the model nor the reason.
+    expect(clampOpenAIImageQuality("gpt-image-2", "max")).toBe("high")
+    expect(clampOpenAIImageQuality("gpt-image-2", "xhigh")).toBe("high")
+    expect(clampOpenAIImageQuality("gpt-image-2.5-sunburst", "max")).toBe("max")
+    expect(clampOpenAIImageQuality("gpt-image-2.5-sunburst", "low")).toBe("low")
+  })
+
+  it("never bills a clamped render less than it costs to make", () => {
+    // Ultra and Max clamp to High on gpt-image-2, so they have to be priced at
+    // what High renders. Falling through to `base` would bill 12 for a
+    // 45-credit picture.
+    for (const quality of ["Ultra", "Max"] as const) {
+      expect(calculateCreditCost("gpt-image-2", "image", 5, { quality }))
+        .toBe(calculateCreditCost("gpt-image-2", "image", 5, { quality: "High" }))
+    }
   })
 })

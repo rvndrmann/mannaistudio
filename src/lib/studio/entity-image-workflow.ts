@@ -1,4 +1,5 @@
 import type { MentionableEntity } from "./entity-mentions"
+import { clampOpenAIImageQuality, type OpenAIImageQuality } from "./image-quality"
 
 /**
  * The prompt and settings side of entity reference art.
@@ -30,7 +31,7 @@ export function visualStyleDirective(style: string) {
  * image generation — chat keyframes, entity reference art, and the storyboard's
  * own generate button — so one setting means one look and one price.
  */
-export type ProjectImageQuality = "Low" | "Medium" | "High"
+export type ProjectImageQuality = "Low" | "Medium" | "High" | "Ultra" | "Max"
 
 export function projectImageQuality(project: Record<string, unknown>): ProjectImageQuality {
   const metadata = project.metadata && typeof project.metadata === "object" ? project.metadata as Record<string, unknown> : {}
@@ -38,12 +39,22 @@ export function projectImageQuality(project: Record<string, unknown>): ProjectIm
   const value = typeof basicSettings.imageQuality === "string" ? basicSettings.imageQuality.trim().toLowerCase() : ""
   if (value === "low") return "Low"
   if (value === "high") return "High"
+  if (value === "ultra") return "Ultra"
+  if (value === "max") return "Max"
   return "Medium"
 }
 
-/** The same choice in the casing the OpenAI image endpoints expect. */
-export function openAIImageQuality(quality: ProjectImageQuality) {
-  return quality.toLowerCase() as "low" | "medium" | "high"
+/**
+ * The UI's tier as the endpoint spells it, clamped to what the model has.
+ *
+ * The model is required rather than optional. It used to be a bare lowercase()
+ * and each caller patched the gap in its own way — the two image routes wrote
+ * `quality === "Ultra" ? "High" : quality` inline, and the Director's path
+ * forgot to, which is exactly the sort of drift that ends with an unsupported
+ * tier reaching the provider.
+ */
+export function openAIImageQuality(quality: ProjectImageQuality, model: string): OpenAIImageQuality {
+  return clampOpenAIImageQuality(model, quality.toLowerCase() as OpenAIImageQuality)
 }
 
 export function projectVisualStyle(project: Record<string, unknown>) {
