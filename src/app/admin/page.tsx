@@ -10,7 +10,7 @@ import {
     Save, X, Download, FileText, Video, Trophy,
     Inbox, Mail, Clock, DollarSign, Loader2, Phone,
     ChevronLeft, ChevronRight, Calendar, Pause, PauseCircle, PlayCircle,
-    Image as ImageIcon, RefreshCw, FolderKanban, Clapperboard
+    Image as ImageIcon, RefreshCw, FolderKanban, Clapperboard, BarChart3
 } from "lucide-react"
 import { courses, adminShowcase, challenges } from "@/lib/data"
 import { useEffect, useState } from "react"
@@ -40,6 +40,7 @@ import AdminEnterpriseOrders from "@/components/enterprise/AdminEnterpriseOrders
 import { defaultVoiceInstructions, fetchVoiceInstructions } from "@/lib/studio/voice-instructions"
 import BlogManager from "@/components/admin/BlogManager"
 import OriginalsManager from "@/components/admin/OriginalsManager"
+import ViewerAnalytics from "@/components/admin/ViewerAnalytics"
 import { defaultHomeVariant, fetchHomeVariant, type HomeVariant } from "@/lib/home-variant"
 
 type EnrolledStudent = {
@@ -1339,6 +1340,15 @@ function AdminDashboardContent() {
                                 <Clapperboard className="w-4 h-4" /> Originals
                             </button>
                             <button
+                                onClick={() => setActiveTab("audience")}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
+                                    activeTab === "audience" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                )}
+                            >
+                                <BarChart3 className="w-4 h-4" /> Audience
+                            </button>
+                            <button
                                 onClick={() => setActiveTab("blog")}
                                 className={cn(
                                     "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
@@ -2008,6 +2018,18 @@ function AdminDashboardContent() {
                                 className="space-y-8"
                             >
                                 <OriginalsManager />
+                            </motion.div>
+                        )}
+
+                        {activeTab === "audience" && (
+                            <motion.div
+                                key="audience"
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                className="space-y-8"
+                            >
+                                <ViewerAnalytics />
                             </motion.div>
                         )}
 

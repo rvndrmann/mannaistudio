@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth/auth-provider";
+import AnalyticsTracker from "@/components/AnalyticsTracker";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -10,6 +11,7 @@ const FB_PIXEL_ID = "998332272805619";
 const GA4_ID = "G-G1Y59LLJ3S";
 const GADS_ID = "AW-18272552489";
 const CLARITY_ID = "xckmot5rdo";
+const ADSENSE_CLIENT = "ca-pub-9396578512508923";
 
 export const metadata: Metadata = {
     title: "AI Director Hub — AI Director Agent",
@@ -30,6 +32,14 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en" className="dark">
+            <head>
+                {/* Google AdSense */}
+                <script
+                    async
+                    src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}`}
+                    crossOrigin="anonymous"
+                />
+            </head>
             <body dir="ltr" className={`${inter.className} bg-black text-white selection:bg-primary/30`}>
                 {/* Google Analytics 4 */}
                 <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`} strategy="afterInteractive" />
@@ -68,6 +78,11 @@ export default function RootLayout({
                 </noscript>
                 <div className="fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,rgba(196,245,43,0.06),transparent)] transition pointer-events-none" />
                 <AuthProvider>
+                    {/* First-party page views and presence, for the admin
+                        analytics section. The third-party tags above cannot
+                        answer "which of our accounts watched which episode",
+                        which is the question this one exists for. */}
+                    <AnalyticsTracker />
                     {children}
                 </AuthProvider>
             </body>

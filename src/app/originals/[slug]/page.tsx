@@ -10,6 +10,7 @@ import EpisodePaywall from "@/components/originals/EpisodePaywall"
 import NotifyMeSheet from "@/components/originals/NotifyMeSheet"
 import { useAuth } from "@/components/auth/auth-provider"
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events"
+import { WATCH_REPORT_MS, reportWatch } from "@/lib/analytics"
 import {
   DEFAULT_EPISODE_PRICE,
   formatEpisodeDuration,
@@ -19,6 +20,40 @@ import {
 
 /** Episodes per page in the number grid, matching how long series are browsed. */
 const GRID_PAGE = 50
+
+/**
+ * How an episode was open at the moment it was watched.
+ *
+ * Recorded per watch rather than looked up later, because entitlements expire:
+ * a rental that has since lapsed would make a watch that was paid for look
+ * like it was never bought at all.
+ */
+type WatchAccess = "free" | "unlocked" | "pass" | "purchased"
+
+type WatchProgress = {
+  episodeId: string
+  access: WatchAccess
+  /** Real playback time, accumulated — blind to seeking, unlike the clock. */
+  secondsWatched: number
+  /** Deepest point reached, which is what the drop-off curve is drawn from. */
+  furthestSecond: number
+  durationSeconds: number
+  completed: boolean
+  /** Clock position at the previous tick, to turn positions into elapsed time. */
+  lastTick: number | null
+  /** Whether anything has been sent for this watch yet. */
+  reported: boolean
+}
+
+/** The unlock route's status vocabulary, in the analytics table's terms. */
+function watchAccessFromStatus(status: unknown): WatchAccess {
+  switch (status) {
+    case "purchased": return "purchased"
+    case "pass": return "pass"
+    case "owned": return "unlocked"
+    default: return "free"
+  }
+}
 
 /** Seconds as m:ss, the way a player clock reads. */
 function formatClock(seconds: number): string {
@@ -39,7 +74,7 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
   const [openingId, setOpeningId] = useState<string | null>(null)
   const [unlockError, setUnlockError] = useState<string | null>(null)
   const [showPacks, setShowPacks] = useState(false)
-  const [playing, setPlaying] = useState<{ episode: OriginalsEpisodeSummary; videoUrl: string } | null>(null)
+  const [playing, setPlaying] = useState<{ episode: OriginalsEpisodeSummary; videoUrl: string; access: WatchAccess } | null>(null)
   /** The episode whose card is selected but not yet paid for. */
   const [previewing, setPreviewing] = useState<OriginalsEpisodeSummary | null>(null)
   const [ended, setEnded] = useState(false)
@@ -54,6 +89,14 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
   /** The unreleased episode number a viewer has asked to be told about. */
   const [notifyFor, setNotifyFor] = useState<number | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  /**
+   * What the current episode's watch looks like so far.
+   *
+   * A ref rather than state on purpose: it is written on every `timeupdate`,
+   * roughly four times a second, and putting that in state would re-render the
+   * player at 4Hz for a number nothing on screen shows.
+   */
+  const watchRef = useRef<WatchProgress | null>(null)
 
   const togglePlay = () => {
     const el = videoRef.current
@@ -61,6 +104,69 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
     if (el.paused) void el.play()
     else el.pause()
   }
+
+  /**
+   * Sends what has been watched so far.
+   *
+   * The one-second floor is what keeps the retention numbers honest. The page
+   * opens episode one by itself so a visitor lands on something watchable, so
+   * without a floor every arrival would log a watch of zero seconds and every
+   * opening episode would report a completion rate near nothing — a number
+   * made entirely of people who never pressed play. The page view already
+   * records that they were here.
+   */
+  const flushWatch = useCallback((useBeacon = false) => {
+    const watch = watchRef.current
+    if (!watch) return
+    if (watch.secondsWatched < 1 && !watch.completed) return
+    watch.reported = true
+    reportWatch({
+      episodeId: watch.episodeId,
+      secondsWatched: watch.secondsWatched,
+      furthestSecond: watch.furthestSecond,
+      durationSeconds: watch.durationSeconds,
+      completed: watch.completed,
+      access: watch.access,
+    }, useBeacon)
+  }, [])
+
+  // A fresh accumulator per episode. The cleanup runs before the next episode's
+  // effect body, so switching episodes sends the one being left behind.
+  useEffect(() => {
+    if (!playing) return
+    watchRef.current = {
+      episodeId: playing.episode.id,
+      access: playing.access,
+      secondsWatched: 0,
+      furthestSecond: 0,
+      durationSeconds: playing.episode.durationSeconds ?? 0,
+      completed: false,
+      lastTick: null,
+      reported: false,
+    }
+    return () => {
+      flushWatch()
+      watchRef.current = null
+    }
+  }, [playing, flushWatch])
+
+  // Progress while it plays, so a viewer who never closes the tab cleanly still
+  // counts, and so the live view shows what they are watching now rather than
+  // what they started.
+  useEffect(() => {
+    if (!isPlaying) return
+    const timer = setInterval(() => flushWatch(), WATCH_REPORT_MS)
+    return () => clearInterval(timer)
+  }, [isPlaying, flushWatch])
+
+  // The last word on a watch, sent as the page goes away. `pagehide` rather
+  // than `beforeunload`: mobile Safari frequently skips `beforeunload`
+  // entirely, and mobile is where these are watched.
+  useEffect(() => {
+    const send = () => flushWatch(true)
+    window.addEventListener("pagehide", send)
+    return () => window.removeEventListener("pagehide", send)
+  }, [flushWatch])
 
   const load = useCallback(async () => {
     try {
@@ -113,7 +219,7 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Could not open this episode")
       setCredits(Number(data.balance))
-      setPlaying({ episode, videoUrl: data.videoUrl })
+      setPlaying({ episode, videoUrl: data.videoUrl, access: watchAccessFromStatus(data.status) })
     } catch (err) {
       setUnlockError(err instanceof Error ? err.message : "Could not open this episode")
     } finally {
@@ -154,7 +260,11 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
         } : s)
       }
       setEnded(false)
-      setPlaying({ episode: { ...current, isUnlocked: true }, videoUrl: data.videoUrl })
+      setPlaying({
+        episode: { ...current, isUnlocked: true },
+        videoUrl: data.videoUrl,
+        access: watchAccessFromStatus(data.status),
+      })
     } catch (err) {
       setUnlockError(err instanceof Error ? err.message : "Could not unlock this episode")
     } finally {
@@ -261,11 +371,48 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
                     src={playing.videoUrl}
                     autoPlay
                     playsInline
-                    onEnded={() => { setEnded(true); setIsPlaying(false) }}
-                    onPlay={() => { setEnded(false); setIsPlaying(true) }}
-                    onPause={() => setIsPlaying(false)}
-                    onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
-                    onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+                    onEnded={() => {
+                      setEnded(true)
+                      setIsPlaying(false)
+                      if (watchRef.current) watchRef.current.completed = true
+                      flushWatch()
+                    }}
+                    onPlay={(e) => {
+                      setEnded(false)
+                      setIsPlaying(true)
+                      // Resume from here, so the time the episode sat paused is
+                      // not counted as time it was watched.
+                      if (watchRef.current) watchRef.current.lastTick = e.currentTarget.currentTime
+                    }}
+                    onPause={() => {
+                      setIsPlaying(false)
+                      if (watchRef.current) watchRef.current.lastTick = null
+                      flushWatch()
+                    }}
+                    onLoadedMetadata={(e) => {
+                      const length = e.currentTarget.duration || 0
+                      setDuration(length)
+                      // What the file actually is beats the length an admin
+                      // typed into the episode row, and a percentage measured
+                      // against a wrong duration is worse than none.
+                      if (watchRef.current && Number.isFinite(length) && length > 0) {
+                        watchRef.current.durationSeconds = length
+                      }
+                    }}
+                    onTimeUpdate={(e) => {
+                      const at = e.currentTarget.currentTime
+                      setCurrentTime(at)
+                      const watch = watchRef.current
+                      if (!watch) return
+                      // `timeupdate` fires about four times a second, so a real
+                      // step is a fraction of a second. Anything larger is a
+                      // seek, and counting a scrub to the end as ninety seconds
+                      // watched would make skipping look like viewing.
+                      const step = watch.lastTick === null ? 0 : at - watch.lastTick
+                      if (step > 0 && step < 2) watch.secondsWatched += step
+                      watch.lastTick = at
+                      if (at > watch.furthestSecond) watch.furthestSecond = at
+                    }}
                     onClick={togglePlay}
                     className="h-full w-full cursor-pointer bg-black object-contain"
                   />
