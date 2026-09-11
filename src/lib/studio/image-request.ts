@@ -40,9 +40,25 @@ export async function requestProjectImage(projectId: string, body: Record<string
   const { data: { session } } = await createClient().auth.getSession()
   if (!session?.access_token) throw new Error("Your session has expired. Sign in again to keep going.")
 
-  return fetch(`${supabaseUrl}/functions/v1/render-image`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-    body: JSON.stringify({ projectId, ...body }),
-  })
+  try {
+    return await fetch(`${supabaseUrl}/functions/v1/render-image`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ projectId, ...body }),
+    })
+  } catch (error) {
+    // In local development, the local dev server has no 30s timeout and can execute the render directly.
+    if (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
+      console.warn("Edge function fetch failed in local dev, falling back to local /api/studio route:", error)
+      return fetch(`/api/studio/projects/${projectId}/images`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+    }
+    if (error instanceof TypeError && error.message.includes("Failed to fetch")) {
+      throw new Error(`Could not connect to the image render service (${supabaseUrl}/functions/v1/render-image). Please verify your network connection.`)
+    }
+    throw error
+  }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildEntityReferenceImagePrompt, projectVisualStyle, visualStyleDirective } from "./entity-image-workflow"
+import { buildEntityReferenceImagePrompt, openAIImageQuality, projectVisualStyle, toOpenAIImageQuality, visualStyleDirective } from "./entity-image-workflow"
 
 // The routing assertions that used to live here went with parseBulkEntityImageIntent:
 // they described which messages the fast path claimed, and the fast path is gone.
@@ -57,5 +57,28 @@ describe("entity reference art prompts", () => {
   it("reads the persisted project style used by generation routes", () => {
     expect(projectVisualStyle({ default_style: "Realistic - Photorealistic", metadata: { basic_settings: { visualStyle: "Anime - Ghibli" } } })).toBe("Realistic - Photorealistic")
     expect(projectVisualStyle({ metadata: { basic_settings: { visualStyle: "Anime - Ghibli" } } })).toBe("Anime - Ghibli")
+  })
+
+  it("maps project image quality to OpenAI parameters accurately", () => {
+    expect(toOpenAIImageQuality("Low")).toBe("low")
+    expect(toOpenAIImageQuality("Medium")).toBe("medium")
+    expect(toOpenAIImageQuality("High")).toBe("high")
+    expect(toOpenAIImageQuality("Ultra")).toBe("xhigh")
+    expect(toOpenAIImageQuality("Max")).toBe("max")
+  })
+
+  it("clamps quality according to model ceiling", () => {
+    expect(openAIImageQuality("Ultra", "gpt-image-2.5-sunburst")).toBe("xhigh")
+    expect(openAIImageQuality("Max", "gpt-image-2.5-sunburst")).toBe("max")
+    expect(openAIImageQuality("High", "gpt-image-2.5-sunburst")).toBe("high")
+    expect(openAIImageQuality("Medium", "gpt-image-2.5-sunburst")).toBe("medium")
+    expect(openAIImageQuality("Low", "gpt-image-2.5-sunburst")).toBe("low")
+
+    // gpt-image-2 and gpt-image-1.5 clamp Ultra and Max to High
+    expect(openAIImageQuality("Ultra", "gpt-image-2")).toBe("high")
+    expect(openAIImageQuality("Max", "gpt-image-2")).toBe("high")
+    expect(openAIImageQuality("High", "gpt-image-2")).toBe("high")
+    expect(openAIImageQuality("Medium", "gpt-image-2")).toBe("medium")
+    expect(openAIImageQuality("Low", "gpt-image-2")).toBe("low")
   })
 })

@@ -12,11 +12,21 @@ const allowedOrigins = new Set([
   "http://localhost:3000",
 ])
 
+export function isAllowedOrigin(origin: string | null): boolean {
+  if (!origin) return false
+  if (allowedOrigins.has(origin)) return true
+  if (/^http:\/\/localhost(:\d+)?$/.test(origin)) return true
+  if (/^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)) return true
+  if (/^https:\/\/[a-z0-9-]+--[a-z0-9-]+\.netlify\.app$/.test(origin)) return true
+  if (/^https:\/\/[a-z0-9-]+\.netlify\.app$/.test(origin)) return true
+  return false
+}
+
 export function corsHeaders(origin: string | null) {
-  const allowed = origin && allowedOrigins.has(origin) ? origin : "https://www.aidirectorhub.com"
+  const allowed = isAllowedOrigin(origin) ? origin! : "https://www.aidirectorhub.com"
   return {
     "Access-Control-Allow-Origin": allowed,
-    "Access-Control-Allow-Headers": "authorization, content-type",
+    "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info, x-supabase-auth-token",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     Vary: "Origin",
   }

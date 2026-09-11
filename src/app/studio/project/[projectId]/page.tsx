@@ -3671,9 +3671,9 @@ function AssetWorkspace({
                   </div>
                 </div>
               ) : activeAttempt?.status === "failed" ? (
-                <GenerationPreviewError message={activeAttempt.error || "Image generation failed"} />
+                <GenerationPreviewError model={activeAttempt.model || model} message={activeAttempt.error || "Image generation failed"} />
               ) : generationError ? (
-                <GenerationPreviewError message={generationError} />
+                <GenerationPreviewError model={model} message={generationError} />
               ) : activeImage ? (
                 <AssetImage src={activeImage} className="max-h-[60vh] w-auto max-w-full rounded-t-xl object-contain mx-auto" />
               ) : (
@@ -6067,6 +6067,7 @@ function ShotMediaWorkspace({
                 </div>
               ) : previewError ? (
                 <GenerationPreviewError
+                  model={activeGen?.model || model}
                   message={previewError}
                   rejectedReference={rejectedReference}
                   allCandidates={candidateReferences}
@@ -6636,6 +6637,8 @@ function ShotMediaWorkspace({
 }
 
 function GenerationPreviewError({
+  model,
+  providerLabel,
   message,
   rejectedReference,
   allCandidates = [],
@@ -6644,6 +6647,8 @@ function GenerationPreviewError({
   onVerify,
   onRegenerate,
 }: {
+  model?: string;
+  providerLabel?: string;
   message: string;
   rejectedReference?: { path: string; label: string; contentIndex: number; entity?: Entity; isShotKeyframe: boolean; isVideo?: boolean } | null;
   allCandidates?: Array<{ path: string; label: string; entity?: Entity; isShotKeyframe: boolean; contentIndex?: number; isVideo?: boolean }>;
@@ -6654,6 +6659,7 @@ function GenerationPreviewError({
 }) {
   const isRealPersonError = /real person/i.test(message);
   const isVideoRejection = isSeedanceRejectedVideo(message);
+  const badge = providerLabel || (model ? getModelLabel(model) : (isRealPersonError ? "BytePlus Seedance" : "Generation"));
 
   const displayItems = rejectedReference
     ? [rejectedReference]
@@ -6669,7 +6675,7 @@ function GenerationPreviewError({
         <div className="flex items-center justify-between gap-2">
           <p className="t-caption text-red-200">Generation Error</p>
           <span className="rounded bg-red-500/20 px-2 py-0.5 text-[10px] font-bold text-red-300">
-            BytePlus Seedance
+            {badge}
           </span>
         </div>
         <p className="mt-2 text-sm leading-6 text-red-100">{message}</p>

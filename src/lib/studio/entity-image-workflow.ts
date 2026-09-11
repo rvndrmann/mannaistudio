@@ -45,6 +45,27 @@ export function projectImageQuality(project: Record<string, unknown>): ProjectIm
 }
 
 /**
+ * Maps the project/UI quality setting to the provider's quality parameter.
+ * Ultra maps to xhigh, Max to max.
+ */
+export function toOpenAIImageQuality(quality: ProjectImageQuality): OpenAIImageQuality {
+  switch (quality) {
+    case "Low":
+      return "low"
+    case "Medium":
+      return "medium"
+    case "High":
+      return "high"
+    case "Ultra":
+      return "xhigh"
+    case "Max":
+      return "max"
+    default:
+      return "medium"
+  }
+}
+
+/**
  * The UI's tier as the endpoint spells it, clamped to what the model has.
  *
  * The model is required rather than optional. It used to be a bare lowercase()
@@ -54,7 +75,7 @@ export function projectImageQuality(project: Record<string, unknown>): ProjectIm
  * tier reaching the provider.
  */
 export function openAIImageQuality(quality: ProjectImageQuality, model: string): OpenAIImageQuality {
-  return clampOpenAIImageQuality(model, quality.toLowerCase() as OpenAIImageQuality)
+  return clampOpenAIImageQuality(model, toOpenAIImageQuality(quality))
 }
 
 export function projectVisualStyle(project: Record<string, unknown>) {
