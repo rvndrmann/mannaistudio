@@ -5293,6 +5293,25 @@ function ShotMediaWorkspace({
     return map;
   }, [entities, media.shot.keyframe_image, media.shot.metadata]);
 
+  // Which references already hold a registered BytePlus asset.
+  //
+  // Verification state lived only in `verifiedReferencePaths`, a set that starts
+  // empty on every mount, so after a reload every previously verified face was
+  // offered for verification again — the panel asking for work the project had
+  // already done, on an account whose asset library holds fifty images. The
+  // registrations are recorded on the entity and on the shot, and entityAssetMap
+  // already resolves each one back to the picture it came from: its values are
+  // exactly the paths that no longer need verifying.
+  const registeredReferencePaths = useMemo(
+    () => new Set(Array.from(entityAssetMap.values())),
+    [entityAssetMap],
+  );
+  // What is stored, plus whatever was verified since this panel opened.
+  const allVerifiedReferencePaths = useMemo(
+    () => new Set([...Array.from(registeredReferencePaths), ...Array.from(verifiedReferencePaths)]),
+    [registeredReferencePaths, verifiedReferencePaths],
+  );
+
   // Selecting a generation shows what produced it. The panel holds the settings
   // for the next render, so without this it kept describing a different
   // generation than the one on screen — and the reference strip showed images
@@ -6163,7 +6182,7 @@ function ShotMediaWorkspace({
                   rejectedReference={rejectedReference}
                   allCandidates={candidateReferences}
                   verifyingReferencePath={verifyingReferencePath}
-                  verifiedReferencePaths={verifiedReferencePaths}
+                  verifiedReferencePaths={allVerifiedReferencePaths}
                   onVerify={verifyReferenceItem}
                   onRegenerate={generate}
                 />
