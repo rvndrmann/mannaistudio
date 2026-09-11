@@ -163,9 +163,7 @@ export default function OriginalsHome() {
                         </span>
 
                         <h1 className="mt-5 text-5xl font-semibold leading-[1.05] tracking-[-0.03em] md:text-6xl">
-                            Short drama.
-                            <br />
-                            <span className="text-primary">Made with AI.</span>
+                            <span className="text-primary">Short drama.</span>
                         </h1>
 
                         <p className="mt-5 max-w-md text-base leading-relaxed text-white/60">
