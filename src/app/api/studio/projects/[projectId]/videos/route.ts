@@ -300,7 +300,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const resolvedPrompt = [stripIdentityDescriptions(input.prompt), ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
     const displayRatio = input.aspectRatio || shot.aspect_ratio || "9:16"
     const providerRatio = provider === "byteplus" ? bytePlusVideoRatio(displayRatio, videoReferences.length > 0) : displayRatio
-    const providerRequest = { prompt: resolvedPrompt, originalPrompt: input.prompt, style, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: providerRatio, displayRatio, referenceImages: combinedReferencePaths, characterEntityIds: input.characterEntityIds, mentionedEntityIds: input.mentionedEntityIds, resolvedEntityIds, generationMode: input.generationMode, startFrame: input.startFrame || null, endFrame: input.endFrame || null, audioEnabled: input.audioEnabled }
+    const providerRequest = { prompt: resolvedPrompt, originalPrompt: input.prompt, style, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: providerRatio, displayRatio, referenceImages: combinedReferencePaths, characterEntityIds: input.characterEntityIds, mentionedEntityIds: input.mentionedEntityIds, resolvedEntityIds, generationMode: input.generationMode, startFrame: input.startFrame || null, endFrame: input.endFrame || null, audioEnabled: input.audioEnabled, videoReferencePaths, referenceVideos: input.referenceVideos }
 
     const { data: job, error: jobError } = await context.supabase.from("creator_generation_jobs").insert({
       user_id: context.user.id,
@@ -350,7 +350,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       })
       await Promise.all([
         context.supabase.from("creator_generation_jobs").update({ status: "processing", credits_used: creditCost, billing_mode: billing.mode, provider_job_id: task.id, provider_response: task.response }).eq("id", job.id),
-        context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...resolvedEntityIds])), metadata: { ...(shot.metadata || {}), video_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, style, reference_images: viewableReferencePaths, character_entity_ids: input.characterEntityIds, mentioned_entity_ids: input.mentionedEntityIds, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
+        context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...resolvedEntityIds])), metadata: { ...(shot.metadata || {}), video_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, style, reference_images: viewableReferencePaths, reference_videos: videoReferencePaths, video_reference_paths: videoReferencePaths, character_entity_ids: input.characterEntityIds, mentioned_entity_ids: input.mentionedEntityIds, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
       ])
       return NextResponse.json({
         jobId: job.id,
@@ -360,6 +360,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         model: input.model,
         creditsCharged: creditCost,
         creditBalance: creditBalanceAfter,
+        videoReferencePaths,
       }, { status: 202 })
     } catch (error) {
       const errorMessage = studioErrorMessage(error, "Submission failed")
@@ -386,7 +387,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           const task = { id: bpRes.id, response: bpRes.response }
           await Promise.all([
             context.supabase.from("creator_generation_jobs").update({ status: "processing", credits_used: creditCost, provider_job_id: task.id, provider_response: task.response }).eq("id", job.id),
-            context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...resolvedEntityIds])), metadata: { ...(shot.metadata || {}), video_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, style, reference_images: viewableReferencePaths, character_entity_ids: input.characterEntityIds, mentioned_entity_ids: input.mentionedEntityIds, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
+            context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...resolvedEntityIds])), metadata: { ...(shot.metadata || {}), video_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, style, reference_images: viewableReferencePaths, reference_videos: videoReferencePaths, video_reference_paths: videoReferencePaths, character_entity_ids: input.characterEntityIds, mentioned_entity_ids: input.mentionedEntityIds, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
           ])
           return NextResponse.json({
             jobId: job.id,
@@ -396,6 +397,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             model: input.model,
             creditsCharged: creditCost,
             creditBalance: creditBalanceAfter,
+            videoReferencePaths,
           }, { status: 202 })
         } catch (retryError) {
           console.warn("Auto-retry after clearing stale BytePlus asset failed:", retryError)
@@ -414,6 +416,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           ? `Stale reference asset (${missingAsset.assetId}) was missing from BytePlus. Stale asset cache has been cleaned up. Please try generating again.`
           : errorMessage,
         inputImages: combinedReferencePaths,
+        videoReferencePaths,
         rejectedReference: rejected ? {
           ...rejected,
           path: combinedReferencePaths[rejected.referenceIndex] || null,

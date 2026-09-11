@@ -5053,11 +5053,19 @@ function ShotMediaWorkspace({
     }
     return null;
   }, [media.type, shotIndex, shots]);
-  // Pre-filled from the previous clip so a manual render continues by default,
+  // Pre-filled from the shot metadata or previous clip so a manual render continues by default,
   // and removable so a hard cut does not have to inherit the shot before it.
-  const [videoReferencePaths, setVideoReferencePaths] = useState<string[]>(
-    media.type === "video" && previousShotClip ? [previousShotClip.path] : [],
-  );
+  const [videoReferencePaths, setVideoReferencePaths] = useState<string[]>(() => {
+    const vg = media.shot.metadata?.video_generation;
+    if (vg && typeof vg === "object") {
+      const saved = (vg as { video_reference_paths?: string[]; reference_videos?: string[] }).video_reference_paths
+        || (vg as { video_reference_paths?: string[]; reference_videos?: string[] }).reference_videos;
+      if (Array.isArray(saved) && saved.length > 0) {
+        return saved.filter((p): p is string => typeof p === "string" && Boolean(p.trim()));
+      }
+    }
+    return media.type === "video" && previousShotClip ? [previousShotClip.path] : [];
+  });
   const savedAspectRatio = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "aspect_ratio" in media.shot.metadata.video_generation ? (media.shot.metadata.video_generation as { aspect_ratio?: string }).aspect_ratio : null;
   const savedResolution = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "resolution" in media.shot.metadata.video_generation ? (media.shot.metadata.video_generation as { resolution?: string }).resolution : null;
   const savedAudio = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "audio_enabled" in media.shot.metadata.video_generation ? Boolean((media.shot.metadata.video_generation as { audio_enabled?: boolean }).audio_enabled) : true;
@@ -5168,6 +5176,7 @@ function ShotMediaWorkspace({
     endFrame: string | null;
     recordedFrames: boolean;
     videoReferencePaths: string[];
+    rawReferenceImages?: string[];
     cameraSettingsUsed: CameraSettings | null;
     styleDnaUsed: StyleDna | null;
     styleReferenceImages: string[];
@@ -5182,6 +5191,7 @@ function ShotMediaWorkspace({
         prompt: media.shot.prompt || "",
         model: media.type === "image" ? storyboardImageModel : supportedVideoModel(videoModel),
         referenceImages: [],
+        rawReferenceImages: [],
         videoUrl: source,
         error: null,
         createdAt: Date.now() - 1,
@@ -5200,6 +5210,41 @@ function ShotMediaWorkspace({
   });
   const [activeGenId, setActiveGenId] = useState<string | null>(source ? "original" : null);
   const activeGen = genHistory.find((g) => g.id === activeGenId) || null;
+
+  const entityAssetMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entity of entities) {
+      const meta = entity.metadata && typeof entity.metadata === "object" ? entity.metadata as Record<string, unknown> : {};
+      const rawEntityId = (entity as unknown as Record<string, unknown>).byteplus_asset_id;
+      const assetId = typeof meta.byteplus_asset_id === "string" ? meta.byteplus_asset_id.trim() : typeof rawEntityId === "string" ? rawEntityId.trim() : null;
+      const primaryRef = entityPrimaryReference(entity);
+      if (assetId && primaryRef) {
+        const clean = assetId.replace(/^asset:\/\//i, "").trim();
+        map.set(clean, primaryRef);
+        map.set(`asset://${clean}`, primaryRef);
+      }
+    }
+    const shotMeta = (media.shot.metadata as Record<string, unknown>) || {};
+    if (typeof shotMeta.byteplus_asset_id === "string" && media.shot.keyframe_image) {
+      const clean = shotMeta.byteplus_asset_id.replace(/^asset:\/\//i, "").trim();
+      map.set(clean, media.shot.keyframe_image);
+      map.set(`asset://${clean}`, media.shot.keyframe_image);
+    }
+    if (shotMeta.byteplus_reference_assets && typeof shotMeta.byteplus_reference_assets === "object") {
+      const refAssets = shotMeta.byteplus_reference_assets as Record<string, { assetId?: string; assetUri?: string }>;
+      for (const [srcPath, val] of Object.entries(refAssets)) {
+        if (val?.assetId) {
+          const clean = val.assetId.replace(/^asset:\/\//i, "").trim();
+          map.set(clean, srcPath);
+          map.set(`asset://${clean}`, srcPath);
+        }
+        if (val?.assetUri) {
+          map.set(val.assetUri, srcPath);
+        }
+      }
+    }
+    return map;
+  }, [entities, media.shot.keyframe_image, media.shot.metadata]);
 
   // Selecting a generation shows what produced it. The panel holds the settings
   // for the next render, so without this it kept describing a different
@@ -5303,18 +5348,6 @@ function ShotMediaWorkspace({
               })));
         }
 
-        const entityAssetMap = new Map<string, string>();
-        for (const entity of entities) {
-          const meta = entity.metadata && typeof entity.metadata === "object" ? entity.metadata as Record<string, unknown> : {};
-          const assetId = typeof meta.byteplus_asset_id === "string" ? meta.byteplus_asset_id.trim() : null;
-          const primaryRef = entityPrimaryReference(entity);
-          if (assetId && primaryRef) {
-            const clean = assetId.replace(/^asset:\/\//i, "").trim();
-            entityAssetMap.set(clean, primaryRef);
-            entityAssetMap.set(`asset://${clean}`, primaryRef);
-          }
-        }
-
         const entries: GenEntry[] = dbJobs.map((job) => {
           const settingsObj = job.settings && typeof job.settings === "object" ? job.settings as Record<string, unknown> : {};
           const rawRefs = Array.isArray(settingsObj.resolvedReferencePaths) && (settingsObj.resolvedReferencePaths as string[]).length
@@ -5336,6 +5369,7 @@ function ShotMediaWorkspace({
             prompt: job.prompt || "",
             model: job.model || "",
             referenceImages: resolvedRefs,
+            rawReferenceImages: rawRefs,
             videoUrl: job.result_url || null,
             error: job.error || null,
             createdAt: new Date(job.created_at || 0).getTime(),
@@ -5402,32 +5436,6 @@ function ShotMediaWorkspace({
   }, [media.shot.id, media.type, generationJobs]);
 
   const [registeringAsset, setRegisteringAsset] = useState(false);
-  const registerCurrentAsBytePlusAsset = async () => {
-    const previewSrc = activeGen?.videoUrl || source;
-    if (!previewSrc) return;
-    setRegisteringAsset(true);
-    setGenerationError(null);
-    try {
-      const res = await fetch(`/api/studio/projects/${projectId}/assets`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          target: "shot",
-          targetId: media.shot.id,
-          imagePath: previewSrc,
-          name: media.shot.prompt?.slice(0, 50) || "shot_portrait",
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Asset registration failed");
-      setGenerationStatus("Registered to BytePlus Asset Library ✓");
-      await reload(true);
-    } catch (err) {
-      setGenerationError(err instanceof Error ? err.message : "Asset registration failed");
-    } finally {
-      setRegisteringAsset(false);
-    }
-  };
 
   const openReferenceSource = (target: "references" | "start" | "end") => {
     setReferenceTarget(target);
@@ -5436,6 +5444,10 @@ function ShotMediaWorkspace({
   const addCurrentSourceAsReference = () => {
     const previewSrc = activeGen?.videoUrl || source;
     if (!previewSrc) return;
+    if (isVideoReferencePath(previewSrc) || (!isImage && (previewSrc.endsWith(".mp4") || previewSrc.includes(".mp4")))) {
+      setVideoReferencePaths((current) => current.includes(previewSrc) ? current : [...current, previewSrc]);
+      return;
+    }
     if (!isImage && videoInputMode === "keyframe") {
       setStartFrame((current) => current || previewSrc);
       return;
@@ -5451,6 +5463,7 @@ function ShotMediaWorkspace({
   const loadPromptFromGen = (gen: GenEntry) => {
     setPrompt(gen.prompt);
     if (gen.referenceImages.length) setReferences(gen.referenceImages);
+    if (gen.videoReferencePaths?.length) setVideoReferencePaths(gen.videoReferencePaths);
   };
 
   const generate = async () => {
@@ -5520,17 +5533,25 @@ function ShotMediaWorkspace({
         const body = await readGenerationResponse(response);
         if (!response.ok) {
           const errorMsg = body.error || "Video generation failed";
+          const returnedVideoRefs = Array.isArray(body.videoReferencePaths) ? body.videoReferencePaths : null;
           setGenHistory((prev) => prev.map((g) => g.id === genId ? {
             ...g,
             status: "failed" as const,
             error: errorMsg,
             referenceImages: Array.isArray(body.inputImages) ? body.inputImages : g.referenceImages,
+            rawReferenceImages: Array.isArray(body.inputImages) ? body.inputImages : g.rawReferenceImages,
+            videoReferencePaths: returnedVideoRefs || g.videoReferencePaths,
           } : g));
           throw new Error(errorMsg);
         }
         notifyCreditBalanceChanged(typeof body.creditBalance === "number" ? body.creditBalance : undefined);
         const dbJobId = typeof body.jobId === "string" ? body.jobId : genId;
-        setGenHistory((prev) => prev.map((g) => g.id === genId ? { ...g, id: dbJobId } : g));
+        const returnedVideoRefs = Array.isArray(body.videoReferencePaths) ? body.videoReferencePaths : null;
+        setGenHistory((prev) => prev.map((g) => g.id === genId ? {
+          ...g,
+          id: dbJobId,
+          ...(returnedVideoRefs ? { videoReferencePaths: returnedVideoRefs } : {}),
+        } : g));
         setActiveGenId((current) => current === genId ? dbJobId : current);
         await pollJobStatus(dbJobId);
       }
@@ -5545,44 +5566,111 @@ function ShotMediaWorkspace({
   // Determine what to show in the main preview
   const previewSource = activeGen?.videoUrl || source;
   const rawPreviewError = activeGen?.status === "failed" ? activeGen.error : generationError;
-  // Once the rejected image has been registered, the old provider response is
-  // historical. Keeping it on screen made the successful verification look as
-  // though it had failed and invited the user to click the now-disabled button
-  // again. A new render will still show any fresh error normally.
-  const previewError = useMemo(() => {
-    const rejected = rawPreviewError ? parseSeedanceRejectedReference(rawPreviewError) : null;
-    const path = rejected ? activeGen?.referenceImages?.[rejected.referenceIndex] : null;
-    return path && verifiedReferencePaths.has(path) ? null : rawPreviewError;
-  }, [activeGen?.referenceImages, rawPreviewError, verifiedReferencePaths]);
   const previewGenerating = activeGen?.status === "generating";
+
   const rejectedReference = useMemo(() => {
-    if (!previewError) return null;
-    const parsed = parseSeedanceRejectedReference(previewError);
+    if (!rawPreviewError) return null;
+    const parsed = parseSeedanceRejectedReference(rawPreviewError);
     if (!parsed) return null;
-    const path = activeGen?.referenceImages?.[parsed.referenceIndex];
-    if (!path || /^asset:\/\//i.test(path) || /^asset-[a-z0-9-]+$/i.test(path)) return null;
-    const entity = entities.find((item) => entityPrimaryReference(item) === path || item.reference_images?.includes(path));
-    const isShotKeyframe = path === media.shot.keyframe_image;
+
+    // 1. Try to look up exact index in rawReferenceImages (matches BytePlus content[N] where content[0] is prompt)
+    let rawPath = activeGen?.rawReferenceImages?.[parsed.referenceIndex]
+      || activeGen?.referenceImages?.[parsed.referenceIndex]
+      || null;
+
+    // 2. If out of bounds, check contentIndex or any input image
+    if (!rawPath && activeGen?.rawReferenceImages && parsed.contentIndex < activeGen.rawReferenceImages.length) {
+      rawPath = activeGen.rawReferenceImages[parsed.contentIndex];
+    }
+
+    // 3. Resolve any asset IDs (asset-*) to actual image paths using entityAssetMap
+    let resolvedPath = rawPath;
+    if (rawPath) {
+      const clean = rawPath.replace(/^asset:\/\//i, "").trim();
+      const mapped = entityAssetMap.get(clean) || entityAssetMap.get(rawPath);
+      if (mapped) resolvedPath = mapped;
+    }
+
+    // 4. Fallback if still missing or unresolved asset ID
+    if (!resolvedPath || /^asset:\/\//i.test(resolvedPath) || /^asset-[a-z0-9-]+$/i.test(resolvedPath)) {
+      const candidates: string[] = [
+        media.shot.keyframe_image,
+        activeGen?.startFrame,
+        startFrame,
+        ...(activeGen?.referenceImages || []),
+        ...references,
+      ].filter((p): p is string => Boolean(p && typeof p === "string" && !/^asset:\/\//i.test(p) && !/^asset-[a-z0-9-]+$/i.test(p)));
+
+      const unverified = candidates.find((c) => !verifiedReferencePaths.has(c));
+      if (unverified) resolvedPath = unverified;
+    }
+
+    if (!resolvedPath || /^asset:\/\//i.test(resolvedPath) || /^asset-[a-z0-9-]+$/i.test(resolvedPath)) {
+      return null;
+    }
+
+    const entity = entities.find((item) => entityPrimaryReference(item) === resolvedPath || item.reference_images?.includes(resolvedPath));
+    const isShotKeyframe = resolvedPath === media.shot.keyframe_image || resolvedPath === activeGen?.startFrame || resolvedPath === startFrame;
+
     return {
       ...parsed,
-      path,
+      path: resolvedPath,
       entity,
       label: entity?.name || (isShotKeyframe ? `Scene ${shotNumber} keyframe` : `Reference image ${parsed.contentIndex}`),
       isShotKeyframe,
     };
-  }, [activeGen?.referenceImages, entities, media.shot.keyframe_image, previewError, shotNumber]);
+  }, [activeGen?.rawReferenceImages, activeGen?.referenceImages, activeGen?.startFrame, entities, entityAssetMap, media.shot.keyframe_image, rawPreviewError, references, shotNumber, startFrame, verifiedReferencePaths]);
 
-  const verifyRejectedReference = async () => {
-    if (!rejectedReference) return;
-    setVerifyingReferencePath(rejectedReference.path);
+  // Keep previewError defined so error card stays visible and displays the verified status + Regenerate button
+  const previewError = rawPreviewError;
+
+  const candidateReferences = useMemo(() => {
+    if (!rawPreviewError || !/real person/i.test(rawPreviewError)) return [];
+    const seen = new Set<string>();
+    const list: Array<{ path: string; label: string; entity?: Entity; isShotKeyframe: boolean; contentIndex?: number }> = [];
+
+    const addCandidate = (path: string | null | undefined, defaultLabel: string, entity?: Entity, isKeyframe = false, contentIndex?: number) => {
+      if (!path || typeof path !== "string") return;
+      let finalPath = path;
+      if (/^asset:\/\//i.test(path) || /^asset-[a-z0-9-]+$/i.test(path)) {
+        const clean = path.replace(/^asset:\/\//i, "").trim();
+        finalPath = entityAssetMap.get(clean) || entityAssetMap.get(path) || path;
+      }
+      if (!finalPath || /^asset:\/\//i.test(finalPath) || /^asset-[a-z0-9-]+$/i.test(finalPath) || seen.has(finalPath)) return;
+      seen.add(finalPath);
+      list.push({ path: finalPath, label: entity?.name || defaultLabel, entity, isShotKeyframe: isKeyframe, contentIndex });
+    };
+
+    if (rejectedReference) {
+      addCandidate(rejectedReference.path, rejectedReference.label, rejectedReference.entity, rejectedReference.isShotKeyframe, rejectedReference.contentIndex);
+    }
+    if (media.shot.keyframe_image) {
+      addCandidate(media.shot.keyframe_image, `Scene ${shotNumber} keyframe`, undefined, true);
+    }
+    if (activeGen?.startFrame && activeGen.startFrame !== media.shot.keyframe_image) {
+      addCandidate(activeGen.startFrame, `Scene ${shotNumber} start frame`, undefined, true);
+    }
+    for (const ref of references) {
+      const ent = entities.find((item) => entityPrimaryReference(item) === ref || item.reference_images?.includes(ref));
+      addCandidate(ref, ent?.name || "Reference image", ent, false);
+    }
+    for (const ent of entities) {
+      const primary = entityPrimaryReference(ent);
+      if (primary) addCandidate(primary, ent.name, ent, false);
+    }
+    return list;
+  }, [activeGen?.startFrame, entities, entityAssetMap, media.shot.keyframe_image, rawPreviewError, references, rejectedReference, shotNumber]);
+
+  const verifyReferenceItem = async (item: { path: string; label: string; entity?: Entity; isShotKeyframe: boolean; contentIndex?: number }) => {
+    setVerifyingReferencePath(item.path);
     setGenerationError(null);
     setGenerationStatus(null);
     try {
-      const body = rejectedReference.entity
-        ? { entityId: rejectedReference.entity.id, imagePath: rejectedReference.path, name: rejectedReference.entity.name }
-        : rejectedReference.isShotKeyframe
-          ? { target: "shot", targetId: media.shot.id, imagePath: rejectedReference.path, name: `Scene ${shotNumber} keyframe` }
-          : { target: "reference", targetId: media.shot.id, imagePath: rejectedReference.path, name: `Scene ${shotNumber} reference ${rejectedReference.contentIndex}` };
+      const body = item.entity
+        ? { entityId: item.entity.id, imagePath: item.path, name: item.entity.name }
+        : item.isShotKeyframe
+          ? { target: "shot", targetId: media.shot.id, imagePath: item.path, name: `Scene ${shotNumber} keyframe` }
+          : { target: "reference", targetId: media.shot.id, imagePath: item.path, name: `Scene ${shotNumber} reference ${item.contentIndex || item.label}` };
       const response = await fetch(`/api/studio/projects/${projectId}/assets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -5590,13 +5678,42 @@ function ShotMediaWorkspace({
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Seedance verification failed");
-      setVerifiedReferencePaths((current) => new Set(current).add(rejectedReference.path));
-      setGenerationStatus(`${rejectedReference.label} verified for Seedance ✓ You can regenerate now.`);
+      setVerifiedReferencePaths((current) => new Set(current).add(item.path));
+      setGenerationStatus(`${item.label} verified for Seedance ✓ You can regenerate now.`);
       await reload(true);
     } catch (error) {
       setGenerationError(error instanceof Error ? error.message : "Seedance verification failed");
     } finally {
       setVerifyingReferencePath(null);
+    }
+  };
+
+  const targetImageForBytePlus = activeGen?.videoUrl || source || rejectedReference?.path || media.shot.keyframe_image || startFrame || null;
+  const registerCurrentAsBytePlusAsset = async () => {
+    const targetPath = targetImageForBytePlus;
+    if (!targetPath) return;
+    setRegisteringAsset(true);
+    setGenerationError(null);
+    try {
+      const res = await fetch(`/api/studio/projects/${projectId}/assets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: "shot",
+          targetId: media.shot.id,
+          imagePath: targetPath,
+          name: media.shot.prompt?.slice(0, 50) || `Scene ${shotNumber} image`,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Asset registration failed");
+      setVerifiedReferencePaths((current) => new Set(current).add(targetPath));
+      setGenerationStatus("Registered to BytePlus Asset Library ✓ You can regenerate now.");
+      await reload(true);
+    } catch (err) {
+      setGenerationError(err instanceof Error ? err.message : "Asset registration failed");
+    } finally {
+      setRegisteringAsset(false);
     }
   };
 
@@ -5915,7 +6032,7 @@ function ShotMediaWorkspace({
             </button>
             <button
               onClick={registerCurrentAsBytePlusAsset}
-              disabled={registeringAsset || !previewSource}
+              disabled={registeringAsset || !targetImageForBytePlus}
               className="rounded-lg bg-[#b9f42e]/10 px-3 py-2 text-xs font-bold text-[#b9f42e] hover:bg-[#b9f42e]/20 disabled:opacity-40"
             >
               {registeringAsset ? "Registering…" : "Verify for Seedance"}
@@ -5948,14 +6065,12 @@ function ShotMediaWorkspace({
               ) : previewError ? (
                 <GenerationPreviewError
                   message={previewError}
-                  rejectedReference={rejectedReference ? {
-                    path: rejectedReference.path,
-                    label: rejectedReference.label,
-                    contentIndex: rejectedReference.contentIndex,
-                  } : null}
-                  verifying={Boolean(rejectedReference && verifyingReferencePath === rejectedReference.path)}
-                  verified={Boolean(rejectedReference && verifiedReferencePaths.has(rejectedReference.path))}
-                  onVerify={verifyRejectedReference}
+                  rejectedReference={rejectedReference}
+                  allCandidates={candidateReferences}
+                  verifyingReferencePath={verifyingReferencePath}
+                  verifiedReferencePaths={verifiedReferencePaths}
+                  onVerify={verifyReferenceItem}
+                  onRegenerate={generate}
                 />
               ) : previewSource ? (
                 <ResolvedMedia
@@ -6027,6 +6142,37 @@ function ShotMediaWorkspace({
                             </div>
                           </HoverPreviewTile>
                         ))}
+                      </div>
+                    </>
+                  )}
+                  {activeGen.videoReferencePaths && activeGen.videoReferencePaths.length > 0 && (
+                    <>
+                      <div className="mt-3 flex items-center justify-between">
+                        <p className="text-[10px] font-bold text-[#c084fc]">Motion reference</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (activeGen.videoReferencePaths?.length) {
+                              setVideoReferencePaths(activeGen.videoReferencePaths);
+                            }
+                          }}
+                          className="text-[10px] font-medium text-[#c084fc] hover:underline"
+                        >
+                          Use as current motion reference
+                        </button>
+                      </div>
+                      <div className="mt-1.5 flex gap-2">
+                        {activeGen.videoReferencePaths.map((vid, i) => {
+                          const sourceShot = (shots || []).find((s) => s.video_url === vid);
+                          const label = sourceShot ? `Shot ${sourceShot.order_index + 1} video` : "Motion reference";
+                          return (
+                            <HoverPreviewTile key={`${vid}-${i}`} className="group relative h-10 w-10 shrink-0" src={vid} kind="video" label={label}>
+                              <div className="h-full w-full overflow-hidden rounded-lg border border-[#c084fc]/30 bg-black">
+                                <ResolvedMedia src={vid} type="video" className="h-full w-full object-cover" />
+                              </div>
+                            </HoverPreviewTile>
+                          );
+                        })}
                       </div>
                     </>
                   )}
@@ -6489,52 +6635,129 @@ function ShotMediaWorkspace({
 function GenerationPreviewError({
   message,
   rejectedReference,
-  verifying,
-  verified,
+  allCandidates = [],
+  verifyingReferencePath,
+  verifiedReferencePaths = new Set(),
   onVerify,
+  onRegenerate,
 }: {
   message: string;
-  rejectedReference?: { path: string; label: string; contentIndex: number } | null;
-  verifying?: boolean;
-  verified?: boolean;
-  onVerify?: () => void;
+  rejectedReference?: { path: string; label: string; contentIndex: number; entity?: Entity; isShotKeyframe: boolean } | null;
+  allCandidates?: Array<{ path: string; label: string; entity?: Entity; isShotKeyframe: boolean; contentIndex?: number }>;
+  verifyingReferencePath?: string | null;
+  verifiedReferencePaths?: Set<string>;
+  onVerify?: (target: { path: string; label: string; entity?: Entity; isShotKeyframe: boolean; contentIndex?: number }) => void;
+  onRegenerate?: () => void;
 }) {
   const isRealPersonError = /real person/i.test(message);
+
+  const displayItems = rejectedReference
+    ? [rejectedReference]
+    : allCandidates.length > 0
+      ? allCandidates
+      : [];
+
+  const anyVerified = displayItems.some((item) => verifiedReferencePaths.has(item.path));
+
   return (
-    <div className="grid aspect-[9/14] place-items-center p-6 text-center">
-      <div role="alert" className="max-w-sm rounded-xl border border-red-500/30 bg-red-500/10 p-5 text-left">
-        <p className="t-caption text-red-200">Generation Error</p>
+    <div className="grid aspect-[9/14] place-items-center p-4 sm:p-6 text-center max-w-lg mx-auto">
+      <div role="alert" className="w-full rounded-xl border border-red-500/30 bg-red-500/10 p-5 text-left">
+        <div className="flex items-center justify-between gap-2">
+          <p className="t-caption text-red-200">Generation Error</p>
+          <span className="rounded bg-red-500/20 px-2 py-0.5 text-[10px] font-bold text-red-300">
+            BytePlus Seedance
+          </span>
+        </div>
         <p className="mt-2 text-sm leading-6 text-red-100">{message}</p>
         {isRealPersonError && (
-          <>
-            {rejectedReference ? (
-              <div className="mt-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 text-yellow-100">
-                <p className="text-[10px] font-bold text-yellow-300">Reference needing verification</p>
-                <div className="mt-3 flex items-center gap-3">
-                  <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-yellow-200/20 bg-black/30">
-                    <AssetImage src={rejectedReference.path} className="h-full w-full object-cover" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold text-white">{rejectedReference.label}</p>
-                    <p className="mt-1 text-[11px] leading-4 text-yellow-100/70">BytePlus rejected input image content[{rejectedReference.contentIndex}]. Add this exact image to the Seedance Asset Library before retrying.</p>
-                    <button
-                      type="button"
-                      onClick={onVerify}
-                      disabled={verifying || verified}
-                      className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-3 py-2 text-xs font-semibold text-black hover:bg-[#a6de25] disabled:cursor-default disabled:opacity-70"
+          <div className="mt-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3.5 text-yellow-100">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-yellow-300">
+                {rejectedReference ? "Reference Needing Verification" : "Verify References for Seedance"}
+              </p>
+              {rejectedReference && (
+                <span className="rounded bg-yellow-400/20 px-1.5 py-0.5 text-[10px] font-mono text-yellow-200">
+                  content[{rejectedReference.contentIndex}]
+                </span>
+              )}
+            </div>
+
+            <p className="mt-1 text-[11px] leading-relaxed text-yellow-100/80">
+              BytePlus requires human face photos to be verified in the Seedance Asset Library before generating video. Click below to verify this image:
+            </p>
+
+            {displayItems.length > 0 ? (
+              <div className="mt-3 space-y-2.5">
+                {displayItems.map((item, idx) => {
+                  const isVerifying = verifyingReferencePath === item.path;
+                  const isVerified = verifiedReferencePaths.has(item.path);
+
+                  return (
+                    <div
+                      key={`${item.path}-${idx}`}
+                      className="flex items-center gap-3 rounded-lg border border-yellow-200/20 bg-black/40 p-2.5"
                     >
-                      {verifying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : verified ? <BadgeCheck className="h-3.5 w-3.5" /> : <BadgeCheck className="h-3.5 w-3.5" />}
-                      {verifying ? "Verifying…" : verified ? "Verified for Seedance" : "Verify for Seedance"}
-                    </button>
-                  </div>
-                </div>
+                      <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black/50">
+                        <AssetImage src={item.path} className="h-full w-full object-cover" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold text-white">{item.label}</p>
+                        <p className="truncate text-[10px] text-zinc-400 font-mono">
+                          {item.path.split("/").pop()}
+                        </p>
+                        {onVerify && (
+                          <button
+                            type="button"
+                            onClick={() => onVerify(item)}
+                            disabled={isVerifying || isVerified}
+                            className={`mt-2 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition shadow-sm ${
+                              isVerified
+                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 cursor-default"
+                                : "bg-[#b9f42e] text-black hover:bg-[#a6de25] active:scale-95 disabled:opacity-60"
+                            }`}
+                          >
+                            {isVerifying ? (
+                              <>
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                Registering with BytePlus…
+                              </>
+                            ) : isVerified ? (
+                              <>
+                                <BadgeCheck className="h-3.5 w-3.5 text-emerald-400" />
+                                ✓ Verified for Seedance
+                              </>
+                            ) : (
+                              <>
+                                <BadgeCheck className="h-3.5 w-3.5" />
+                                Verify for Seedance
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
-              <div className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs leading-relaxed text-yellow-200">
+              <div className="mt-3 rounded-lg border border-yellow-500/20 bg-black/30 p-3 text-xs text-yellow-200">
                 <strong>How to fix:</strong> Deselect unverified face photos, or verify the relevant character image in Characters &amp; Assets before retrying.
               </div>
             )}
-          </>
+
+            {anyVerified && onRegenerate && (
+              <div className="mt-3.5 pt-3 border-t border-yellow-500/20 flex items-center justify-between gap-3">
+                <p className="text-xs text-emerald-400 font-medium">✓ Ready to regenerate!</p>
+                <button
+                  type="button"
+                  onClick={onRegenerate}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-3.5 py-1.5 text-xs font-bold text-black hover:bg-[#a6de25] transition shadow-md hover:scale-[1.02] active:scale-95"
+                >
+                  ↻ Regenerate Video Now
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -6552,9 +6775,14 @@ function GenerationPreviewError({
 function readGenerationSettings(value: unknown) {
   const settings = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const mode = settings.generationMode;
-  const paths = Array.isArray(settings.videoReferencePaths)
-    ? (settings.videoReferencePaths as unknown[]).filter((item): item is string => typeof item === "string")
-    : [];
+  const rawVideo = Array.isArray(settings.videoReferencePaths) && (settings.videoReferencePaths as unknown[]).length
+    ? settings.videoReferencePaths
+    : Array.isArray(settings.referenceVideos) && (settings.referenceVideos as unknown[]).length
+      ? settings.referenceVideos
+      : Array.isArray(settings.reference_videos) && (settings.reference_videos as unknown[]).length
+        ? settings.reference_videos
+        : [];
+  const paths = (rawVideo as unknown[]).filter((item): item is string => typeof item === "string" && Boolean(item.trim()));
   return {
     generationMode: (mode === "multi_image" || mode === "keyframe" ? mode : null) as "keyframe" | "multi_image" | null,
     startFrame: typeof settings.startFrame === "string" ? settings.startFrame : null,
