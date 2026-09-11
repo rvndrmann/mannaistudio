@@ -12,11 +12,15 @@ export const defaultDirectorModels = [
   { id: "gemini-3.7-flash", label: "Gemini 3.7 Flash", status: "active", byok: true },
   // Claude runs at two efforts, and the effort is part of the id because every
   // consumer downstream — the rate card, the credit charge, the pause switch —
-  // keys on the id alone. See `claudeDirectorModel` in studio/anthropic.ts.
+  // keys on the id alone. See `anthropicProtocolTarget` in studio/anthropic.ts.
   { id: "claude-opus-5-high", label: "Claude Opus 5 (High)", status: "active", byok: false },
   { id: "claude-opus-5-low", label: "Claude Opus 5 (Low)", status: "active", byok: false },
   { id: "claude-opus-4-8-high", label: "Claude Opus 4.8 (High)", status: "active", byok: false },
   { id: "claude-opus-4-8-low", label: "Claude Opus 4.8 (Low)", status: "active", byok: false },
+  // Served through DeepSeek's Anthropic-compatible endpoint, so they run on the
+  // same turn as Claude does.
+  { id: "deepseek-flash", label: "DeepSeek Flash", status: "active", byok: false },
+  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", status: "active", byok: false },
 ] as const
 
 export type DirectorModelStatus = "active" | "paused"

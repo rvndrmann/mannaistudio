@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk"
+import type Anthropic from "@anthropic-ai/sdk"
 import type { OpenAIDirectorFunction, OpenAIDirectorToolCall } from "./openai"
 
 export class AnthropicProviderError extends Error {
@@ -8,16 +8,37 @@ export class AnthropicProviderError extends Error {
   }
 }
 
-function getAnthropicApiKey() {
-  const key = process.env.ANTHROPIC_API_KEY
-  if (!key) throw new AnthropicProviderError("Claude is not configured. Add ANTHROPIC_API_KEY to the server environment.", 503)
-  return key
-}
-
 export type ClaudeEffort = "low" | "high"
 
 /**
- * Splits a catalog id into the model Anthropic knows and the effort to run it at.
+ * Who serves a turn spoken in the Anthropic protocol, and how.
+ *
+ * DeepSeek publishes an Anthropic-compatible endpoint, so it is reached with
+ * the same client and the same message conversion as Claude — only the host,
+ * the key and the reasoning parameters differ. Those parameters are the reason
+ * this is a record rather than a base URL: `thinking: adaptive` and
+ * `output_config.effort` are Anthropic's own, and a compatibility layer that
+ * does not implement them answers 400 rather than ignoring them.
+ */
+type ProtocolTarget = {
+  /** The model id the provider itself knows, with any effort suffix removed. */
+  model: string
+  baseURL?: string
+  apiKey: () => string
+  /** Anthropic's adaptive thinking and effort dial, sent only where they exist. */
+  anthropicReasoning: boolean
+  effort: ClaudeEffort
+}
+
+function requireKey(name: string, provider: string): string {
+  const key = process.env[name]
+  if (!key) throw new AnthropicProviderError(`${provider} is not configured. Add ${name} to the server environment.`, 503)
+  return key
+}
+
+/**
+ * Splits a catalog id into the model the provider knows and the effort to run
+ * it at.
  *
  * Effort is a per-request setting, but everything downstream of the picker —
  * the rate card, the credit charge, the session's model stamp, the admin's
@@ -25,16 +46,32 @@ export type ClaudeEffort = "low" | "high"
  * all of that working per variant, and keeps a Low turn from being priced,
  * paused or recorded as if it were a High one.
  */
-export function claudeDirectorModel(catalogId: string): { model: string; effort: ClaudeEffort } | null {
+export function anthropicProtocolTarget(catalogId: string): ProtocolTarget | null {
   const id = (catalogId || "").toLowerCase()
-  if (!id.startsWith("claude-")) return null
-  if (id.endsWith("-low")) return { model: id.slice(0, -"-low".length), effort: "low" }
-  if (id.endsWith("-high")) return { model: id.slice(0, -"-high".length), effort: "high" }
-  return { model: id, effort: "high" }
+  const effort: ClaudeEffort = id.endsWith("-low") ? "low" : "high"
+  const stripped = id.endsWith("-low") ? id.slice(0, -"-low".length)
+    : id.endsWith("-high") ? id.slice(0, -"-high".length)
+    : id
+
+  if (id.startsWith("claude-")) {
+    return { model: stripped, apiKey: () => requireKey("ANTHROPIC_API_KEY", "Claude"), anthropicReasoning: true, effort }
+  }
+  if (id.startsWith("deepseek-")) {
+    // Their own id, not the stripped one: `deepseek-v4-pro` ends in neither
+    // suffix, but a future `-low` variant would strip correctly all the same.
+    return {
+      model: stripped,
+      baseURL: "https://api.deepseek.com/anthropic",
+      apiKey: () => requireKey("DEEPSEEK_API_KEY", "DeepSeek"),
+      anthropicReasoning: false,
+      effort,
+    }
+  }
+  return null
 }
 
-export function isClaudeDirectorModel(value: unknown): boolean {
-  return typeof value === "string" && value.toLowerCase().startsWith("claude-")
+export function isAnthropicProtocolModel(value: unknown): boolean {
+  return typeof value === "string" && anthropicProtocolTarget(value) !== null
 }
 
 const DATA_URL = /^data:([^;,]+);base64,(.+)$/i
@@ -115,10 +152,16 @@ export async function createAnthropicDirectorToolTurn(input: {
   calls: OpenAIDirectorToolCall[]
   usage: Record<string, unknown>
 }> {
-  const target = claudeDirectorModel(input.model)
-  if (!target) throw new AnthropicProviderError(`${input.model} is not a Claude model.`, 400)
+  const target = anthropicProtocolTarget(input.model)
+  if (!target) throw new AnthropicProviderError(`${input.model} does not speak the Anthropic protocol.`, 400)
 
-  const client = new Anthropic({ apiKey: getAnthropicApiKey() })
+  // Loaded only when a Claude turn actually runs. The Director's turn is
+  // bundled into a Deno Edge Function, and a top-level import of a provider SDK
+  // is fetched when the function boots — so an SDK that failed to resolve there
+  // would take every other model down with it, including the ones that have
+  // nothing to do with Claude.
+  const { default: AnthropicClient } = await import("@anthropic-ai/sdk")
+  const client = new AnthropicClient({ apiKey: target.apiKey(), ...(target.baseURL ? { baseURL: target.baseURL } : {}) })
   const messages: Anthropic.MessageParam[] = []
 
   for (let index = 0; index < input.items.length; index += 1) {
@@ -194,8 +237,7 @@ export async function createAnthropicDirectorToolTurn(input: {
       max_tokens: 16000,
       system: input.instructions,
       messages,
-      thinking: { type: "adaptive" },
-      output_config: { effort: target.effort },
+      ...(target.anthropicReasoning ? { thinking: { type: "adaptive" as const }, output_config: { effort: target.effort } } : {}),
       tools: input.tools.map((tool): Anthropic.Tool => ({
         name: tool.name,
         description: tool.description,

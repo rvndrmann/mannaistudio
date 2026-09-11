@@ -55,6 +55,12 @@ export const CHAT_TOKEN_RATES: Record<string, TokenRate> = {
   "claude-opus-5-low": { inputPerMillion: 5, outputPerMillion: 25, source: "Anthropic Opus-tier pricing" },
   "claude-opus-4-8-high": { inputPerMillion: 5, outputPerMillion: 25, source: "Anthropic Opus-tier pricing" },
   "claude-opus-4-8-low": { inputPerMillion: 5, outputPerMillion: 25, source: "Anthropic Opus-tier pricing" },
+  // Placeholders, deliberately at the ceiling. DeepSeek is far cheaper than
+  // this, so these overcharge — they are here because an unpriced model is a
+  // model nobody has checked, and the safe direction to be wrong in is the one
+  // that does not serve a model at a loss. Replace with the published rates.
+  "deepseek-flash": { inputPerMillion: 5, outputPerMillion: 25, source: "PLACEHOLDER at the fallback ceiling; DeepSeek's published rates not yet entered" },
+  "deepseek-v4-pro": { inputPerMillion: 5, outputPerMillion: 25, source: "PLACEHOLDER at the fallback ceiling; DeepSeek's published rates not yet entered" },
 }
 
 /**

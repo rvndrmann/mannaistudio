@@ -21,7 +21,7 @@ import {
 } from "@/lib/studio/widget-agent"
 import { describeError } from "@/lib/studio/errors"
 import { createGoogleDirectorToolTurn, GoogleProviderError } from "@/lib/studio/google"
-import { createAnthropicDirectorToolTurn, isClaudeDirectorModel } from "@/lib/studio/anthropic"
+import { createAnthropicDirectorToolTurn, isAnthropicProtocolModel } from "@/lib/studio/anthropic"
 import {
   appendTranscript,
   applyLeadCapture,
@@ -173,7 +173,7 @@ async function runMemberTurn(request: NextRequest, input: ReturnType<typeof lead
   let openedProject: { id: string; name: string } | null = null
 
   for (let step = 0; step < MEMBER_TOOL_STEPS; step += 1) {
-    const turn = isClaudeDirectorModel(model)
+    const turn = isAnthropicProtocolModel(model)
       ? await createAnthropicDirectorToolTurn({ userId: user.id, model, instructions, items, tools })
       : model.startsWith("gemini")
       ? await createGoogleDirectorToolTurn({ userId: user.id, model, instructions, items, tools })
@@ -376,7 +376,7 @@ export async function POST(request: NextRequest) {
     const tools = [leadCaptureToolDefinition()]
 
     for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
-      const turn = isClaudeDirectorModel(model)
+      const turn = isAnthropicProtocolModel(model)
         ? await createAnthropicDirectorToolTurn({ userId: key, model, instructions, items, tools })
         : model.startsWith("gemini")
         ? await createGoogleDirectorToolTurn({ userId: key, model, instructions, items, tools })

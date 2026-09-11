@@ -3,6 +3,7 @@
     "zod": "npm:zod@4.4.3",
     "@supabase/supabase-js": "npm:@supabase/supabase-js@2.99.0",
     "@google/genai": "npm:@google/genai@2.16.0",
-    "@fal-ai/client": "npm:@fal-ai/client@1.10.1"
+    "@fal-ai/client": "npm:@fal-ai/client@1.10.1",
+    "@anthropic-ai/sdk": "npm:@anthropic-ai/sdk@0.125.0"
   }
 }

@@ -36,6 +36,7 @@ const external = [
   "@supabase/supabase-js",
   "@google/genai",
   "@fal-ai/client",
+  "@anthropic-ai/sdk",
   // Every Node builtin, not a list of the ones seen so far: Deno implements
   // them under the same specifiers, and enumerating them means the build breaks
   // the first time the turn reaches for one more.

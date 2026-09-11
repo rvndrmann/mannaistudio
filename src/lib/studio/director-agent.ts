@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { createDirectorToolTurn, streamDirectorToolTurn, type OpenAIDirectorFunction } from "./openai"
 import { createGoogleDirectorToolTurn } from "./google"
-import { createAnthropicDirectorToolTurn, isClaudeDirectorModel } from "./anthropic"
+import { createAnthropicDirectorToolTurn, isAnthropicProtocolModel } from "./anthropic"
 import { directorTools, type DirectorToolName } from "./tool-registry"
 import { requestDirectorTool } from "./tool-service"
 import type { AuthenticatedProjectContext } from "./server-context"
@@ -317,7 +317,7 @@ export async function runDirectorAgent(input: {
         ...controlToolDefinitions.filter((tool) => tool.name !== HAND_OFF_TOOL || handoffs < runtimeSettings.maxHandoffs),
       ]
 
-      turn = isClaudeDirectorModel(input.model)
+      turn = isAnthropicProtocolModel(input.model)
         ? await createAnthropicDirectorToolTurn({
             userId: input.context.user.id,
             model: input.model,
