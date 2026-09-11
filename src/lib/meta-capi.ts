@@ -11,7 +11,7 @@
 // Conversions API -> Generate access token). Without it, every call no-ops
 // quietly so local and preview environments do not send junk to the pixel.
 
-import crypto from "crypto"
+import crypto from "node:crypto"
 
 const PIXEL_ID = "998332272805619"
 const API_VERSION = "v21.0"

@@ -111,6 +111,44 @@ Located in `supabase/migrations/`:
 - `20260525162000_portfolio.sql` — profiles extensions, portfolio_items, RLS, portfolio-media bucket
 - `20260525162500_service_requests.sql` — service_requests table, RLS
 
+## Viewer Analytics (admin → Audience)
+
+Answers what purchases alone cannot: who watched what, how far they got, who
+came back, and who is on the site right now. Migration
+`20260911150000_viewer_analytics.sql`.
+
+| Table | Written by | Holds |
+|-------|-----------|-------|
+| `analytics_sessions` | ingest route | one visit; `visitor_id` (localStorage) outlives the tab, `id` (sessionStorage) does not |
+| `analytics_page_views` | ingest route | a path within a visit |
+| `originals_episode_views` | ingest route | one person's pass through one episode |
+
+All three have RLS enabled with **no policies** — reachable only through the
+service key (writes) and the `admin_analytics_*` functions (reads).
+
+- **Ingest:** `POST /api/analytics/track` — public, so signed-out viewers of the
+  free episodes are counted. `profile_id` is read from the session cookie, never
+  from the body. Service-role RPCs `record_site_visit` / `record_episode_view`.
+- **Browser:** `src/lib/analytics.ts` (ids, beacons), `AnalyticsTracker` in the
+  root layout (page views + a 30s heartbeat while the tab is visible), and the
+  watch accumulator in `src/app/originals/[slug]/page.tsx`.
+- **Reads:** `GET /api/admin/analytics?view=…` over `admin_analytics_overview`,
+  `_traffic`, `_live`, `_episode_retention`, `_episode_viewers`, `_viewers`,
+  `_purchases`, `_viewer_history` — each checks `admin_users` itself.
+- **UI:** `src/components/admin/ViewerAnalytics.tsx`, admin tab `?tab=audience`.
+
+Two numbers worth knowing the definition of:
+- `episodes_after_first_visit` — episodes first watched on a visit that was not
+  the viewer's first. This is the "came back for a new episode" signal; a binge
+  on day one scores zero.
+- `continued_to_next` — viewers of episode N who also watched N+1. Completion
+  says an episode held the people who stayed; this says it was worth paying for
+  the next one.
+
+A "person" is `coalesce(profile_id, visitor_id)` throughout, because the opening
+episodes play with no account and counting only accounts would report that
+nobody watches them.
+
 ## What Still Needs Work
 - `challenge_submissions` table — Not yet created (only mock data exists)
 - Course enrollment payment flow — PayU routes exist but untested end-to-end

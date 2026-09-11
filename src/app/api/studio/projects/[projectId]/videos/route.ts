@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { BytePlusProviderError, bytePlusVideoRatio, bytePlusVideoReferenceLimit, createBytePlusAsset, getBytePlusAsset, getBytePlusVideoTask, resolveBytePlusReferenceUrl, submitBytePlusVideo } from "@/lib/studio/byteplus"
-import { FalProviderError, getFalVideoTask, submitFalVideo } from "@/lib/studio/fal"
+import { falVideoEndpoint, FalProviderError, getFalVideoTask, submitFalVideo } from "@/lib/studio/fal"
 import { getGoogleVideoTask, GoogleProviderError, submitGoogleVideo } from "@/lib/studio/google"
 import { generationProvider, isVideoGenerationModel } from "@/lib/studio/generation-models"
 import { byokProviderFor } from "@/lib/byok/providers"
@@ -334,7 +334,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const task: { id: string; response?: unknown } = await runOnBillingAccount(async () => {
       let task: { id: string; response?: unknown }
       if (provider === "fal") {
-        const falRes = await submitFalVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 4), ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references, endReferenceUrl: input.endFrame || undefined })
+        // Resolution and the audio flag travel with the request now. They were
+        // collected, stored on the shot and priced into the credit cost, and
+        // then not sent: fal rendered at its own default and always with audio.
+        const falRes = await submitFalVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 4), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references, endReferenceUrl: input.endFrame || undefined, audioEnabled: input.audioEnabled })
         task = { id: falRes.id, response: falRes }
       } else if (provider === "google") {
         const gRes = await submitGoogleVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 4), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references })
@@ -467,13 +470,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     let task: { status: "queued" | "running" | "succeeded" | "failed" | "cancelled"; content?: { video_url?: string }; error?: { message?: string }; created_at?: number; updated_at?: number }
 
     if (provider === "fal") {
-      // fal endpoints are namespaced. The old fallback dropped the "fal-ai/"
-      // prefix, so a job without a stored endpoint polled a path that does not
-      // exist and reported "Not Found" as if the video had vanished.
+      // The endpoint a request was submitted to is what polls it, so it is used
+      // exactly as it was stored. It used to have "fal-ai/" forced back on when
+      // it did not start with it, which was written when every fal model was
+      // owned by fal-ai — Seedance 2.x is owned by `bytedance`, and the prefix
+      // turns a working endpoint into the 404 that broke every one of those
+      // renders. A job old enough to have stored no endpoint is rebuilt from
+      // its model and the references it was given.
       const storedEndpoint = (job.provider_response as Record<string, unknown>)?.endpoint
       const endpoint = typeof storedEndpoint === "string" && storedEndpoint.trim()
-        ? (storedEndpoint.startsWith("fal-ai/") ? storedEndpoint : `fal-ai/${storedEndpoint}`)
-        : "fal-ai/bytedance/seedance-2.0/image-to-video"
+        ? storedEndpoint.trim()
+        : falVideoEndpoint(job.model, Array.isArray(job.input_images) ? job.input_images.length : 0)
       task = await getFalVideoTask(job.provider_job_id, endpoint)
     } else if (provider === "google") {
       task = await getGoogleVideoTask(job.provider_job_id)

@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { getSignedMediaUrl } from "@/lib/studio/signed-media";
+import { readGenerationResponse } from "@/lib/studio/generation-response";
+import { requestProjectImage } from "@/lib/studio/image-request";
 import {
   DEFAULT_BRUSH_SIZE,
   DEFAULT_COLOR,
@@ -523,10 +525,7 @@ export default function DrawToEditModal({
       );
 
       setBusy("generating");
-      const response = await fetch(`/api/studio/projects/${projectId}/images`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const response = await requestProjectImage(projectId, {
           target,
           targetId,
           ...(episodeId ? { episodeId } : {}),
@@ -543,9 +542,8 @@ export default function DrawToEditModal({
             compositeImage: compositePath,
             objects: serializeCanvasObjects(objects),
           },
-        }),
       });
-      const body = await response.json();
+      const body = await readGenerationResponse(response);
       if (!response.ok) throw new Error(body.error || "Image edit failed");
       const path = typeof body.path === "string" ? body.path : typeof body.imageUrl === "string" ? body.imageUrl : null;
       if (!path) throw new Error("The edit completed without a saved image.");

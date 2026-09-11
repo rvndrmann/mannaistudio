@@ -50,6 +50,82 @@ export async function generateFalImage(input: {
   }
 }
 
+/**
+ * fal's model id for a Seedance 2.x family member.
+ *
+ * The owner is `bytedance`, not `fal-ai/bytedance` — only the older Seedance v1
+ * and v1.5 models live under fal-ai. This module had every 2.x model under the
+ * fal-ai prefix, and the result was a generation that looked submitted and then
+ * failed with one word.
+ *
+ * What made it hard to see is that fal accepts the submission either way: the
+ * queue is addressed by the first two path segments, `fal-ai/bytedance` is a
+ * real app because the v1 models are there, and the status endpoint answered
+ * COMPLETED after 0.13 seconds. Only fetching the result gave the reason —
+ * `{"detail":"Path /seedance-2.5/image-to-video not found"}`, a 404 the fal
+ * client raises as `Not Found`, which is what the user was shown. Every
+ * Seedance 2.x render was charged for and none was ever rendered.
+ */
+const seedanceFamilies: Partial<Record<VideoGenerationModelId, string>> = {
+  "fal-seedance-2-5": "bytedance/seedance-2.5",
+  "fal-seedance-2-0": "bytedance/seedance-2.0",
+  "fal-seedance-2-0-fast": "bytedance/seedance-2.0/fast",
+  // Mini shared the fast endpoint before, so a mini render was billed at mini
+  // rates and rendered on fast. It has its own model at fal.
+  "fal-seedance-2-0-mini": "bytedance/seedance-2.0/mini",
+}
+
+/**
+ * Which of a model's endpoints a request belongs on.
+ *
+ * fal splits a video model into three: text-to-video takes a prompt alone,
+ * image-to-video animates one starting frame, and reference-to-video is given
+ * several images to hold a character and a set across the take. They are
+ * separate paths with separate inputs — `image_url` against `image_urls` — so
+ * sending a cast of five to the image-to-video endpoint quietly renders from
+ * the first one and drops the rest.
+ */
+export function falVideoEndpoint(model: VideoGenerationModelId, referenceCount = 0): string {
+  const shape = referenceCount > 1 ? "reference" : referenceCount === 1 ? "image" : "text"
+  const seedance = seedanceFamilies[model]
+  if (seedance) return `${seedance}/${shape}-to-video`
+
+  switch (model) {
+    case "fal-kling-3":
+      return referenceCount ? "fal-ai/kling-video/v3/pro/image-to-video" : "fal-ai/kling-video/v3/pro/text-to-video"
+    case "fal-kling-o3":
+      return "fal-ai/kling-video/o3/standard/reference-to-video"
+    case "fal-kling-1-6-pro":
+      return referenceCount ? "fal-ai/kling-video/v1.6/pro/image-to-video" : "fal-ai/kling-video/v1.6/pro/text-to-video"
+    case "fal-minimax-h3":
+      // Same mistake as Seedance, same fix: H3 is owned by `minimax`, and
+      // `fal-ai/minimax/h3` is not a path fal serves.
+      return `minimax/h3/${shape}-to-video`
+    case "fal-minimax-video-01":
+      return "fal-ai/minimax/video-01"
+    default:
+      return referenceCount ? "fal-ai/kling-video/v1.6/pro/image-to-video" : "fal-ai/kling-video/v1.6/pro/text-to-video"
+  }
+}
+
+/**
+ * The resolution a Seedance variant will actually accept.
+ *
+ * Fast and Mini stop at 720p and 2.5 stops at 1080p; asking any of them for
+ * more is a 422 at the provider rather than a smaller picture. Clamping down is
+ * safe for billing — the rate card charges for what was asked, which is at or
+ * above what this returns.
+ */
+export function falSeedanceResolution(model: VideoGenerationModelId, resolution?: string): string {
+  const allowed = model === "fal-seedance-2-0-fast" || model === "fal-seedance-2-0-mini"
+    ? ["480p", "720p"]
+    : model === "fal-seedance-2-5"
+      ? ["480p", "720p", "1080p"]
+      : ["480p", "720p", "1080p", "4k"]
+  const wanted = (resolution || "720p").toLowerCase()
+  return allowed.includes(wanted) ? wanted : allowed[allowed.length - 1]
+}
+
 export async function submitFalVideo(input: {
   model: VideoGenerationModelId
   prompt: string
@@ -58,66 +134,63 @@ export async function submitFalVideo(input: {
   ratio?: string
   referenceUrls?: string[]
   endReferenceUrl?: string
+  audioEnabled?: boolean
 }) {
   const falKey = getFalKey()
   fal.config({ credentials: falKey })
 
-  const hasRef = Boolean(input.referenceUrls && input.referenceUrls.length > 0)
-  // Every branch below assigns, including the default; this only has to be a
-  // model that still exists, so a future edit cannot fall back to a retired one.
-  let endpoint = "fal-ai/kling-video/v1.6/pro/text-to-video"
-
-  switch (input.model) {
-    case "fal-seedance-2-0":
-      endpoint = hasRef ? "fal-ai/bytedance/seedance-2.0/image-to-video" : "fal-ai/bytedance/seedance-2.0/text-to-video"
-      break
-    case "fal-seedance-2-0-fast":
-    case "fal-seedance-2-0-mini":
-      endpoint = hasRef ? "fal-ai/bytedance/seedance-2.0/fast/image-to-video" : "fal-ai/bytedance/seedance-2.0/fast/text-to-video"
-      break
-    case "fal-seedance-2-5":
-      endpoint = hasRef ? "fal-ai/bytedance/seedance-2.5/image-to-video" : "fal-ai/bytedance/seedance-2.5/text-to-video"
-      break
-    case "fal-kling-3":
-      endpoint = hasRef ? "fal-ai/kling-video/v3/pro/image-to-video" : "fal-ai/kling-video/v3/pro/text-to-video"
-      break
-    case "fal-kling-o3":
-      endpoint = "fal-ai/kling-video/o3/standard/reference-to-video"
-      break
-    case "fal-kling-1-6-pro":
-      endpoint = hasRef ? "fal-ai/kling-video/v1.6/pro/image-to-video" : "fal-ai/kling-video/v1.6/pro/text-to-video"
-      break
-    case "fal-minimax-h3":
-      endpoint = "fal-ai/minimax/h3"
-      break
-    case "fal-minimax-video-01":
-      endpoint = "fal-ai/minimax/video-01"
-      break
-    default:
-      endpoint = hasRef ? "fal-ai/kling-video/v1.6/pro/image-to-video" : "fal-ai/kling-video/v1.6/pro/text-to-video"
-      break
-  }
+  const referenceUrls = input.referenceUrls || []
+  const hasRef = referenceUrls.length > 0
+  const endpoint = falVideoEndpoint(input.model, referenceUrls.length)
+  const seedance = Boolean(seedanceFamilies[input.model])
 
   try {
-    const payload: Record<string, unknown> = {
-      prompt: trimFalPrompt(input.prompt),
-      aspect_ratio: input.ratio || "9:16",
-      // 2.5 renders up to 30 seconds; the rest stop at 15. Capping at a flat 15
-      // silently shortened every long Seedance 2.5 clip.
-      duration: Math.min(videoModelMaxDuration(input.model), Math.max(3, Math.round(input.duration || 4))),
-    }
+    // 2.5 renders up to 30 seconds; the rest stop at 15. Capping at a flat 15
+    // silently shortened every long Seedance 2.5 clip. Four is fal's own floor
+    // — it rejects anything shorter outright.
+    const duration = Math.min(videoModelMaxDuration(input.model), Math.max(4, Math.round(input.duration || 4)))
+    const payload: Record<string, unknown> = seedance
+      ? {
+        prompt: trimFalPrompt(input.prompt),
+        // A string, and only ever one of the values fal enumerates. A number
+        // here is rejected by the schema.
+        duration: String(duration),
+        resolution: falSeedanceResolution(input.model, input.resolution),
+        // fal defaults this to true, so an unset flag meant every clip came
+        // back with audio whether or not the shot asked for any.
+        generate_audio: input.audioEnabled !== false,
+      }
+      : {
+        prompt: trimFalPrompt(input.prompt),
+        aspect_ratio: input.ratio || "9:16",
+        duration,
+      }
 
-    if (hasRef && input.referenceUrls?.length) {
-      if (input.model === "fal-kling-o3") {
-        payload.start_image_url = input.referenceUrls[0]
-        payload.end_image_url = input.endReferenceUrl || input.referenceUrls[1]
-        payload.image_urls = input.referenceUrls.slice(input.endReferenceUrl || input.referenceUrls[1] ? 2 : 1, 5)
+    if (seedance) {
+      if (referenceUrls.length > 1) {
+        // reference-to-video takes the whole cast, and takes no starting frame
+        // — it has neither image_url nor end_image_url.
+        payload.image_urls = referenceUrls
+        payload.aspect_ratio = input.ratio || "9:16"
+      } else if (hasRef) {
+        payload.image_url = referenceUrls[0]
+        if (input.endReferenceUrl) payload.end_image_url = input.endReferenceUrl
+        // Deliberately no aspect_ratio: image-to-video takes its shape from the
+        // frame it is given, and fal documents the field as always "auto" here.
       } else {
-        payload.image_url = input.referenceUrls[0]
+        payload.aspect_ratio = input.ratio || "9:16"
+      }
+    } else if (hasRef) {
+      if (input.model === "fal-kling-o3") {
+        payload.start_image_url = referenceUrls[0]
+        payload.end_image_url = input.endReferenceUrl || referenceUrls[1]
+        payload.image_urls = referenceUrls.slice(input.endReferenceUrl || referenceUrls[1] ? 2 : 1, 5)
+      } else {
+        payload.image_url = referenceUrls[0]
         if (input.endReferenceUrl) payload.end_image_url = input.endReferenceUrl
       }
-      if (input.referenceUrls.length > 1) {
-        payload.reference_image_urls = input.referenceUrls
+      if (referenceUrls.length > 1) {
+        payload.reference_image_urls = referenceUrls
       }
     }
 

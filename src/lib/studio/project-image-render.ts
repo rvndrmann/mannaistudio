@@ -1,0 +1,666 @@
+import { randomUUID } from "node:crypto"
+import { z } from "zod"
+import { generateOpenAIImage, openAIImageModels, OpenAIProviderError, retrieveOpenAIImage, submitOpenAIImage, supportsBackgroundImageResponse } from "@/lib/studio/openai"
+import { createBytePlusAsset, generateBytePlusImage, BytePlusProviderError } from "@/lib/studio/byteplus"
+import { FalProviderError, generateFalImage } from "@/lib/studio/fal"
+import { generateGoogleImage, GoogleProviderError } from "@/lib/studio/google"
+import { generationProvider, isImageGenerationModel, type ImageGenerationModelId } from "@/lib/studio/generation-models"
+import { byokProviderFor } from "@/lib/byok/providers"
+import { decideBilling } from "@/lib/byok/billing"
+import { hasCredential, withCredential } from "@/lib/byok/credential-service"
+import { runWithCredential } from "@/lib/byok/active-credential"
+import { ownKeysOnly } from "@/lib/byok/preferences"
+import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
+import { trackGenerationActivation } from "@/lib/studio/activation"
+import { studioErrorMessage, studioErrorStatus, type AuthenticatedProjectContext } from "@/lib/studio/server-context"
+import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
+import { openAIImageQuality, projectImageQuality, projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
+import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
+import { applyCameraSettings, cameraBlockForEntityType, projectCameraDefaults, resolveCameraSettings } from "@/lib/studio/camera-settings"
+import { composeLookDirectives, MAX_STYLE_REFERENCE_IMAGES, projectStyleDna, resolveStyleDna, styleBlockForEntityType, styleDnaSchema, styleReferenceClause, styleReferenceImagesOf } from "@/lib/studio/style-dna"
+import { recordExistingAsset } from "@/lib/studio/byteplus-assets"
+import { VERIFIED_ASSET } from "@/lib/studio/asset-verification"
+
+/**
+ * One image generation, written so it does not care which host is running it.
+ *
+ * This was the body of the project images route, and it stayed there while
+ * every model it served could survive that host: the app runs on Netlify, which
+ * stops a request at thirty seconds, and a GPT Image render takes fifty to
+ * seventy-five. The models that can be submitted as a background response
+ * survive anyway — the job keeps the provider's id, so a killed request costs a
+ * wait rather than the picture.
+ *
+ * GPT Image 2.5 Sunburst has no such id. OpenAI serves it only on
+ * /v1/images/generations and /v1/images/edits, so the render is held on the
+ * connection, and on a thirty-second host that means it is killed every time:
+ * the image is lost though OpenAI has rendered and billed it, and the credits
+ * come back only when the stalled-job sweep notices, six minutes later. The
+ * user is shown the host's own error page in the meantime.
+ *
+ * So the render moved to where a long request is allowed — the Supabase Edge
+ * Function, the same place and the same reason the Director turn already runs.
+ * Nothing about the generation changes; only how long it is permitted to take.
+ * Both hosts call this one function, so neither can drift into billing,
+ * refunding, or attaching an image differently from the other.
+ */
+
+export type ProjectImageRequest = z.infer<typeof imageRequestSchema>
+
+export type ProjectImageResult = {
+  path: string
+  imageUrl: string
+  jobId: string | null
+  provider: string
+  model: string
+  byteplusAssetId: string | null
+  byteplusAssetUri: string | null
+  cameraSettingsUsed: ReturnType<typeof resolveCameraSettings> | null
+  creditsCharged: number
+  creditBalance: number | null
+}
+
+/**
+ * A request this generation will not accept — a shot in someone else's project,
+ * a balance that will not cover it. Refusals, not faults: they carry the status
+ * the caller should be told and nothing has been charged when they are thrown.
+ */
+export class ImageRequestError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message)
+    this.name = "ImageRequestError"
+  }
+}
+
+/**
+ * A generation that started and did not finish.
+ *
+ * Thrown only after the compensation has run — credits refunded, job marked
+ * failed, the entity's generating flag cleared — so a host that catches this
+ * has nothing left to undo. It carries the job id because the workspace binds
+ * its failed attempt to that row, and the status because a provider refusing a
+ * prompt and a provider being down are not the same answer.
+ */
+export class ImageGenerationFailure extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly jobId: string | null,
+    public readonly cause?: unknown,
+  ) {
+    super(message)
+    this.name = "ImageGenerationFailure"
+  }
+}
+
+/** The body and status both hosts answer a failed generation with. */
+export function imageGenerationErrorResponse(error: unknown): { body: Record<string, unknown>; status: number } {
+  if (error instanceof z.ZodError) {
+    return { body: { error: "Invalid image request", issues: error.flatten() }, status: 400 }
+  }
+  if (error instanceof ImageGenerationFailure) {
+    return { body: { error: error.message, jobId: error.jobId }, status: error.status }
+  }
+  return { body: { error: studioErrorMessage(error, "Image generation failed"), jobId: null }, status: studioErrorStatus(error) }
+}
+
+export const imageRequestSchema = z.object({
+  target: z.enum(["asset", "shot"]),
+  targetId: z.string().uuid(),
+  prompt: z.string().trim().min(1).max(12_000),
+  model: z.string().refine(isImageGenerationModel, "Unsupported image model"),
+  referenceImages: z.array(z.string().max(2_000)).max(8).default([]),
+  mentionedEntityIds: z.array(z.string().uuid()).max(20).default([]),
+  aspectRatio: z.string().max(20).optional(),
+  quality: z.enum(["Low", "Medium", "High", "Ultra", "Max"]).optional(),
+  // Which episode the request came from. A shot names its own episode, but
+  // character and asset art does not, so without this its credits belong to no
+  // episode and go missing from every per-episode total.
+  episodeId: z.string().uuid().optional(),
+  // The camera package this one image is shot on. Omitted means the camera
+  // switch is off and the prompt is used as written — no optics are added on
+  // the caller's behalf. An unknown value is repaired against the project
+  // package rather than reaching the model as a raw string.
+  cameraSettings: z.object({
+    camera: z.string().trim().max(120),
+    lens: z.string().trim().max(120),
+    focalLength: z.number(),
+    aperture: z.string().trim().max(20),
+  }).optional(),
+  // The look this one image is shot under. Absent means "whatever the project
+  // says"; explicit null means this image deliberately has no look, which is
+  // not the same thing and must not fall back to the project's.
+  styleDna: styleDnaSchema.nullish(),
+  // A draw-to-edit request: the image the user drew on, the flattened picture
+  // actually sent, and the marks themselves. Stored so the edit can be
+  // reopened and adjusted instead of redrawn — and so a wrong result can be
+  // traced to a bad drawing rather than blamed on the model.
+  drawEdit: z.object({
+    sourceImage: z.string().max(2_000),
+    compositeImage: z.string().max(2_000),
+    objects: z.array(z.unknown()).max(500),
+  }).optional(),
+}).strict()
+
+/**
+ * Waits on a background image render from inside the request that started it.
+ *
+ * Longer than the app's own host allows, and knowingly so. Netlify stops the
+ * request at thirty seconds, well before this deadline, and that costs nothing:
+ * the job already holds the response id, the render carries on at OpenAI, and
+ * the workspace poll finishes it from the id. Giving up here rather than there
+ * would only change which message the user reads while they wait.
+ *
+ * What it does cost is that the request dies at the host rather than returning,
+ * so the browser is answered by the host's error page instead of this route —
+ * see readGenerationResponse, which is what stops that from reaching the user
+ * as a JSON parse error.
+ */
+const OPENAI_IMAGE_WAIT_MS = 210_000
+const OPENAI_IMAGE_POLL_MS = 3_000
+
+async function waitForOpenAIImage(responseId: string, userId: string): Promise<Buffer> {
+  const deadline = Date.now() + OPENAI_IMAGE_WAIT_MS
+  for (;;) {
+    const poll = await retrieveOpenAIImage(responseId, userId)
+    if (poll.status === "completed") return poll.image
+    if (poll.status === "failed") throw new OpenAIProviderError(poll.error, 502)
+    if (Date.now() >= deadline) {
+      // Deliberately not a refund: the render is still running under an id the
+      // job now holds, and the workspace poll picks it up from there.
+      throw new OpenAIProviderError("The image is still rendering at OpenAI. It will finish on its own — the workspace will pick it up.", 504)
+    }
+    await new Promise((resolve) => setTimeout(resolve, OPENAI_IMAGE_POLL_MS))
+  }
+}
+
+export async function renderProjectImage(
+  context: AuthenticatedProjectContext,
+  projectId: string,
+  input: ProjectImageRequest,
+): Promise<ProjectImageResult> {
+  let pendingAssetGeneration: { context: AuthenticatedProjectContext; projectId: string; entityId: string } | null = null
+  let pendingRefund: { context: AuthenticatedProjectContext; amount: number; key: string; jobId: string | null } | null = null
+  let pendingGenerationJobId: string | null = null
+  try {
+    const provider = generationProvider(input.model)
+
+    let shotData: Record<string, unknown> | null = null
+    let assetData: Record<string, unknown> | null = null
+    if (input.target === "asset") {
+      const { data } = await context.supabase.from("creator_entities").select("id, type, reference_images, metadata").eq("id", input.targetId).eq("project_id", projectId).maybeSingle()
+      if (!data) throw new ImageRequestError("Asset not found", 404)
+      assetData = data
+    } else {
+      const { data } = await context.supabase.from("creator_shots").select("id, episode_id, aspect_ratio, metadata, referenced_entities").eq("id", input.targetId).maybeSingle()
+      if (!data) throw new ImageRequestError("Shot not found", 404)
+      shotData = data
+      const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", data.episode_id).eq("project_id", projectId).maybeSingle()
+      if (!episode) throw new ImageRequestError("Shot not found", 404)
+    }
+
+    const { data: mentionedEntities, error: mentionedEntityError } = input.mentionedEntityIds.length
+      ? await context.supabase
+        .from("creator_entities")
+        .select("*")
+        .eq("project_id", projectId)
+        .in("id", input.mentionedEntityIds)
+      : { data: [], error: null }
+    if (mentionedEntityError) throw mentionedEntityError
+    if ((mentionedEntities || []).length !== new Set(input.mentionedEntityIds).size) {
+      throw new ImageRequestError("One or more mentioned entities do not belong to this project.", 400)
+    }
+
+    // The project's Basic Settings quality is the default for every image;
+    // a caller that names one explicitly still wins.
+    const quality = input.quality || projectImageQuality(context.project)
+    // Validate the full request before reserving credits.
+    const platformCost = calculateCreditCost(input.model, "image", 5, { quality, aspectRatio: input.aspectRatio })
+    // This route charges directly rather than through submit_generation, so the
+    // billing rule has to be read here too. It was not, and that was the whole
+    // bug: a user who had chosen "only my own keys" still had credits taken for
+    // an image on a provider they had not connected, and a user who *had*
+    // connected one was charged anyway and rendered on our account.
+    const byokProvider = byokProviderFor(provider)
+    const billing = decideBilling({
+      hasCredential: byokProvider ? await hasCredential(context.user.id, byokProvider) : false,
+      platformCredits: platformCost,
+      ownKeysOnly: await ownKeysOnly(context.user.id).catch(() => false),
+      provider: byokProvider || provider,
+    })
+    const creditCost = billing.credits
+    let creditBalanceAfter: number | null = null
+    if (billing.mode !== "byok") {
+      const deduct = await deductUserCredits(context.user.id, creditCost, input.model, `Image Generation (${input.model})`, context.supabase)
+      if (!deduct.success) {
+        throw new ImageRequestError(deduct.errorMessage || "Insufficient credits", 402)
+      }
+      // Only a charge can be refunded. A BYOK failure is the provider's bill.
+      creditBalanceAfter = deduct.newBalance
+      pendingRefund = { context, amount: creditCost, key: `image-request:${randomUUID()}`, jobId: null }
+    }
+
+    const mentionReferencePaths: string[] = []
+    for (const entity of mentionedEntities || []) {
+      const metadata = entity.metadata && typeof entity.metadata === "object" ? entity.metadata as Record<string, unknown> : {}
+      const byteplusAssetId = typeof metadata.byteplus_asset_id === "string" ? metadata.byteplus_asset_id.trim() : ""
+      if (provider === "byteplus" && byteplusAssetId) mentionReferencePaths.push(byteplusAssetId)
+      else {
+        // One image per entity: its chosen reference. Sending every image an
+        // entity owns spends the eight-reference budget on a few subjects and
+        // silently drops the rest of the cast before the provider sees it.
+        const chosen = entityPrimaryReference(entity as MentionableEntity)
+        if (chosen) mentionReferencePaths.push(chosen)
+      }
+    }
+    const mentionContext = buildEntityMentionContext((mentionedEntities || []) as MentionableEntity[])
+    const style = projectVisualStyle(context.project)
+    // A draw-to-edit request is an edit of one frame, not a new photograph, so
+    // it takes neither the camera package nor the look block — both read to an
+    // edit model as permission to re-render everything.
+    const styleDna = input.drawEdit ? null : resolveStyleDna({ override: input.styleDna, projectDefault: projectStyleDna(context.project) })
+    const styleBlock = input.target === "shot" ? "shot" : styleBlockForEntityType(typeof assetData?.type === "string" ? assetData.type : null)
+    // The look reference is pixels, and a provider is handed one flat list it
+    // treats as things to reproduce — so these are kept out of the cast's budget
+    // rather than added to it, and named in the prompt as look-only below.
+    const styleReferencePaths = styleReferenceImagesOf(styleDna)
+    const castBudget = 8 - Math.min(styleReferencePaths.length, MAX_STYLE_REFERENCE_IMAGES)
+    const castReferencePaths = Array.from(new Set([...mentionReferencePaths, ...input.referenceImages]))
+      .filter((path) => !styleReferencePaths.includes(path))
+      .slice(0, castBudget)
+    const combinedReferencePaths = [...castReferencePaths, ...styleReferencePaths]
+    const projectDefaultAspect = typeof context.project.default_aspect === "string" ? context.project.default_aspect : null
+    const effectiveAspectRatio = input.aspectRatio || (shotData && typeof shotData.aspect_ratio === "string" ? shotData.aspect_ratio : null) || projectDefaultAspect || "9:16"
+    // The camera clause is composed here, at submit time, from the base prompt
+    // the user actually wrote — which is what is stored on the job and read
+    // back into the prompt box. Composing anywhere the result could be written
+    // back into the prompt field would stack another clause on every
+    // regeneration until the prompt degraded into noise.
+    // No settings sent means the caller left the camera switch off, and an
+    // untouched prompt is the whole point of that switch: nothing is appended,
+    // nothing is rewritten, and the image is generated from exactly what the
+    // user typed. Only a package the caller actually chose is composed in.
+    const cameraSettings = input.cameraSettings
+      ? resolveCameraSettings({
+        block: input.target === "shot" ? "shot" : cameraBlockForEntityType(typeof assetData?.type === "string" ? assetData.type : null),
+        override: input.cameraSettings,
+        projectDefaults: projectCameraDefaults(context.project),
+      })
+      : null
+    // A draw-to-edit request is not a new photograph. Appending the camera
+    // package — "shot on a…, professional photography, ultra-detailed, 8K" —
+    // reads to an edit model as an instruction to re-render the whole frame,
+    // which is the opposite of applying one marked change to it.
+    const framedPrompt = input.drawEdit || !cameraSettings
+      ? stripIdentityDescriptions(input.prompt)
+      : applyCameraSettings(stripIdentityDescriptions(input.prompt), cameraSettings, { opticsOnly: Boolean(styleDna) })
+    const resolvedPrompt = [
+      framedPrompt,
+      `Required composition: ${effectiveAspectRatio}.`,
+      ...(input.drawEdit ? [`Required project style: ${style}.`, visualStyleDirective(style)] : composeLookDirectives(style, styleDna, styleBlock)),
+      styleReferenceClause(styleReferencePaths.length),
+      mentionContext,
+    ].filter(Boolean).join("\n\n")
+
+    const { data: generationJob, error: generationJobError } = await context.supabase
+      .from("creator_generation_jobs")
+      .insert({
+        user_id: context.user.id,
+        project_id: projectId,
+        episode_id: (input.target === "shot" && typeof shotData?.episode_id === "string" ? shotData.episode_id : null) || input.episodeId || null,
+        shot_id: input.target === "shot" ? input.targetId : null,
+        type: "image",
+        status: "approved",
+        provider,
+        model: input.model,
+        prompt: input.prompt,
+        input_images: combinedReferencePaths,
+        settings: {
+          target: input.target,
+          ...(input.target === "asset" ? { entityId: input.targetId, entityType: assetData?.type || null } : { shotId: input.targetId }),
+          style,
+          aspectRatio: effectiveAspectRatio,
+          quality,
+          // Snapshotted, not referenced: editing the project package later
+          // must leave every image already generated exactly as it was, and
+          // "regenerate this exact frame" needs the package it was shot on.
+          cameraSettingsUsed: cameraSettings,
+          // Same reason as the camera package above: re-extracting the look from
+          // a new mood board must not change what this frame was shot under, and
+          // "regenerate this exact frame" needs the look it was shot under.
+          styleDnaUsed: styleDna,
+          styleReferenceImages: styleReferencePaths,
+          basePrompt: input.prompt,
+          composedPrompt: resolvedPrompt,
+          ...(input.drawEdit ? { drawEdit: input.drawEdit } : {}),
+        },
+        estimated_credits: creditCost,
+        billing_mode: billing.mode,
+        credits_used: 0,
+        requires_approval: false,
+        approved_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single()
+    if (generationJobError) throw generationJobError
+    pendingGenerationJobId = generationJob.id
+    if (pendingRefund) pendingRefund = { ...pendingRefund, key: `generation-job:${generationJob.id}`, jobId: generationJob.id }
+
+    const { error: processingError } = await context.supabase
+      .from("creator_generation_jobs")
+      .update({ status: "processing", credits_used: creditCost, started_at: new Date().toISOString() })
+      .eq("id", generationJob.id)
+    if (processingError) throw processingError
+
+    // The provider request can take a while. Persist this state before it starts
+    // so leaving/re-entering the tab never makes the request appear to vanish.
+    if (input.target === "asset") {
+      const { data: asset, error: assetReadError } = await context.supabase
+        .from("creator_entities")
+        .select("metadata")
+        .eq("id", input.targetId)
+        .eq("project_id", projectId)
+        .single()
+      if (assetReadError) throw assetReadError
+      const currentMetadata = asset.metadata && typeof asset.metadata === "object" ? asset.metadata as Record<string, unknown> : {}
+      const { error: pendingError } = await context.supabase.from("creator_entities").update({
+        metadata: {
+          ...currentMetadata,
+          image_generation: {
+            provider,
+            model: input.model,
+            prompt: input.prompt,
+            resolved_prompt: resolvedPrompt,
+            camera_settings_used: cameraSettings,
+            style,
+            aspect_ratio: effectiveAspectRatio,
+            reference_images: combinedReferencePaths,
+            mentioned_entity_ids: input.mentionedEntityIds,
+            status: "generating",
+            requested_at: new Date().toISOString(),
+          },
+        },
+      }).eq("id", input.targetId).eq("project_id", projectId)
+      if (pendingError) throw pendingError
+      pendingAssetGeneration = { context, projectId, entityId: input.targetId }
+    }
+    const referenceUrls: string[] = []
+    for (const reference of combinedReferencePaths) {
+      if (/^https?:\/\//i.test(reference) || /^asset:\/\//i.test(reference) || /^asset-[a-z0-9-]+$/i.test(reference)) referenceUrls.push(reference)
+      else {
+        const { data, error } = await context.supabase.storage.from("creator-studio-media").createSignedUrl(reference, 60 * 60)
+        if (error) throw error
+        referenceUrls.push(data.signedUrl)
+      }
+    }
+    type RenderResult = {
+      image: Buffer
+      contentType: string
+      byteplusAssetId: string | null
+      byteplusAssetUri: string | null
+      registeredAsset: { assetId: string; name: string } | null
+    }
+    let contentType = "image/png"
+    let byteplusAssetId: string | null = null
+    let pendingAssetRecord: { assetId: string; name: string } | null = null
+    let byteplusAssetUri: string | null = null
+    let generationJobId: string | null = pendingGenerationJobId
+
+    // The provider call itself has to happen inside the customer's credential
+    // scope, or billing says "your key" while the render runs on ours — the
+    // failure that costs us money and reports nothing.
+    const runOnBillingAccount = async <T,>(work: () => Promise<T>): Promise<T> => {
+      if (billing.mode !== "byok" || !byokProvider) return work()
+      const ran = await withCredential({ userId: context.user.id, provider: byokProvider }, (parts) =>
+        runWithCredential(byokProvider, parts, work))
+      if (ran === null) throw new Error("The provider key for this model is no longer connected.")
+      return ran
+    }
+
+    // Returned rather than assigned outward: the render happens inside a
+    // callback, and TypeScript cannot see through one to know an outer variable
+    // was set.
+    const rendered: RenderResult = await runOnBillingAccount(async () => {
+    let image: Buffer
+    if (provider === "openai" && !supportsBackgroundImageResponse(input.model)) {
+      // GPT Image 2.5 Sunburst is only served by /v1/images/generations and
+      // /v1/images/edits, so there is no background response to hand back and no
+      // id to recover it by. The render is held on this connection instead, well
+      // inside the route's 300s budget, and a request that dies mid-call loses
+      // the image — which is why the recoverable path above stays the default
+      // for every model that can use it.
+      image = await generateOpenAIImage({
+        userId: context.user.id,
+        model: input.model as (typeof openAIImageModels)[number],
+        prompt: resolvedPrompt,
+        referenceUrls,
+        aspectRatio: effectiveAspectRatio,
+        quality: openAIImageQuality(quality, input.model),
+      })
+    } else if (provider === "openai") {
+      // Submitted as a background response, then waited on here.
+      //
+      // The render used to be one synchronous call, so a function killed
+      // mid-flight lost an image OpenAI had already produced and charged for,
+      // with nothing left to identify it by. The id is written to the job the
+      // moment OpenAI accepts the work, before any waiting happens, so a
+      // request that dies from here on leaves a recoverable handle rather than
+      // a paid-for picture nobody can reach — see the GET route, which finishes
+      // exactly these jobs.
+      const submitted = await submitOpenAIImage({ userId: context.user.id, model: input.model as (typeof openAIImageModels)[number], prompt: resolvedPrompt, referenceUrls, aspectRatio: effectiveAspectRatio, quality: openAIImageQuality(quality, input.model) })
+      if (pendingGenerationJobId) {
+        await context.supabase
+          .from("creator_generation_jobs")
+          .update({ provider_job_id: submitted.responseId, provider_response: { responseId: submitted.responseId, status: submitted.status } })
+          .eq("id", pendingGenerationJobId)
+      }
+      image = await waitForOpenAIImage(submitted.responseId, context.user.id)
+    } else if (provider === "fal") {
+      const generated = await generateFalImage({ model: input.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls })
+      const download = await fetch(generated.url)
+      if (!download.ok) throw new FalProviderError(`Could not download fal.ai output (${download.status}).`)
+      image = Buffer.from(await download.arrayBuffer())
+      contentType = generated.contentType
+    } else if (provider === "google") {
+      const generated = await generateGoogleImage({ model: input.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls })
+      const download = await fetch(generated.url)
+      if (!download.ok) throw new GoogleProviderError(`Could not download Google AI Studio output (${download.status}).`)
+      image = Buffer.from(await download.arrayBuffer())
+      contentType = generated.contentType
+    } else {
+      const generated = await generateBytePlusImage({ model: input.model, prompt: resolvedPrompt, referenceUrls })
+      // Auto-register Seedream output into BytePlus ModelArk Asset Library to preserve provider trust
+      try {
+        const assetRes = await createBytePlusAsset({ imageUrl: generated.url, name: input.prompt.slice(0, 50) })
+        byteplusAssetId = assetRes.assetId
+        byteplusAssetUri = `asset://${assetRes.assetId}`
+        pendingAssetRecord = { assetId: assetRes.assetId, name: input.prompt.slice(0, 50) }
+      } catch (assetErr) {
+        console.warn("Could not auto-register Seedream output as BytePlus asset:", assetErr)
+      }
+      const download = await fetch(generated.url)
+      if (!download.ok) throw new BytePlusProviderError(`Could not download Seedream output (${download.status}).`)
+      image = Buffer.from(await download.arrayBuffer())
+      contentType = generated.contentType
+    }
+    return { image, contentType, byteplusAssetId, byteplusAssetUri, registeredAsset: pendingAssetRecord }
+    })
+    const image = rendered.image
+    contentType = rendered.contentType
+    byteplusAssetId = rendered.byteplusAssetId
+    byteplusAssetUri = rendered.byteplusAssetUri
+    const registeredAsset = rendered.registeredAsset
+    const extension = contentType.includes("jpeg") ? "jpg" : contentType.includes("webp") ? "webp" : "png"
+    const storagePath = `${context.user.id}/${projectId}/${provider}-image-${randomUUID()}.${extension}`
+    const { error: uploadError } = await context.supabase.storage.from("creator-studio-media").upload(storagePath, image, { contentType, upsert: false })
+    if (uploadError) throw uploadError
+    // Seedream registers its own output as part of generating it, so that slot
+    // is already spent — recording it is what lets an admin see and reclaim it.
+    if (registeredAsset) {
+      await recordExistingAsset({
+        supabase: context.supabase,
+        sourcePath: storagePath,
+        assetId: registeredAsset.assetId,
+        name: registeredAsset.name,
+        projectId,
+        userId: context.user.id,
+      })
+    }
+
+    // Every generated image used to be registered with BytePlus here, whether or
+    // not Seedance would ever reference it. The library holds 50 for the whole
+    // account, so a dozen shots at a few attempts each exhausted it in an
+    // afternoon. Registration now happens when an image is actually needed as a
+    // reference — see resolveRegisteredAsset — and on demand from the
+    // "Add to Asset Library" and "Verify for Seedance" buttons.
+
+    if (input.target === "asset") {
+      const { data: asset, error: readError } = await context.supabase.from("creator_entities").select("reference_images, metadata").eq("id", input.targetId).eq("project_id", projectId).single()
+      if (readError) throw readError
+      const currentMeta = (asset.metadata as Record<string, unknown>) || {}
+      const metadata = {
+        ...currentMeta,
+        ...(byteplusAssetId ? { byteplus_asset_id: byteplusAssetId } : {}),
+        // Null, not absent: switching the override off has to be remembered as
+        // firmly as switching it on, or the panel reopens still overridden.
+        // A draw edit is the exception — it carries no camera panel at all, so
+        // writing null there would silently un-override the block.
+        ...(input.drawEdit && !input.cameraSettings ? {} : { camera_override: input.cameraSettings ? cameraSettings : null }),
+        // Null, not absent, for the same reason as the camera override above:
+        // switching the look override off has to be remembered as firmly as
+        // switching it on, or the panel reopens still overridden.
+        ...(input.drawEdit && input.styleDna === undefined ? {} : { style_dna_override: input.styleDna === undefined ? null : styleDna }),
+        image_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, camera_settings_used: cameraSettings, style_dna_used: styleDna, style,  aspect_ratio: effectiveAspectRatio, reference_images: combinedReferencePaths, mentioned_entity_ids: input.mentionedEntityIds, status: "completed", completed_at: new Date().toISOString() },
+      }
+      const updates: Record<string, unknown> = {
+        reference_images: [...(asset.reference_images || []), storagePath],
+        metadata,
+        status: "draft",
+      }
+      if (byteplusAssetId) updates.byteplus_asset_id = byteplusAssetId
+      if (byteplusAssetUri) updates.byteplus_asset_uri = byteplusAssetUri
+      if (byteplusAssetId) updates.verification_status = VERIFIED_ASSET.verification_status
+      const { error } = await context.supabase.from("creator_entities").update(updates).eq("id", input.targetId).eq("project_id", projectId)
+      if (error) throw error
+    } else {
+      const currentMeta = ((shotData?.metadata as Record<string, unknown>) || {})
+      const currentReferencedEntities = Array.isArray(shotData?.referenced_entities) ? shotData.referenced_entities.filter((id): id is string => typeof id === "string") : []
+      const { error } = await context.supabase.from("creator_shots").update({
+        keyframe_image: storagePath,
+        referenced_entities: Array.from(new Set([...currentReferencedEntities, ...input.mentionedEntityIds])),
+        is_trusted_provider_asset: Boolean(byteplusAssetUri),
+        provider_asset_uri: byteplusAssetUri || null,
+        metadata: {
+          ...currentMeta,
+          ...(byteplusAssetId ? { byteplus_asset_id: byteplusAssetId } : {}),
+          ...(input.drawEdit && !input.cameraSettings ? {} : { camera_override: input.cameraSettings ? cameraSettings : null }),
+        // Null, not absent, for the same reason as the camera override above:
+        // switching the look override off has to be remembered as firmly as
+        // switching it on, or the panel reopens still overridden.
+        ...(input.drawEdit && input.styleDna === undefined ? {} : { style_dna_override: input.styleDna === undefined ? null : styleDna }),
+          image_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, camera_settings_used: cameraSettings, style_dna_used: styleDna, style,  reference_images: combinedReferencePaths, mentioned_entity_ids: input.mentionedEntityIds, status: "completed", completed_at: new Date().toISOString() },
+        },
+      }).eq("id", input.targetId)
+      if (error) throw error
+
+      const { data: historyJob, error: historyError } = await context.supabase
+        .from("creator_generation_jobs")
+        .update({
+          status: "completed",
+          result_url: storagePath,
+          credits_used: creditCost,
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", pendingGenerationJobId)
+        .select("id")
+        .single()
+      if (historyError) throw historyError
+      generationJobId = historyJob.id
+    }
+    if (input.target === "asset" && pendingGenerationJobId) {
+      const { error: historyError } = await context.supabase
+        .from("creator_generation_jobs")
+        .update({
+          status: "completed",
+          result_url: storagePath,
+          credits_used: creditCost,
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", pendingGenerationJobId)
+      if (historyError) throw historyError
+    }
+    pendingRefund = null
+    // The image is stored and its job is recorded, so this generation really
+    // happened — the only point at which it counts as activation.
+    await trackGenerationActivation({
+      supabase: context.supabase,
+      userId: context.user.id,
+      email: context.user.email,
+      sourceUrl: `https://www.aidirectorhub.com/studio/project/${projectId}`,
+    })
+    return {
+      path: storagePath,
+      imageUrl: storagePath,
+      jobId: generationJobId,
+      provider,
+      model: input.model,
+      byteplusAssetId,
+      byteplusAssetUri,
+      cameraSettingsUsed: cameraSettings,
+      creditsCharged: creditCost,
+      creditBalance: creditBalanceAfter,
+    }
+  } catch (error) {
+    if (pendingRefund) {
+      try {
+        await refundGenerationCredits(pendingRefund.context.user.id, pendingRefund.amount, pendingRefund.key, "Refund: failed image generation", pendingRefund.jobId, pendingRefund.context.supabase)
+      } catch (refundError) {
+        console.error("Could not refund failed image generation", refundError)
+      }
+    }
+    if (pendingGenerationJobId && pendingRefund) {
+      try {
+        await pendingRefund.context.supabase
+          .from("creator_generation_jobs")
+          .update({
+            status: "failed",
+            error: studioErrorMessage(error, "Image generation failed"),
+            completed_at: new Date().toISOString(),
+          })
+          .eq("id", pendingGenerationJobId)
+      } catch (historyError) {
+        console.error("Could not mark image generation failed", historyError)
+      }
+    }
+    if (pendingAssetGeneration) {
+      try {
+        const { data: asset } = await pendingAssetGeneration.context.supabase
+          .from("creator_entities")
+          .select("metadata")
+          .eq("id", pendingAssetGeneration.entityId)
+          .eq("project_id", pendingAssetGeneration.projectId)
+          .maybeSingle()
+        const metadata = asset?.metadata && typeof asset.metadata === "object" ? asset.metadata as Record<string, unknown> : {}
+        await pendingAssetGeneration.context.supabase.from("creator_entities").update({
+          metadata: {
+            ...metadata,
+            image_generation: {
+              ...(metadata.image_generation && typeof metadata.image_generation === "object" ? metadata.image_generation : {}),
+              status: "failed",
+              error: studioErrorMessage(error, "Image generation failed"),
+              completed_at: new Date().toISOString(),
+            },
+          },
+        }).eq("id", pendingAssetGeneration.entityId).eq("project_id", pendingAssetGeneration.projectId)
+      } catch (stateError) {
+        console.error("Could not persist failed asset image generation state", stateError)
+      }
+    }
+    throw new ImageGenerationFailure(
+      studioErrorMessage(error, "Image generation failed"),
+      error instanceof OpenAIProviderError || error instanceof BytePlusProviderError ? error.status : studioErrorStatus(error),
+      pendingGenerationJobId,
+      error,
+    )
+  }
+}

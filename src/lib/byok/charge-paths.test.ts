@@ -16,7 +16,11 @@ import { studioErrorStatus } from "@/lib/studio/server-context"
  * tested — the Director's submit_generation — did enforce it.
  */
 const CHARGE_PATHS = [
-  "src/app/api/studio/projects/[projectId]/images/route.ts",
+  // The image charge lives a level down from its route: the same generation
+  // runs on two hosts — Netlify for the models it can hold open long enough,
+  // the Supabase Edge Function for the ones it cannot — and a charge copied
+  // into each would be two charges to keep in step. Both call this one module.
+  "src/lib/studio/project-image-render.ts",
   "src/app/api/studio/projects/[projectId]/videos/route.ts",
   "src/lib/studio/tool-registry.ts",
   // The standalone generators. A new surface reaching a model is a new charge
@@ -52,7 +56,7 @@ describe("every charge path asks who is paying", () => {
     // provider themselves; the Director's path hands off to execute-generation,
     // so that is where its scope lives.
     const rendering = [
-      "src/app/api/studio/projects/[projectId]/images/route.ts",
+      "src/lib/studio/project-image-render.ts",
       "src/app/api/studio/projects/[projectId]/videos/route.ts",
       "src/lib/studio/execute-generation.ts",
       "src/app/api/studio/generate/image/route.ts",

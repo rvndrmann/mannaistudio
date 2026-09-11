@@ -64,6 +64,8 @@ import { videoPromptFor } from "@/lib/studio/shot-video-prompt";
 import { buildInsertShotDraft } from "@/lib/studio/shot-intent";
 import { isVideoReferencePath } from "@/lib/studio/media-reference";
 import { calculateCreditCost, getUserCredits, type CreditQuality } from "@/lib/studio/credits";
+import { readGenerationResponse } from "@/lib/studio/generation-response";
+import { requestProjectImage } from "@/lib/studio/image-request";
 import { blockedByCredits, resolveGenerationSource } from "@/lib/byok/generation-source";
 import { useConnectedProviders } from "@/lib/byok/use-connected-providers";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -3370,10 +3372,7 @@ function AssetWorkspace({
     setSelectedAttemptId(localAttemptId);
     try {
       const mentionedEntityIds = findMentionedEntityIds(prompt, entities);
-      const response = await fetch(`/api/studio/projects/${projectId}/images`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const response = await requestProjectImage(projectId, {
           target: "asset",
           targetId: asset.id,
           episodeId,
@@ -3390,9 +3389,8 @@ function AssetWorkspace({
           // the prompt alone rather than resolving a package of its own.
           ...(cameraEnabled ? { cameraSettings } : {}),
           ...(styleOverrideEnabled ? { styleDna: styleOverride } : {}),
-        }),
       });
-      const body = await response.json();
+      const body = await readGenerationResponse(response);
       if (!response.ok) {
         const savedJobId = typeof body.jobId === "string" ? body.jobId : null;
         const errorMessage = body.error || "Image generation failed";
@@ -5498,8 +5496,8 @@ function ShotMediaWorkspace({
       const characterEntityIds = Array.from(new Set([...mentionedCharacterIds, ...selectedCharacterIds])).slice(0, 10);
       if (isImage) {
         setGenerationStatus("Submitting image generation job…");
-        const response = await fetch(`/api/studio/projects/${projectId}/images`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, mentionedEntityIds, aspectRatio, quality, ...(cameraEnabled ? { cameraSettings } : {}), ...(styleOverrideEnabled ? { styleDna: styleOverride } : {}) }) });
-        const body = await response.json();
+        const response = await requestProjectImage(projectId, { target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, mentionedEntityIds, aspectRatio, quality, ...(cameraEnabled ? { cameraSettings } : {}), ...(styleOverrideEnabled ? { styleDna: styleOverride } : {}) });
+        const body = await readGenerationResponse(response);
         if (!response.ok) throw new Error(body.error || "Image generation failed");
         notifyCreditBalanceChanged(typeof body.creditBalance === "number" ? body.creditBalance : undefined);
         const outputPath = typeof body.path === "string" ? body.path : typeof body.imageUrl === "string" ? body.imageUrl : null;
@@ -5519,7 +5517,7 @@ function ShotMediaWorkspace({
       } else {
         setGenerationStatus("Submitting video generation job…");
         const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, referenceVideos: videoReferencePaths, characterEntityIds, mentionedEntityIds, generationMode: videoInputMode, startFrame, endFrame, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
-        const body = await response.json();
+        const body = await readGenerationResponse(response);
         if (!response.ok) {
           const errorMsg = body.error || "Video generation failed";
           setGenHistory((prev) => prev.map((g) => g.id === genId ? {
@@ -5531,7 +5529,7 @@ function ShotMediaWorkspace({
           throw new Error(errorMsg);
         }
         notifyCreditBalanceChanged(typeof body.creditBalance === "number" ? body.creditBalance : undefined);
-        const dbJobId = body.jobId;
+        const dbJobId = typeof body.jobId === "string" ? body.jobId : genId;
         setGenHistory((prev) => prev.map((g) => g.id === genId ? { ...g, id: dbJobId } : g));
         setActiveGenId((current) => current === genId ? dbJobId : current);
         await pollJobStatus(dbJobId);

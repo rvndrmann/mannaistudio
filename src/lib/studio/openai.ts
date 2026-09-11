@@ -1,22 +1,14 @@
 import { createHash } from "node:crypto"
 import { defaultDirectorModelId, defaultDirectorModels } from "@/lib/studio/ai-models"
 import { activeCredentialPart } from "@/lib/byok/active-credential"
+import { supportsBackgroundImageResponse } from "./image-render-host"
 
 export const openAIImageModels = ["gpt-image-2", "gpt-image-2.5-sunburst", "gpt-image-1.5"] as const
 export type OpenAIImageModel = (typeof openAIImageModels)[number]
 
-/**
- * Whether a model can be rendered through the Responses API's image_generation
- * tool, which is what submitOpenAIImage uses to get a recoverable handle.
- *
- * gpt-image-2.5-sunburst cannot: OpenAI lists `/v1/responses` as unsupported for
- * it, and only `/v1/images/generations` and `/v1/images/edits` are available. A
- * model routed there anyway is rejected at submit time, so the caller has to
- * fall back to the synchronous endpoints — see the image routes, which do.
- */
-export function supportsBackgroundImageResponse(model: string) {
-  return model !== "gpt-image-2.5-sunburst"
-}
+// Re-exported rather than declared here: the browser needs this answer to know
+// which host to send a render to, and it cannot import this file to get it.
+export { supportsBackgroundImageResponse, rendersOnEdgeFunction } from "./image-render-host"
 
 export const openAIDirectorModels: string[] = defaultDirectorModels.map((model) => model.id)
 export type OpenAIDirectorModel = string
@@ -54,19 +46,24 @@ function apiKey() {
 /**
  * How long an image generation may hold the request open.
  *
- * The route's own budget is 300s, and a fetch with no timeout spends all of it:
- * the platform kills the function mid-call, so the catch that marks the job
- * failed and returns the credits never runs. The job is left `processing` and
- * only the stalled-job reconcile settles it, six minutes after the user pressed
- * the button, with a message that cannot say what went wrong.
+ * A fetch with no timeout spends the whole budget of whatever is hosting it,
+ * and then the host kills the function mid-call — so the catch that marks the
+ * job failed and returns the credits never runs. The job is left `processing`
+ * and only the stalled-job reconcile settles it, six minutes after the user
+ * pressed the button, with a message that cannot say what went wrong.
  *
- * Well under the budget, so the failure path is always the one that runs: the
- * request gives up with a real error, the job is failed and refunded on the
- * spot, and the user waits three minutes for an answer instead of six for a
- * shrug. A healthy generation returns in 50-75 seconds, so this is far outside
- * the working range and only ever catches a hang.
+ * The number has to sit under the smallest budget any caller runs on, or the
+ * failure path it exists for is one that never executes. That is the Supabase
+ * Edge Function's hundred and fifty seconds, where every synchronous render now
+ * happens: this was 180s against a claimed 300s route budget, and neither
+ * figure was real — the app's own host stops at thirty.
+ *
+ * A healthy generation returns in 50-75 seconds, so this is still far outside
+ * the working range and only ever catches a hang. What it buys is that a hang
+ * ends as an error with the credits back, rather than as a killed function and
+ * a six-minute silence.
  */
-export const OPENAI_IMAGE_TIMEOUT_MS = 180_000
+export const OPENAI_IMAGE_TIMEOUT_MS = 120_000
 
 /**
  * The model that hosts the image_generation tool for background renders. The
