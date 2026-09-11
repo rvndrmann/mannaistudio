@@ -164,7 +164,13 @@ export async function requireProjectForUser(
     .eq("user_id", user.id)
     .maybeSingle()
 
-  if (error) throw new StudioAccessError("Could not verify project access", 403)
+  if (error) {
+    console.error("Project access check failed (token path):", { projectId, code: error.code, message: error.message })
+    throw new StudioAccessError(
+      `Could not verify project access${error.code ? ` (${error.code})` : ""}. This is usually temporary — try again.`,
+      403,
+    )
+  }
   if (!project) throw new StudioAccessError("Project not found", 404)
 
   return { supabase, user, project }

@@ -31,7 +31,17 @@ export async function requireAuthenticatedProject(
     .eq("id", projectId)
     .maybeSingle()
 
-  if (error) throw new StudioAccessError("Could not verify project access", 403)
+  if (error) {
+    // The cause was being dropped, so a transient failure to reach the database
+    // and a genuine access denial arrived as the same four words — and neither
+    // could be told from the other without a database session to hand. Postgres
+    // gives a code for exactly this; it travels with the message now.
+    console.error("Project access check failed:", { projectId, code: error.code, message: error.message })
+    throw new StudioAccessError(
+      `Could not verify project access${error.code ? ` (${error.code})` : ""}. This is usually temporary — try again.`,
+      403,
+    )
+  }
   if (!project) throw new StudioAccessError("Project not found", 404)
 
   return { supabase, user, project }
