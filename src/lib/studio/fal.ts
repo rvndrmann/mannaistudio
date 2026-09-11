@@ -23,6 +23,51 @@ function getFalKey() {
 const SUNBURST_EDIT_ENDPOINT = "openai/gpt-image-2.5/sunburst/edit"
 const SUNBURST_EDIT_MAX_REFERENCES = 16
 
+export function falImageEndpoint(model: ImageGenerationModelId): string {
+  if (model === "fal-gpt-image-2-5-sunburst-edit") return SUNBURST_EDIT_ENDPOINT
+  if (model === "fal-flux-3") return "fal-ai/flux-pro/v1.1"
+  if (model === "fal-flux-realism") return "fal-ai/flux-realism"
+  return "fal-ai/flux/dev"
+}
+
+/**
+ * One payload builder for both the queued and the held-open path, so the two
+ * cannot drift into sending different things to the same model.
+ *
+ * The Flux endpoints take `image_url` and a named size; Sunburst Edit takes
+ * `image_urls` and infers its canvas from them, which is what keeps an edit the
+ * same shape as the picture it came from. Sending square_hd there would
+ * silently reframe every edit to 1:1.
+ */
+function falImagePayload(
+  input: { prompt: string; referenceUrls?: string[]; quality?: OpenAIImageQuality },
+  endpoint: string,
+): Record<string, unknown> {
+  if (endpoint !== SUNBURST_EDIT_ENDPOINT) {
+    return {
+      prompt: input.prompt,
+      image_size: "square_hd",
+      ...(input.referenceUrls?.length ? { image_url: input.referenceUrls[0] } : {}),
+    }
+  }
+  // An edit model with nothing to edit is a 422 from the provider and a charged
+  // job here. Said plainly instead, because the fix is to attach a reference.
+  if (!input.referenceUrls?.length) {
+    throw new FalProviderError(
+      "GPT Image 2.5 Sunburst Edit edits an existing picture, so it needs at least one reference image. Attach one, or pick a text-to-image model.",
+      400,
+    )
+  }
+  return {
+    prompt: input.prompt,
+    image_urls: input.referenceUrls.slice(0, SUNBURST_EDIT_MAX_REFERENCES),
+    image_size: "auto",
+    quality: input.quality || "high",
+    num_images: 1,
+    output_format: "png",
+  }
+}
+
 export async function generateFalImage(input: {
   model: ImageGenerationModelId
   prompt: string
@@ -33,39 +78,8 @@ export async function generateFalImage(input: {
   const falKey = getFalKey()
   fal.config({ credentials: falKey })
 
-  const isSunburstEdit = input.model === "fal-gpt-image-2-5-sunburst-edit"
-  let endpoint = "fal-ai/flux/dev"
-  if (input.model === "fal-flux-3") endpoint = "fal-ai/flux-pro/v1.1"
-  else if (input.model === "fal-flux-realism") endpoint = "fal-ai/flux-realism"
-  else if (isSunburstEdit) endpoint = SUNBURST_EDIT_ENDPOINT
-
-  // An edit model with nothing to edit is a 422 from the provider and a charged
-  // job here. Said plainly instead, because the fix is to attach a reference.
-  if (isSunburstEdit && !input.referenceUrls?.length) {
-    throw new FalProviderError(
-      "GPT Image 2.5 Sunburst Edit edits an existing picture, so it needs at least one reference image. Attach one, or pick a text-to-image model.",
-      400,
-    )
-  }
-
-  // The Flux endpoints take `image_url` and a named size; Sunburst Edit takes
-  // `image_urls` and infers its canvas from them, which is what keeps an edit
-  // the same shape as the picture it came from. Sending square_hd here would
-  // silently reframe every edit to 1:1.
-  const payload = isSunburstEdit
-    ? {
-        prompt: input.prompt,
-        image_urls: input.referenceUrls!.slice(0, SUNBURST_EDIT_MAX_REFERENCES),
-        image_size: "auto",
-        quality: input.quality || "high",
-        num_images: 1,
-        output_format: "png",
-      }
-    : {
-        prompt: input.prompt,
-        image_size: "square_hd",
-        ...(input.referenceUrls?.length ? { image_url: input.referenceUrls[0] } : {}),
-      }
+  const endpoint = falImageEndpoint(input.model)
+  const payload = falImagePayload(input, endpoint)
 
   try {
     const res = await fal.subscribe(endpoint, { input: payload })
@@ -80,6 +94,96 @@ export async function generateFalImage(input: {
     const msg = error instanceof Error ? error.message : "fal.ai image generation failed"
     throw new FalProviderError(`fal.ai request failed: ${msg}`)
   }
+}
+
+/**
+ * Submits an image render to fal's queue and hands back the id that outlives
+ * this request.
+ *
+ * `fal.subscribe` holds the connection until the picture is ready, which is
+ * fine locally and fatal in production: Netlify stops a function at thirty
+ * seconds and a Sunburst edit takes longer than that at the tiers worth using.
+ * fal still finishes and still bills, so every such render produced a picture
+ * nobody could reach and a job written off as "did not finish".
+ *
+ * The queue gives the same recoverable shape the OpenAI path already relies on
+ * — the id is stored before any waiting happens, so a killed request leaves
+ * something the poll can finish.
+ */
+export async function submitFalImage(input: {
+  model: ImageGenerationModelId
+  prompt: string
+  referenceUrls?: string[]
+  quality?: OpenAIImageQuality
+}) {
+  getFalKey()
+  fal.config({ credentials: getFalKey() })
+  const endpoint = falImageEndpoint(input.model)
+  const payload = falImagePayload(input, endpoint)
+
+  try {
+    const submitted = await fal.queue.submit(endpoint, { input: payload })
+    return { id: submitted.request_id, endpoint }
+  } catch (error) {
+    if (error instanceof FalProviderError) throw error
+    const msg = error instanceof Error ? error.message : "fal.ai image submission failed"
+    throw new FalProviderError(`fal.ai request failed: ${msg}`)
+  }
+}
+
+/**
+ * Reads a queued image render back.
+ *
+ * Mirrors getFalVideoTask, including its hard-won detail: fal marks a request
+ * COMPLETED even when it finished by rejecting the input, and the reason only
+ * appears when the result is fetched.
+ */
+export async function getFalImageTask(requestId: string, endpoint: string) {
+  fal.config({ credentials: getFalKey() })
+  const appId = falQueueAppId(endpoint)
+
+  try {
+    const status = await fal.queue.status(appId, { requestId })
+    const rawStatus = (status as { status?: string }).status || "UNKNOWN"
+    if (rawStatus !== "COMPLETED") {
+      return { status: "pending" as const, url: undefined, error: undefined }
+    }
+
+    try {
+      const result = await fal.queue.result(appId, { requestId })
+      const data = result.data as Record<string, unknown>
+      const images = data?.images as Array<{ url?: string }> | undefined
+      const url = images?.[0]?.url || (data?.image_url as string | undefined)
+      if (!url) return { status: "failed" as const, url: undefined, error: "fal.ai finished without returning an image." }
+      return { status: "completed" as const, url, error: undefined }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "fal.ai returned no result for this request."
+      return { status: "failed" as const, url: undefined, error: msg }
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "fal.ai status check failed"
+    throw new FalProviderError(`fal.ai status check failed for ${endpoint}: ${msg}`)
+  }
+}
+
+/**
+ * Waits for a queued image, polling until it lands.
+ *
+ * Bounded well inside the host's own limit rather than optimistically: if this
+ * runs out the job still holds the request id, so the picture is recovered by
+ * the next poll instead of lost.
+ */
+export async function waitForFalImage(requestId: string, endpoint: string, timeoutMs = 240_000) {
+  const startedAt = Date.now()
+  let delay = 2_000
+  while (Date.now() - startedAt < timeoutMs) {
+    const poll = await getFalImageTask(requestId, endpoint)
+    if (poll.status === "completed") return { url: poll.url! }
+    if (poll.status === "failed") throw new FalProviderError(poll.error || "fal.ai image generation failed.")
+    await new Promise((resolve) => setTimeout(resolve, delay))
+    delay = Math.min(delay + 1_000, 6_000)
+  }
+  throw new FalProviderError("fal.ai is still rendering. The job keeps its request id and will be finished by the next check.", 504)
 }
 
 /**

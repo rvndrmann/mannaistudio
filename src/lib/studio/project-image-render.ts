@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto"
 import { z } from "zod"
 import { generateOpenAIImage, openAIImageModels, OpenAIProviderError, retrieveOpenAIImage, submitOpenAIImage, supportsBackgroundImageResponse } from "@/lib/studio/openai"
 import { createBytePlusAsset, generateBytePlusImage, BytePlusProviderError } from "@/lib/studio/byteplus"
-import { FalProviderError, generateFalImage } from "@/lib/studio/fal"
+import { FalProviderError, submitFalImage, waitForFalImage } from "@/lib/studio/fal"
 import { generateGoogleImage, GoogleProviderError } from "@/lib/studio/google"
 import { generationProvider, isImageGenerationModel, type ImageGenerationModelId } from "@/lib/studio/generation-models"
 import { byokProviderFor } from "@/lib/byok/providers"
@@ -459,11 +459,29 @@ export async function renderProjectImage(
       }
       image = await waitForOpenAIImage(submitted.responseId, context.user.id)
     } else if (provider === "fal") {
-      const generated = await generateFalImage({ model: input.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls, quality: openAIImageQuality(quality, input.model), aspectRatio: effectiveAspectRatio })
-      const download = await fetch(generated.url)
+      // Queued rather than held open, for the reason the OpenAI branch above is:
+      // the host stops a request at thirty seconds and a Sunburst edit runs past
+      // that at the tiers worth using. fal finishes and bills either way, so a
+      // held-open render lost the picture and wrote the job off as "did not
+      // finish". The id is stored before any waiting, so a request killed from
+      // here on leaves a handle the GET route can finish.
+      const submitted = await submitFalImage({
+        model: input.model as ImageGenerationModelId,
+        prompt: resolvedPrompt,
+        referenceUrls,
+        quality: openAIImageQuality(quality, input.model),
+      })
+      if (pendingGenerationJobId) {
+        await context.supabase
+          .from("creator_generation_jobs")
+          .update({ provider_job_id: submitted.id, provider_response: { requestId: submitted.id, endpoint: submitted.endpoint } })
+          .eq("id", pendingGenerationJobId)
+      }
+      const finished = await waitForFalImage(submitted.id, submitted.endpoint)
+      const download = await fetch(finished.url)
       if (!download.ok) throw new FalProviderError(`Could not download fal.ai output (${download.status}).`)
       image = Buffer.from(await download.arrayBuffer())
-      contentType = generated.contentType
+      contentType = "image/png"
     } else if (provider === "google") {
       const generated = await generateGoogleImage({ model: input.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls })
       const download = await fetch(generated.url)

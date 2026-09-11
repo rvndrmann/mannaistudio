@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { retrieveOpenAIImage } from "@/lib/studio/openai"
+import { getFalImageTask } from "@/lib/studio/fal"
 import { refundableCredits } from "@/lib/byok/billing"
 import { refundGenerationCredits } from "@/lib/studio/credits"
 import { isStalledImageJob } from "@/lib/studio/stalled-jobs"
@@ -96,6 +97,36 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // bought — so the id is read back first, and only a job with no id, or one
     // OpenAI itself reports as finished-without-an-image, is written off.
     const responseId = typeof job.provider_job_id === "string" ? job.provider_job_id.trim() : ""
+
+    // A fal handle is a queue request id, not an OpenAI response id, and reading
+    // it back takes the endpoint it was submitted to — recorded beside it. Sent
+    // to OpenAI instead it would come back "not found" and write off a render
+    // fal had finished and charged for.
+    if (responseId && job.provider === "fal") {
+      const response = (job.provider_response || {}) as { endpoint?: string }
+      const poll = await getFalImageTask(responseId, response.endpoint || "fal-ai/flux/dev")
+      if (poll.status === "pending") {
+        return NextResponse.json({ ...job, status: "processing", providerStatus: "pending" })
+      }
+      if (poll.status === "completed" && poll.url) {
+        const download = await fetch(poll.url)
+        if (download.ok) {
+          const recovered = await attachRecoveredImage(context, projectId, job, Buffer.from(await download.arrayBuffer()))
+          return NextResponse.json(recovered)
+        }
+      }
+      const charged = refundableCredits(job as { billing_mode?: string | null; credits_used?: number | null; estimated_credits?: number | null })
+      const refund = charged > 0
+        ? await refundGenerationCredits(context.user.id, charged, `generation-job:${job.id}`, "Refund: image generation failed", job.id, context.supabase)
+        : { refunded: false, newBalance: 0 }
+      const falError = poll.error || "fal.ai finished without returning an image."
+      await context.supabase
+        .from("creator_generation_jobs")
+        .update({ status: "failed", error: falError, completed_at: new Date().toISOString() })
+        .eq("id", job.id)
+      return NextResponse.json({ ...job, status: "failed", error: falError, creditsRefunded: refund.refunded ? charged : 0, creditBalance: refund.newBalance })
+    }
+
     if (responseId) {
       const poll = await retrieveOpenAIImage(responseId, context.user.id)
       if (poll.status === "pending") {

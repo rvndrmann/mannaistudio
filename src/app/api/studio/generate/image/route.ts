@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { generateOpenAIImage, openAIImageModels, OpenAIProviderError } from "@/lib/studio/openai"
 import { createBytePlusAsset, generateBytePlusImage, BytePlusProviderError } from "@/lib/studio/byteplus"
-import { FalProviderError, generateFalImage } from "@/lib/studio/fal"
+import { FalProviderError, getFalImageTask, submitFalImage, waitForFalImage } from "@/lib/studio/fal"
 import { generateGoogleImage, GoogleProviderError } from "@/lib/studio/google"
 import { generationProvider, isImageGenerationModel, type ImageGenerationModelId } from "@/lib/studio/generation-models"
 import { byokProviderFor } from "@/lib/byok/providers"
@@ -66,6 +66,32 @@ const STALLED_IMAGE_JOB_MS = 6 * 60 * 1000
  * a job here, and one that has outlived any real generation is failed and
  * refunded.
  */
+/**
+ * Stores a render that outlived the request which asked for it.
+ *
+ * The same upload and completion the POST path performs, reached from the poll
+ * so a picture fal has already been paid for is kept rather than written off.
+ */
+async function saveQuickImage(context: QuickContext, job: Record<string, unknown>, image: Buffer) {
+  const storagePath = quickStoragePath({
+    userId: context.user.id,
+    provider: String(job.provider || "fal"),
+    kind: "image",
+    extension: "png",
+  })
+  const { error: uploadError } = await context.supabase.storage
+    .from(MEDIA_BUCKET)
+    .upload(storagePath, image, { contentType: "image/png", upsert: false })
+  if (uploadError) throw uploadError
+  const { data: updated } = await context.supabase
+    .from(QUICK_GENERATIONS_TABLE)
+    .update({ status: "completed", result_path: storagePath, completed_at: new Date().toISOString() })
+    .eq("id", job.id as string)
+    .select("*")
+    .single()
+  return updated ?? { ...job, status: "completed", result_path: storagePath }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const context = await requireAuthenticatedUser()
@@ -80,6 +106,22 @@ export async function GET(request: NextRequest) {
       .maybeSingle()
     if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 })
     if (job.status !== "processing") return NextResponse.json(job)
+
+    // A fal render that outlived its request is finished here rather than
+    // written off: the job holds the queue id, and fal has already been paid.
+    const falRequestId = job.provider === "fal" && typeof job.provider_job_id === "string" ? job.provider_job_id.trim() : ""
+    if (falRequestId) {
+      const response = (job.provider_response || {}) as { endpoint?: string }
+      const poll = await getFalImageTask(falRequestId, response.endpoint || "fal-ai/flux/dev")
+      if (poll.status === "pending") return NextResponse.json(job)
+      if (poll.status === "completed" && poll.url) {
+        const download = await fetch(poll.url)
+        if (download.ok) {
+          const saved = await saveQuickImage(context, job, Buffer.from(await download.arrayBuffer()))
+          return NextResponse.json(saved)
+        }
+      }
+    }
 
     const startedAt = Date.parse(job.started_at || job.created_at || "")
     const runningMs = Number.isNaN(startedAt) ? 0 : Date.now() - startedAt
@@ -211,10 +253,23 @@ export async function POST(request: NextRequest) {
         return { image, contentType: "image/png", byteplusAssetId: null, registeredAsset: null }
       }
       if (provider === "fal") {
-        const generated = await generateFalImage({ model: input.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls, quality: openAIImageQuality(input.quality, input.model), aspectRatio: input.aspectRatio })
-        const download = await fetch(generated.url)
+        // Queued, with the id written to the job before any waiting — the host
+        // stops a request at thirty seconds and a Sunburst edit runs longer,
+        // and fal bills for the render whether or not anyone is still listening.
+        const submitted = await submitFalImage({
+          model: input.model as ImageGenerationModelId,
+          prompt: resolvedPrompt,
+          referenceUrls,
+          quality: openAIImageQuality(input.quality, input.model),
+        })
+        await context.supabase
+          .from(QUICK_GENERATIONS_TABLE)
+          .update({ provider_job_id: submitted.id, provider_response: { requestId: submitted.id, endpoint: submitted.endpoint } })
+          .eq("id", job.id)
+        const finished = await waitForFalImage(submitted.id, submitted.endpoint)
+        const download = await fetch(finished.url)
         if (!download.ok) throw new FalProviderError(`Could not download fal.ai output (${download.status}).`)
-        return { image: Buffer.from(await download.arrayBuffer()), contentType: generated.contentType, byteplusAssetId: null, registeredAsset: null }
+        return { image: Buffer.from(await download.arrayBuffer()), contentType: "image/png", byteplusAssetId: null, registeredAsset: null }
       }
       if (provider === "google") {
         const generated = await generateGoogleImage({ model: input.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls })
