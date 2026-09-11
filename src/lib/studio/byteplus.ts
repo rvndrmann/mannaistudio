@@ -407,28 +407,39 @@ export async function findBytePlusAssetGroupId(name = sharedAssetGroupName): Pro
 }
 
 /**
- * Retries a registration the provider refused for going too fast.
+ * Retries a registration once, then explains the limit rather than hiding it.
  *
- * "Create asset rate limit exceeded" is a transient answer, and a shot with a
- * few unregistered faces registers them back to back — so the whole render was
- * failing on a condition that clears in seconds.
+ * The account's own quota call reports `write_qpm: 3` — three asset writes per
+ * minute on the entry tier. That is a per-minute window, not a burst: a shot
+ * with four unregistered faces exceeds it on the fourth call, and no backoff
+ * that fits inside a thirty-second request can clear it. An earlier version of
+ * this retried on a rising delay and simply spent the budget the submission
+ * itself needed, then failed with the provider's four words.
+ *
+ * So one short retry covers a genuine blip, and past that the caller is told
+ * what the limit is and what clears it — verifying references from the panel,
+ * a few at a time, rather than letting a render discover it.
  */
-async function withCreateAssetRetry<T>(work: () => Promise<T>, attempts = 3): Promise<T> {
-  let lastError: unknown
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+async function withCreateAssetRetry<T>(work: () => Promise<T>): Promise<T> {
+  try {
+    return await work()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : ""
+    if (!/rate limit/i.test(message)) throw error
+    await new Promise((resolve) => setTimeout(resolve, 3_000))
     try {
       return await work()
-    } catch (error) {
-      lastError = error
-      const message = error instanceof Error ? error.message : ""
-      if (!/rate limit/i.test(message) || attempt === attempts - 1) throw error
-      // Linear and short on purpose. A shot can need several registrations, and
-      // the host stops the request at thirty seconds — a generous backoff here
-      // would spend the budget the submission itself needs.
-      await new Promise((resolve) => setTimeout(resolve, 1_500 * (attempt + 1)))
+    } catch (retryError) {
+      const retryMessage = retryError instanceof Error ? retryError.message : ""
+      if (!/rate limit/i.test(retryMessage)) throw retryError
+      throw new BytePlusProviderError(
+        "BytePlus allows only three asset registrations per minute on this plan, and this render needed more. "
+        + "Verify the remaining references from the shot's verification panel — a few at a time, waiting a minute between "
+        + "batches — then generate again. Already-verified references do not count against it.",
+        429,
+      )
     }
   }
-  throw lastError
 }
 
 export async function createBytePlusAsset(input: { imageUrl: string; name?: string; groupId?: string; assetType?: "Image" | "Video" }) {
