@@ -224,9 +224,17 @@ export const tools = [
         throw new Error(`Unknown director tool "${tool}". Available: ${names.join(", ")}`)
       }
       const resolvedEpisode = await resolveEpisode(projectId, episodeId)
+      // The episode is set on the request envelope *and* offered to the tool's
+      // own arguments. Eight of the tools take an episodeId of their own, and
+      // the envelope only reaches submit_generation — so a caller who named no
+      // episode got "episodeId: Invalid input" from the tool's schema while the
+      // bridge had the id in hand the whole time. Schemas here are non-strict,
+      // so a tool that does not want one ignores it; anything the caller passed
+      // explicitly wins.
+      const toolInput = { episodeId: resolvedEpisode, ...(input || {}) }
       const result = await studioFetch(`/api/studio/projects/${projectId}/director/tools`, {
         method: "POST",
-        body: { tool, input: input || {}, episodeId: resolvedEpisode, idempotencyKey: idempotencyKey(tool) },
+        body: { tool, input: toolInput, episodeId: resolvedEpisode, idempotencyKey: idempotencyKey(tool) },
       })
       return text(result)
     },

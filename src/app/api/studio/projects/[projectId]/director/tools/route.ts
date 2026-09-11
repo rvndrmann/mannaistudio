@@ -12,7 +12,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const context = await requireProjectFromRequest(request, projectId, "director:tools")
     const flags = await fetchStudioFeatureFlags(context.supabase)
     if (!flags.ai_director_tools_enabled) return NextResponse.json({ error: "AI Director tools are not enabled" }, { status: 404 })
-    await enforceStudioRateLimit(context.supabase, "director_tools", 30, 60)
+    await enforceStudioRateLimit(context.supabase, "director_tools", 30, 60, context.user.id)
     return NextResponse.json(await requestDirectorTool(context, await request.json()))
   } catch (error) {
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid tool request", issues: error.flatten() }, { status: 400 })

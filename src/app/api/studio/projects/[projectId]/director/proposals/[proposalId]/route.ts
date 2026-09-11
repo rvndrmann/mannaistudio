@@ -21,7 +21,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const context = await requireProjectFromRequest(request, projectId, "director:proposals")
     const flags = await fetchStudioFeatureFlags(context.supabase)
     if (!flags.ai_director_tools_enabled) return NextResponse.json({ error: "AI Director tools are not enabled" }, { status: 404 })
-    await enforceStudioRateLimit(context.supabase, "director_approvals", 20, 60)
+    await enforceStudioRateLimit(context.supabase, "director_approvals", 20, 60, context.user.id)
     const { decision, overrides } = decisionSchema.parse(await request.json())
     return NextResponse.json(await decideDirectorProposal(context, proposalId, decision, overrides))
   } catch (error) {
