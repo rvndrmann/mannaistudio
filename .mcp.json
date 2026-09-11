@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "ai-director": {
+      "command": "node",
+      "args": ["mcp/server.mjs"],
+      "env": {}
+    }
+  }
+}

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
-import { requireAuthenticatedProject, studioErrorStatus } from "@/lib/studio/server-context"
+import { studioErrorStatus } from "@/lib/studio/server-context"
+import { requireProjectFromRequest } from "@/lib/studio/external-auth"
 
 const allowedTypes = [
   "image/png",
@@ -40,7 +41,7 @@ function extensionFor(file: File) {
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   try {
     const { projectId } = await params
-    const context = await requireAuthenticatedProject(projectId)
+    const context = await requireProjectFromRequest(request, projectId, "director:uploads")
     const form = await request.formData()
     const episodeId = String(form.get("episodeId") || "")
     const sessionId = String(form.get("sessionId") || "")

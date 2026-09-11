@@ -149,6 +149,22 @@ A "person" is `coalesce(profile_id, visitor_id)` throughout, because the opening
 episodes play with no account and counting only accounts would report that
 nobody watches them.
 
+## MCP bridge (control the studio from an MCP client)
+
+`mcp/server.mjs` — a dependency-free stdio MCP server registered in `.mcp.json`.
+It speaks the external API as a real user, so RLS, credits, BYOK routing and the
+approval gate all behave exactly as they do in the browser.
+
+- **Auth:** `aih_` tokens in `creator_external_access_tokens`, minted by
+  `scripts/mint-studio-token.mjs <email>`, stored in `.env.local` as
+  `STUDIO_ACCESS_TOKEN`. Scopes: `director:chat|tools|uploads|proposals`,
+  `projects:read`. A token reaches only projects its minter **owns**.
+- **Target:** `STUDIO_BASE_URL`, default `http://localhost:3000`.
+- **Externally reachable routes** (via `requireProjectFromRequest`): director
+  chat, tools, uploads, proposals, the project GET, and `…/media?path=` which
+  signs one stored file after checking it sits under the caller's own prefix.
+- Tools and setup: `mcp/README.md`.
+
 ## What Still Needs Work
 - `challenge_submissions` table — Not yet created (only mock data exists)
 - Course enrollment payment flow — PayU routes exist but untested end-to-end

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { fetchStudioFeatureFlags } from "@/lib/studio/feature-flags"
-import { requireAuthenticatedProject, studioErrorStatus } from "@/lib/studio/server-context"
+import { studioErrorStatus } from "@/lib/studio/server-context"
+import { requireProjectFromRequest } from "@/lib/studio/external-auth"
 import { decideDirectorProposal } from "@/lib/studio/tool-service"
 import { enforceStudioRateLimit, StudioRateLimitError } from "@/lib/studio/rate-limit"
 import { describeError } from "@/lib/studio/errors"
@@ -17,7 +18,7 @@ const decisionSchema = z.object({
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string; proposalId: string }> }) {
   try {
     const { projectId, proposalId } = await params
-    const context = await requireAuthenticatedProject(projectId)
+    const context = await requireProjectFromRequest(request, projectId, "director:proposals")
     const flags = await fetchStudioFeatureFlags(context.supabase)
     if (!flags.ai_director_tools_enabled) return NextResponse.json({ error: "AI Director tools are not enabled" }, { status: 404 })
     await enforceStudioRateLimit(context.supabase, "director_approvals", 20, 60)

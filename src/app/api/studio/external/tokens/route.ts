@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createExternalToken, hashExternalToken, tokenDisplayPrefix } from "@/lib/studio/external-auth"
 
-const defaultScopes = ["director:chat", "director:tools", "projects:read"]
+// Every scope an out-of-browser client can hold. Uploads and proposals are
+// here because a client that can run the director's tools but can neither send
+// it a picture nor approve what it proposes cannot finish a single costly job.
+const defaultScopes = ["director:chat", "director:tools", "director:uploads", "director:proposals", "projects:read"]
 
 async function currentUser() {
   const supabase = await createClient()

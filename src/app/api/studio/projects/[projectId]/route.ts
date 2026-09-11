@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { ensureShotLocations } from "@/lib/studio/shot-location"
 import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/service"
+import { requireProjectForUser, validateExternalRequest } from "@/lib/studio/external-auth"
 import { fetchStudioFeatureFlags } from "@/lib/studio/feature-flags"
 import { fetchDirectorWorkflows } from "@/lib/studio/workflows"
 import { failAbandonedRuns } from "@/lib/studio/workflow-runs"
@@ -49,7 +50,16 @@ async function assertProjectAccess(supabase: any, projectId: string, level: Proj
   if (data !== true) throw new Error("Project not found")
 }
 
-async function ownedProject(projectId: string, level: ProjectAccess = "read") {
+async function ownedProject(projectId: string, level: ProjectAccess = "read", request?: Request) {
+  // A client with no cookies — the MCP bridge, a CLI — presents a minted token
+  // instead. It is deliberately held to ownership rather than to the sharing
+  // rules below: a token is a key left in a config file, so it opens only the
+  // projects of the user who minted it, never one merely shared with them.
+  const external = request ? await validateExternalRequest(request, "projects:read") : null
+  if (external) {
+    const { project } = await requireProjectForUser(external.supabase, external.user, projectId)
+    return { supabase: external.supabase, user: external.user, project, db: external.supabase }
+  }
   const supabase = await createClient(); const { data: { user } } = await supabase.auth.getUser(); if (!user) throw new Error("Unauthorized")
   await assertProjectAccess(supabase, projectId, level)
   const { data: { session } } = await supabase.auth.getSession()
@@ -62,7 +72,7 @@ async function ownedProject(projectId: string, level: ProjectAccess = "read") {
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
-  try { const { projectId } = await params; const { supabase, user, project } = await ownedProject(projectId)
+  try { const { projectId } = await params; const { supabase, user, project } = await ownedProject(projectId, "read", request)
     const { data: episodes } = await supabase.from("creator_episodes").select("*").eq("project_id", projectId).order("order_index")
     const requestedEpisodeId = request.nextUrl.searchParams.get("episodeId"); const activeEpisode = episodes?.find((episode) => episode.id === requestedEpisodeId) || episodes?.[0]; if (!activeEpisode) return NextResponse.json({ error: "Project has no episodes" }, { status: 400 })
     const [features, directorWorkflows] = await Promise.all([fetchStudioFeatureFlags(supabase), fetchDirectorWorkflows(supabase)])
