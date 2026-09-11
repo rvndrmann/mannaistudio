@@ -177,9 +177,19 @@ into `executeGenerationJobs` (awaitable, for the poll) and the background form
 
 That fix then failed in its own way, observed live: claimed at 19:03:35, killed
 between marking the row and reaching the provider, and because the recovery
-looked only at `approved` it never came back for its own abandoned claim. A claim
-quiet for longer than any real submission takes is now claimable again,
-conditioned on the exact `started_at` that was read.
+looked only at `approved` it never came back for its own abandoned claim. Making
+a quiet claim claimable again fixed that — and introduced a worse bug, which is
+the one worth remembering.
+
+**A recovery that renews its own deadline never expires.** Each re-claim wrote a
+fresh `started_at`, and `isStalledVideoJob` measures a job with no provider id
+from exactly that column. So every poll pushed the deadline out and the shot span
+for ever: the submission had failed, and nothing could ever say so. A cutoff has
+to be read from a clock nothing renews, which is why `submissionRecoveryExpired`
+takes it from `approved_at`. The claim itself now matches the whole snapshot —
+status, previous `started_at`, and a null provider handle — so a stale poll can
+neither steal a renewed claim nor overwrite a task that has just been submitted,
+and both the poll and the background worker must win it before submitting.
 
 ## Follow-up: submission recovery skipped its own jobs
 
@@ -210,14 +220,28 @@ was rebuilt. Production deployment and a live Scene 3 render remain unverified.
 
 ## Not resolved
 
-**Scene 3 of episode `1e700512` has still never rendered.** Six attempts, every
-one refunded, nothing produced. The blockers ahead of it are cleared — all five
-references are registered and Active, verified directly against BytePlus — but
-the last two attempts died mid-submit with no error recorded and no provider id,
-and **the cause of that is unknown.** No CreateAsset error was logged and the
-references were already registered, so the usual suspects do not fit. The next
-step is the Netlify function logs for that request; guessing further without them
-is not worth it.
+**Scene 3 of episode `1e700512` did render, on the seventh attempt.** Provider
+task `cgt-20260912032630-akhxk`, succeeded, saved to the shot, 696 credits
+charged and not refunded. What made it work was having nothing left to register
+inside the request: all five references resolved to Active asset ids, so the
+submission was a submission and nothing else. It took the provider **five
+minutes**, not the thirty to ninety seconds the panel promises — well past where
+the earlier attempts were being written off.
+
+**Why the two attempts before it died mid-submit is still unknown.** No
+CreateAsset error was logged and the references were already registered, so the
+usual suspects do not fit. It may simply have been the two unregistered faces in
+that job registering inline; it may not. The evidence that would settle it is the
+host's function logs for those requests, which were never pulled. Worth knowing
+that the recovery path now ends in a stated reason rather than a spinner, so the
+next occurrence is at least legible.
+
+**Quick video generation — the "video section" — could not be exercised.** An
+attempt produced no row in `creator_quick_generations` at all, so it fails before
+the insert: at the route boundary or in the client, not in the provider call. The
+newest rows there predate the session and two of them failed with *"Google AI
+Studio request failed: Unknown parameter 'context'"*, which is a real bug in the
+Google video path but not this one.
 
 **The Director's background worker still holds the connection** for fal images.
 It runs on the Edge Function with a 150s budget so it has room, but it is the
