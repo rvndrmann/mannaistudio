@@ -11,7 +11,7 @@
     "test": "vitest run",
     "edge:build": "node scripts/build-edge-bundles.mjs",
     "director:cli": "node scripts/ai-director-cli.mjs",
-    "director:mcp": "node scripts/ai-director-mcp-server.mjs"
+    "director:mcp": "node mcp/server.mjs"
   },
   "dependencies": {
     "@fal-ai/client": "^1.10.1",

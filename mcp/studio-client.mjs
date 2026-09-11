@@ -30,8 +30,15 @@ function envFromLocalFile() {
 }
 
 const fileEnv = envFromLocalFile()
-const BASE_URL = (process.env.STUDIO_BASE_URL || fileEnv.STUDIO_BASE_URL || "http://localhost:3000").replace(/\/+$/, "")
-const TOKEN = process.env.STUDIO_ACCESS_TOKEN || fileEnv.STUDIO_ACCESS_TOKEN || ""
+// AI_DIRECTOR_* are the names the CLI already used; both are accepted so one
+// token in one place serves the CLI and the bridge.
+const BASE_URL = (
+  process.env.STUDIO_BASE_URL || process.env.AI_DIRECTOR_BASE_URL
+  || fileEnv.STUDIO_BASE_URL || fileEnv.AI_DIRECTOR_BASE_URL
+  || "http://localhost:3000"
+).replace(/\/+$/, "")
+const TOKEN = process.env.STUDIO_ACCESS_TOKEN || process.env.AI_DIRECTOR_TOKEN
+  || fileEnv.STUDIO_ACCESS_TOKEN || fileEnv.AI_DIRECTOR_TOKEN || ""
 
 export function requireToken() {
   if (!TOKEN) {
