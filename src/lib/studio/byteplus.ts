@@ -363,6 +363,71 @@ export async function createBytePlusAssetGroup(name = "portrait_group", descript
   return groupId
 }
 
+/**
+ * The studio's existing asset group on this account, if it already has one.
+ *
+ * `cachedAssetGroupId` is process memory, and on a serverless host the process
+ * rarely outlives the request — so "one group for the whole studio" created a
+ * fresh group on almost every cold start. The account reached twenty-two groups
+ * of the same name, each holding a handful of the fifty assets the plan allows,
+ * and the failure surfaced as a rate limit rather than as what it was.
+ *
+ * Asking the account what exists is the only answer that survives a restart
+ * without configuration. The oldest match wins, so every process picks the same
+ * one rather than racing to a different group each.
+ */
+export async function findBytePlusAssetGroupId(name = sharedAssetGroupName): Promise<string | undefined> {
+  const { ak, sk } = assetSigningKeys()
+  if (!ak || !sk) return undefined
+
+  const query = { Action: "ListAssetGroups", Version: "2024-01-01" }
+  // GroupType is required by the API; the studio only ever creates AIGC groups.
+  // A page size is asked for explicitly because the default is ten: with more
+  // groups than that, "the oldest match" would depend on which page came back
+  // and different processes would settle on different groups.
+  const body = JSON.stringify({ Filter: { GroupType: "AIGC" }, PageNumber: 1, PageSize: 100 })
+  const headers = signBytePlusRequest("POST", query, body, ak, sk)
+
+  try {
+    const res = await fetch(`https://${headers.Host}/?Action=ListAssetGroups&Version=2024-01-01`, { method: "POST", headers, body })
+    const json = (await res.json().catch(() => ({}))) as {
+      Result?: { Items?: Array<{ Id?: string; Name?: string; CreateTime?: string }> }
+      ResponseMetadata?: { Error?: { Message?: string } }
+    }
+    if (!res.ok || json.ResponseMetadata?.Error) return undefined
+    const matches = (json.Result?.Items || [])
+      .filter((group) => group.Name === name && group.Id)
+      .sort((a, b) => String(a.CreateTime || "").localeCompare(String(b.CreateTime || "")))
+    return matches[0]?.Id
+  } catch {
+    // A lookup that fails must not stop a render: the caller falls through to
+    // creating a group, which is what it did before this existed.
+    return undefined
+  }
+}
+
+/**
+ * Retries a registration the provider refused for going too fast.
+ *
+ * "Create asset rate limit exceeded" is a transient answer, and a shot with a
+ * few unregistered faces registers them back to back — so the whole render was
+ * failing on a condition that clears in seconds.
+ */
+async function withCreateAssetRetry<T>(work: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastError: unknown
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await work()
+    } catch (error) {
+      lastError = error
+      const message = error instanceof Error ? error.message : ""
+      if (!/rate limit/i.test(message) || attempt === attempts - 1) throw error
+      await new Promise((resolve) => setTimeout(resolve, 2_000 * (attempt + 1) ** 2))
+    }
+  }
+  throw lastError
+}
+
 export async function createBytePlusAsset(input: { imageUrl: string; name?: string; groupId?: string; assetType?: "Image" | "Video" }) {
   const { ak, sk } = assetSigningKeys()
 
@@ -377,6 +442,12 @@ export async function createBytePlusAsset(input: { imageUrl: string; name?: stri
   // Swallowing a failed group creation here only moved the error one step later
   // and reported it as a missing parameter, hiding why the group was never made.
   let groupId = input.groupId || assetGroupIdFor()
+  // Reuse before create. Without this the studio made a new group per cold
+  // start and spent the account's asset allowance on duplicates of itself.
+  if (!groupId) {
+    groupId = await findBytePlusAssetGroupId()
+    if (groupId) cachedAssetGroupId = groupId
+  }
   if (!groupId) {
     try {
       // One group for the whole studio. Naming it after each asset created a
@@ -408,19 +479,22 @@ export async function createBytePlusAsset(input: { imageUrl: string; name?: stri
     AssetType: assetType,
   })
 
-  const headers = signBytePlusRequest("POST", query, body, ak, sk)
-  const res = await fetch(`https://${headers.Host}/?Action=CreateAsset&Version=2024-01-01`, {
-    method: "POST",
-    headers,
-    body,
+  // Signed inside the retry: the signature carries a timestamp, and replaying
+  // an old one after a backoff is rejected as expired rather than retried.
+  const assetId = await withCreateAssetRetry(async () => {
+    const headers = signBytePlusRequest("POST", query, body, ak, sk)
+    const res = await fetch(`https://${headers.Host}/?Action=CreateAsset&Version=2024-01-01`, {
+      method: "POST",
+      headers,
+      body,
+    })
+
+    const json = (await res.json().catch(() => ({}))) as { Result?: { Id?: string }; ResponseMetadata?: { Error?: { Message?: string } } }
+    if (!res.ok || json.ResponseMetadata?.Error) {
+      throw new BytePlusProviderError(`CreateAsset failed: ${json.ResponseMetadata?.Error?.Message || res.statusText}`)
+    }
+    return json.Result?.Id
   })
-
-  const json = (await res.json().catch(() => ({}))) as { Result?: { Id?: string }; ResponseMetadata?: { Error?: { Message?: string } } }
-  if (!res.ok || json.ResponseMetadata?.Error) {
-    throw new BytePlusProviderError(`CreateAsset failed: ${json.ResponseMetadata?.Error?.Message || res.statusText}`)
-  }
-
-  const assetId = json.Result?.Id
   if (!assetId) throw new BytePlusProviderError("CreateAsset did not return an Asset ID.")
   // The group is returned so the caller can remember it. Only the caller has a
   // database, and a group id that outlives nothing but this process is what
