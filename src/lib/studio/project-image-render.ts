@@ -470,6 +470,7 @@ export async function renderProjectImage(
         prompt: resolvedPrompt,
         referenceUrls,
         quality: openAIImageQuality(quality, input.model),
+        aspectRatio: input.aspectRatio,
       })
       if (pendingGenerationJobId) {
         await context.supabase

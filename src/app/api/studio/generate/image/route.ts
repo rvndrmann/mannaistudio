@@ -261,6 +261,7 @@ export async function POST(request: NextRequest) {
           prompt: resolvedPrompt,
           referenceUrls,
           quality: openAIImageQuality(input.quality, input.model),
+          aspectRatio: input.aspectRatio,
         })
         await context.supabase
           .from(QUICK_GENERATIONS_TABLE)

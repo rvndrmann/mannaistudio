@@ -21,13 +21,33 @@ function getFalKey() {
 
 /** Sunburst Edit takes up to sixteen reference images; the Flux models take one. */
 const SUNBURST_EDIT_ENDPOINT = "openai/gpt-image-2.5/sunburst/edit"
+const SUNBURST_TEXT_TO_IMAGE_ENDPOINT = "openai/gpt-image-2.5/sunburst/text-to-image"
 const SUNBURST_EDIT_MAX_REFERENCES = 16
 
 export function falImageEndpoint(model: ImageGenerationModelId): string {
   if (model === "fal-gpt-image-2-5-sunburst-edit") return SUNBURST_EDIT_ENDPOINT
+  if (model === "fal-gpt-image-2-5-sunburst") return SUNBURST_TEXT_TO_IMAGE_ENDPOINT
   if (model === "fal-flux-3") return "fal-ai/flux-pro/v1.1"
   if (model === "fal-flux-realism") return "fal-ai/flux-realism"
   return "fal-ai/flux/dev"
+}
+
+/**
+ * The shot's aspect ratio as one of the seven canvases Sunburst accepts.
+ *
+ * The edit endpoint reads its canvas off the picture it is given; text-to-image
+ * has nothing to read, so an unmapped ratio would render every vertical drama
+ * as a square and charge full price for it.
+ */
+function falImageSize(aspectRatio?: string): string {
+  switch ((aspectRatio || "").trim()) {
+    case "9:16": return "portrait_16_9"
+    case "3:4": return "portrait_4_3"
+    case "16:9":
+    case "21:9": return "landscape_16_9"
+    case "4:3": return "landscape_4_3"
+    default: return "square_hd"
+  }
 }
 
 /**
@@ -40,9 +60,21 @@ export function falImageEndpoint(model: ImageGenerationModelId): string {
  * silently reframe every edit to 1:1.
  */
 function falImagePayload(
-  input: { prompt: string; referenceUrls?: string[]; quality?: OpenAIImageQuality },
+  input: { prompt: string; referenceUrls?: string[]; quality?: OpenAIImageQuality; aspectRatio?: string },
   endpoint: string,
 ): Record<string, unknown> {
+  if (endpoint === SUNBURST_TEXT_TO_IMAGE_ENDPOINT) {
+    // The same model and the same tiers as the edit twin, drawing from nothing
+    // but the prompt. References are ignored rather than refused: this endpoint
+    // has no input to edit, and silently sending them would change nothing.
+    return {
+      prompt: input.prompt,
+      image_size: falImageSize(input.aspectRatio),
+      quality: input.quality || "high",
+      num_images: 1,
+      output_format: "png",
+    }
+  }
   if (endpoint !== SUNBURST_EDIT_ENDPOINT) {
     return {
       prompt: input.prompt,
@@ -115,6 +147,7 @@ export async function submitFalImage(input: {
   prompt: string
   referenceUrls?: string[]
   quality?: OpenAIImageQuality
+  aspectRatio?: string
 }) {
   getFalKey()
   fal.config({ credentials: getFalKey() })
