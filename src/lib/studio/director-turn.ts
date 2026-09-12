@@ -6,7 +6,7 @@ import { normalizeDirectorGlobalInstructions } from "./instructions"
 import { loadProjectBrandContext } from "./brand-server"
 import { runDirectorAgent } from "./director-agent"
 import { collectDirectorVisionAttachments } from "./director-vision"
-import { buildProjectStateSummary, loadProductionSnapshot } from "./project-state-summary"
+import { buildProjectStateSummary, buildProjectStateSummaryFrom, loadProductionSnapshot } from "./project-state-summary"
 import { autopilotInstructionBlock, readAutopilotSettings } from "./autopilot"
 import { computePipelineStage } from "./pipeline"
 import { buildProductionProgress, levelForXp, stagesReached } from "./production-progress"
@@ -178,6 +178,9 @@ const { data: userMessage, error: userError } = await context.supabase.from("cre
 if (userError) throw userError
 
 const buildAgentInput = async () => {
+  // Share one fresh snapshot between routing and context within this turn.
+  const snapshot = loadProductionSnapshot(context.supabase, projectId, episode.id, sessionId)
+    .catch((error) => { console.warn("Could not read production state:", error); return null })
   // Independent reads, so they go together. Run one after another these
   // were most of the delay between sending a message and the first token,
   // and none of them needs anything the others return.
@@ -193,12 +196,11 @@ const buildAgentInput = async () => {
       episodeId: episode.id,
       mentionedEntities: (mentionedEntities || []) as MentionableEntity[],
     }),
-    buildProjectStateBlock(context, episode.id, sessionId),
+    buildProjectStateBlock(context, episode.id, sessionId, snapshot.then((value) =>
+      value ? buildProjectStateSummaryFrom(value) : "=== LIVE PROJECT PRODUCTION STATE: Unavailable ===")),
     // Which specialist opens the turn, read from what the workspace holds
     // rather than from the words in the message.
-    loadProductionSnapshot(context.supabase, projectId, episode.id, sessionId)
-      .then((snapshot) => computePipelineStage(snapshot).key)
-      .catch(() => ""),
+    snapshot.then((value) => value ? computePipelineStage(value).key : ""),
   ])
   const globalInstructions = normalizeDirectorGlobalInstructions(instructionSettings.data?.value)
   return {
@@ -486,13 +488,13 @@ export async function progressBlock(
  * This is not a guess about what the user wants. It is what the database says
  * is there, which is what the model needs in order to decide for itself.
  */
-export async function buildProjectStateBlock(context: AuthenticatedProjectContext, episodeId: string, sessionId: string) {
+export async function buildProjectStateBlock(context: AuthenticatedProjectContext, episodeId: string, sessionId: string, sharedSummary?: Promise<string>) {
   // Four independent reads. Sequentially they were four round trips the user
   // spent watching a spinner before the model had even been called.
   const [workflows, uploadContext, projectState, episodeContext] = await Promise.all([
     fetchDirectorWorkflows(context.supabase),
     recentUploadContext(context, sessionId),
-    buildProjectStateSummary(context.supabase, context.project.id, episodeId),
+    sharedSummary ?? buildProjectStateSummary(context.supabase, context.project.id, episodeId, sessionId),
     // The other episodes and where each one's footage ends. Without it the agent
     // knows only the episode it is standing in, so a request to carry a shot over
     // from an earlier one had no id to look anything up with.

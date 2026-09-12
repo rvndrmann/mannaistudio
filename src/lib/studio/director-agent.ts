@@ -183,6 +183,8 @@ export function toolsForAgent(active: DirectorAgentKey | null): DirectorToolName
   const all = Object.keys(directorTools) as DirectorToolName[]
   if (!active) return all
   return all.filter((name) => {
+    // Small revisions belong to the current conversation, regardless of stage.
+    if (name === "update_shot" || name === "update_asset") return true
     if (directorTools[name].risk === "read") return true
     const owner = agentForTool(name)
     return !owner || owner === active
@@ -306,6 +308,7 @@ export async function runDirectorAgent(input: {
     `Current episode ID: ${input.episodeId || "No episode selected"}`,
     `Current project ID: ${input.context.project.id}`,
     input.projectState || "",
+    "FAST FOLLOW-UP RULES (override stage-start checklists for targeted edits): Answer the latest request only. For a change to an existing shot or asset, use its saved prompt/description and the requested change; do not restart script analysis, master-prompt extraction, asset creation, validation, or generation. Every specialist can call update_shot and update_asset directly: do not hand off or consult another agent just to revise one existing prompt. Read only the target record if its current full text and ID are missing; batch independent necessary reads in one turn. Read upstream documents only when a specific missing detail is necessary to the requested edit. Preserve unrelated text, settings, shots, and assets. An image prompt edit uses patch.prompt; a video prompt edit uses patch.video_prompt. Missing reference art does not block a text edit. Once the requested proposals exist, give a short confirmation and stop; do not inspect or re-propose an unapproved change. Do not claim it is saved until approved. For a question answer directly from the supplied context whenever sufficient.",
   ].filter(Boolean).join("\n\n")
 
   for (let step = 0; step < runtimeSettings.maxToolSteps; step += 1) {
@@ -314,7 +317,9 @@ export async function runDirectorAgent(input: {
       const fullInstructions = instructionsFor()
       const toolDefs = [
         ...directorFunctionDefinitions(toolsForAgent(activeAgent)),
-        ...controlToolDefinitions.filter((tool) => tool.name !== HAND_OFF_TOOL || handoffs < runtimeSettings.maxHandoffs),
+        ...controlToolDefinitions.filter((tool) =>
+          (tool.name !== HAND_OFF_TOOL || handoffs < runtimeSettings.maxHandoffs) &&
+          (tool.name !== ASK_AGENT_TOOL || consultations < runtimeSettings.maxConsultations)),
       ]
 
       turn = isAnthropicProtocolModel(input.model)
@@ -524,6 +529,7 @@ export async function runDirectorAgent(input: {
               `Current episode ID: ${input.episodeId || "No episode selected"}`,
               `Current project ID: ${input.context.project.id}`,
               input.projectState || "",
+    "FAST FOLLOW-UP RULES (override stage-start checklists for targeted edits): Answer the latest request only. For a change to an existing shot or asset, use its saved prompt/description and the requested change; do not restart script analysis, master-prompt extraction, asset creation, validation, or generation. Every specialist can call update_shot and update_asset directly: do not hand off or consult another agent just to revise one existing prompt. Read only the target record if its current full text and ID are missing; batch independent necessary reads in one turn. Read upstream documents only when a specific missing detail is necessary to the requested edit. Preserve unrelated text, settings, shots, and assets. An image prompt edit uses patch.prompt; a video prompt edit uses patch.video_prompt. Missing reference art does not block a text edit. Once the requested proposals exist, give a short confirmation and stop; do not inspect or re-propose an unapproved change. Do not claim it is saved until approved. For a question answer directly from the supplied context whenever sufficient.",
             ].filter(Boolean).join("\n\n"),
             items: [{ role: "user", content: [question, extra].filter(Boolean).join("\n\n") }],
             tools: directorFunctionDefinitions(readOnlyToolNames),

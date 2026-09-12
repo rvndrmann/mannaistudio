@@ -158,3 +158,21 @@ describe("what a specialist may refuse for", () => {
     expect(instructions).toContain("missing one is a reason to recommend building it, never a reason to refuse")
   })
 })
+
+
+describe("targeted revisions do not require a specialist handoff", () => {
+  for (const agent of directorAgentKeys) {
+    it(`${agent} can revise a saved shot or asset directly`, () => {
+      const tools = toolsForAgent(agent)
+      expect(tools).toContain("list_storyboard_shots")
+      expect(tools).toContain("update_shot")
+      expect(tools).toContain("list_production_entities")
+      expect(tools).toContain("update_asset")
+    })
+  }
+
+  it("keeps batch production tools with their specialists", () => {
+    expect(toolsForAgent("script")).not.toContain("create_storyboard_batch")
+    expect(toolsForAgent("script")).not.toContain("create_production_entities_batch")
+  })
+})
