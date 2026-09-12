@@ -149,6 +149,43 @@ A "person" is `coalesce(profile_id, visitor_id)` throughout, because the opening
 episodes play with no account and counting only accounts would report that
 nobody watches them.
 
+## Managed production (Hire Our Creative Team)
+
+Clients hire the team to make UGC, direct-response and cinematic ads instead of
+operating the studio themselves. Migration
+`20260913120000_managed_production.sql`; full write-up in
+[docs/MANAGED_PRODUCTION.md](docs/MANAGED_PRODUCTION.md).
+
+| Table | Holds |
+|-------|-------|
+| `managed_projects` | the order: service, package, brief (jsonb), status, price, `brand_id`, `studio_project_id` |
+| `managed_deliverables` | one ad per row, with its own status |
+| `managed_deliverable_versions` | V1, V2, FINAL — never overwritten |
+| `managed_messages` | the project conversation (`kind`: `chat` or `delivery`) |
+| `managed_revision_comments` | timestamped feedback, pinned to its version |
+
+- **Public:** `/hire-us`, `/hire-us/brief`. **Client:** `/hire-us/projects[/id]`.
+  **Admin:** `/admin?tab=managed`. `/hire-us` is not admin-only — unlike the
+  studio, this is sold to strangers.
+- **Money:** Razorpay, same rule as the season pass — the browser never sends a
+  price. `/api/managed/checkout` prices the package itself and carries the
+  project id in the order notes; verification reads entitlement back from
+  Razorpay, never from the body.
+- **Writes:** reads are RLS; everything carrying value goes through a
+  `SECURITY DEFINER` function. `create_managed_project` and
+  `mark_managed_project_paid` are service-role only, with an `auth.role()` check
+  in the body as well as the revoked grant.
+- **The Studio bridge:** `openStudioProjectForManaged` opens a `creator_projects`
+  row **owned by the producing admin**, seeded with the brief mapped onto
+  `creative_brief` and the client's product art imported as `creator_entities`.
+  The client is never made a member of it.
+- **Internal vs client files:** one bucket, two prefixes. The studio writes
+  `{owner_id}/{studio_project_id}/…`; the client can only read
+  `managed/{project_id}/…`. Publishing **copies** the bytes across, so an
+  unpublished take has no path a client could be handed.
+- **Pausing:** `site_features.hireUs` hides the nav entry *and* closes the
+  checkout route. Running projects stay deliverable.
+
 ## MCP bridge (control the studio from an MCP client)
 
 `mcp/server.mjs` — a dependency-free stdio MCP server registered in `.mcp.json`.
@@ -166,6 +203,10 @@ approval gate all behave exactly as they do in the browser.
 - Tools and setup: `mcp/README.md`.
 
 ## What Still Needs Work
+- Managed production: no monthly subscription plans, no "Download All", no
+  automatic competitor research — see the last section of
+  [docs/MANAGED_PRODUCTION.md](docs/MANAGED_PRODUCTION.md) for why the schema
+  leaves room for each.
 - `challenge_submissions` table — Not yet created (only mock data exists)
 - Course enrollment payment flow — PayU routes exist but untested end-to-end
 - RLS policies for `enrollments` — users read/insert own, admin read all

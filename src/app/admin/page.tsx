@@ -10,7 +10,7 @@ import {
     Save, X, Download, FileText, Video, Trophy,
     Inbox, Mail, Clock, DollarSign, Loader2, Phone,
     ChevronLeft, ChevronRight, Calendar, Pause, PauseCircle, PlayCircle,
-    Image as ImageIcon, RefreshCw, FolderKanban, Clapperboard, BarChart3
+    Image as ImageIcon, RefreshCw, FolderKanban, Clapperboard, BarChart3, Briefcase
 } from "lucide-react"
 import { courses, adminShowcase, challenges } from "@/lib/data"
 import { useEffect, useState } from "react"
@@ -41,6 +41,7 @@ import { defaultVoiceInstructions, fetchVoiceInstructions } from "@/lib/studio/v
 import BlogManager from "@/components/admin/BlogManager"
 import OriginalsManager from "@/components/admin/OriginalsManager"
 import ViewerAnalytics from "@/components/admin/ViewerAnalytics"
+import ManagedProduction from "@/components/admin/ManagedProduction"
 import { defaultHomeVariant, fetchHomeVariant, type HomeVariant } from "@/lib/home-variant"
 
 type EnrolledStudent = {
@@ -1340,6 +1341,15 @@ function AdminDashboardContent() {
                                 <Clapperboard className="w-4 h-4" /> Originals
                             </button>
                             <button
+                                onClick={() => setActiveTab("managed")}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
+                                    activeTab === "managed" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                )}
+                            >
+                                <Briefcase className="w-4 h-4" /> Managed Production
+                            </button>
+                            <button
                                 onClick={() => setActiveTab("audience")}
                                 className={cn(
                                     "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
@@ -2018,6 +2028,18 @@ function AdminDashboardContent() {
                                 className="space-y-8"
                             >
                                 <OriginalsManager />
+                            </motion.div>
+                        )}
+
+                        {activeTab === "managed" && (
+                            <motion.div
+                                key="managed"
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                className="space-y-8"
+                            >
+                                <ManagedProduction />
                             </motion.div>
                         )}
 
@@ -3121,6 +3143,7 @@ function AdminDashboardContent() {
                                 <div className="glass-card p-6 rounded-2xl border-white/10 space-y-4 max-w-4xl">
                                     {[
                                         { key: "originals" as const, label: "Originals", path: "/originals", desc: "Episodic series watched with credits" },
+                                        { key: "hireUs" as const, label: "Hire Our Creative Team", path: "/hire-us", desc: "Managed production: clients hire the team to make UGC, direct response and cinematic ads. Pausing hides it from the navigation and stops new orders; projects already running stay open and deliverable." },
                                         { key: "mcp" as const, label: "MCP & CLI", path: "/studio/external", desc: "External AI Client Integration Setup" },
                                         { key: "byok" as const, label: "Bring your own API keys", path: "/studio/integrations", desc: "Customers connecting their own OpenAI / Google / BytePlus / fal.ai keys. Pausing also removes it from pricing, the billing page and plan features. Stored keys are kept." },
                                         { key: "calendar" as const, label: "Calendar", path: "/calendar", desc: "Content Calendar & Post Scheduler" },

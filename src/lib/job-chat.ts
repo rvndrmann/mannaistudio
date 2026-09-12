@@ -7,6 +7,8 @@ export type Notification = {
     title: string
     body: string
     jobId: string
+    /** Set instead of jobId on anything to do with a managed production. */
+    managedProjectId: string
     read: boolean
     createdAt: string
 }
@@ -110,6 +112,7 @@ function mapNotification(row: any): Notification {
         title: row.title || "",
         body: row.body || "",
         jobId: row.job_id || "",
+        managedProjectId: row.managed_project_id || "",
         read: Boolean(row.read),
         createdAt: row.created_at,
     }
