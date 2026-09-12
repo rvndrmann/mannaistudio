@@ -102,6 +102,7 @@ import ConvertToEnterpriseDialog from "@/components/enterprise/ConvertToEnterpri
 import ProjectActivityDialog from "@/components/studio/ProjectActivityDialog";
 import DrawToEditModal from "@/components/studio/DrawToEditModal";
 import { entityPrimaryReference, findMentionedEntityIds, findShotCastEntityIds } from "@/lib/studio/entity-mentions";
+import { characterSheetPrompt, CHARACTER_SHEET_ASPECT_RATIO } from "@/lib/studio/character-sheet";
 import { inheritedShotLocations } from "@/lib/studio/shot-location";
 import { isSeedanceRejectedVideo, parseSeedanceRejectedReference } from "@/lib/studio/seedance-reference-error";
 
@@ -3272,6 +3273,8 @@ function AssetWorkspace({
   }, [activeImagePath]);
 
   const activeAttempt = selectedAttemptId ? assetAttempts.find((attempt) => attempt.id === selectedAttemptId) || null : null;
+  const generatingAttempts = assetAttempts.filter((attempt) => attempt.status === "generating");
+  const failedAttempts = assetAttempts.filter((attempt) => attempt.status === "failed");
   const activeImage = activeAttempt ? null : libraryImages[selected] || null;
   useEffect(() => {
     if (!activeAttempt) return;
@@ -3355,12 +3358,83 @@ function AssetWorkspace({
     }
   };
 
+  // Live attempts sit above the gallery because they are about to become part
+  // of it; failed ones sit below it. A failure pinned to the top left the most
+  // recent picture buried under whatever had last gone wrong, which is the one
+  // thing in this rail nobody needs to see first.
+  const renderAttemptCard = (attempt: AssetGenerationAttempt) => {
+              const isSel = selectedAttemptId === attempt.id;
+              return (
+                <button
+                  key={attempt.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedAttemptId(attempt.id);
+                    setPrompt(attempt.prompt);
+                    if (attempt.model) setModel(attempt.model);
+                    if (attempt.referenceImages.length) setReferences(attempt.referenceImages);
+                    setGenerationError(attempt.status === "failed" ? attempt.error : null);
+                  }}
+                  className={`block w-[72px] shrink-0 overflow-hidden rounded-xl border-2 transition text-left lg:w-full ${
+                    isSel ? "border-white/60" : "border-white/10 hover:border-white/25"
+                  }`}
+                >
+                  {attempt.status === "generating" ? (
+                    <div className="grid aspect-[3/4] place-items-center bg-black/40">
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="h-6 w-6 animate-spin text-[#b9f42e]" />
+                        <span className="text-[10px] text-zinc-400">Generating…</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid aspect-[3/4] place-items-center bg-red-950/30 p-2">
+                      <div className="flex flex-col items-center gap-1 text-center">
+                        <span className="text-lg">⚠</span>
+                        <span className="line-clamp-3 text-[10px] leading-tight text-red-300">{attempt.error || "Image generation failed"}</span>
+                      </div>
+                    </div>
+                  )}
+                  <span className="block truncate bg-black/80 px-2 py-1.5 text-[10px] text-zinc-300">
+                    {attempt.prompt || "Generation attempt"}
+                  </span>
+                </button>
+              );
+  };
+
+  /**
+   * A turnaround sheet of the character already on screen.
+   *
+   * One click rather than a written prompt: the description is the asset's own,
+   * and the reference is the picture in the block — the chosen one when an
+   * attempt card is selected and there is nothing live to point at. Without a
+   * reference an edit model has nothing to build the sheet from, and a
+   * text-to-image model would invent a different person.
+   */
+  const generateCharacterSheet = () => {
+    const sourceImage = activeImage || chosenImage;
+    if (!sourceImage) {
+      setGenerationError("Generate or choose an image for this character first — the sheet is built from it.");
+      return;
+    }
+    void requestGeneration({
+      prompt: characterSheetPrompt(asset.description || ""),
+      references: [sourceImage],
+      aspectRatio: CHARACTER_SHEET_ASPECT_RATIO,
+    });
+  };
+
   const addActiveAsReference = () => {
     if (!activeImage || references.includes(activeImage)) return;
     void saveReferences([...references, activeImage]);
   };
 
-  const requestGeneration = async () => {
+  const requestGeneration = async (overrides?: { prompt?: string; references?: string[]; aspectRatio?: string }) => {
+    // The character sheet sends its own prompt, its own reference and its own
+    // canvas without touching the panel's, so the fields the user has typed are
+    // still there when the sheet comes back.
+    const requestedPrompt = overrides?.prompt ?? prompt;
+    const requestedReferences = overrides?.references ?? references;
+    const requestedAspectRatio = overrides?.aspectRatio ?? aspectRatio;
     setWorking(true);
     setGenerationError(null);
     setGenerationStatus("Submitting image generation request…");
@@ -3368,25 +3442,25 @@ function AssetWorkspace({
     const localAttempt: AssetGenerationAttempt = {
       id: localAttemptId,
       status: "generating",
-      prompt,
+      prompt: requestedPrompt,
       model,
       error: null,
-      referenceImages: [...references],
+      referenceImages: [...requestedReferences],
       createdAt: Date.now(),
     };
     setAssetAttempts((current) => [localAttempt, ...current]);
     setSelectedAttemptId(localAttemptId);
     try {
-      const mentionedEntityIds = findMentionedEntityIds(prompt, entities);
+      const mentionedEntityIds = findMentionedEntityIds(requestedPrompt, entities);
       const response = await requestProjectImage(projectId, {
           target: "asset",
           targetId: asset.id,
           episodeId,
-          prompt,
+          prompt: requestedPrompt,
           model,
-          referenceImages: references,
+          referenceImages: requestedReferences,
           mentionedEntityIds,
-          aspectRatio,
+          aspectRatio: requestedAspectRatio,
           quality,
           // Sent as an override only when the user took this image off the
           // project package; otherwise the server resolves it, so the two
@@ -3508,44 +3582,7 @@ function AssetWorkspace({
           </label>
           <p className="mb-2 hidden text-[10px] font-bold text-zinc-600 lg:block">Asset Concept Gallery</p>
           <div className="flex gap-2.5 lg:block lg:space-y-2.5">
-            {assetAttempts.map((attempt) => {
-              const isSel = selectedAttemptId === attempt.id;
-              return (
-                <button
-                  key={attempt.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedAttemptId(attempt.id);
-                    setPrompt(attempt.prompt);
-                    if (attempt.model) setModel(attempt.model);
-                    if (attempt.referenceImages.length) setReferences(attempt.referenceImages);
-                    setGenerationError(attempt.status === "failed" ? attempt.error : null);
-                  }}
-                  className={`block w-[72px] shrink-0 overflow-hidden rounded-xl border-2 transition text-left lg:w-full ${
-                    isSel ? "border-white/60" : "border-white/10 hover:border-white/25"
-                  }`}
-                >
-                  {attempt.status === "generating" ? (
-                    <div className="grid aspect-[3/4] place-items-center bg-black/40">
-                      <div className="flex flex-col items-center gap-2">
-                        <Loader2 className="h-6 w-6 animate-spin text-[#b9f42e]" />
-                        <span className="text-[10px] text-zinc-400">Generating…</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="grid aspect-[3/4] place-items-center bg-red-950/30 p-2">
-                      <div className="flex flex-col items-center gap-1 text-center">
-                        <span className="text-lg">⚠</span>
-                        <span className="line-clamp-3 text-[10px] leading-tight text-red-300">{attempt.error || "Image generation failed"}</span>
-                      </div>
-                    </div>
-                  )}
-                  <span className="block truncate bg-black/80 px-2 py-1.5 text-[10px] text-zinc-300">
-                    {attempt.prompt || "Generation attempt"}
-                  </span>
-                </button>
-              );
-            })}
+            {generatingAttempts.map(renderAttemptCard)}
             {libraryImages.map((image, index) => {
               const isChosen = asset.primary_reference_image
                 ? image === asset.primary_reference_image
@@ -3578,6 +3615,7 @@ function AssetWorkspace({
                 </div>
               );
             })}
+            {failedAttempts.map(renderAttemptCard)}
           </div>
         </aside>
 
@@ -3647,11 +3685,21 @@ function AssetWorkspace({
               Use as reference
             </button>
 
+            <button
+              type="button"
+              onClick={generateCharacterSheet}
+              disabled={working || (!activeImage && !chosenImage)}
+              title="Generate a front/side/back turnaround, an expression row and detail inserts from this image"
+              className="rounded-lg px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Character sheet
+            </button>
+
             <span className="h-5 border-l border-white/10" />
 
             <button
               type="button"
-              onClick={requestGeneration}
+              onClick={() => void requestGeneration()}
               disabled={working}
               className="rounded-lg px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/5 disabled:opacity-40"
             >
@@ -3882,7 +3930,7 @@ function AssetWorkspace({
                     </button>
                   ) : (
                     <button
-                      onClick={requestGeneration}
+                      onClick={() => void requestGeneration()}
                       disabled={working}
                       className="grid h-8 w-8 place-items-center rounded-full bg-[#dfff8c] text-black shadow-lg transition hover:bg-[#c9f658] disabled:opacity-50"
                       title="Generate image"
@@ -5124,6 +5172,7 @@ function ShotMediaWorkspace({
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
   const [verifyingReferencePath, setVerifyingReferencePath] = useState<string | null>(null);
+  const [bulkVerifyStatus, setBulkVerifyStatus] = useState<string | null>(null);
   const [verifiedReferencePaths, setVerifiedReferencePaths] = useState<Set<string>>(() => new Set());
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   useEffect(() => {
@@ -5788,6 +5837,36 @@ function ShotMediaWorkspace({
     }
   };
 
+  /**
+   * Registers every reference this shot still needs, three a minute.
+   *
+   * That ceiling is the plan's, and a shot with a full cast needs more than
+   * three — so a render that registered them on the fly failed partway through
+   * and left the rest unverified, with no way forward but to press a button per
+   * picture and guess at the pacing. Already-verified references are skipped
+   * because they cost nothing and do not count against the limit.
+   */
+  const BYTEPLUS_REGISTRATIONS_PER_MINUTE = 3;
+  const verifyAllReferences = async (items: Array<{ path: string; label: string; entity?: Entity; isShotKeyframe: boolean; contentIndex?: number; isVideo?: boolean }>) => {
+    const pending = items.filter((item) => !allVerifiedReferencePaths.has(item.path));
+    if (!pending.length) return;
+    try {
+      for (let index = 0; index < pending.length; index += 1) {
+        if (index > 0 && index % BYTEPLUS_REGISTRATIONS_PER_MINUTE === 0) {
+          for (let remaining = 61; remaining > 0; remaining -= 1) {
+            setBulkVerifyStatus(`Registered ${index} of ${pending.length}. Waiting ${remaining}s — BytePlus allows three a minute on this plan.`);
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+        }
+        setBulkVerifyStatus(`Verifying ${index + 1} of ${pending.length}: ${pending[index].label}`);
+        await verifyReferenceItem(pending[index]);
+      }
+      setBulkVerifyStatus(`All ${pending.length} references verified. Generate again.`);
+    } finally {
+      setVerifyingReferencePath(null);
+    }
+  };
+
   const targetImageForBytePlus = isImage
     ? activeGen?.videoUrl || source || media.shot.keyframe_image || null
     : rejectedReference?.path || null;
@@ -6203,6 +6282,8 @@ function ShotMediaWorkspace({
                   verifyingReferencePath={verifyingReferencePath}
                   verifiedReferencePaths={allVerifiedReferencePaths}
                   onVerify={verifyReferenceItem}
+                  onVerifyAll={verifyAllReferences}
+                  bulkVerifyStatus={bulkVerifyStatus}
                   onRegenerate={generate}
                 />
               ) : previewSource ? (
@@ -6787,6 +6868,8 @@ function GenerationPreviewError({
   verifyingReferencePath,
   verifiedReferencePaths = new Set(),
   onVerify,
+  onVerifyAll,
+  bulkVerifyStatus,
   onRegenerate,
 }: {
   model?: string;
@@ -6797,9 +6880,16 @@ function GenerationPreviewError({
   verifyingReferencePath?: string | null;
   verifiedReferencePaths?: Set<string>;
   onVerify?: (target: { path: string; label: string; entity?: Entity; isShotKeyframe: boolean; contentIndex?: number; isVideo?: boolean }) => void;
+  onVerifyAll?: (targets: Array<{ path: string; label: string; entity?: Entity; isShotKeyframe: boolean; contentIndex?: number; isVideo?: boolean }>) => void;
+  bulkVerifyStatus?: string | null;
   onRegenerate?: () => void;
 }) {
   const isRealPersonError = /real person/i.test(message);
+  // The rate-limit failure sends the reader here in as many words, so the panel
+  // it names has to open for it too. Matched on the ceiling rather than the
+  // sentence around it, which is the part likely to be reworded.
+  const isRegistrationLimit = /asset registrations per minute/i.test(message);
+  const showVerificationPanel = isRealPersonError || isRegistrationLimit;
   const isVideoRejection = isSeedanceRejectedVideo(message);
   const badge = providerLabel || (model ? getModelLabel(model) : (isRealPersonError ? "BytePlus Seedance" : "Generation"));
 
@@ -6810,6 +6900,7 @@ function GenerationPreviewError({
       : [];
 
   const anyVerified = displayItems.some((item) => verifiedReferencePaths.has(item.path));
+  const unverifiedItems = displayItems.filter((item) => !verifiedReferencePaths.has(item.path));
 
   return (
     <div className="grid aspect-[9/14] place-items-center p-4 sm:p-6 text-center max-w-lg mx-auto">
@@ -6821,7 +6912,7 @@ function GenerationPreviewError({
           </span>
         </div>
         <p className="mt-2 text-sm leading-6 text-red-100">{message}</p>
-        {isRealPersonError && (
+        {showVerificationPanel && (
           <div className="mt-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3.5 text-yellow-100">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[11px] font-bold uppercase tracking-wider text-yellow-300">
@@ -6839,6 +6930,39 @@ function GenerationPreviewError({
                 ? "BytePlus flagged a person in the motion-reference video. You can register and verify this video with the BytePlus Asset Library below to proceed:"
                 : "BytePlus requires human face photos to be verified in the Seedance Asset Library before generating video. Click below to verify this image:"}
             </p>
+
+            {onVerifyAll && displayItems.length > 1 && (
+              <div className="mt-3 rounded-lg border border-yellow-200/20 bg-black/30 p-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[11px] text-yellow-100/80">
+                    {unverifiedItems.length > 0
+                      ? `${unverifiedItems.length} of ${displayItems.length} still need verifying.`
+                      : "Every reference on this shot is verified."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onVerifyAll(displayItems)}
+                    disabled={Boolean(verifyingReferencePath) || unverifiedItems.length === 0}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-[#b9f42e] px-3 py-1.5 text-xs font-bold text-black transition hover:bg-[#a6de25] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {verifyingReferencePath ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Verifying…
+                      </>
+                    ) : (
+                      <>
+                        <BadgeCheck className="h-3.5 w-3.5" />
+                        Verify all {unverifiedItems.length > 0 ? `(${unverifiedItems.length})` : ""}
+                      </>
+                    )}
+                  </button>
+                </div>
+                {bulkVerifyStatus && (
+                  <p className="mt-2 text-[11px] leading-relaxed text-yellow-200/90">{bulkVerifyStatus}</p>
+                )}
+              </div>
+            )}
 
             {displayItems.length > 0 ? (
               <div className="mt-3 space-y-2.5">
