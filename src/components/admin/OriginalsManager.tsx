@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { AlertCircle, Check, ChevronDown, ChevronRight, Loader2, Plus, Save, Trash2, Upload } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import OriginalsNotifyList from "@/components/admin/OriginalsNotifyList"
+import { FFMPEG_FIX, inspectVideoFile, videoUploadProblems } from "@/lib/video-upload-check"
 import {
   DEFAULT_EPISODE_PRICE,
   DEFAULT_FREE_EPISODES,
@@ -154,7 +155,13 @@ export default function OriginalsManager() {
   const uploadFile = async (file: File, bucket: string, folder: string) => {
     const extension = file.name.split(".").pop()
     const path = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`
-    const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: false })
+    // A year. Every object here is written under a fresh random path and never
+    // rewritten, so there is nothing a cached copy can become wrong about —
+    // and the default of no-cache had every viewer re-downloading whole
+    // episodes they had already watched.
+    const { error } = await supabase.storage
+      .from(bucket)
+      .upload(path, file, { upsert: false, cacheControl: "31536000" })
     if (error) throw new Error(error.message)
     return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl
   }
@@ -694,6 +701,19 @@ export default function OriginalsManager() {
                                     return
                                   }
                                   setUploading(`video-${index}-${row.id}`)
+                                  // Checked before it is sent, not after it is
+                                  // an episode: a file that streams badly is
+                                  // cheap to fix here and expensive to find
+                                  // once someone is watching it.
+                                  const problems = videoUploadProblems(await inspectVideoFile(file))
+                                  if (problems.length > 0 && !confirm(
+                                    `This video will not play well:\n\n${problems.map((p) => `• ${p}`).join("\n\n")}` +
+                                    `\n\nFix it with:\n${FFMPEG_FIX}\n\nUpload it anyway?`,
+                                  )) {
+                                    setUploading(null)
+                                    e.target.value = ""
+                                    return
+                                  }
                                   try {
                                     const url = await uploadFile(file, "videos", "originals")
                                     patchEpisode(row.id, index, { video_url: url })
