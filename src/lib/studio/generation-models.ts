@@ -41,6 +41,16 @@ export function isVideoGenerationModel(value: unknown): value is VideoGeneration
   return typeof value === "string" && videoGenerationModels.some((model) => model.id === value)
 }
 
+/**
+ * Whether this image model can only edit a picture it is given.
+ *
+ * An edit model with nothing to edit is refused by the provider, so a caller
+ * that has a picture to hand should send it rather than let the render fail.
+ */
+export function imageModelRequiresReference(model: string): boolean {
+  return model === "fal-gpt-image-2-5-sunburst-edit"
+}
+
 export function generationProvider(model: ImageGenerationModelId | VideoGenerationModelId) {
   if (model.startsWith("google-")) return "google"
   if (model.startsWith("fal-")) return "fal"

@@ -5,7 +5,7 @@ import { generateOpenAIImage, openAIImageModels, OpenAIProviderError, retrieveOp
 import { createBytePlusAsset, generateBytePlusImage, BytePlusProviderError } from "@/lib/studio/byteplus"
 import { FalProviderError, submitFalImage, waitForFalImage } from "@/lib/studio/fal"
 import { generateGoogleImage, GoogleProviderError } from "@/lib/studio/google"
-import { generationProvider, isImageGenerationModel, type ImageGenerationModelId } from "@/lib/studio/generation-models"
+import { generationProvider, imageModelRequiresReference, isImageGenerationModel, type ImageGenerationModelId } from "@/lib/studio/generation-models"
 import { byokProviderFor } from "@/lib/byok/providers"
 import { decideBilling } from "@/lib/byok/billing"
 import { hasCredential, withCredential } from "@/lib/byok/credential-service"
@@ -190,7 +190,7 @@ export async function renderProjectImage(
     let shotData: Record<string, unknown> | null = null
     let assetData: Record<string, unknown> | null = null
     if (input.target === "asset") {
-      const { data } = await context.supabase.from("creator_entities").select("id, type, reference_images, metadata").eq("id", input.targetId).eq("project_id", projectId).maybeSingle()
+      const { data } = await context.supabase.from("creator_entities").select("id, type, reference_images, primary_reference_image, metadata").eq("id", input.targetId).eq("project_id", projectId).maybeSingle()
       if (!data) throw new ImageRequestError("Asset not found", 404)
       assetData = data
     } else {
@@ -267,7 +267,18 @@ export async function renderProjectImage(
     // rather than added to it, and named in the prompt as look-only below.
     const styleReferencePaths = styleReferenceImagesOf(styleDna)
     const castBudget = 8 - Math.min(styleReferencePaths.length, MAX_STYLE_REFERENCE_IMAGES)
-    const castReferencePaths = Array.from(new Set([...mentionReferencePaths, ...input.referenceImages]))
+    // Regenerating an asset with an edit model and no reference attached means
+    // "edit this asset's picture" — it cannot mean anything else, because an
+    // edit model has nothing to work from otherwise. Sending nothing made the
+    // provider refuse the whole render, and the user was told to attach a
+    // reference while looking at the very picture that should have been it.
+    const ownImageFallback = input.target === "asset"
+      && imageModelRequiresReference(input.model)
+      && !mentionReferencePaths.length
+      && !input.referenceImages.length
+      ? [entityPrimaryReference(assetData as { reference_images?: string[] | null; primary_reference_image?: string | null })].filter((path): path is string => Boolean(path))
+      : []
+    const castReferencePaths = Array.from(new Set([...mentionReferencePaths, ...input.referenceImages, ...ownImageFallback]))
       .filter((path) => !styleReferencePaths.includes(path))
       .slice(0, castBudget)
     const combinedReferencePaths = [...castReferencePaths, ...styleReferencePaths]
@@ -537,7 +548,7 @@ export async function renderProjectImage(
     // "Add to Asset Library" and "Verify for Seedance" buttons.
 
     if (input.target === "asset") {
-      const { data: asset, error: readError } = await context.supabase.from("creator_entities").select("reference_images, metadata").eq("id", input.targetId).eq("project_id", projectId).single()
+      const { data: asset, error: readError } = await context.supabase.from("creator_entities").select("reference_images, primary_reference_image, metadata").eq("id", input.targetId).eq("project_id", projectId).single()
       if (readError) throw readError
       const currentMeta = (asset.metadata as Record<string, unknown>) || {}
       const metadata = {
@@ -554,11 +565,25 @@ export async function renderProjectImage(
         ...(input.drawEdit && input.styleDna === undefined ? {} : { style_dna_override: input.styleDna === undefined ? null : styleDna }),
         image_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, camera_settings_used: cameraSettings, style_dna_used: styleDna, style,  aspect_ratio: effectiveAspectRatio, reference_images: combinedReferencePaths, mentioned_entity_ids: input.mentionedEntityIds, status: "completed", completed_at: new Date().toISOString() },
       }
+      // Newest first. Appending put every new attempt at the bottom of the
+      // gallery, below every earlier one and below the failed attempts pinned
+      // above them — so the picture just generated was the hardest one in the
+      // rail to find, and the card on top stayed whatever had gone wrong last.
+      //
+      // Position zero also means "chosen" to every reader of this column when
+      // primary_reference_image is unset, so the picture that was chosen is
+      // written down explicitly before it stops being first. Without that, each
+      // new attempt would silently become the character's canonical reference
+      // and change the face every other shot renders from.
+      const existingImages = (asset.reference_images || []) as string[]
+      const storedPrimary = typeof asset.primary_reference_image === "string" ? asset.primary_reference_image.trim() : ""
+      const keptPrimary = storedPrimary || existingImages[0] || ""
       const updates: Record<string, unknown> = {
-        reference_images: [...(asset.reference_images || []), storagePath],
+        reference_images: [storagePath, ...existingImages],
         metadata,
         status: "draft",
       }
+      if (keptPrimary) updates.primary_reference_image = keptPrimary
       if (byteplusAssetId) updates.byteplus_asset_id = byteplusAssetId
       if (byteplusAssetUri) updates.byteplus_asset_uri = byteplusAssetUri
       if (byteplusAssetId) updates.verification_status = VERIFIED_ASSET.verification_status

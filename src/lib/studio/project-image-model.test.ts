@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { projectCharacterImageModel, projectStoryboardImageModel } from "./project-image-model"
-import { imageGenerationModels } from "./generation-models"
+import { imageGenerationModels, imageModelRequiresReference } from "./generation-models"
 
 const project = (basic: Record<string, unknown>) => ({ metadata: { basic_settings: basic } })
 
@@ -34,5 +34,22 @@ describe("projectCharacterImageModel", () => {
 
   it("follows the storyboard model when it has no setting of its own", () => {
     expect(projectCharacterImageModel(project({ storyboardImageModel: "google-nano-banana-2" }))).toBe("google-nano-banana-2")
+  })
+})
+
+describe("which image models cannot start from nothing", () => {
+  /**
+   * Sunburst Edit refuses a render with no picture to edit. The asset studio
+   * regenerates a character with whatever references are attached, which is
+   * routinely none — the user is looking at the character's own image and has
+   * no reason to attach it to itself. The server seeds it instead, so this
+   * predicate has to name every edit-only model.
+   */
+  it("names the edit-only model and nothing else", () => {
+    expect(imageModelRequiresReference("fal-gpt-image-2-5-sunburst-edit")).toBe(true)
+    expect(imageModelRequiresReference("fal-gpt-image-2-5-sunburst")).toBe(false)
+    expect(imageModelRequiresReference("gpt-image-2.5-sunburst")).toBe(false)
+    expect(imageModelRequiresReference("google-nano-banana-2-pro")).toBe(false)
+    expect(imageModelRequiresReference("")).toBe(false)
   })
 })
