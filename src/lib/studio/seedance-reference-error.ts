@@ -76,3 +76,20 @@ export async function purgeStaleBytePlusAsset(supabase: { from: (table: string) 
     console.warn(`Could not purge stale BytePlus asset ${cleanId}:`, err)
   }
 }
+
+/**
+ * The provider's copyright refusal, said in terms of what to do about it.
+ *
+ * Seedance checks the finished video as well as the pictures going in, and the
+ * refusal it returns is a sentence plus a request id — nothing that says which
+ * part of the shot was the problem or what would change it. It fires on output
+ * that resembles a real, recognisable person, so it is the character's look
+ * that has to move, not the references, which by then have already passed every
+ * check the provider makes on the way in.
+ */
+export function seedanceCopyrightRefusal(message: string): string | null {
+  if (!/copyright restriction/i.test(message || "")) return null
+  return "Seedance refused the finished video: its copyright filter matched the output, which usually means a character reads as a real, recognisable person. "
+    + "The references themselves passed — this is about what came out. Change the character's reference image or the wording that evokes a particular film or star, then generate again. "
+    + "Nothing was rendered and the credits have been returned."
+}

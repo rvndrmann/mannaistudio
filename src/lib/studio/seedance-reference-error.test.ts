@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { isSeedanceRejectedVideo, parseSeedanceMissingAssetError, parseSeedanceRejectedReference, seedanceReferenceAssetUri } from "./seedance-reference-error"
+import { isSeedanceRejectedVideo, parseSeedanceMissingAssetError, parseSeedanceRejectedReference, seedanceReferenceAssetUri, seedanceCopyrightRefusal } from "./seedance-reference-error"
 
 describe("Seedance rejected reference errors", () => {
   it("parses a rejected motion video with isVideo: true", () => {
@@ -38,5 +38,22 @@ describe("Seedance rejected reference errors", () => {
       contentIndex: 1,
       referenceIndex: 0,
     })
+  })
+})
+
+describe("the copyright refusal", () => {
+  it("explains the output filter, not the references", () => {
+    const raw = "The request failed because the output video may be related to copyright restrictions. Request id: 0217891805143730000"
+    const explained = seedanceCopyrightRefusal(raw)
+    expect(explained).toContain("reads as a real, recognisable person")
+    expect(explained).toContain("credits have been returned")
+    // The request id is the provider's, not the user's problem.
+    expect(explained).not.toContain("0217891805143730000")
+  })
+
+  it("leaves every other failure alone", () => {
+    expect(seedanceCopyrightRefusal("The specified asset asset-123 is not found")).toBeNull()
+    expect(seedanceCopyrightRefusal("may contain real person")).toBeNull()
+    expect(seedanceCopyrightRefusal("")).toBeNull()
   })
 })

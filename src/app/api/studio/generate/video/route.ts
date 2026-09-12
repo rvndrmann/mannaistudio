@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
+import { seedanceCopyrightRefusal } from "@/lib/studio/seedance-reference-error"
 import { z, ZodError } from "zod"
 import {
   BytePlusProviderError,
@@ -322,7 +323,9 @@ export async function GET(request: NextRequest) {
     })
 
     if (task.status === "failed" || task.status === "cancelled") {
-      const error = task.error?.message || `${provider} task ${task.status}`
+      const rawFailure = task.error?.message || `${provider} task ${task.status}`
+      // The provider's copyright refusal says nothing a user can act on.
+      const error = seedanceCopyrightRefusal(rawFailure) || rawFailure
       // The recorded mode decides the refund. A BYOK clip charged nothing, so
       // refunding its estimate would print credits on every repeated failure.
       const charged = refundableCredits(job as { billing_mode?: string | null; credits_used?: number | null; estimated_credits?: number | null })

@@ -22,7 +22,7 @@ import { projectVisualStyle } from "@/lib/studio/entity-image-workflow"
 import { composeLookDirectives, projectStyleDna } from "@/lib/studio/style-dna"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 import { recordExistingAsset, resolveRegisteredAsset } from "@/lib/studio/byteplus-assets"
-import { parseSeedanceMissingAssetError, parseSeedanceRejectedReference, purgeStaleBytePlusAsset, seedanceReferenceAssetUri } from "@/lib/studio/seedance-reference-error"
+import { parseSeedanceMissingAssetError, parseSeedanceRejectedReference, purgeStaleBytePlusAsset, seedanceReferenceAssetUri, seedanceCopyrightRefusal } from "@/lib/studio/seedance-reference-error"
 
 const submitSchema = z.object({
   shotId: z.string().uuid(),
@@ -605,7 +605,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     if (task.status === "failed" || task.status === "cancelled") {
-      const error = task.error?.message || `${provider} task ${task.status}`
+      const rawFailure = task.error?.message || `${provider} task ${task.status}`
+      // The provider's copyright refusal says nothing a user can act on.
+      const error = seedanceCopyrightRefusal(rawFailure) || rawFailure
       // Reads the recorded billing mode, not whichever number is non-zero. A
       // BYOK clip charged nothing, so this fallback would refund its estimate —
       // and a provider that keeps failing would print credits.
