@@ -3,7 +3,7 @@ import { z, ZodError } from "zod"
 import Razorpay from "razorpay"
 import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/service"
-import { SEASON_PASS_DAYS, SEASON_PASS_PRICE_INR } from "@/lib/originals"
+import { SEASON_PASS_DAYS, seasonPassOffer } from "@/lib/originals"
 
 export const dynamic = "force-dynamic"
 
@@ -11,7 +11,9 @@ export const dynamic = "force-dynamic"
  * Start a season pass purchase.
  *
  * Money, so nothing about price comes from the caller: the request names a
- * series and the price is the constant on the server. The order's notes carry
+ * series and the server prices it, launch offer included — a browser holding a
+ * stale ₹19 button after the window shuts still gets a ₹49 order back, because
+ * the price is read here and never taken from the page. The order's notes carry
  * everything verification needs to grant the right pass to the right account,
  * and verification reads them back from Razorpay rather than from the browser.
  *
@@ -44,16 +46,18 @@ export async function POST(request: NextRequest) {
     const admin = createServiceClient()
     const { data: series } = await admin
       .from("originals_series")
-      .select("id,title,is_published")
+      .select("id,slug,title,is_published")
       .eq("id", input.seriesId)
       .maybeSingle()
     if (!series || !series.is_published) {
       return NextResponse.json({ error: "That series is not available." }, { status: 404 })
     }
 
+    const offer = seasonPassOffer(series.slug)
+
     const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret })
     const order = await razorpay.orders.create({
-      amount: SEASON_PASS_PRICE_INR * 100,
+      amount: offer.priceInr * 100,
       currency: "INR",
       receipt: `pass_${user.id.slice(0, 8)}_${Date.now()}`,
       notes: {
@@ -67,8 +71,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       orderId: order.id,
-      amount: SEASON_PASS_PRICE_INR * 100,
-      priceInr: SEASON_PASS_PRICE_INR,
+      amount: offer.priceInr * 100,
+      priceInr: offer.priceInr,
+      fullPriceInr: offer.fullPriceInr,
+      earlyPassEndsAt: offer.endsAt,
       days: SEASON_PASS_DAYS,
       keyId,
       seriesTitle: series.title,

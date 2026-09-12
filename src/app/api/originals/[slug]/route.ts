@@ -6,6 +6,7 @@ import {
   DEFAULT_FREE_EPISODES,
   type OriginalsEpisodeSummary,
   type OriginalsSeriesDetail,
+  seasonPassOffer,
   upcomingEpisodeNumbers,
 } from "@/lib/originals"
 
@@ -103,6 +104,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         series.planned_episodes ?? null,
       ),
       passExpiresAt,
+      // Priced here rather than in the paywall so a wrong clock in the browser
+      // cannot advertise a launch price the checkout will refuse to honour.
+      seasonPass: seasonPassOffer(series.slug),
     }
 
     return NextResponse.json({ series: detail, credits, signedIn: Boolean(user) })

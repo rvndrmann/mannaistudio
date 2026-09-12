@@ -472,6 +472,7 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
                     seriesTitle={series.title}
                     posterUrl={series.posterUrl}
                     episodePrice={episodePrice}
+                    seasonPass={series.seasonPass}
                     balance={credits}
                     signedIn={Boolean(user)}
                     onSignIn={() => signInWithGoogle()}
