@@ -53,6 +53,12 @@ const TOOL_BUDGETS: Record<string, PruneOptions> = {
   read_episode_script: { threshold: 60_000, head: 56_000, tail: 4_000 },
   search_episode_script: { threshold: 24_000, head: 20_000, tail: 4_000 },
   read_script_prompts: { threshold: 24_000, head: 20_000, tail: 4_000 },
+  // Once the render bookkeeping stopped riding along, what is left of a shot
+  // list is the two prompts per shot — which is the document a revision is made
+  // from. Cutting it here does not save the turn anything: the model pages the
+  // rest straight back with read_tool_output, one round trip per page, and
+  // every page is re-sent on every step after it.
+  list_storyboard_shots: { threshold: 24_000, head: 20_000, tail: 4_000 },
 }
 
 export function budgetForTool(tool: string): PruneOptions {

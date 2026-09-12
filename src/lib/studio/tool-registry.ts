@@ -213,7 +213,10 @@ export const listProductionEntitiesTool = defineDirectorTool({
     limit: z.number().int().min(1).max(50).default(25),
   }),
   async execute(context, input) {
-    let query = context.supabase.from("creator_entities").select("id,type,kind,name,handle,description,reference_images,status,approval_status,metadata", { count: "exact" }).eq("project_id", context.project.id).order("created_at").range(input.offset, input.offset + input.limit - 1)
+    // Same reason the shot list drops it: an entity's metadata is image_generation
+    // bookkeeping, six times the weight of every description here put together,
+    // and nothing the model needs to name a character or revise its look.
+    let query = context.supabase.from("creator_entities").select("id,type,kind,name,handle,description,reference_images,status,approval_status", { count: "exact" }).eq("project_id", context.project.id).order("created_at").range(input.offset, input.offset + input.limit - 1)
     if (input.types.length) query = query.in("type", input.types)
     if (input.search) query = query.ilike("name", `%${input.search.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`)
     const { data, error, count } = await query
@@ -241,7 +244,16 @@ export const listStoryboardShotsTool = defineDirectorTool({
     // prompt starts with reading the one that is there. Left buried, the model
     // rewrote from scratch and quietly dropped whatever the user had liked
     // about it.
-    const items = (data || []).map((shot) => ({ ...shot, number: shot.order_index + 1, video_prompt: readShotVideoPrompt(shot) || null }))
+    // metadata is dropped rather than returned. It is render bookkeeping —
+    // resolved prompts, provider responses, reference lists, one entry per
+    // attempt — and on this project it was 94% of everything this tool
+    // returned: 57KB of the 61KB, for seven shots. Past the budget the whole
+    // result is pruned, so the model then pages it back with read_tool_output
+    // to find the one prompt it came for, and every page is re-sent on every
+    // step that follows. The one thing in there it does need, the video prompt,
+    // is lifted out and named below; generation state has its own tool in
+    // inspect_generation_jobs.
+    const items = (data || []).map(({ metadata, ...shot }) => ({ ...shot, number: shot.order_index + 1, video_prompt: readShotVideoPrompt({ ...shot, metadata }) || null }))
     return { items, total: count || 0, offset: input.offset, limit: input.limit, hasMore: input.offset + input.limit < (count || 0) }
   },
 })

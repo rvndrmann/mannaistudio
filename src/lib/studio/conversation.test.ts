@@ -135,8 +135,8 @@ describe("recent tool results are carried into the next turn", () => {
   })
 
   it("prunes a replayed result to the same budget the live loop uses", () => {
-    const huge = { shots: "S".repeat(60_000) }
-    const replayed = replayToolResults([assistantWith([{ tool: "list_storyboard_shots", result: huge }])])
+    const huge = { entities: "S".repeat(60_000) }
+    const replayed = replayToolResults([assistantWith([{ tool: "list_production_entities", result: huge }])])
     const note = replayed[1].content
     expect(note.length).toBeLessThan(20_000)
     expect(note).toContain("characters omitted")

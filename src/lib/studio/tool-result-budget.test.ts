@@ -104,13 +104,20 @@ describe("the documents the model is meant to actually read get room", () => {
   })
 
   it("leaves an ordinary tool on the default", () => {
-    expect(budgetForTool("list_storyboard_shots")).toEqual({})
+    expect(budgetForTool("list_production_entities")).toEqual({})
+  })
+
+  it("gives the shot list room, because it is read rather than skimmed", () => {
+    // It carries both prompts per shot now that render bookkeeping no longer
+    // rides along, and a revision is written from those prompts. Cut, they come
+    // straight back through read_tool_output a page at a time.
+    expect(budgetForTool("list_storyboard_shots").threshold).toBe(24_000)
   })
 
   it("applies the per-tool budget through serializeToolOutput", () => {
     const master = { body: "M".repeat(30_000) }
     expect(serializeToolOutput(master, { tool: "read_episode_master_prompt" }).pruned).toBe(false)
-    expect(serializeToolOutput(master, { tool: "list_storyboard_shots" }).pruned).toBe(true)
+    expect(serializeToolOutput(master, { tool: "list_production_entities" }).pruned).toBe(true)
   })
 
   it("lets an explicit option override the per-tool budget", () => {
