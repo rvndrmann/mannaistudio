@@ -435,7 +435,29 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         await purgeStaleBytePlusAsset(context.supabase, missingAsset.assetId, projectId)
         try {
           const freshSignedUrls = await signedReferenceUrls(context, viewableReferencePaths)
-          const freshReferences = await Promise.all(freshSignedUrls.map((url: string, idx: number) => resolveBytePlusReferenceUrl(url, facePaths.has(viewableReferencePaths[idx]))))
+          // Through the registry, exactly as the submit above does. Registering
+          // straight from here minted a new asset on every retry without ever
+          // consulting what was already registered, so a shot retried a few
+          // times spent several of the account's fifty library slots on the same
+          // picture — and the slots were invisible, because nothing recorded
+          // them. The asset this retry just purged is gone from the registry, so
+          // the call below re-registers it once and remembers it again.
+          const freshReferences = await Promise.all(freshSignedUrls.map(async (url: string, idx: number) => {
+            const path = viewableReferencePaths[idx]
+            if (!facePaths.has(path)) return resolveBytePlusReferenceUrl(url, false)
+            const assetUri = await resolveRegisteredAsset({
+              supabase: context.supabase,
+              sourcePath: path,
+              imageUrl: url,
+              name: path.split("/").pop() || undefined,
+              projectId,
+              userId: context.user.id,
+            })
+            // Registration unavailable: send the plain URL rather than mint an
+            // unrecorded asset. The provider may refuse it, and that refusal is
+            // recoverable — a lost library slot is not.
+            return assetUri || resolveBytePlusReferenceUrl(url, false)
+          }))
           const freshFaceReferences = freshReferences.filter((_: string, idx: number) => facePaths.has(viewableReferencePaths[idx]))
 
           const bpRes = await submitBytePlusVideo({
