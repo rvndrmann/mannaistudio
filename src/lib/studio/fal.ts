@@ -10,6 +10,39 @@ export class FalProviderError extends Error {
   }
 }
 
+/**
+ * What fal actually objected to.
+ *
+ * A rejected request arrives as `Error("Unprocessable Entity")` — the HTTP
+ * status text and nothing else — while the reason sits in `body.detail` as the
+ * field, the value and the rule it broke. Every 422 therefore reached the user,
+ * the job row and the logs as two words that say only that something was wrong,
+ * which is indistinguishable from every other 422 and impossible to act on.
+ */
+export function falErrorDetail(error: unknown): string {
+  const detail = (error as { body?: { detail?: unknown } })?.body?.detail
+  if (typeof detail === "string") return detail
+  if (!Array.isArray(detail)) return ""
+  const lines = detail
+    .map((entry) => {
+      const item = entry as { loc?: unknown[]; msg?: string; type?: string }
+      // `loc` opens with "body" on every entry, which locates nothing.
+      const where = Array.isArray(item.loc) ? item.loc.filter((part) => part !== "body").join(".") : ""
+      const what = item.msg || item.type || ""
+      return [where, what].filter(Boolean).join(": ")
+    })
+    .filter(Boolean)
+  return lines.join("; ")
+}
+
+/** The provider's own words where it gave any, the bare status text otherwise. */
+function falFailureMessage(error: unknown, fallback: string): string {
+  const detail = falErrorDetail(error)
+  const message = error instanceof Error ? error.message : ""
+  if (detail && message) return `${message}: ${detail}`
+  return detail || message || fallback
+}
+
 /** The customer's own fal key when one is serving this job, the platform's otherwise. */
 function getFalKey() {
   const own = activeCredentialPart("fal", "apiKey")
@@ -123,8 +156,7 @@ export async function generateFalImage(input: {
     return { url, contentType: "image/png" }
   } catch (error) {
     if (error instanceof FalProviderError) throw error
-    const msg = error instanceof Error ? error.message : "fal.ai image generation failed"
-    throw new FalProviderError(`fal.ai request failed: ${msg}`)
+    throw new FalProviderError(`fal.ai request failed: ${falFailureMessage(error, "fal.ai image generation failed")}`)
   }
 }
 
@@ -159,8 +191,7 @@ export async function submitFalImage(input: {
     return { id: submitted.request_id, endpoint }
   } catch (error) {
     if (error instanceof FalProviderError) throw error
-    const msg = error instanceof Error ? error.message : "fal.ai image submission failed"
-    throw new FalProviderError(`fal.ai request failed: ${msg}`)
+    throw new FalProviderError(`fal.ai request failed: ${falFailureMessage(error, "fal.ai image submission failed")}`)
   }
 }
 
@@ -190,12 +221,10 @@ export async function getFalImageTask(requestId: string, endpoint: string) {
       if (!url) return { status: "failed" as const, url: undefined, error: "fal.ai finished without returning an image." }
       return { status: "completed" as const, url, error: undefined }
     } catch (error) {
-      const msg = error instanceof Error ? error.message : "fal.ai returned no result for this request."
-      return { status: "failed" as const, url: undefined, error: msg }
+      return { status: "failed" as const, url: undefined, error: falFailureMessage(error, "fal.ai returned no result for this request.") }
     }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "fal.ai status check failed"
-    throw new FalProviderError(`fal.ai status check failed for ${endpoint}: ${msg}`)
+    throw new FalProviderError(`fal.ai status check failed for ${endpoint}: ${falFailureMessage(error, "fal.ai status check failed")}`)
   }
 }
 
@@ -369,8 +398,7 @@ export async function submitFalVideo(input: {
 
     return { id: result.request_id, requestId: result.request_id, endpoint }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "fal.ai video submission failed"
-    throw new FalProviderError(`fal.ai request failed: ${msg}`)
+    throw new FalProviderError(`fal.ai request failed: ${falFailureMessage(error, "fal.ai video submission failed")}`)
   }
 }
 
@@ -436,7 +464,7 @@ export async function getFalVideoTask(taskId: string, endpoint = "fal-ai/kling-v
       } catch (error) {
         // fal marks a request COMPLETED even when it finished by rejecting the
         // input, and the reason only appears when the result is fetched.
-        resultError = error instanceof Error ? error.message : "fal.ai returned no result for this request."
+        resultError = falFailureMessage(error, "fal.ai returned no result for this request.")
       }
 
       // Reporting "succeeded" with no url left the job processing for ever,
@@ -474,7 +502,6 @@ export async function getFalVideoTask(taskId: string, endpoint = "fal-ai/kling-v
       error: { message: `Task status: ${rawStatus}` },
     }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "Failed to fetch fal.ai task status"
-    throw new FalProviderError(`fal.ai status check failed for ${endpoint}: ${msg}`)
+    throw new FalProviderError(`fal.ai status check failed for ${endpoint}: ${falFailureMessage(error, "Failed to fetch fal.ai task status")}`)
   }
 }
