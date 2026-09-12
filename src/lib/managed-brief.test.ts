@@ -53,7 +53,7 @@ describe("parseManagedBrief", () => {
 
 describe("creativeBriefFromManagedBrief", () => {
   const brief = creativeBriefFromManagedBrief(FULL, {
-    serviceType: "ugc",
+    serviceName: "UGC Ads",
     durationSeconds: 30,
     aspectRatio: "9:16",
   })
@@ -91,7 +91,7 @@ describe("creativeBriefFromManagedBrief", () => {
 
   it("survives an empty brief", () => {
     const blank = creativeBriefFromManagedBrief(emptyManagedBrief(), {
-      serviceType: "cinematic",
+      serviceName: "Cinematic Product Ads",
       durationSeconds: 60,
       aspectRatio: "16:9",
     })

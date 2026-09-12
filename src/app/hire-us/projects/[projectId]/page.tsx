@@ -10,7 +10,8 @@ import ProjectChat from "@/components/managed/ProjectChat"
 import Deliverables, { FinalDelivery } from "@/components/managed/Deliverables"
 import ReviewSheet from "@/components/managed/ReviewSheet"
 import type { ManagedDeliverable, ManagedProjectPayload } from "@/components/managed/types"
-import { MANAGED_STATUS_LABELS, serviceName } from "@/lib/managed-production"
+import { MANAGED_STATUS_LABELS } from "@/lib/managed-production"
+import { offerServiceName } from "@/lib/managed-offers"
 import { formatUsdWithInr } from "@/lib/currency"
 
 /**
@@ -113,7 +114,7 @@ export default function ManagedProjectPage({ params }: { params: Promise<{ proje
             </p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">{project.name}</h1>
             <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/40">
-              <span>{serviceName(project.service_type)}</span>
+              <span>{offerServiceName(project.offer_snapshot, project.service_type)}</span>
               <span aria-hidden>·</span>
               <span>{project.video_count} × {project.duration_seconds}s</span>
               <span aria-hidden>·</span>

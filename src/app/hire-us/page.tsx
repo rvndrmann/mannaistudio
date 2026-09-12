@@ -3,12 +3,12 @@
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
-import { ArrowRight, Check, Clapperboard, MessageSquare, Sparkles, Film, Zap, Download } from "lucide-react"
+import { ArrowRight, Check, Clapperboard, Loader2, MessageSquare, Play, Sparkles, Film, Zap, Download } from "lucide-react"
 import Navbar from "@/components/Navbar"
 import Footer from "@/components/Footer"
 import { useAuth } from "@/components/auth/auth-provider"
 import { formatUsdWithInr } from "@/lib/currency"
-import { MANAGED_SERVICES, type ManagedService } from "@/lib/managed-production"
+import { cheapestPackage, type OfferService } from "@/lib/managed-offers"
 import { materialize, springUI } from "@/lib/motion"
 
 /**
@@ -31,6 +31,20 @@ const HOW_IT_WORKS = [
 export default function HireUsPage() {
   const { user } = useAuth()
   const [hasProjects, setHasProjects] = useState(false)
+  const [services, setServices] = useState<OfferService[] | null>(null)
+
+  // The catalogue is editable from the admin panel, so the page asks what is on
+  // sale rather than shipping a copy of it. An admin also sees their own
+  // unpublished drafts here, because the same query answers both — a separate
+  // preview is a second thing that can disagree with the live page.
+  useEffect(() => {
+    let active = true
+    fetch("/api/managed/offers")
+      .then((response) => (response.ok ? response.json() : { services: [] }))
+      .then((data) => { if (active) setServices(data.services ?? []) })
+      .catch(() => { if (active) setServices([]) })
+    return () => { active = false }
+  }, [])
 
   // A returning client should land on their work, not be sold to again.
   useEffect(() => {
@@ -74,11 +88,23 @@ export default function HireUsPage() {
       </section>
 
       <section className="px-6 pb-16 max-w-6xl mx-auto">
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-          {MANAGED_SERVICES.map((service, index) => (
-            <ServiceCard key={service.key} service={service} index={index} />
-          ))}
-        </div>
+        {services === null ? (
+          <div className="flex h-48 items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+        ) : services.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-white/12 p-10 text-center">
+            <p className="text-sm text-white/45">
+              We are not taking new projects right now. Email us and we will let you know when we reopen.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            {services.map((service, index) => (
+              <ServiceCard key={service.key} service={service} index={index} />
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="px-6 pb-24 max-w-6xl mx-auto">
@@ -107,48 +133,96 @@ export default function HireUsPage() {
   )
 }
 
-function ServiceCard({ service, index }: { service: ManagedService; index: number }) {
-  const cheapest = service.packages.length
-    ? service.packages.reduce((low, option) => (option.priceInr < low.priceInr ? option : low))
-    : null
+function ServiceCard({ service, index }: { service: OfferService; index: number }) {
+  const cheapest = cheapestPackage(service)
+  const [playing, setPlaying] = useState(false)
 
   return (
     <motion.div
       {...materialize}
       transition={{ ...springUI, delay: index * 0.05 }}
-      className="glass-card flex flex-col rounded-2xl border-white/10 p-6"
+      className="glass-card flex flex-col overflow-hidden rounded-2xl border-white/10"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight">{service.name}</h2>
-          <p className="mt-1 text-sm text-primary/90">{service.tagline}</p>
+      {/* The gig's own media. A promo video plays in place on click rather than
+          autoplaying: four cards autoplaying at once is four videos competing
+          for bandwidth and a page that sounds like a fairground. */}
+      {(service.thumbnailUrl || service.videoUrl) && (
+        <div className="relative aspect-video w-full overflow-hidden bg-black">
+          {playing && service.videoUrl ? (
+            <video
+              src={service.videoUrl}
+              controls
+              autoPlay
+              playsInline
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <>
+              {service.thumbnailUrl ? (
+                <img src={service.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <video src={`${service.videoUrl}#t=0.1`} preload="metadata" muted playsInline className="h-full w-full object-cover" />
+              )}
+              {service.videoUrl && (
+                <button
+                  type="button"
+                  onClick={() => setPlaying(true)}
+                  aria-label={`Play the ${service.name} showreel`}
+                  className="absolute inset-0 grid place-items-center bg-black/25 transition hover:bg-black/10"
+                >
+                  <span className="grid h-14 w-14 place-items-center rounded-full bg-primary text-black shadow-lg transition group-hover:scale-105">
+                    <Play className="ml-0.5 h-6 w-6" />
+                  </span>
+                </button>
+              )}
+            </>
+          )}
         </div>
-        {cheapest && (
-          <div className="shrink-0 text-right">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-white/35">From</p>
-            <p className="text-sm font-bold text-white">{formatUsdWithInr(cheapest.priceInr)}</p>
+      )}
+
+      <div className="flex flex-1 flex-col p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="text-xl font-bold tracking-tight">{service.name}</h2>
+            {service.tagline && <p className="mt-1 text-sm text-primary/90">{service.tagline}</p>}
           </div>
+          {cheapest && (
+            <div className="shrink-0 text-right">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-white/35">From</p>
+              <p className="text-sm font-bold text-white">{formatUsdWithInr(cheapest.priceInr)}</p>
+            </div>
+          )}
+        </div>
+
+        {service.description && (
+          <p className="mt-4 text-sm leading-relaxed text-white/50">{service.description}</p>
         )}
+
+        {service.deliverables.length > 0 && (
+          <ul className="mt-5 space-y-2">
+            {service.deliverables.map((item) => (
+              <li key={item} className="flex items-start gap-2 text-sm text-white/60">
+                <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                {item}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {!service.isPublished && (
+          <p className="mt-4 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] font-semibold text-amber-200">
+            Draft — only you can see this. Publish it in Admin → Managed Production → Offers.
+          </p>
+        )}
+
+        <Link
+          href={`/hire-us/brief?service=${service.key}`}
+          className="mt-6 flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-semibold text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"
+        >
+          {service.cta}
+          <ArrowRight className="h-4 w-4" />
+        </Link>
       </div>
-
-      <p className="mt-4 text-sm leading-relaxed text-white/50">{service.description}</p>
-
-      <ul className="mt-5 space-y-2">
-        {service.deliverables.map((item) => (
-          <li key={item} className="flex items-start gap-2 text-sm text-white/60">
-            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-            {item}
-          </li>
-        ))}
-      </ul>
-
-      <Link
-        href={`/hire-us/brief?service=${service.key}`}
-        className="mt-6 flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-semibold text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"
-      >
-        {service.cta}
-        <ArrowRight className="h-4 w-4" />
-      </Link>
     </motion.div>
   )
 }

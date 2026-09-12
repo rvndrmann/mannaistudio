@@ -3,7 +3,8 @@
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { ArrowRight, Loader2, MessageSquare, Plus } from "lucide-react"
-import { MANAGED_STATUS_LABELS, serviceName } from "@/lib/managed-production"
+import { MANAGED_STATUS_LABELS } from "@/lib/managed-production"
+import { offerServiceName } from "@/lib/managed-offers"
 
 /**
  * The client's managed projects, as cards.
@@ -22,6 +23,7 @@ export type ManagedProjectCard = {
   payment_status: string
   video_count: number
   aspect_ratio: string
+  offer_snapshot: unknown
   created_at: string
   deliverableCount: number
   readyCount: number
@@ -86,7 +88,7 @@ export default function ManagedProjectCards({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-white/30">
-                  {serviceName(project.service_type)}
+                  {offerServiceName(project.offer_snapshot, project.service_type)}
                 </p>
                 <h3 className="mt-1 truncate text-sm font-bold">{project.name}</h3>
               </div>

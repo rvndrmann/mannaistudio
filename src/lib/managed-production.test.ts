@@ -1,67 +1,10 @@
 import { describe, expect, it } from "vitest"
 import {
-  MANAGED_SERVICES, MANAGED_STATUSES, defaultPackageFor, formatTimecode,
-  isManagedClientPath, managedDeliverablePrefix, managedUploadPrefix,
-  needsClientAction, packageFor, serviceFor, statusIndex,
+  MANAGED_STATUSES, formatTimecode, isManagedClientPath,
+  managedDeliverablePrefix, managedUploadPrefix, needsClientAction, statusIndex,
 } from "./managed-production"
 
 const PROJECT = "7f1b0d22-3a4c-4a1e-9f2b-0c9d8e7a6b5c"
-
-describe("packageFor", () => {
-  it("prices a package from the catalogue, not from the caller", () => {
-    expect(packageFor("ugc", "ugc_pack")?.priceInr).toBe(19_999)
-    expect(packageFor("ugc", "ugc_pack")?.videoCount).toBe(3)
-  })
-
-  it("refuses an unknown package rather than falling back to one", () => {
-    // A fallback here would let a request naming a package that does not exist
-    // be quietly priced as the cheapest one.
-    expect(packageFor("ugc", "ugc_free")).toBeNull()
-    expect(packageFor("ugc", "")).toBeNull()
-    expect(packageFor("not_a_service", "ugc_pack")).toBeNull()
-  })
-
-  it("does not price a package against the wrong service", () => {
-    expect(packageFor("cinematic", "ugc_pack")).toBeNull()
-  })
-
-  it("has no package for the quote-only service", () => {
-    const microDrama = serviceFor("micro_drama")
-    expect(microDrama?.quoteOnly).toBe(true)
-    expect(microDrama?.packages).toHaveLength(0)
-    expect(defaultPackageFor("micro_drama")).toBeNull()
-  })
-})
-
-describe("the catalogue", () => {
-  it("gives every priced package a positive price, duration and video count", () => {
-    for (const service of MANAGED_SERVICES) {
-      for (const option of service.packages) {
-        expect(option.priceInr, `${service.key}/${option.key}`).toBeGreaterThan(0)
-        expect(option.videoCount, `${service.key}/${option.key}`).toBeGreaterThan(0)
-        expect(option.durationSeconds, `${service.key}/${option.key}`).toBeGreaterThan(0)
-      }
-    }
-  })
-
-  it("keeps package keys unique across the whole catalogue", () => {
-    // packageFor is scoped by service, but a duplicate key across two services
-    // would make an order's stored package_key ambiguous after the fact.
-    const keys = MANAGED_SERVICES.flatMap((service) => service.packages.map((option) => option.key))
-    expect(new Set(keys).size).toBe(keys.length)
-  })
-
-  it("marks at most one package per service as the popular one", () => {
-    for (const service of MANAGED_SERVICES) {
-      expect(service.packages.filter((option) => option.popular).length).toBeLessThanOrEqual(1)
-    }
-  })
-
-  it("defaults to the popular package, or the first when none is marked", () => {
-    expect(defaultPackageFor("ugc")?.key).toBe("ugc_pack")
-    expect(defaultPackageFor("direct_response")?.key).toBe("dr_campaign")
-  })
-})
 
 describe("the pipeline", () => {
   it("orders the stages as the timeline draws them", () => {

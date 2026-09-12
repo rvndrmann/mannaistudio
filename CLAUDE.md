@@ -158,6 +158,7 @@ operating the studio themselves. Migration
 
 | Table | Holds |
 |-------|-------|
+| `managed_offer_services` / `managed_offer_packages` | the editable catalogue: a gig with thumbnail + promo video, and its price tiers |
 | `managed_projects` | the order: service, package, brief (jsonb), status, price, `brand_id`, `studio_project_id` |
 | `managed_deliverables` | one ad per row, with its own status |
 | `managed_deliverable_versions` | V1, V2, FINAL — never overwritten |
@@ -168,9 +169,13 @@ operating the studio themselves. Migration
   **Admin:** `/admin?tab=managed`. `/hire-us` is not admin-only — unlike the
   studio, this is sold to strangers.
 - **Money:** Razorpay, same rule as the season pass — the browser never sends a
-  price. `/api/managed/checkout` prices the package itself and carries the
-  project id in the order notes; verification reads entitlement back from
-  Razorpay, never from the body.
+  price. `/api/managed/checkout` prices the package from the catalogue and
+  carries the project id in the order notes; verification reads entitlement back
+  from Razorpay, never from the body.
+- **Catalogue:** editable at Admin → Managed Production → Offers (migration
+  `20260913140000_managed_offers.sql`). Keys are immutable because orders record
+  them; `managed_projects.offer_snapshot` freezes the gig and package as sold, so
+  editing or deleting one never rewrites an existing order.
 - **Writes:** reads are RLS; everything carrying value goes through a
   `SECURITY DEFINER` function. `create_managed_project` and
   `mark_managed_project_paid` are service-role only, with an `auth.role()` check

@@ -29,6 +29,7 @@ export type ManagedProjectRow = {
   brand_id: string | null
   studio_project_id: string | null
   brief: unknown
+  offer_snapshot: unknown
   status: string
   video_count: number
   duration_seconds: number

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { AnimatePresence, motion } from "framer-motion"
 import {
+    ArrowRight,
+    Briefcase,
     Check,
     Clapperboard,
     Film,
@@ -82,20 +84,40 @@ export default function OriginalsHome() {
         <main className="min-h-screen bg-black text-white">
             {/* Header — viewer surfaces only */}
             <header className="fixed inset-x-0 top-0 z-50 flex justify-center p-4">
-                <div className="material-chrome flex w-full max-w-6xl items-center justify-between gap-6 rounded-lg px-6 py-3">
-                    <Link href="/" className="flex min-h-[44px] shrink-0 items-center gap-2.5">
-                        <img src="/logo.png" alt="AI Director Hub" className="h-10 w-10 shrink-0 rounded-full" />
-                        <span className="whitespace-nowrap text-xl font-semibold tracking-[-0.02em]">
+                {/* The bar carries the brand, Hire Us and the account control at
+                    375px. Before Hire Us it had room to spare; with it, gap-6
+                    and px-6 spent 72px of a 375px screen on air alone and
+                    clipped the sign-in button off the right edge. Both tighten
+                    on a phone and return at sm. */}
+                <div className="material-chrome flex w-full max-w-6xl items-center justify-between gap-2 rounded-lg px-3 py-3 sm:gap-6 sm:px-6">
+                    <Link href="/" className="flex min-h-[44px] min-w-0 shrink items-center gap-2 sm:gap-2.5">
+                        <img src="/logo.png" alt="AI Director Hub" className="h-9 w-9 shrink-0 rounded-full sm:h-10 sm:w-10" />
+                        <span className="truncate text-base font-semibold tracking-[-0.02em] sm:whitespace-nowrap sm:text-xl">
                             AI Director <span className="text-primary">Hub</span>
                         </span>
                     </Link>
 
-                    <div className="flex shrink-0 items-center gap-3">
+                    <div className="flex shrink-0 items-center gap-2 sm:gap-3">
                         <Link
                             href="/originals"
                             className="hidden text-sm font-medium text-white/70 transition-colors hover:text-white sm:block"
                         >
                             Browse all
+                        </Link>
+
+                        {/* This homepage is written for viewers, so a brand
+                            arriving on it has no way in from the bar. It keeps
+                            its seat at 375px — the icon alone once the label
+                            would push the sign-in button off the edge — because
+                            "Browse all" is already hidden there and this would
+                            otherwise be reachable from nowhere on a phone. */}
+                        <Link
+                            href="/hire-us"
+                            title="Hire our creative team"
+                            className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-primary/35 bg-primary/10 px-2.5 text-xs font-semibold text-primary transition hover:bg-primary/20 active:scale-[0.97]"
+                        >
+                            <Briefcase className="h-3.5 w-3.5 shrink-0" />
+                            <span className="hidden min-[400px]:inline">Hire Us</span>
                         </Link>
 
                         {loading ? (
@@ -136,9 +158,9 @@ export default function OriginalsHome() {
                         ) : (
                             <button
                                 onClick={() => signInWithGoogle()}
-                                className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-black transition hover:brightness-110"
+                                className="flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md bg-primary px-3 text-sm font-semibold text-black transition hover:brightness-110 sm:px-4"
                             >
-                                <LogIn className="h-4 w-4" />
+                                <LogIn className="h-4 w-4 shrink-0" />
                                 Sign in
                             </button>
                         )}
@@ -186,6 +208,20 @@ export default function OriginalsHome() {
                                 Browse all series
                             </Link>
                         </div>
+
+                        {/* The other thing this site sells, to the other
+                            audience. Deliberately not a third equal button: a
+                            brand and a viewer want opposite things, and a
+                            matching CTA beside "Start watching free" would
+                            blunt the one the rest of this page is built for. */}
+                        <Link
+                            href="/hire-us"
+                            className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-white/55 transition hover:text-primary"
+                        >
+                            <Briefcase className="h-4 w-4 text-primary" />
+                            Want ads like these for your brand? Hire our creative team
+                            <ArrowRight className="h-3.5 w-3.5" />
+                        </Link>
 
                         <ul className="mt-8 space-y-2.5">
                             {[
@@ -366,6 +402,53 @@ export default function OriginalsHome() {
                                 </div>
                             )
                         })}
+                    </div>
+                </div>
+            </section>
+
+            {/* For brands.
+                The hero link is a whisper aimed at someone already scrolling
+                past; this is the one place the managed service gets to make its
+                own case, and it sits low on purpose — a viewer has to get
+                through the catalogue and the pricing before being sold a
+                production service they did not come for. */}
+            <section className="px-6 pb-16">
+                <div className="mx-auto max-w-5xl overflow-hidden rounded-3xl border border-white/10 bg-white/[0.02]">
+                    <div className="grid gap-8 p-8 md:grid-cols-[1.2fr_1fr] md:items-center md:p-12">
+                        <div>
+                            <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                                <Briefcase className="h-3.5 w-3.5" />
+                                For brands
+                            </span>
+                            <h2 className="mt-5 text-3xl font-semibold leading-tight tracking-[-0.02em] sm:text-4xl">
+                                We make these for your product too.
+                            </h2>
+                            <p className="mt-4 max-w-lg text-sm leading-relaxed text-white/55">
+                                The same team and the same pipeline behind these series, pointed at your ads.
+                                Give us your product and goal — we handle the script, creative direction,
+                                AI production, editing and delivery.
+                            </p>
+                            <Link
+                                href="/hire-us"
+                                className="mt-7 inline-flex items-center gap-2 rounded-xl bg-primary px-7 py-3.5 text-sm font-semibold text-black transition hover:brightness-110 active:scale-[0.97]"
+                            >
+                                Hire our creative team
+                                <ArrowRight className="h-4 w-4" />
+                            </Link>
+                        </div>
+                        <ul className="space-y-3">
+                            {[
+                                "UGC ads that look native to the feed",
+                                "Direct response ads built to sell",
+                                "Cinematic product commercials",
+                                "Branded micro-drama, like the series above",
+                            ].map((line) => (
+                                <li key={line} className="flex items-start gap-2.5 text-sm text-white/60">
+                                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                                    {line}
+                                </li>
+                            ))}
+                        </ul>
                     </div>
                 </div>
             </section>

@@ -9,10 +9,8 @@ import { useAuth } from "@/components/auth/auth-provider"
 import { AttachmentPicker, ChipPicker, Field, LinkList, TextArea, TextField } from "@/components/managed/BriefFields"
 import { useManagedCheckout } from "@/components/managed/useManagedCheckout"
 import { emptyManagedBrief, type ManagedBrief } from "@/lib/managed-brief"
-import {
-  MANAGED_ASPECT_RATIOS, MANAGED_CTAS, MANAGED_GOALS, MANAGED_PLATFORMS,
-  defaultPackageFor, serviceFor,
-} from "@/lib/managed-production"
+import { MANAGED_ASPECT_RATIOS, MANAGED_CTAS, MANAGED_GOALS, MANAGED_PLATFORMS } from "@/lib/managed-production"
+import { defaultPackageFor, serviceFromCatalogue, type OfferService } from "@/lib/managed-offers"
 import { formatUsdWithInr } from "@/lib/currency"
 import { fadeIn } from "@/lib/motion"
 
@@ -38,22 +36,41 @@ export default function BriefFlow() {
   const params = useSearchParams()
   const { user, loading: authLoading, signInWithGoogle } = useAuth()
 
-  const serviceKey = params.get("service") || "ugc"
+  const serviceKey = params.get("service") || ""
   const repeatFrom = params.get("repeat") || ""
-  const service = serviceFor(serviceKey)
 
+  const [catalogue, setCatalogue] = useState<OfferService[] | null>(null)
   const [step, setStep] = useState(0)
   const [brief, setBrief] = useState<ManagedBrief>(() => emptyManagedBrief())
-  const [packageKey, setPackageKey] = useState(() => defaultPackageFor(serviceKey)?.key || "")
+  const [packageKey, setPackageKey] = useState("")
   const [prefilled, setPrefilled] = useState("")
+
+  const service = catalogue ? serviceFromCatalogue(catalogue, serviceKey) : null
+
+  // The catalogue is editable, so the brief asks what this service currently
+  // offers rather than shipping a copy of its packages and style options.
+  useEffect(() => {
+    let active = true
+    fetch("/api/managed/offers")
+      .then((response) => (response.ok ? response.json() : { services: [] }))
+      .then((data) => { if (active) setCatalogue(data.services ?? []) })
+      .catch(() => { if (active) setCatalogue([]) })
+    return () => { active = false }
+  }, [])
+
+  // Pre-select the popular tier once the catalogue lands, but never overwrite a
+  // choice already made — the fetch can finish after someone has picked. The
+  // default is derived rather than stored, so there is no effect writing state
+  // on the render that follows the catalogue arriving.
+  const activePackageKey = packageKey || defaultPackageFor(service)?.key || ""
 
   const { submit, pending, error } = useManagedCheckout({
     onDone: (projectId) => router.push(`/hire-us/projects/${projectId}?welcome=1`),
   })
 
   const selected = useMemo(
-    () => service?.packages.find((option) => option.key === packageKey) ?? null,
-    [service, packageKey],
+    () => service?.packages.find((option) => option.key === activePackageKey) ?? null,
+    [service, activePackageKey],
   )
 
   // What we already know about this client. Only fills blanks, so a brief
@@ -81,10 +98,18 @@ export default function BriefFlow() {
     return () => { active = false }
   }, [user, repeatFrom])
 
+  if (catalogue === null) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center pt-32">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    )
+  }
+
   if (!service) {
     return (
       <div className="mx-auto max-w-2xl px-6 pt-32 text-center">
-        <p className="text-white/50">That service does not exist.</p>
+        <p className="text-white/50">That service is not available.</p>
         <Link href="/hire-us" className="mt-4 inline-block text-sm font-semibold text-primary">Back to services</Link>
       </div>
     )
@@ -100,7 +125,7 @@ export default function BriefFlow() {
     if (!user) { signInWithGoogle(); return }
     submit({
       serviceType: service.key,
-      packageKey: service.quoteOnly ? "" : packageKey,
+      packageKey: service.quoteOnly ? "" : activePackageKey,
       name: [brief.brandName, service.name].filter(Boolean).join(" — "),
       aspectRatio: brief.aspectRatio,
       brief,
@@ -290,7 +315,7 @@ export default function BriefFlow() {
                       type="button"
                       onClick={() => setPackageKey(option.key)}
                       className={`flex w-full items-start justify-between gap-4 rounded-xl border p-4 text-left transition duration-press ease-out active:scale-[0.99] ${
-                        packageKey === option.key
+                        activePackageKey === option.key
                           ? "border-primary bg-primary/10"
                           : "border-white/10 bg-white/[0.04] hover:bg-white/[0.07]"
                       }`}

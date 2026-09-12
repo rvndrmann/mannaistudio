@@ -35,6 +35,8 @@ mean one status vocabulary describing two different jobs.
 
 | Table | Holds |
 | :--- | :--- |
+| `managed_offer_services` | a gig: the card that sells, with its thumbnail and promo video |
+| `managed_offer_packages` | that gig's price tiers |
 | `managed_projects` | the order: service, package, brief (jsonb), status, price, payment, and the two links — `brand_id` and `studio_project_id` |
 | `managed_deliverables` | one ad per row (`Ad 01`, `Ad 02`), with its own status |
 | `managed_deliverable_versions` | V1, V2, FINAL. Nothing is ever overwritten |
@@ -47,6 +49,38 @@ to `/hire-us/projects/{id}`.
 The brief is kept whole as jsonb rather than shredded into columns. The questions
 differ per service and will keep changing, and a producer reads a brief as a
 document, not field by field.
+
+## The catalogue
+
+What `/hire-us` sells is editable from **Admin → Managed Production → Offers**,
+shaped like a Fiverr gig: a service is the card, with one thumbnail and one
+promo video, and its packages are the price tiers underneath it.
+
+- **Media** goes to the public `thumbnails` and `videos` buckets, not the
+  private studio bucket. This is a page open to strangers, and a signed URL that
+  expires is a card with a dead image on it. A promo video gets the same
+  pre-flight an episode does (`inspectVideoFile`), because a file too heavy to
+  arrive in time plays its audio over a black frame — worse on a sales page than
+  anywhere.
+- **Keys are immutable.** `managed_offer_services.key` and
+  `managed_offer_packages.key` are what a placed order records. Names are free to
+  change; keys are not, or every order ever placed under a renamed gig is
+  orphaned. Package keys are unique across all services for the same reason.
+- **Drafts are private.** `is_published` false keeps a gig out of the public
+  catalogue; RLS lets an admin see their own drafts through the same query, so
+  the preview and the live page cannot drift apart.
+- **`offer_snapshot`** on `managed_projects` records the gig and package as they
+  read at the moment of sale. Editing a price, renaming a gig, or deleting one
+  outright never rewrites what a client was told they were buying —
+  `offerServiceName` reads the snapshot first, the live catalogue second, and
+  the raw key last.
+- **No foreign key** from `managed_projects.service_type` to the catalogue, and
+  no check constraint. Retiring a gig must neither be blocked by nor cascade
+  into the orders placed under it.
+
+Pricing still never comes from the browser. `/api/managed/checkout` calls
+`loadCatalogue` with the caller's own client — so RLS decides what is on sale —
+and prices the order from the row it finds.
 
 ## Who may do what
 
@@ -66,6 +100,8 @@ Every write that carries value goes through a function, not a policy:
 | `admin_managed_set_status` | admins | notifies the client only at the four stages worth hearing about |
 | `admin_managed_publish_version` | admins | refuses a path outside `managed/{project_id}/` |
 | `admin_managed_link_studio_project` | admins | the bridge |
+| `admin_upsert_managed_service` / `_package` | admins | the catalogue; the key cannot be changed on update |
+| `admin_delete_managed_service` / `_package` | admins | orders keep the name they were sold under |
 | `admin_managed_overview` | admins | the queue |
 
 The two service-role functions carry an `auth.role()` check in the body as well
@@ -139,7 +175,10 @@ not stand behind.
 
 | Concern | Location |
 | :--- | :--- |
-| Catalogue, pricing, pipeline vocabulary | [`src/lib/managed-production.ts`](../src/lib/managed-production.ts) |
+| Pipeline vocabulary, brief options, storage paths | [`src/lib/managed-production.ts`](../src/lib/managed-production.ts) |
+| Catalogue shapes, pricing, offer snapshots | [`src/lib/managed-offers.ts`](../src/lib/managed-offers.ts) |
+| Catalogue read (server) | [`src/lib/managed/catalogue.ts`](../src/lib/managed/catalogue.ts) |
+| Gig editor | [`src/components/admin/ManagedOffers.tsx`](../src/components/admin/ManagedOffers.tsx) |
 | Brief schema and the mapping into `creative_brief` | [`src/lib/managed-brief.ts`](../src/lib/managed-brief.ts) |
 | Access helper | [`src/lib/managed/server.ts`](../src/lib/managed/server.ts) |
 | Studio bridge | [`src/lib/managed/studio-bridge.ts`](../src/lib/managed/studio-bridge.ts) |
@@ -159,6 +198,7 @@ not stand behind.
 | `/hire-us/brief?service=…&repeat=…` | public; sign-in is asked for at checkout |
 | `/hire-us/projects` | signed in |
 | `/hire-us/projects/[projectId]` | the owner, or an admin |
+| `/api/managed/offers` | public |
 | `/api/managed/checkout`, `…/verify`, `/api/managed/prefill` | signed in |
 | `/api/managed/projects`, `…/[id]`, `…/messages`, `…/deliverables/[id]` | signed in, RLS decides |
 | `/api/admin/managed`, `…/[id]`, `…/publish`, `…/studio-exports` | admins |
@@ -182,6 +222,8 @@ Nothing here forecloses the next things:
 - **Subscriptions** — `managed_projects` already carries its own price and
   package; a monthly plan is a row that opens projects on a schedule rather than
   a new project model.
+- **More gigs** — the catalogue is data now. A fifth service is a form, not a
+  deploy.
 - **Extra aspect ratios per ad** — `managed_deliverables.aspect_ratio` is per
   deliverable, and the delivery area already groups by it.
 - **Competitor research and winning-ad remixing** — the brief's

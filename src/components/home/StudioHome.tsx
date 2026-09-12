@@ -14,6 +14,7 @@ import {
     ArrowRight,
     ArrowUpRight,
     Bot,
+    Briefcase,
     CheckCircle2,
     Clapperboard,
     Layers3,
@@ -270,6 +271,21 @@ export default function StudioHome() {
                                     See It Build a Video <Play className="h-4 w-4 fill-current" />
                                 </a>
                             </div>
+
+                            {/* The done-for-you path, for the visitor who does
+                                not want to operate anything. Stacked under the
+                                two primary CTAs rather than beside them: this
+                                page sells the studio, and a third button of
+                                equal weight would ask people to choose before
+                                they know what either is. */}
+                            <Link
+                                href="/hire-us"
+                                className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-white/55 transition hover:text-primary"
+                            >
+                                <Briefcase className="h-4 w-4 shrink-0 text-primary" />
+                                <span>Would rather we made it? Hire our creative team</span>
+                                <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+                            </Link>
 
                             {/* Short reassurance, not a second product explanation. */}
                             <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-white/50 sm:mt-10 sm:gap-x-6 sm:border-t sm:border-white/10 sm:pt-7 sm:t-caption">

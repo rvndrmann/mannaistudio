@@ -3,12 +3,12 @@
 import Link from "next/link"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
-  Clapperboard, ExternalLink, Film, Inbox, Loader2, Plus, RefreshCcw, Send, Wand2,
+  Clapperboard, ExternalLink, Film, Inbox, Loader2, Plus, RefreshCcw, Send, Tags, Wand2,
 } from "lucide-react"
 import { formatUsdWithInr } from "@/lib/currency"
-import {
-  MANAGED_STATUSES, MANAGED_STATUS_LABELS, serviceName,
-} from "@/lib/managed-production"
+import { MANAGED_STATUSES, MANAGED_STATUS_LABELS } from "@/lib/managed-production"
+import { offerServiceName } from "@/lib/managed-offers"
+import ManagedOffers from "@/components/admin/ManagedOffers"
 import { briefDigest, parseManagedBrief } from "@/lib/managed-brief"
 import type { ManagedProjectPayload } from "@/components/managed/types"
 
@@ -38,6 +38,7 @@ type QueueRow = {
   owner_name: string
   owner_email: string
   studio_project_id: string | null
+  offer_snapshot: unknown
   deliverables: number
   ready_for_review: number
   approved: number
@@ -58,6 +59,7 @@ export default function ManagedProduction() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [openId, setOpenId] = useState<string | null>(null)
+  const [view, setView] = useState<"orders" | "offers">("orders")
 
   const load = useCallback(async () => {
     try {
@@ -92,19 +94,42 @@ export default function ManagedProduction() {
             Orders placed from Hire Our Creative Team. Produced in the Studio, delivered here.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={load}
-          className="flex h-9 items-center gap-2 rounded-md border border-white/12 px-3.5 text-xs font-medium text-white/60 transition hover:bg-white/[0.06] hover:text-white"
-        >
-          <RefreshCcw className="h-3.5 w-3.5" />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-md border border-white/12 p-0.5">
+            {([["orders", "Orders", Inbox], ["offers", "Offers", Tags]] as const).map(([key, label, Icon]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setView(key)}
+                className={`flex h-8 items-center gap-1.5 rounded px-3 text-xs font-semibold transition ${
+                  view === key ? "bg-primary text-black" : "text-white/45 hover:text-white"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+          {view === "orders" && (
+            <button
+              type="button"
+              onClick={load}
+              className="flex h-9 items-center gap-2 rounded-md border border-white/12 px-3.5 text-xs font-medium text-white/60 transition hover:bg-white/[0.06] hover:text-white"
+            >
+              <RefreshCcw className="h-3.5 w-3.5" />
+              Refresh
+            </button>
+          )}
+        </div>
       </div>
 
-      {error && <p className="rounded-xl border border-red-400/25 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
+      {view === "offers" && <ManagedOffers />}
 
-      {loading ? (
+      {view === "orders" && error && (
+        <p className="rounded-xl border border-red-400/25 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>
+      )}
+
+      {view === "orders" && (loading ? (
         <div className="flex h-40 items-center justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
@@ -143,7 +168,7 @@ export default function ManagedProduction() {
                           )}
                         </div>
                         <p className="mt-0.5 truncate text-[11px] text-white/35">
-                          {row.owner_name || row.owner_email} · {serviceName(row.service_type)}
+                          {row.owner_name || row.owner_email} · {offerServiceName(row.offer_snapshot, row.service_type)}
                         </p>
                         <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] text-white/30">
                           <span>{row.video_count} × {row.duration_seconds}s</span>
@@ -174,7 +199,7 @@ export default function ManagedProduction() {
             )}
           </div>
         </div>
-      )}
+      ))}
     </div>
   )
 }
@@ -243,7 +268,7 @@ function OrderPanel({ projectId, onChanged }: { projectId: string; onChanged: ()
         <div className="min-w-0">
           <h3 className="text-lg font-bold tracking-tight">{project.name}</h3>
           <p className="mt-0.5 text-xs text-white/35">
-            {serviceName(project.service_type)} · {project.video_count} × {project.duration_seconds}s ·{" "}
+            {offerServiceName(project.offer_snapshot, project.service_type)} · {project.video_count} × {project.duration_seconds}s ·{" "}
             {project.aspect_ratio} · {project.price_inr > 0 ? formatUsdWithInr(project.price_inr) : "Quote"}
           </p>
         </div>
