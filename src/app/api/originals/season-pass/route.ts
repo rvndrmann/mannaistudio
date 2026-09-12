@@ -46,14 +46,14 @@ export async function POST(request: NextRequest) {
     const admin = createServiceClient()
     const { data: series } = await admin
       .from("originals_series")
-      .select("id,slug,title,is_published")
+      .select("id,slug,title,is_published,presale_price_inr,presale_ends_at")
       .eq("id", input.seriesId)
       .maybeSingle()
     if (!series || !series.is_published) {
       return NextResponse.json({ error: "That series is not available." }, { status: 404 })
     }
 
-    const offer = seasonPassOffer(series.slug)
+    const offer = seasonPassOffer(series)
 
     const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret })
     const order = await razorpay.orders.create({

@@ -7,6 +7,7 @@ import { AlertCircle, ArrowLeft, BellRing, Bookmark, Film, Loader2, Lock, Maximi
 import Navbar from "@/components/Navbar"
 import CreditPackModal from "@/components/originals/CreditPackModal"
 import EpisodePaywall from "@/components/originals/EpisodePaywall"
+import SeasonPassCard from "@/components/originals/SeasonPassCard"
 import NotifyMeSheet from "@/components/originals/NotifyMeSheet"
 import { useAuth } from "@/components/auth/auth-provider"
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events"
@@ -693,6 +694,22 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
                 <p className="mt-1 text-xs text-white/45">{copied ? "Copied!" : "Share"}</p>
               </button>
             </div>
+
+            {/* The pass, on the page people arrive at. A presale runs before
+                any episode is locked, so the paywall cannot be the only place
+                it is sold. */}
+            <SeasonPassCard
+              seriesId={series.id}
+              seriesTitle={series.title}
+              offer={series.seasonPass}
+              episodeCount={episodes.length}
+              plannedEpisodes={series.plannedEpisodes}
+              freeEpisodes={series.freeEpisodes}
+              passExpiresAt={series.passExpiresAt}
+              signedIn={Boolean(user)}
+              onSignIn={() => signInWithGoogle()}
+              onPurchased={() => { void load() }}
+            />
 
             {/* Episode grid */}
             <div className="mt-6">

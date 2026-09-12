@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Check, Crown, Loader2, Lock, Sparkles, Zap } from "lucide-react"
 import { useCreditPackCheckout } from "./use-credit-pack-checkout"
+import { useSeasonPassCheckout } from "./use-season-pass-checkout"
 import {
   ORIGINALS_CREDIT_PACKAGES,
   SEASON_PASS_DAYS,
@@ -48,23 +49,10 @@ type Props = {
   error?: string | null
 }
 
-function loadRazorpay(): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (typeof window !== "undefined" && (window as any).Razorpay) return resolve(true)
-    const script = document.createElement("script")
-    script.src = "https://checkout.razorpay.com/v1/checkout.js"
-    script.onload = () => resolve(true)
-    script.onerror = () => resolve(false)
-    document.body.appendChild(script)
-  })
-}
-
 export default function EpisodePaywall({
   episode, seriesId, seriesTitle, posterUrl, episodePrice, seasonPass, balance, signedIn,
   onSignIn, onUnlock, unlocking, onBalanceChange, onPassPurchased, error,
 }: Props) {
-  const [busy, setBusy] = useState<string | null>(null)
-  const [localError, setLocalError] = useState<string | null>(null)
   const [showPacks, setShowPacks] = useState(false)
 
   const canAfford = (balance ?? 0) >= episodePrice
@@ -80,53 +68,15 @@ export default function EpisodePaywall({
   // own words if it has any, since a writer's hook beats a generated one.
   const hook = episode.description?.trim() || `${seriesTitle} — it doesn't stop here.`
 
-  const buyPass = async () => {
-    if (!signedIn) { onSignIn(); return }
-    setBusy("pass")
-    setLocalError(null)
-    try {
-      const ok = await loadRazorpay()
-      if (!ok) throw new Error("Could not reach the payment gateway.")
-      const res = await fetch("/api/originals/season-pass", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ seriesId }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Could not start checkout")
+  // The pass and the packs are two different purchases from two different
+  // endpoints, so each has its own checkout hook.
+  const { buyPass: startPassCheckout, pending: passPending, error: passError } = useSeasonPassCheckout({
+    onPurchased: onPassPurchased,
+  })
 
-      const rzp = new (window as any).Razorpay({
-        key: data.keyId,
-        order_id: data.orderId,
-        amount: data.amount,
-        currency: "INR",
-        name: "AI Director Hub Originals",
-        description: `${data.seriesTitle} — Season Pass (${data.days} days)`,
-        prefill: { email: data.email, name: data.name },
-        theme: { color: "#b9f42e" },
-        handler: async (r: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
-          try {
-            const verify = await fetch("/api/originals/season-pass/verify", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(r),
-            })
-            const vd = await verify.json()
-            if (!verify.ok) throw new Error(vd.error || "Payment verification failed")
-            onPassPurchased()
-          } catch (e) {
-            setLocalError(e instanceof Error ? e.message : "Payment verification failed")
-          } finally {
-            setBusy(null)
-          }
-        },
-        modal: { ondismiss: () => setBusy(null) },
-      })
-      rzp.open()
-    } catch (e) {
-      setLocalError(e instanceof Error ? e.message : "Could not start checkout")
-      setBusy(null)
-    }
+  const buyPass = () => {
+    if (!signedIn) { onSignIn(); return }
+    void startPassCheckout(seriesId)
   }
 
   // Packs go through the shared checkout; the season pass above does not,
@@ -140,7 +90,7 @@ export default function EpisodePaywall({
     void startPackCheckout(packageId)
   }
 
-  const shown = error || localError || packError
+  const shown = error || passError || packError
 
   return (
     <div className="absolute inset-0 overflow-hidden">
@@ -172,10 +122,10 @@ export default function EpisodePaywall({
           <button
             type="button"
             onClick={buyPass}
-            disabled={busy === "pass"}
+            disabled={passPending}
             className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-primary px-5 text-[15px] font-bold text-black transition hover:brightness-110 disabled:opacity-60"
           >
-            {busy === "pass" ? <Loader2 className="h-5 w-5 animate-spin" /> : (
+            {passPending ? <Loader2 className="h-5 w-5 animate-spin" /> : (
               <>
                 <Crown className="h-5 w-5" />
                 Season Pass — ₹{pass.priceInr}

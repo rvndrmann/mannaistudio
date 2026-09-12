@@ -26,7 +26,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     const { data: series, error } = await admin
       .from("originals_series")
-      .select("id, slug, title, description, poster_url, banner_url, genre, tags, free_episodes, episode_price, planned_episodes")
+      .select("id, slug, title, description, poster_url, banner_url, genre, tags, free_episodes, episode_price, planned_episodes, presale_price_inr, presale_ends_at")
       .eq("slug", slug)
       .eq("is_published", true)
       .maybeSingle()
@@ -106,7 +106,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       passExpiresAt,
       // Priced here rather than in the paywall so a wrong clock in the browser
       // cannot advertise a launch price the checkout will refuse to honour.
-      seasonPass: seasonPassOffer(series.slug),
+      seasonPass: seasonPassOffer(series),
     }
 
     return NextResponse.json({ series: detail, credits, signedIn: Boolean(user) })

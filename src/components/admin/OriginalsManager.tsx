@@ -4,7 +4,13 @@ import { useCallback, useEffect, useState } from "react"
 import { AlertCircle, Check, ChevronDown, ChevronRight, Loader2, Plus, Save, Trash2, Upload } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import OriginalsNotifyList from "@/components/admin/OriginalsNotifyList"
-import { DEFAULT_EPISODE_PRICE, DEFAULT_FREE_EPISODES } from "@/lib/originals"
+import {
+  DEFAULT_EPISODE_PRICE,
+  DEFAULT_FREE_EPISODES,
+  SEASON_PASS_PRICE_INR,
+  earlyPassTimeRemaining,
+  seasonPassOffer,
+} from "@/lib/originals"
 
 type SeriesRow = {
   id: string
@@ -21,6 +27,9 @@ type SeriesRow = {
   sort_order: number
   /** Length of the finished season, or null for "not saying yet". */
   planned_episodes: number | null
+  /** Presale: what the season pass costs until `presale_ends_at`. Null when off. */
+  presale_price_inr: number | null
+  presale_ends_at: string | null
 }
 
 type EpisodeRow = {
@@ -49,7 +58,28 @@ const blankSeries = (): SeriesRow => ({
   is_published: false,
   sort_order: 0,
   planned_episodes: null,
+  presale_price_inr: null,
+  presale_ends_at: null,
 })
+
+/**
+ * A timestamp the way <input type="datetime-local"> wants it, in the admin's
+ * own timezone — they are setting a deadline they think of in local time, and
+ * it is stored as the instant that works out to.
+ */
+function toLocalInput(iso: string | null): string {
+  if (!iso) return ""
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return ""
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}`
+}
+
+function fromLocalInput(value: string): string | null {
+  if (!value.trim()) return null
+  const at = new Date(value)
+  return Number.isNaN(at.getTime()) ? null : at.toISOString()
+}
 
 const MAX_POSTER_BYTES = 5 * 1024 * 1024
 const MAX_VIDEO_BYTES = 500 * 1024 * 1024
@@ -129,6 +159,12 @@ export default function OriginalsManager() {
     return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl
   }
 
+  // Whether the draft in front of the admin is a presale that is actually
+  // running, so the badge says what a viewer would see rather than what was typed.
+  const draftOffer = draft ? seasonPassOffer(draft) : null
+  const presaleLive = Boolean(draftOffer && draftOffer.endsAt)
+  const presaleLeft = earlyPassTimeRemaining(draftOffer?.endsAt ?? null)
+
   const saveSeries = async () => {
     if (!draft) return
     setSaving(true)
@@ -148,6 +184,8 @@ export default function OriginalsManager() {
         p_is_published: draft.is_published,
         p_sort_order: draft.sort_order,
         p_planned_episodes: draft.planned_episodes,
+        p_presale_price_inr: draft.presale_price_inr,
+        p_presale_ends_at: draft.presale_ends_at,
       })
       if (error) throw new Error(error.message)
       setStatus({ tone: "ok", message: `Saved "${draft.title}"` })
@@ -366,6 +404,69 @@ export default function OriginalsManager() {
               />
             </label>
 
+            {/* Presale — the season pass sold under its standing price until a
+                stated moment. Price and deadline travel together: either both
+                are set or the presale is off, because a price with no closing
+                time is a discount nobody decided to give for ever. */}
+            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 md:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-white/85">Presale</p>
+                  <p className="mt-0.5 text-[11px] text-white/40">
+                    Sell the season pass early, under the usual ₹{SEASON_PASS_PRICE_INR}. Off unless both fields are filled.
+                  </p>
+                </div>
+                {presaleLive && (
+                  <span className="rounded-full bg-primary/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-primary">
+                    Live · {presaleLeft}
+                  </span>
+                )}
+                {draft.presale_price_inr !== null && draft.presale_ends_at !== null && !presaleLive && (
+                  <span className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                    Closed
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-3 grid gap-4 md:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-white/50">Presale price (₹)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={SEASON_PASS_PRICE_INR - 1}
+                    placeholder={`Blank for the usual ₹${SEASON_PASS_PRICE_INR}`}
+                    className={inputClass}
+                    value={draft.presale_price_inr ?? ""}
+                    onChange={(e) => setDraft({
+                      ...draft,
+                      presale_price_inr: e.target.value.trim() === "" ? null : Math.max(1, parseInt(e.target.value) || 1),
+                    })}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-white/50">Ends (your local time)</span>
+                  <input
+                    type="datetime-local"
+                    className={inputClass}
+                    value={toLocalInput(draft.presale_ends_at)}
+                    onChange={(e) => setDraft({ ...draft, presale_ends_at: fromLocalInput(e.target.value) })}
+                  />
+                </label>
+              </div>
+
+              {draft.presale_price_inr !== null && draft.presale_price_inr >= SEASON_PASS_PRICE_INR && (
+                <p className="mt-2.5 text-[11px] font-medium text-amber-300">
+                  A presale at or above ₹{SEASON_PASS_PRICE_INR} is not an offer — viewers would be shown the usual price.
+                </p>
+              )}
+              {(draft.presale_price_inr === null) !== (draft.presale_ends_at === null) && (
+                <p className="mt-2.5 text-[11px] font-medium text-amber-300">
+                  Fill in both to run a presale. With one blank it saves as off.
+                </p>
+              )}
+            </div>
+
             <div className="md:col-span-2">
               <span className="mb-1.5 block text-xs font-semibold text-white/50">Poster (9:16, max 5 MB)</span>
               <div className="flex flex-wrap items-center gap-3">
@@ -482,6 +583,12 @@ export default function OriginalsManager() {
                       /{row.slug} · {row.free_episodes} free · {row.episode_price} credits each
                       {row.planned_episodes ? ` · ${row.planned_episodes} planned` : ""}
                     </p>
+                    {/* A running presale is money in motion — worth seeing without opening the row. */}
+                    {seasonPassOffer(row).endsAt && (
+                      <p className="mt-0.5 text-xs font-semibold text-primary">
+                        Presale ₹{seasonPassOffer(row).priceInr} · {earlyPassTimeRemaining(seasonPassOffer(row).endsAt)}
+                      </p>
+                    )}
                   </div>
                 </button>
                 <span

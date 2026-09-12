@@ -37,54 +37,48 @@ export const DEFAULT_FREE_EPISODES = 3
 export const SEASON_PASS_PRICE_INR = 49
 export const SEASON_PASS_DAYS = 30
 
-/**
- * Launch offers — a season pass sold under its standing price for the first
- * few days of a series, keyed by slug.
- *
- * A season that drops all at once has one week when everybody who is ever
- * going to hear about it hears about it, and the pass is what turns that
- * attention into a viewer who finishes the show. Nineteen rupees is under the
- * smallest credit pack, so during the window the pass is the cheapest thing on
- * the paywall rather than the biggest commitment on it.
- *
- * `endsAt` is an instant, not a duration, so every viewer sees the same
- * deadline whatever their clock says and the offer cannot quietly run on. To
- * extend or end one early, move this date — it is the only place the window
- * is written down.
- */
-export const EARLY_PASS_OFFERS: Record<string, { priceInr: number; endsAt: string }> = {
-  // Full season out this week. Back to ₹49 at midnight IST ending 14 Sep 2026.
-  "dil-ka-sauda-1980": { priceInr: 19, endsAt: "2026-09-14T18:30:00.000Z" },
-}
-
 export type SeasonPassOffer = {
   /** What this viewer is charged right now, in rupees. */
   priceInr: number
-  /** The standing price. Equal to `priceInr` when no offer is running. */
+  /** The standing price. Equal to `priceInr` when no presale is running. */
   fullPriceInr: number
-  /** When the offer closes, or null when the price is simply the standing one. */
+  /** When the presale closes, or null when the price is simply the standing one. */
   endsAt: string | null
+}
+
+/** The two columns a presale is written in, as they come off the series row. */
+export type PresaleColumns = {
+  presale_price_inr?: number | null
+  presale_ends_at?: string | null
 }
 
 /**
  * What a season pass costs for one series at one moment.
  *
+ * The presale lives on the series row so a launch price can be opened, moved
+ * or closed from the admin page rather than by a deploy, and it holds an
+ * instant rather than a duration — every viewer sees the same deadline
+ * whatever their clock says, and the window cannot quietly run on.
+ *
  * The server calls this to price the Razorpay order and again to tell the
  * paywall what to print, so the label and the charge cannot disagree: both
- * come from the same function reading the same clock.
+ * come from the same function reading the same row and the same clock.
  */
-export function seasonPassOffer(slug: string | null | undefined, now: number = Date.now()): SeasonPassOffer {
+export function seasonPassOffer(series: PresaleColumns | null | undefined, now: number = Date.now()): SeasonPassOffer {
   const standing = { priceInr: SEASON_PASS_PRICE_INR, fullPriceInr: SEASON_PASS_PRICE_INR, endsAt: null }
-  const offer = slug ? EARLY_PASS_OFFERS[slug] : undefined
-  if (!offer) return standing
-  const closes = new Date(offer.endsAt).getTime()
+  const price = series?.presale_price_inr ?? null
+  const endsAt = series?.presale_ends_at ?? null
+  if (price === null || endsAt === null || price <= 0) return standing
+  const closes = new Date(endsAt).getTime()
   if (!Number.isFinite(closes) || closes <= now) return standing
-  return { priceInr: offer.priceInr, fullPriceInr: SEASON_PASS_PRICE_INR, endsAt: offer.endsAt }
+  // A presale dearer than the standing price is somebody's typo, not an offer.
+  if (price >= SEASON_PASS_PRICE_INR) return standing
+  return { priceInr: price, fullPriceInr: SEASON_PASS_PRICE_INR, endsAt: new Date(closes).toISOString() }
 }
 
 /**
- * "2 days left" on a launch offer, in hours once it is down to the last day —
- * a deadline is only persuasive while it is legible, and "1 day left" covers
+ * "2 days left" on a presale, in hours once it is down to the last day — a
+ * deadline is only persuasive while it is legible, and "1 day left" covers
  * anything from an hour to twenty-four.
  */
 export function earlyPassTimeRemaining(endsAt: string | null, now: number = Date.now()): string | null {
