@@ -34,7 +34,7 @@ export const DEFAULT_FREE_EPISODES = 3
  * It expires deliberately. A permanent pass on a login shared around a group
  * is a viewer who never comes back, and keeping them is the point of the offer.
  */
-export const SEASON_PASS_PRICE_INR = 149
+export const SEASON_PASS_PRICE_INR = 49
 export const SEASON_PASS_DAYS = 30
 
 export type OriginalsSeriesSummary = {
