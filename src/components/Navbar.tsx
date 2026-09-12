@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import { springUI, materialize } from "@/lib/motion"
-import { Clapperboard, Play, User, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, BookOpen, PlugZap, Sparkles, Users, KeyRound, ChevronDown, Menu } from "lucide-react"
+import { Clapperboard, Play, User, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, BookOpen, PlugZap, Sparkles, Users, KeyRound, ChevronDown, Menu, Briefcase } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -23,6 +23,10 @@ import { defaultSiteFeatures, fetchSiteFeatures, type SiteFeatures } from "@/lib
  */
 const baseNavLinks = [
     { key: "originals", name: "Originals", href: "/originals", icon: Clapperboard },
+    // The managed service is the other thing this site sells, and unlike the
+    // studio it is sold to everyone — so it sits in the nav for viewers too,
+    // not behind the admin-only flag the SaaS-era surfaces carry.
+    { key: "hireUs", name: "Hire Our Team", href: "/hire-us", icon: Briefcase, public: true },
     { key: "account", name: "My Account", href: "/account", icon: CreditCard, needsUser: true },
     { key: "social", name: "Social", href: "/social", icon: Play, adminOnly: true },
     { key: "calendar", name: "Calendar", href: "/calendar", icon: BookOpen, adminOnly: true },
@@ -33,9 +37,9 @@ const baseNavLinks = [
     { key: "blog", name: "Blog", href: "/blog", icon: BookOpen, adminOnly: true },
     { key: "billing", name: "Billing", href: "/billing", icon: CreditCard, adminOnly: true },
     { key: "mcp", name: "MCP & CLI", href: "/studio/external", icon: PlugZap, adminOnly: true },
-] as Array<{ key: string; name: string; href: string; icon: typeof Clapperboard; adminOnly?: boolean; needsUser?: boolean }>
+] as Array<{ key: string; name: string; href: string; icon: typeof Clapperboard; adminOnly?: boolean; needsUser?: boolean; public?: boolean }>
 
-const adminLink = { key: "admin", name: "Admin", href: "/admin", icon: ShieldCheck }
+const adminLink = { key: "admin", name: "Admin", href: "/admin", icon: ShieldCheck } as (typeof baseNavLinks)[number]
 
 export default function Navbar() {
     const [isAdmin, setIsAdmin] = useState(false)
@@ -120,11 +124,15 @@ export default function Navbar() {
 
     const navLinks = isAdmin ? [...permittedNavLinks, adminLink] : permittedNavLinks
 
-    // Originals is the one surface that works signed out — the catalogue is
-    // public and the first episodes of every series play free, which is the
-    // whole point of it. Hiding it behind sign-in would hide the thing the
-    // sign-in is for. Everything else stays as it was.
-    const visibleNavLinks = user ? navLinks : navLinks.filter((link) => link.key === "originals")
+    // What a signed-out visitor is shown: the catalogue, because the first
+    // episodes of every series play free and hiding it behind sign-in would
+    // hide the thing the sign-in is for — and anything else marked `public`,
+    // which today is the managed service. Both are things the site sells to
+    // strangers, and a shop window nobody can find is not a shop window. The
+    // operator surfaces stay hidden, as they were.
+    const visibleNavLinks = user
+        ? navLinks
+        : navLinks.filter((link) => link.key === "originals" || link.public)
 
     return (
         <nav className="fixed top-0 left-0 right-0 z-50 flex justify-center p-4">

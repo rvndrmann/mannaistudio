@@ -15,6 +15,7 @@ const legalLinks = [
 // because middleware bounces a viewer straight back to /originals.
 const siteLinks = [
     { href: "/originals", label: "Originals" },
+    { href: "/hire-us", label: "Hire Our Creative Team" },
     { href: "/account", label: "My Account" },
     { href: "/about", label: "About Us" },
 ]

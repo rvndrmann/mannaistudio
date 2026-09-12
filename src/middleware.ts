@@ -12,7 +12,13 @@ import { NextResponse, type NextRequest } from 'next/server'
 // /account is deliberately absent: it draws its own sign-in card, the same way
 // /originals does. Bouncing a signed-out visitor to /login instead would put
 // the wall in front of the page that explains what they are signing in for.
-const protectedPaths = ['/challenges', '/services', '/admin', '/profile', '/portfolio', '/studio']
+// /hire-us is deliberately absent: the marketing page and the brief are the
+// shop window for the managed service, and a stranger has to be able to read
+// what it costs before being asked who they are. Sign-in is required at the
+// point of checkout instead, which the page and the API route enforce
+// themselves. /hire-us/projects is a different matter — it is somebody's own
+// work — and is listed below.
+const protectedPaths = ['/challenges', '/services', '/admin', '/profile', '/portfolio', '/studio', '/hire-us/projects']
 
 // Temporarily paused features — redirect to home (code kept; re-enable by emptying this list).
 const pausedPaths = ['/feed', '/services', '/challenges', '/messages']

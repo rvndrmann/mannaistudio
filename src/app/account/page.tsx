@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useCallback, useEffect, useState } from "react"
 import {
   AlertCircle,
+  Briefcase,
   Check,
   Clapperboard,
   CreditCard,
@@ -27,6 +28,7 @@ import {
   unlockTimeRemaining,
 } from "@/lib/originals"
 import { onCreditBalanceChanged } from "@/lib/credit-balance-events"
+import ManagedProjectCards, { useManagedProjects } from "@/components/managed/ManagedProjectCards"
 
 /**
  * The viewer's account.
@@ -66,6 +68,8 @@ export default function AccountPage() {
   const [payments, setPayments] = useState<PaymentRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [success, setSuccess] = useState<string | null>(null)
+
+  const { projects: managedProjects, loading: managedLoading } = useManagedProjects()
 
   const { buyPack, pendingPackId, error } = useCreditPackCheckout({
     onPurchased: setBalance,
@@ -188,6 +192,23 @@ export default function AccountPage() {
             </Link>
           </div>
         </section>
+
+        {/* Managed production ----------------------------------------------- */}
+        {(managedLoading || managedProjects.length > 0) && (
+          <section className="mt-10">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-white/40">
+                <Briefcase className="h-4 w-4" /> Managed production
+              </h2>
+              <Link href="/hire-us/projects" className="text-xs font-semibold text-primary hover:underline">
+                All projects
+              </Link>
+            </div>
+            <div className="mt-3">
+              <ManagedProjectCards projects={managedProjects} loading={managedLoading} showEmpty={false} />
+            </div>
+          </section>
+        )}
 
         {/* Packs ------------------------------------------------------------ */}
         <section className="mt-8">

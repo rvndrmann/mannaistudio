@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Bell, Trophy, MessageSquare, Info } from "lucide-react"
+import { Bell, Trophy, MessageSquare, Info, Clapperboard, Film } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -10,7 +10,11 @@ import { fetchNotifications, getJobChatClient, markNotificationsRead, type Notif
 
 function notificationIcon(type: string) {
     if (type === "job_won") return <Trophy className="w-4 h-4 text-amber-400" />
-    if (type === "job_message") return <MessageSquare className="w-4 h-4 text-lime-300" />
+    if (type === "job_message" || type === "managed_message") return <MessageSquare className="w-4 h-4 text-lime-300" />
+    if (type === "managed_delivery") return <Film className="w-4 h-4 text-lime-300" />
+    if (type === "managed_order" || type === "managed_status" || type === "managed_revision") {
+        return <Clapperboard className="w-4 h-4 text-lime-300" />
+    }
     return <Info className="w-4 h-4 text-white/40" />
 }
 
@@ -65,6 +69,13 @@ export default function NotificationBell() {
 
     const openNotification = (notification: Notification) => {
         setOpen(false)
+        // A managed notification always names the project it is about, and
+        // every one of them — a new order, a message, a cut to review — is
+        // answered on that one page.
+        if (notification.managedProjectId) {
+            router.push(`/hire-us/projects/${notification.managedProjectId}`)
+            return
+        }
         if (notification.jobId) {
             if (notification.type === "job_message" || notification.type === "job_won") {
                 router.push(`/messages?job=${notification.jobId}`)

@@ -95,6 +95,14 @@ export type SiteFeatures = {
   mcp: boolean
   originals: boolean
   /**
+   * Hire Our Creative Team. Off removes the managed service from the navigation,
+   * closes the checkout route, and puts a "not taking new projects" note on the
+   * page itself — a hidden nav entry alone would still let a bookmarked link
+   * take somebody's money. Projects already running stay reachable and stay
+   * deliverable: pausing new sales is not a reason to strand paid work.
+   */
+  hireUs: boolean
+  /**
    * Bring-your-own provider keys. Off hides the offer everywhere it is sold —
    * plan bullets, the billing banner and FAQ, the integrations screen — and
    * closes the routes behind it. Keys already stored are left untouched, so
@@ -113,6 +121,7 @@ export const defaultSiteFeatures: SiteFeatures = {
   blog: true,
   mcp: true,
   originals: true,
+  hireUs: true,
   byok: true,
 }
 
@@ -130,6 +139,7 @@ export async function fetchSiteFeatures(supabase: SupabaseClient): Promise<SiteF
       blog: data.value.blog !== false,
       mcp: data.value.mcp !== false,
       originals: data.value.originals !== false,
+      hireUs: data.value.hireUs !== false,
       byok: data.value.byok !== false,
     }
   } catch {
