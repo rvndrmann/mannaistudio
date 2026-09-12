@@ -353,7 +353,7 @@ export async function withdrawSupersededProposals(
   try {
     const { data: pending } = await context.supabase
       .from("creator_action_proposals")
-      .select("id,title,creator_tool_executions(session_id)")
+      .select("id,title,tool_execution_id,workflow_run_id,creator_tool_executions(session_id)")
       .eq("project_id", context.project.id)
       .eq("status", "pending")
     // Only this conversation's approvals: another chat's open question is not
@@ -363,11 +363,41 @@ export async function withdrawSupersededProposals(
       return execution?.session_id === sessionId
     })
     if (!mine.length) return []
-    const { error } = await context.supabase
-      .from("creator_action_proposals")
-      .update({ status: "expired", decided_at: new Date().toISOString() })
-      .in("id", mine.map((proposal) => proposal.id))
-    if (error) throw error
+    const now = new Date().toISOString()
+    const executionIds = mine.map((proposal) => proposal.tool_execution_id).filter((id): id is string => Boolean(id))
+    const runIds = Array.from(new Set(mine.map((proposal) => proposal.workflow_run_id).filter((id): id is string => Boolean(id))))
+    // The card, the tool call that raised it and the run that was waiting on
+    // it, together.
+    //
+    // Only the card was withdrawn before, so its tool execution stayed
+    // awaiting_approval and the run stayed open — for ever, because the thing
+    // that would have closed them was the approval that is no longer coming.
+    // The studio then showed a run still in flight with no card to answer, and
+    // the next turn's status read it as work still in progress. Ninety-seven
+    // executions and sixty-nine runs had collected that way.
+    const [proposalWrite] = await Promise.all([
+      context.supabase
+        .from("creator_action_proposals")
+        .update({ status: "expired", decided_at: now })
+        .in("id", mine.map((proposal) => proposal.id)),
+      executionIds.length
+        ? context.supabase
+          .from("creator_tool_executions")
+          .update({ status: "cancelled", completed_at: now })
+          .in("id", executionIds)
+          .eq("status", "awaiting_approval")
+        : Promise.resolve({ error: null }),
+      // Never a run that has already reached an end state, so a finished turn
+      // is not reopened as cancelled by a card withdrawn after it.
+      runIds.length
+        ? context.supabase
+          .from("creator_workflow_runs")
+          .update({ status: "cancelled", completed_at: now })
+          .in("id", runIds)
+          .in("status", ["queued", "planning", "awaiting_approval", "running", "retrying", "blocked"])
+        : Promise.resolve({ error: null }),
+    ])
+    if (proposalWrite.error) throw proposalWrite.error
     return mine.map((proposal) => (typeof proposal.title === "string" ? proposal.title : "a pending approval"))
   } catch (error) {
     // A stuck card is better than a failed message.
