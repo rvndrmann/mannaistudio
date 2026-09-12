@@ -136,6 +136,13 @@ export async function prepareDirectorTurn(input: DirectorTurnInput) {
   const projectId = context.project.id
   const body = { message: input.message, idempotencyKey: input.idempotencyKey }
 
+// One read of the runtime settings, shared by the two things that disagreed
+// about the step ceiling: the run row recorded a hardcoded ten while the loop
+// enforced whatever an admin had saved. A run therefore reported a limit
+// nothing used, and raising the setting changed the agent's behaviour without
+// changing the number anyone could see.
+const runtimeSettingsRead = fetchDirectorRuntimeSettings(context.supabase)
+
 // Everything the turn needs before the agent can start, in one batch. The
 // session's model stamp, the run row, the history page and the withdrawal
 // of superseded cards were four sequential round trips and none of them
@@ -146,7 +153,8 @@ export async function prepareDirectorTurn(input: DirectorTurnInput) {
 // the run id.
 const [, workflowRun, recentRes, openingRes, totalRes, withdrawn] = await Promise.all([
   context.supabase.from("creator_chat_sessions").update({ model }).eq("id", sessionId).eq("user_id", context.user.id),
-  createWorkflowRun(context, { episodeId: episode.id, sessionId, objective: body.message, maxSteps: 10 }),
+  runtimeSettingsRead.then((settings) =>
+    createWorkflowRun(context, { episodeId: episode.id, sessionId, objective: body.message, maxSteps: settings.maxToolSteps })),
   // The newest turns, the very first one, and how many there are in total.
   //
   // This read used to be `ascending: true` with `limit(40)`, which returns
@@ -188,7 +196,7 @@ const buildAgentInput = async () => {
     buildProjectContext(context.supabase, context.project),
     context.supabase.from("site_settings").select("value").eq("key", "ai_director_global_instructions").maybeSingle(),
     loadProjectBrandContext(context.supabase, context.project),
-    fetchDirectorRuntimeSettings(context.supabase),
+    runtimeSettingsRead,
     collectDirectorVisionAttachments({
       supabase: context.supabase,
       projectId,
