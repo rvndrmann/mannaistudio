@@ -169,14 +169,33 @@ export default function Navbar() {
                     reachable only by opening More. It is the whole funnel, so it
                     gets a permanent seat. Hidden from md up, where the full nav
                     already carries it, and skipped on Originals itself. */}
-                {!compactHeader && visibleNavLinks.some((link) => link.key === "originals") && (
-                    <Link
-                        href="/originals"
-                        className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-white/15 bg-white/[0.06] px-3 text-sm font-medium text-white/85 transition duration-press ease-out hover:bg-white/10 hover:text-white active:scale-[0.97] md:hidden"
-                    >
-                        <Clapperboard className="h-4 w-4 shrink-0 text-primary" />
-                        Originals
-                    </Link>
+                {!compactHeader && (
+                    <div className="flex min-w-0 items-center gap-1.5 md:hidden">
+                        {visibleNavLinks.some((link) => link.key === "originals") && (
+                            <Link
+                                href="/originals"
+                                className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-white/15 bg-white/[0.06] px-2.5 text-sm font-medium text-white/85 transition duration-press ease-out hover:bg-white/10 hover:text-white active:scale-[0.97]"
+                            >
+                                <Clapperboard className="h-4 w-4 shrink-0 text-primary" />
+                                Originals
+                            </Link>
+                        )}
+                        {/* The second thing the site sells, and the one a brand
+                            arrives looking for. It was reachable on a phone only
+                            by opening More, which is where links go to not be
+                            found. The icon carries it at 375px, where the label
+                            would cost Originals its seat. */}
+                        {visibleNavLinks.some((link) => link.key === "hireUs") && (
+                            <Link
+                                href="/hire-us"
+                                title="Hire our creative team"
+                                className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-primary/35 bg-primary/10 px-2.5 text-sm font-medium text-primary transition duration-press ease-out hover:bg-primary/20 active:scale-[0.97]"
+                            >
+                                <Briefcase className="h-4 w-4 shrink-0" />
+                                <span className="hidden min-[420px]:inline">Hire Us</span>
+                            </Link>
+                        )}
+                    </div>
                 )}
 
                 {/* Account controls, collapsed into one button at every width */}

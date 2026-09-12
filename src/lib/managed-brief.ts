@@ -1,6 +1,5 @@
 import { z } from "zod"
 import { creativeBriefSchema, type CreativeBrief } from "@/lib/studio/domain"
-import { MANAGED_SERVICE_KEYS, serviceName } from "@/lib/managed-production"
 
 /**
  * The brief a client fills in, and how it becomes something the Director can
@@ -76,7 +75,10 @@ export const managedBriefSchema = z.object({
 
 export type ManagedBrief = z.infer<typeof managedBriefSchema>
 
-export const managedServiceKeySchema = z.enum(MANAGED_SERVICE_KEYS)
+// A plain string, not an enum: services are created from the admin panel now,
+// so the set of valid keys lives in the database. The checkout route is what
+// decides whether a key names something that is actually on sale.
+export const managedServiceKeySchema = z.string().trim().regex(/^[a-z][a-z0-9_]{1,58}$/, "Unknown service")
 
 export function emptyManagedBrief(): ManagedBrief {
   return managedBriefSchema.parse({})
@@ -98,10 +100,10 @@ export function parseManagedBrief(input: unknown): ManagedBrief {
  */
 export function creativeBriefFromManagedBrief(
   brief: ManagedBrief,
-  options: { serviceType: string; durationSeconds: number; aspectRatio: string },
+  options: { serviceName: string; durationSeconds: number; aspectRatio: string },
 ): CreativeBrief {
   const objective = [
-    `${serviceName(options.serviceType)} for ${brief.productName || brief.brandName || "the client's product"}.`,
+    `${options.serviceName} for ${brief.productName || brief.brandName || "the client's product"}.`,
     brief.goal ? `Goal: ${brief.goal}.` : "",
     brief.goalNotes,
   ].filter(Boolean).join(" ").trim()

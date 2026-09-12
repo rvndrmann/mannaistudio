@@ -4,7 +4,7 @@ import { z, ZodError } from "zod"
 import Razorpay from "razorpay"
 import { createServiceClient } from "@/lib/supabase/service"
 import { managedErrorMessage, managedErrorStatus, requireUser } from "@/lib/managed/server"
-import { serviceName } from "@/lib/managed-production"
+import { offerServiceName } from "@/lib/managed-offers"
 
 export const dynamic = "force-dynamic"
 
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     // account that is verifying, not merely to the id written in the order.
     const { data: project } = await admin
       .from("managed_projects")
-      .select("id,user_id,name,service_type")
+      .select("id,user_id,name,service_type,offer_snapshot")
       .eq("id", notes.managed_project_id)
       .maybeSingle()
     if (!project || project.user_id !== user.id) {
@@ -105,7 +105,10 @@ export async function POST(request: NextRequest) {
         p_txnid: input.razorpay_payment_id,
         p_payment_id: input.razorpay_payment_id,
         p_amount: String(priceInr),
-        p_product_info: `${serviceName(project.service_type)} — ${project.name}`,
+        // From the snapshot: the statement line should say what was bought
+        // at the time it was bought, whatever the gig is called by the time
+        // anyone reads it back.
+        p_product_info: `${offerServiceName(project.offer_snapshot, project.service_type)} — ${project.name}`,
         p_status: "success",
         p_profile_id: user.id,
       })

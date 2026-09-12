@@ -11,6 +11,7 @@ export type ManagedProject = {
   brand_id: string | null
   studio_project_id: string | null
   brief: ManagedBrief
+  offer_snapshot: unknown
   status: string
   video_count: number
   duration_seconds: number

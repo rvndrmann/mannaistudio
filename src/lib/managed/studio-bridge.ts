@@ -4,7 +4,7 @@ import { brandAssetHandle, entityTypeForBrandAsset, type BrandRecord } from "@/l
 import { UNVERIFIED_ASSET } from "@/lib/studio/asset-verification"
 import { creativeBriefSchema, type CreativeBrief } from "@/lib/studio/domain"
 import { briefDigest, creativeBriefFromManagedBrief, parseManagedBrief } from "@/lib/managed-brief"
-import { serviceName } from "@/lib/managed-production"
+import { offerServiceName } from "@/lib/managed-offers"
 import type { ManagedProjectRow } from "@/lib/managed/server"
 
 /**
@@ -118,9 +118,10 @@ export async function openStudioProjectForManaged(
     brandAssets = (assets as BrandAssetRow[]) || []
   }
 
+  const serviceName = offerServiceName(project.offer_snapshot, project.service_type)
   const creativeBrief = withBrandContext(
     creativeBriefFromManagedBrief(brief, {
-      serviceType: project.service_type,
+      serviceName,
       durationSeconds: project.duration_seconds,
       aspectRatio: project.aspect_ratio,
     }),
@@ -128,7 +129,7 @@ export async function openStudioProjectForManaged(
   )
 
   const description = [
-    `Managed ${serviceName(project.service_type)} for ${brief.brandName || "a client"}.`,
+    `Managed ${serviceName} for ${brief.brandName || "a client"}.`,
     `${project.video_count} × ${project.duration_seconds}s, ${project.aspect_ratio}.`,
     "",
     briefDigest(brief),

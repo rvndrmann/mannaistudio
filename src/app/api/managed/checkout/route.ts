@@ -4,7 +4,9 @@ import Razorpay from "razorpay"
 import { createServiceClient } from "@/lib/supabase/service"
 import { ensureProfile, managedErrorMessage, managedErrorStatus, managedServiceOpen, requireUser } from "@/lib/managed/server"
 import { managedBriefSchema, managedServiceKeySchema } from "@/lib/managed-brief"
-import { MANAGED_ASPECT_RATIOS, MANAGED_MEDIA_BUCKET, managedUploadPrefix, packageFor, serviceFor, serviceName } from "@/lib/managed-production"
+import { MANAGED_ASPECT_RATIOS, MANAGED_MEDIA_BUCKET, managedUploadPrefix } from "@/lib/managed-production"
+import { loadCatalogue } from "@/lib/managed/catalogue"
+import { packageFromCatalogue, serviceFromCatalogue, snapshotFor, type OfferSnapshot } from "@/lib/managed-offers"
 import type { ManagedBrief } from "@/lib/managed-brief"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
@@ -27,23 +29,28 @@ export const dynamic = "force-dynamic"
  */
 
 /**
- * Moves the brief's files into the project's own client folder.
+ * Finishes the row the RPC created.
  *
- * They were uploaded before the project had an id, so they sit under the
- * client's personal prefix where only that client can read them — and a brief
- * whose product shots the producing team cannot open is not a brief. Copying
- * rather than moving: if a copy fails the brief keeps its original path and the
- * order still goes through, which is the right trade when the alternative is
- * losing a paid order over one attachment.
+ * Two things the order cannot have until it has an id. The brief's files were
+ * uploaded before the project existed, so they sit under the client's personal
+ * prefix where only that client can read them — and a brief whose product shots
+ * the producing team cannot open is not a brief; they are copied into the
+ * project's own folder. And the offer is snapshotted, so that editing or
+ * retiring a gig later never rewrites what this client was told they were
+ * buying.
+ *
+ * Copying rather than moving, and a failed copy is logged rather than thrown:
+ * the brief keeps its original path and the order still goes through, which is
+ * the right trade when the alternative is losing a paid order over one
+ * attachment.
  */
-async function adoptBriefAttachments(
+async function finaliseNewProject(
   admin: SupabaseClient,
   projectId: string,
   ownerId: string,
   brief: ManagedBrief,
-): Promise<ManagedBrief> {
-  if (!brief.attachments.length) return brief
-
+  snapshot: OfferSnapshot,
+): Promise<void> {
   const storage = admin.storage.from(MANAGED_MEDIA_BUCKET)
   const attachments = await Promise.all(brief.attachments.map(async (attachment) => {
     if (!attachment.path.startsWith(`${ownerId}/`)) return attachment
@@ -57,9 +64,10 @@ async function adoptBriefAttachments(
     return { ...attachment, path: destination }
   }))
 
-  const updated = { ...brief, attachments }
-  await admin.from("managed_projects").update({ brief: updated }).eq("id", projectId)
-  return updated
+  await admin
+    .from("managed_projects")
+    .update({ brief: { ...brief, attachments }, offer_snapshot: snapshot })
+    .eq("id", projectId)
 }
 
 const checkoutSchema = z.object({
@@ -76,8 +84,14 @@ export async function POST(request: NextRequest) {
     const { supabase, user } = await requireUser()
     const input = checkoutSchema.parse(await request.json())
 
-    const service = serviceFor(input.serviceType)
-    if (!service) return NextResponse.json({ error: "That service is not available." }, { status: 400 })
+    // Read with the caller's own client, so RLS decides what is on sale: a gig
+    // left unpublished is a draft, and an order must not be placeable against
+    // one just because its key was guessed.
+    const catalogue = await loadCatalogue(supabase)
+    const service = serviceFromCatalogue(catalogue, input.serviceType)
+    if (!service || !service.isPublished) {
+      return NextResponse.json({ error: "That service is not available." }, { status: 400 })
+    }
     if (!await managedServiceOpen(supabase)) {
       return NextResponse.json(
         { error: "We are not taking new projects right now. Existing projects are unaffected." },
@@ -90,8 +104,8 @@ export async function POST(request: NextRequest) {
       : "9:16"
     const projectName =
       input.name.trim() ||
-      [input.brief.brandName, serviceName(input.serviceType)].filter(Boolean).join(" — ") ||
-      `${serviceName(input.serviceType)} campaign`
+      [input.brief.brandName, service.name].filter(Boolean).join(" — ") ||
+      `${service.name} campaign`
 
     await ensureProfile(supabase, user)
 
@@ -127,12 +141,15 @@ export async function POST(request: NextRequest) {
       })
       if (error) throw error
       const project = Array.isArray(data) ? data[0] : data
-      if (project?.id) await adoptBriefAttachments(admin, project.id, user.id, input.brief)
+      if (project?.id) await finaliseNewProject(admin, project.id, user.id, input.brief, snapshotFor(service, null))
       return NextResponse.json({ mode: "proposal", projectId: project?.id ?? null })
     }
 
-    const selected = packageFor(input.serviceType, input.packageKey)
-    if (!selected) return NextResponse.json({ error: "Choose a package before checking out." }, { status: 400 })
+    const resolved = packageFromCatalogue(catalogue, input.serviceType, input.packageKey)
+    if (!resolved || !resolved.option.isPublished) {
+      return NextResponse.json({ error: "Choose a package before checking out." }, { status: 400 })
+    }
+    const selected = resolved.option
 
     const keyId = process.env.RAZORPAY_KEY_ID
     const keySecret = process.env.RAZORPAY_KEY_SECRET
@@ -158,7 +175,7 @@ export async function POST(request: NextRequest) {
     const project = Array.isArray(data) ? data[0] : data
     if (!project?.id) throw new Error("Could not open the project")
 
-    await adoptBriefAttachments(admin, project.id, user.id, input.brief)
+    await finaliseNewProject(admin, project.id, user.id, input.brief, snapshotFor(service, selected))
 
     const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret })
     const order = await razorpay.orders.create({
