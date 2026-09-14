@@ -2370,11 +2370,17 @@ function AssetCard({
         </div>
       </div>
       {imageGenerationStatus === "generating" && (
-        <div className="absolute inset-0 grid place-items-center overflow-hidden bg-black/65 backdrop-blur-[1px]">
+        // Click-through, because a render in flight is not a reason to lock the
+        // asset: opening it is how you watch the attempt, queue the next prompt
+        // or fix the description. The card's own buttons stay live underneath.
+        <div className="pointer-events-none absolute inset-0 grid place-items-center overflow-hidden bg-black/65 backdrop-blur-[1px]">
           <span aria-hidden="true" className="pointer-events-none absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-[#b9f42e]/20 to-transparent" />
-          <div className="flex items-center gap-2 rounded-full border border-[#b9f42e]/35 bg-[#151715] px-3 py-2 text-xs font-bold text-[#d9ff84]">
-            <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" /><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></svg>
-            Generating reference image…
+          <div className="flex flex-col items-center gap-1.5">
+            <div className="flex items-center gap-2 rounded-full border border-[#b9f42e]/35 bg-[#151715] px-3 py-2 text-xs font-bold text-[#d9ff84]">
+              <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" /><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></svg>
+              Generating reference image…
+            </div>
+            <span className="text-[10px] font-semibold text-zinc-400">Click to open — it keeps rendering</span>
           </div>
         </div>
       )}
@@ -3172,7 +3178,12 @@ function AssetWorkspace({
   const [styleOverrideEnabled, setStyleOverrideEnabled] = useState(Boolean(storedStyleOverride));
   const [styleOverride, setStyleOverride] = useState<StyleDna | null>(storedStyleOverride ?? projectStyleDnaValue);
   const persistedGenerationStatus = entityImageGenerationStatus(asset);
-  const [working, setWorking] = useState(persistedGenerationStatus === "generating");
+  // Only *this* panel's own request locks the controls. A render the server
+  // still calls "generating" may be one whose request was cut at the host's
+  // thirty-second limit and is being recovered by the job poll, or one started
+  // in another tab — neither is a reason to refuse the user a second image, and
+  // treating them as one left the asset unusable for up to fifteen minutes.
+  const [working, setWorking] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const connectedProviders = useConnectedProviders();
@@ -3195,9 +3206,8 @@ function AssetWorkspace({
   );
 
   useEffect(() => {
-    if (persistedGenerationStatus !== "generating") setWorking(false);
     setLibraryImages(asset.reference_images || []);
-  }, [asset, persistedGenerationStatus]);
+  }, [asset]);
 
   useEffect(() => {
     const snapshotAttempts = (generationJobs || [])
@@ -3942,6 +3952,11 @@ function AssetWorkspace({
               </div>
             </div>
 
+            {persistedGenerationStatus === "generating" && !working && (
+              <p role="status" className="mt-4 rounded-xl border border-[#b9f42e]/25 bg-[#b9f42e]/[0.07] p-3 text-xs text-[#d9ff84]">
+                An earlier image for this asset is still rendering — it will drop into the gallery on its own. You can start another one now.
+              </p>
+            )}
             {generationError && (
               <p role="alert" className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
                 {generationError}
@@ -4072,9 +4087,9 @@ function AssetModal({
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4">
       <form
         onSubmit={submit}
-        className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#1b1d1c] p-6 shadow-2xl"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#1b1d1c] shadow-2xl"
       >
-        <div className="flex justify-between">
+        <div className="flex shrink-0 items-start justify-between px-6 pt-6">
           <h2 className="text-xl font-bold">
             {entity ? "Edit" : "Add"} {type}
           </h2>
@@ -4082,197 +4097,204 @@ function AssetModal({
             <X />
           </button>
         </div>
-        <label className="mt-5 block text-sm">
-          Name
-          <input
-            required
-            value={asset.name || ""}
-            onChange={(e) => setAsset((a) => ({ ...a, name: e.target.value }))}
-            className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 p-3 outline-none"
-          />
-        </label>
-        <label className="mt-4 block text-sm">
-          Character Classification
-          <select
-            value={(asset as Record<string, unknown>).character_type as string || "ai_human"}
-            onChange={(e) => setAsset((a) => ({ ...a, character_type: e.target.value }))}
-            className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 p-3 text-sm outline-none focus:border-[#b9f42e]"
-          >
-            <option value="ai_human">✨ AI Fictional Human (Auto-Registers with BytePlus)</option>
-            <option value="real_person">👤 Real Person / Actor</option>
-            <option value="non_human">🤖 Non-Human / Creature / Anime</option>
-            <option value="prop">📦 Prop / Location / Object</option>
-          </select>
-        </label>
-        <label className="mt-4 block text-sm">
-          Description / consistency prompt
-          <textarea
-            value={asset.description || ""}
-            onChange={(e) =>
-              setAsset((a) => ({ ...a, description: e.target.value }))
-            }
-            className="mt-2 h-24 w-full rounded-lg border border-white/10 bg-black/20 p-3 outline-none"
-          />
-        </label>
-        {type === "character" && (
-          <>
-            {/* Reference Images Gallery with Verify */}
-            <div className="mt-4">
-              <p className="text-sm font-medium">Reference Face Images</p>
-              <p className="mt-0.5 text-[11px] text-zinc-500">Upload face images and verify them for Seedance video generation</p>
-              {asset.reference_images && asset.reference_images.length > 0 ? (
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  {asset.reference_images.map((img, idx) => {
-                    const currentAssetId = typeof asset.metadata === "object" && asset.metadata !== null ? (asset.metadata as Record<string, unknown>)[`byteplus_asset_${idx}`] as string || "" : "";
-                    const globalAssetId = typeof asset.metadata === "object" && asset.metadata !== null ? (asset.metadata as Record<string, unknown>).byteplus_asset_id as string || "" : "";
-                    const isVerified = Boolean(currentAssetId) || (idx === 0 && Boolean(globalAssetId));
-                    const verifyingKey = `verifying_${idx}`;
-                    const isVerifying = typeof asset.metadata === "object" && asset.metadata !== null && Boolean((asset.metadata as Record<string, unknown>)[verifyingKey]);
-                    return (
-                      <div key={`${img}-${idx}`} className="relative rounded-xl border border-white/10 bg-black/30 overflow-hidden">
-                        <div className="aspect-square">
-                          <AssetImage src={img} />
-                        </div>
-                        {/* Status badge */}
-                        {isVerified ? (
-                          <div className="absolute top-1.5 right-1.5 flex items-center gap-1 rounded-full bg-green-600/90 px-2 py-0.5">
-                            <span className="text-[9px] font-bold text-white">✓ Verified</span>
+        {/* The fields scroll on their own so a tall form — a character with a
+            dozen reference faces — never pushes Save past the bottom of the
+            screen, where the fixed overlay leaves nothing to scroll. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-5">
+          <label className="mt-5 block text-sm">
+            Name
+            <input
+              required
+              value={asset.name || ""}
+              onChange={(e) => setAsset((a) => ({ ...a, name: e.target.value }))}
+              className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 p-3 outline-none"
+            />
+          </label>
+          <label className="mt-4 block text-sm">
+            Character Classification
+            <select
+              value={(asset as Record<string, unknown>).character_type as string || "ai_human"}
+              onChange={(e) => setAsset((a) => ({ ...a, character_type: e.target.value }))}
+              className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 p-3 text-sm outline-none focus:border-[#b9f42e]"
+            >
+              <option value="ai_human">✨ AI Fictional Human (Auto-Registers with BytePlus)</option>
+              <option value="real_person">👤 Real Person / Actor</option>
+              <option value="non_human">🤖 Non-Human / Creature / Anime</option>
+              <option value="prop">📦 Prop / Location / Object</option>
+            </select>
+          </label>
+          <label className="mt-4 block text-sm">
+            Description / consistency prompt
+            <textarea
+              value={asset.description || ""}
+              onChange={(e) =>
+                setAsset((a) => ({ ...a, description: e.target.value }))
+              }
+              className="mt-2 h-24 w-full rounded-lg border border-white/10 bg-black/20 p-3 outline-none"
+            />
+          </label>
+          {type === "character" && (
+            <>
+              {/* Reference Images Gallery with Verify */}
+              <div className="mt-4">
+                <p className="text-sm font-medium">Reference Face Images</p>
+                <p className="mt-0.5 text-[11px] text-zinc-500">Upload face images and verify them for Seedance video generation</p>
+                {asset.reference_images && asset.reference_images.length > 0 ? (
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    {asset.reference_images.map((img, idx) => {
+                      const currentAssetId = typeof asset.metadata === "object" && asset.metadata !== null ? (asset.metadata as Record<string, unknown>)[`byteplus_asset_${idx}`] as string || "" : "";
+                      const globalAssetId = typeof asset.metadata === "object" && asset.metadata !== null ? (asset.metadata as Record<string, unknown>).byteplus_asset_id as string || "" : "";
+                      const isVerified = Boolean(currentAssetId) || (idx === 0 && Boolean(globalAssetId));
+                      const verifyingKey = `verifying_${idx}`;
+                      const isVerifying = typeof asset.metadata === "object" && asset.metadata !== null && Boolean((asset.metadata as Record<string, unknown>)[verifyingKey]);
+                      return (
+                        <div key={`${img}-${idx}`} className="relative rounded-xl border border-white/10 bg-black/30 overflow-hidden">
+                          <div className="aspect-square">
+                            <AssetImage src={img} />
                           </div>
-                        ) : isVerifying ? (
-                          <div className="absolute top-1.5 right-1.5 flex items-center gap-1 rounded-full bg-yellow-600/90 px-2 py-0.5">
-                            <svg className="h-3 w-3 animate-spin text-white" viewBox="0 0 24 24" fill="none">
-                              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-20" />
-                              <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                            </svg>
-                            <span className="text-[9px] font-bold text-white">Verifying…</span>
-                          </div>
-                        ) : null}
-                        {/* Verify button */}
-                        {!isVerified && !isVerifying && (
+                          {/* Status badge */}
+                          {isVerified ? (
+                            <div className="absolute top-1.5 right-1.5 flex items-center gap-1 rounded-full bg-green-600/90 px-2 py-0.5">
+                              <span className="text-[9px] font-bold text-white">✓ Verified</span>
+                            </div>
+                          ) : isVerifying ? (
+                            <div className="absolute top-1.5 right-1.5 flex items-center gap-1 rounded-full bg-yellow-600/90 px-2 py-0.5">
+                              <svg className="h-3 w-3 animate-spin text-white" viewBox="0 0 24 24" fill="none">
+                                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-20" />
+                                <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                              </svg>
+                              <span className="text-[9px] font-bold text-white">Verifying…</span>
+                            </div>
+                          ) : null}
+                          {/* Verify button */}
+                          {!isVerified && !isVerifying && (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={async () => {
+                                setBusy(true);
+                                setGenerationError(null);
+                                setAsset((a) => ({ ...a, metadata: { ...(a.metadata || {}), [verifyingKey]: true } }));
+                                try {
+                                  const entityId = entity?.id;
+                                  let generatedAssetId = "";
+                                  if (entityId) {
+                                    const response = await fetch(`/api/studio/projects/${projectId}/assets`, {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ entityId, imageUrl: img, imagePath: img, name: asset.name || "Character" }),
+                                    });
+                                    const body = await response.json();
+                                    if (!response.ok) throw new Error(body.error || "Verification failed");
+                                    generatedAssetId = body.assetId;
+                                  } else {
+                                    const cleanName = (asset.name || "character").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 15);
+                                    generatedAssetId = `asset-${cleanName}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+                                  }
+                                  setAsset((a) => ({
+                                    ...a,
+                                    byteplus_asset_id: generatedAssetId,
+                                    byteplus_asset_uri: `asset://${generatedAssetId}`,
+                                    verification_status: VERIFIED_ASSET.verification_status,
+                                    metadata: {
+                                      ...(a.metadata || {}),
+                                      byteplus_asset_id: generatedAssetId,
+                                      [`byteplus_asset_${idx}`]: generatedAssetId,
+                                      [verifyingKey]: false,
+                                    },
+                                  }));
+                                } catch (err) {
+                                  setGenerationError(err instanceof Error ? err.message : "Verification failed");
+                                  setAsset((a) => ({ ...a, metadata: { ...(a.metadata || {}), [verifyingKey]: false } }));
+                                } finally {
+                                  setBusy(false);
+                                }
+                              }}
+                              className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2 py-2 text-center hover:opacity-90"
+                            >
+                              <span className="rounded-full bg-[#b9f42e] px-3 py-1 text-[10px] font-bold text-black">
+                                Verify for Seedance
+                              </span>
+                            </button>
+                          )}
+                          {/* Remove button */}
                           <button
                             type="button"
-                            disabled={busy}
-                            onClick={async () => {
-                              setBusy(true);
-                              setGenerationError(null);
-                              setAsset((a) => ({ ...a, metadata: { ...(a.metadata || {}), [verifyingKey]: true } }));
-                              try {
-                                const entityId = entity?.id;
-                                let generatedAssetId = "";
-                                if (entityId) {
-                                  const response = await fetch(`/api/studio/projects/${projectId}/assets`, {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ entityId, imageUrl: img, imagePath: img, name: asset.name || "Character" }),
-                                  });
-                                  const body = await response.json();
-                                  if (!response.ok) throw new Error(body.error || "Verification failed");
-                                  generatedAssetId = body.assetId;
-                                } else {
-                                  const cleanName = (asset.name || "character").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 15);
-                                  generatedAssetId = `asset-${cleanName}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-                                }
-                                setAsset((a) => ({
-                                  ...a,
-                                  byteplus_asset_id: generatedAssetId,
-                                  byteplus_asset_uri: `asset://${generatedAssetId}`,
-                                  verification_status: VERIFIED_ASSET.verification_status,
-                                  metadata: {
-                                    ...(a.metadata || {}),
-                                    byteplus_asset_id: generatedAssetId,
-                                    [`byteplus_asset_${idx}`]: generatedAssetId,
-                                    [verifyingKey]: false,
-                                  },
-                                }));
-                              } catch (err) {
-                                setGenerationError(err instanceof Error ? err.message : "Verification failed");
-                                setAsset((a) => ({ ...a, metadata: { ...(a.metadata || {}), [verifyingKey]: false } }));
-                              } finally {
-                                setBusy(false);
-                              }
-                            }}
-                            className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2 py-2 text-center hover:opacity-90"
+                            onClick={() => setAsset((a) => ({
+                              ...a,
+                              reference_images: (a.reference_images || []).filter((_, i) => i !== idx),
+                            }))}
+                            className="absolute top-1.5 left-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-xs text-zinc-300 hover:bg-red-600/80"
                           >
-                            <span className="rounded-full bg-[#b9f42e] px-3 py-1 text-[10px] font-bold text-black">
-                              Verify for Seedance
-                            </span>
+                            ×
                           </button>
-                        )}
-                        {/* Remove button */}
-                        <button
-                          type="button"
-                          onClick={() => setAsset((a) => ({
-                            ...a,
-                            reference_images: (a.reference_images || []).filter((_, i) => i !== idx),
-                          }))}
-                          className="absolute top-1.5 left-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-xs text-zinc-300 hover:bg-red-600/80"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="mt-2 rounded-xl border border-dashed border-white/15 bg-black/20 p-4 text-center text-xs text-zinc-500">
-                  No reference images yet
-                </div>
-              )}
-            </div>
-            <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-white/20 p-3 text-sm text-zinc-400 hover:border-[#b9f42e]">
-              <Upload className="h-4 w-4" /> Upload reference face image
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => upload(e.target.files?.[0])}
-                className="hidden"
-              />
-            </label>
-            <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-400">
-              <p className="font-bold text-[#b9f42e]">Photo Requirements for Seedance</p>
-              <ul className="mt-1.5 space-y-1 list-disc list-inside text-zinc-400">
-                <li><strong>Orientation:</strong> Portrait orientation</li>
-                <li><strong>Framing:</strong> Front-facing close-up with face occupying ~2/3 of frame</li>
-                <li><strong>Format:</strong> JPG/PNG/WebP under 30MB</li>
-              </ul>
-            </div>
-            {/* BytePlus Asset ID (auto-filled or manual) */}
-            <label className="mt-3 block text-sm">
-              BytePlus Asset ID
-              <input
-                placeholder="Auto-filled after verification or enter manually"
-                value={typeof asset.metadata === "object" && asset.metadata !== null ? (asset.metadata as Record<string, unknown>).byteplus_asset_id as string || "" : ""}
-                onChange={(e) =>
-                  setAsset((a) => ({
-                    ...a,
-                    metadata: { ...(a.metadata || {}), byteplus_asset_id: e.target.value },
-                  }))
-                }
-                className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 p-2.5 font-mono text-xs outline-none focus:border-[#b9f42e]"
-              />
-              <span className="mt-0.5 block text-[10px] text-zinc-600">
-                Formats automatically as <code className="text-[#b9f42e]/70">asset://&lt;id&gt;</code> for Seedance requests
-              </span>
-            </label>
-            <label className="mt-3 block text-sm">
-              Voice setting (optional)
-              <input
-                value={asset.voice_id || ""}
-                onChange={(e) =>
-                  setAsset((a) => ({ ...a, voice_id: e.target.value }))
-                }
-                className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 p-2.5 outline-none"
-              />
-            </label>
-          </>
-        )}
-        {generationError && <p role="alert" className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{generationError}</p>}
-        <button
-          disabled={busy}
-          className="mt-5 w-full rounded-xl bg-[#b9f42e] px-4 py-3 font-bold text-black"
-        >
-          {busy ? "Saving…" : "Save asset"}
-        </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="mt-2 rounded-xl border border-dashed border-white/15 bg-black/20 p-4 text-center text-xs text-zinc-500">
+                    No reference images yet
+                  </div>
+                )}
+              </div>
+              <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-white/20 p-3 text-sm text-zinc-400 hover:border-[#b9f42e]">
+                <Upload className="h-4 w-4" /> Upload reference face image
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => upload(e.target.files?.[0])}
+                  className="hidden"
+                />
+              </label>
+              <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-400">
+                <p className="font-bold text-[#b9f42e]">Photo Requirements for Seedance</p>
+                <ul className="mt-1.5 space-y-1 list-disc list-inside text-zinc-400">
+                  <li><strong>Orientation:</strong> Portrait orientation</li>
+                  <li><strong>Framing:</strong> Front-facing close-up with face occupying ~2/3 of frame</li>
+                  <li><strong>Format:</strong> JPG/PNG/WebP under 30MB</li>
+                </ul>
+              </div>
+              {/* BytePlus Asset ID (auto-filled or manual) */}
+              <label className="mt-3 block text-sm">
+                BytePlus Asset ID
+                <input
+                  placeholder="Auto-filled after verification or enter manually"
+                  value={typeof asset.metadata === "object" && asset.metadata !== null ? (asset.metadata as Record<string, unknown>).byteplus_asset_id as string || "" : ""}
+                  onChange={(e) =>
+                    setAsset((a) => ({
+                      ...a,
+                      metadata: { ...(a.metadata || {}), byteplus_asset_id: e.target.value },
+                    }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 p-2.5 font-mono text-xs outline-none focus:border-[#b9f42e]"
+                />
+                <span className="mt-0.5 block text-[10px] text-zinc-600">
+                  Formats automatically as <code className="text-[#b9f42e]/70">asset://&lt;id&gt;</code> for Seedance requests
+                </span>
+              </label>
+              <label className="mt-3 block text-sm">
+                Voice setting (optional)
+                <input
+                  value={asset.voice_id || ""}
+                  onChange={(e) =>
+                    setAsset((a) => ({ ...a, voice_id: e.target.value }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 p-2.5 outline-none"
+                />
+              </label>
+            </>
+          )}
+        </div>
+        <div className="shrink-0 border-t border-white/10 px-6 pb-6 pt-4">
+          {generationError && <p role="alert" className="mb-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{generationError}</p>}
+          <button
+            disabled={busy}
+            className="w-full rounded-xl bg-[#b9f42e] px-4 py-3 font-bold text-black"
+          >
+            {busy ? "Saving…" : "Save asset"}
+          </button>
+        </div>
       </form>
     </div>
   );
