@@ -9,6 +9,7 @@ import { formatUsdWithInr } from "@/lib/currency"
 import { MANAGED_STATUSES, MANAGED_STATUS_LABELS } from "@/lib/managed-production"
 import { offerServiceName } from "@/lib/managed-offers"
 import ManagedOffers from "@/components/admin/ManagedOffers"
+import ProjectChat from "@/components/managed/ProjectChat"
 import { briefDigest, parseManagedBrief } from "@/lib/managed-brief"
 import type { ManagedProjectPayload } from "@/components/managed/types"
 
@@ -191,7 +192,10 @@ export default function ManagedProduction() {
 
           <div>
             {openId ? (
-              <OrderPanel projectId={openId} onChanged={load} />
+              // Keyed, so opening another order builds a fresh panel rather
+              // than showing the previous order's note and conversation until
+              // its own load lands.
+              <OrderPanel key={openId} projectId={openId} onChanged={load} />
             ) : (
               <div className="grid h-full min-h-[280px] place-items-center rounded-2xl border border-dashed border-white/12 text-sm text-white/30">
                 Pick an order to open it.
@@ -211,14 +215,24 @@ function OrderPanel({ projectId, onChanged }: { projectId: string; onChanged: ()
   const [error, setError] = useState("")
   const [note, setNote] = useState("")
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  /**
+   * @param options.quiet Refresh without blanking the panel.
+   *
+   * The spinner belongs to opening an order. A poll or a sent message that
+   * swapped the whole panel for it would throw away the producer's place in the
+   * conversation every thirty seconds.
+   */
+  const load = useCallback(async (options?: { quiet?: boolean }) => {
+    if (!options?.quiet) setLoading(true)
     try {
       const res = await fetch(`/api/managed/projects/${projectId}`)
       const payload = await res.json()
       if (!res.ok) throw new Error(payload.error || "Could not load this order.")
       setData(payload)
-      setNote(payload.project.admin_note || "")
+      // Not on a poll: this box holds text the producer has typed and not yet
+      // saved — it is only written when a status is set — so refreshing it from
+      // the server every thirty seconds would delete a note mid-sentence.
+      if (!options?.quiet) setNote(payload.project.admin_note || "")
       setError("")
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load this order.")
@@ -227,7 +241,13 @@ function OrderPanel({ projectId, onChanged }: { projectId: string; onChanged: ()
     }
   }, [projectId])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+    // The same cadence the client's own page polls on, so a question asked
+    // while the producer has the order open arrives without a refresh.
+    const interval = window.setInterval(() => { load({ quiet: true }) }, 30_000)
+    return () => window.clearInterval(interval)
+  }, [load])
 
   const act = async (body: Record<string, unknown>, label: string) => {
     setBusy(label)
@@ -259,7 +279,7 @@ function OrderPanel({ projectId, onChanged }: { projectId: string; onChanged: ()
     )
   }
 
-  const { project, deliverables, versions } = data
+  const { project, deliverables, versions, messages, viewer } = data
   const brief = parseManagedBrief(project.brief)
 
   return (
@@ -381,6 +401,23 @@ function OrderPanel({ projectId, onChanged }: { projectId: string; onChanged: ()
             </li>
           )}
         </ul>
+      </section>
+
+      {/* The client conversation, here rather than a click away in the client
+          view. The queue already counts unread messages; a producer who has to
+          leave the order to answer one answers it on WhatsApp instead, and the
+          thread that is supposed to be the record of the job stops being it.
+          The same component the client reads, so neither side sees a thread the
+          other does not. */}
+      <section className="h-[440px]">
+        <ProjectChat
+          projectId={project.id}
+          messages={messages}
+          deliverables={deliverables}
+          viewerId={viewer.id}
+          onSent={() => { load({ quiet: true }); onChanged() }}
+          heading={{ title: "Client chat", hint: `${project.name} · the client reads everything here. Internal notes go in the box above.` }}
+        />
       </section>
 
       <details className="rounded-xl border border-white/[0.08] bg-black/20 p-4">

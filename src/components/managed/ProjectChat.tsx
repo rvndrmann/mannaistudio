@@ -20,13 +20,19 @@ import type { ManagedDeliverable, ManagedMessage } from "@/components/managed/ty
  * the notification bell already polls on the same cadence.
  */
 export default function ProjectChat({
-  projectId, messages, deliverables, viewerId, onSent,
+  projectId, messages, deliverables, viewerId, onSent, heading,
 }: {
   projectId: string
   messages: ManagedMessage[]
   deliverables: ManagedDeliverable[]
   viewerId: string
   onSent: () => void
+  /**
+   * Whose side of the thread this is. The copy is the only difference between
+   * the two: a producer needs to be told the client reads this, and a client
+   * needs to be told a person will answer. The thread itself is one thread.
+   */
+  heading?: { title: string; hint: string }
 }) {
   const [body, setBody] = useState("")
   const [attachments, setAttachments] = useState<ManagedAttachment[]>([])
@@ -67,14 +73,14 @@ export default function ProjectChat({
   return (
     <div className="flex h-full min-h-0 flex-col rounded-2xl border border-white/10 bg-white/[0.03]">
       <div className="shrink-0 border-b border-white/[0.08] px-5 py-3.5">
-        <h2 className="text-sm font-bold">Project chat</h2>
-        <p className="text-[11px] text-white/35">You and the creative team. Files welcome.</p>
+        <h2 className="text-sm font-bold">{heading?.title || "Project chat"}</h2>
+        <p className="text-[11px] text-white/35">{heading?.hint || "You and the creative team. Files welcome."}</p>
       </div>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
           <p className="py-10 text-center text-xs text-white/30">
-            No messages yet. Say hello, or ask us anything about your brief.
+            {heading ? "No messages yet." : "No messages yet. Say hello, or ask us anything about your brief."}
           </p>
         )}
         {messages.map((message) => {
