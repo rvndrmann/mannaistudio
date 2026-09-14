@@ -255,7 +255,14 @@ export async function renderProjectImage(
         if (chosen) mentionReferencePaths.push(chosen)
       }
     }
-    const mentionContext = buildEntityMentionContext((mentionedEntities || []) as MentionableEntity[])
+    // A shot renders the cast as they already are; the asset studio is where a
+    // character is dressed in the first place, so only there may the outfit
+    // change. Without the split, "give her a leather jacket" was impossible to
+    // satisfy anywhere — the lock would have refused the one screen whose job
+    // it is.
+    const mentionContext = buildEntityMentionContext((mentionedEntities || []) as MentionableEntity[], {
+      wardrobe: input.target === "asset" ? "open" : "locked",
+    })
     const style = projectVisualStyle(context.project)
     // A draw-to-edit request is an edit of one frame, not a new photograph, so
     // it takes neither the camera package nor the look block — both read to an

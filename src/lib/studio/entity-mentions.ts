@@ -125,9 +125,26 @@ export function insertEntityMention(text: string, entity: MentionableEntity, act
   return { value, caret: active.start + mention.length }
 }
 
-export function buildEntityMentionContext(entities: MentionableEntity[]) {
+/**
+ * Whether this generation may put the cast in different clothes.
+ *
+ * "locked" — a shot, or a clip. What a character wears belongs to the
+ * character, so the outfit in their reference art is the outfit in the frame.
+ * Wardrobe drifting shot to shot is the same failure as a face drifting, and it
+ * has the same cause: words in the prompt outrank the picture.
+ *
+ * "open" — the Characters & Assets studio, which is where an outfit is authored
+ * in the first place. Locking wardrobe there would mean a character could never
+ * be given a new one at all.
+ */
+export type WardrobeMode = "locked" | "open"
+
+export function buildEntityMentionContext(entities: MentionableEntity[], options: { wardrobe?: WardrobeMode } = {}) {
   if (!entities.length) return ""
+  const wardrobe = options.wardrobe ?? "locked"
   const withoutArt = entities.filter((entity) => !(entity.reference_images || []).length)
+  // Only people wear things, and only art can be copied from.
+  const dressed = entities.filter((entity) => entity.type === "character" && (entity.reference_images || []).length)
   return [
     "Canonical production entities explicitly mentioned by the user:",
     // Reference-image state is included so the Director can tell finished assets
@@ -153,7 +170,22 @@ export function buildEntityMentionContext(entities: MentionableEntity[]) {
         ...entities
           .filter((entity) => (entity.reference_images || []).length)
           .map((entity) => `- @${entity.name}: the supplied reference image of @${entity.name} defines their face, hair colour, hair style, skin tone, build, and age. Reproduce that person exactly. Any words above describing @${entity.name}'s appearance are outdated and must be ignored where they differ from the image.`),
-        "Do not restyle, recolour, age, or idealise a referenced person. Wardrobe, expression, pose, and lighting follow the shot; the person does not change.",
+        wardrobe === "locked"
+          ? "Do not restyle, recolour, age, or idealise a referenced person. Expression, pose, and lighting follow the shot; the person does not change."
+          : "Do not restyle, recolour, age, or idealise a referenced person. Wardrobe, expression, pose, and lighting follow the shot; the person does not change.",
+      ]
+      : []),
+    // Wardrobe is locked separately from likeness, and after it, because it is
+    // the lock that gets argued with: a shot prompt describes an outfit far
+    // more readily than it describes a face, and the model dresses the
+    // character from those words. Naming each person and what the rule permits
+    // is what beats a stray "in a red coat" three sentences earlier.
+    ...(wardrobe === "locked" && dressed.length
+      ? [
+        "WARDROBE LOCK — what a referenced character wears is part of that character, not part of this shot:",
+        ...dressed.map((entity) => `- @${entity.name} wears the exact outfit shown in their reference image: the same garments, the same colours, the same proportions, the same footwear. Reproduce it rather than reinterpreting it.`),
+        "Only what the action does to clothing may differ — sleeves pushed up, a jacket open, fabric wet, creased, or dusty. The garments themselves are never swapped, restyled, recoloured, or upgraded, and no accessory the reference does not show is added.",
+        "A different outfit is a different character asset, created in Characters & Assets with its own reference image. It is never invented in a shot.",
       ]
       : []),
   ].filter(Boolean).join("\n")

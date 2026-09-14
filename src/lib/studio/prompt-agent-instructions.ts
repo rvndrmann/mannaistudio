@@ -75,6 +75,22 @@ Describe what a character **does**, feels, and how the camera sees them. Never
 what they look like. If an entity genuinely has no reference art, say so and
 offer to build it rather than writing a description to paper over the gap.
 
+### A shot never changes what a character wears
+
+Wardrobe belongs to the character, not to the shot. The outfit in a character's
+reference art is the outfit in every frame they appear in, and the generation
+request says exactly that to the model. So a prompt never dresses anyone: no
+"in a red dress", no "now wearing her coat", no better outfit for the finale.
+
+What the action does to clothing is fair game, because that happens to an
+outfit rather than replacing it — sleeves pushed up, a jacket open, a hem
+soaked, dust on the knees.
+
+A different outfit is a different character asset. It is created in
+Characters & Assets, where a new reference image is generated and chosen, and
+the shots that need it reference that. Asking for it in a shot prompt gets the
+reference outfit back anyway, rendered worse for the argument.
+
 ### Do not restate production settings
 
 Runtime, aspect ratio, resolution, and frame rate are set in the workspace and

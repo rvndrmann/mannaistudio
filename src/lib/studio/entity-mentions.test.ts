@@ -160,3 +160,37 @@ describe("a declared location survives the cast filter", () => {
     expect(findShotCastEntityIds("@Sara at the wheel.", cast, ["sara"])).not.toContain("street")
   })
 })
+
+/**
+ * Wardrobe drifts for the same reason a face does — the prompt describes an
+ * outfit, and words outrank the attached picture. It is locked where a frame is
+ * rendered and left open where an outfit is authored, because a studio that
+ * refuses to change a character's clothes anywhere cannot dress them at all.
+ */
+describe("wardrobe lock", () => {
+  const maya: MentionableEntity = { id: "maya", name: "Maya", type: "character", reference_images: ["maya.png"] }
+  const car: MentionableEntity = { id: "car", name: "Maya's Car", type: "prop", reference_images: ["car.png"] }
+
+  it("locks a referenced character's outfit to their art by default, which is what a shot gets", () => {
+    const context = buildEntityMentionContext([maya])
+    expect(context).toContain("WARDROBE LOCK")
+    expect(context).toContain("@Maya wears the exact outfit shown in their reference image")
+    expect(context).toContain("A different outfit is a different character asset, created in Characters & Assets")
+    // The old wording invited exactly what the lock forbids.
+    expect(context).not.toContain("Wardrobe, expression, pose, and lighting follow the shot")
+  })
+
+  it("leaves wardrobe open in the asset studio, where a new outfit is made", () => {
+    const context = buildEntityMentionContext([maya], { wardrobe: "open" })
+    expect(context).not.toContain("WARDROBE LOCK")
+    expect(context).toContain("Wardrobe, expression, pose, and lighting follow the shot")
+  })
+
+  it("locks nothing for entities that wear nothing", () => {
+    expect(buildEntityMentionContext([car])).not.toContain("WARDROBE LOCK")
+  })
+
+  it("locks nothing for a character with no art to copy the outfit from", () => {
+    expect(buildEntityMentionContext([{ ...maya, reference_images: [] }])).not.toContain("WARDROBE LOCK")
+  })
+})

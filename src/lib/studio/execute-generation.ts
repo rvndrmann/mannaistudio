@@ -269,7 +269,11 @@ export async function executeGenerationJobs(
           const combinedReferencePaths = orderedReferencePaths
             .filter((path) => !isVideoReferencePath(path))
             .slice(0, referenceBudget)
-          const mentionContext = buildEntityMentionContext(mentionedEntities as MentionableEntity[])
+          // Same split as the image route: a job that builds an entity's own art
+          // is where an outfit is authored, and every other job reproduces it.
+          const mentionContext = buildEntityMentionContext(mentionedEntities as MentionableEntity[], {
+            wardrobe: typeof job.entity_id === "string" ? "open" : "locked",
+          })
 
           const signReference = async (ref: string) => {
             if (/^https?:\/\//i.test(ref) || /^asset:\/\//i.test(ref) || /^asset-[a-z0-9-]+$/i.test(ref)) return ref

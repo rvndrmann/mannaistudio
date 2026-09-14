@@ -79,7 +79,7 @@ export const revisionRoutes: RevisionRoute[] = [
     label: "the framing, composition, action, or lighting of a frame",
     input: "that shot's image prompt",
     tool: "update_shot with patch.prompt",
-    after: "Then regenerate that shot's keyframe. Never describe a referenced character's face, hair, build, or wardrobe in the prompt — their reference art defines that, and words describing appearance override the picture.",
+    after: "Then regenerate that shot's keyframe. Never describe a referenced character's face, hair, build, or wardrobe in the prompt — their reference art defines that, and words describing appearance override the picture. \"Put her in the leather jacket\" is not a shot edit at all: generation locks a character's outfit to their reference image, so a new outfit is new character art, made above, and only then are the shots redone.",
   },
   {
     key: "video_prompt",
