@@ -3739,7 +3739,11 @@ function AssetWorkspace({
               ) : generationError ? (
                 <GenerationPreviewError model={model} message={generationError} />
               ) : activeImage ? (
-                <AssetImage src={activeImage} className="max-h-[60vh] w-auto max-w-full rounded-t-xl object-contain mx-auto" />
+                <AssetImage
+                  src={activeImage}
+                  natural
+                  className="mx-auto block max-h-[68vh] w-auto max-w-full rounded-t-xl object-contain"
+                />
               ) : (
                 <div className={`grid place-items-center text-center text-zinc-500 p-8 ${aspectRatio === "9:16" ? "aspect-[9/16] h-[55vh] max-h-[580px]" : "aspect-[16/9] w-full max-w-[640px]"}`}>
                   Upload a reference image or click &ldquo;Generate image&rdquo; below.
@@ -9837,7 +9841,15 @@ function HoverPreviewTile({ src, kind, label, className, children }: {
     </div>
   );
 }
-function AssetImage({ src, className }: { src?: string; className?: string }) {
+/**
+ * @param natural Render the picture at its own shape instead of in a 4:3 tile.
+ *
+ * A tile is a fixed slot in a grid and cropping to fill it is what keeps the
+ * grid even. A full-size preview is the opposite case: the frame *is* what is
+ * being looked at, and the 4:3 box cut the top off every portrait image —
+ * which is most of what the studio generates, since ads are shot 9:16.
+ */
+function AssetImage({ src, className, natural }: { src?: string; className?: string; natural?: boolean }) {
   const [url, setUrl] = useState<string>();
   useEffect(() => {
     if (!src || src.startsWith("http")) return;
@@ -9848,6 +9860,11 @@ function AssetImage({ src, className }: { src?: string; className?: string }) {
     return () => { active = false; };
   }, [src]);
   const displayUrl = src?.startsWith("http") ? src : url;
+  if (natural) {
+    return displayUrl
+      ? <img src={displayUrl} alt="" className={className} />
+      : <div className="aspect-[3/4] h-[55vh] max-h-[560px] animate-pulse bg-gradient-to-br from-[#4d5044] to-[#161716]" />;
+  }
   return (
     <div className={`aspect-[4/3] bg-gradient-to-br from-[#4d5044] to-[#161716] ${className || ""}`}>
       {displayUrl && <img src={displayUrl} alt="" className={`h-full w-full ${className ? className : "object-cover"}`} />}
