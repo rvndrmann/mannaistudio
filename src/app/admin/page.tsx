@@ -42,7 +42,7 @@ import BlogManager from "@/components/admin/BlogManager"
 import OriginalsManager from "@/components/admin/OriginalsManager"
 import ViewerAnalytics from "@/components/admin/ViewerAnalytics"
 import ManagedProduction from "@/components/admin/ManagedProduction"
-import { defaultHomeVariant, fetchHomeVariant, type HomeVariant } from "@/lib/home-variant"
+import { defaultHomeVariant, fetchHomeVariant, homeVariants, type HomeVariant } from "@/lib/home-variant"
 
 type EnrolledStudent = {
     profile_id: string
@@ -260,11 +260,7 @@ function AdminDashboardContent() {
             // checks admin_users itself.
             const { error } = await supabase.rpc("admin_set_home_variant", { p_variant: variant })
             if (error) throw error
-            setHomeVariantMessage(
-                variant === "originals"
-                    ? "Homepage now shows Originals."
-                    : "Homepage now shows the Creator Studio pitch."
-            )
+            setHomeVariantMessage(homeVariants.find((option) => option.id === variant)?.confirmation || "Homepage switched.")
         } catch (err: any) {
             setHomeVariant(previous)
             setHomeVariantMessage(`Could not switch: ${err.message}`)
@@ -3092,19 +3088,8 @@ function AdminDashboardContent() {
                                         </p>
                                     </div>
 
-                                    <div className="grid gap-4 sm:grid-cols-2">
-                                        {[
-                                            {
-                                                id: "studio" as const,
-                                                label: "Creator Studio pitch",
-                                                desc: "The current homepage: AI Director agent, frontier models, showcase reel, Creator Studio call to action.",
-                                            },
-                                            {
-                                                id: "originals" as const,
-                                                label: "Originals",
-                                                desc: "Short-drama funnel: featured series, poster grid, free episodes, credit packs. Does not mention Creator Studio at all.",
-                                            },
-                                        ].map((option) => {
+                                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                        {homeVariants.map((option) => {
                                             const isLive = homeVariant === option.id
                                             return (
                                                 <button
@@ -3127,7 +3112,7 @@ function AdminDashboardContent() {
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <p className="mt-1.5 text-xs leading-relaxed text-white/45">{option.desc}</p>
+                                                    <p className="mt-1.5 text-xs leading-relaxed text-white/45">{option.description}</p>
                                                 </button>
                                             )
                                         })}
@@ -3135,8 +3120,17 @@ function AdminDashboardContent() {
 
                                     {homeVariantMessage && <p className="text-sm font-bold text-primary">{homeVariantMessage}</p>}
 
+                                    {/* The done-for-you homepage sells a service the feature switch
+                                        below can close. Left uncaught, the site's front page would be
+                                        pitching an offer whose brief and checkout are shut. */}
+                                    {homeVariant === "hire" && !siteFeatures.hireUs && (
+                                        <p className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-xs font-semibold text-amber-200">
+                                            The homepage is selling the done-for-you service, but Hire Our Creative Team is paused below — new orders cannot be placed. Turn the feature back on, or switch the homepage.
+                                        </p>
+                                    )}
+
                                     <p className="rounded-xl border border-white/10 bg-black/20 p-4 text-xs text-white/45">
-                                        Both pages stay reachable while you test: Originals is always at <span className="font-mono text-primary">/originals</span>, whichever homepage is live.
+                                        Read one before you make it the front door: <span className="font-mono text-primary">/?home=hire</span> renders that homepage for you alone, without switching it. Every page also keeps its own URL whichever homepage is live — Originals at <span className="font-mono text-primary">/originals</span>, the done-for-you pitch at <span className="font-mono text-primary">/hire-us</span>.
                                     </p>
                                 </div>
 
