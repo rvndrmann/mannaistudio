@@ -10,6 +10,7 @@ import { useAuth } from "@/components/auth/auth-provider"
 import { formatUsdWithInr } from "@/lib/currency"
 import { cheapestPackage, type OfferService } from "@/lib/managed-offers"
 import { materialize, springUI } from "@/lib/motion"
+import OfferMediaFrame, { offerMediaFit } from "@/components/managed/OfferMedia"
 
 /**
  * Hire Our Creative Team.
@@ -147,21 +148,21 @@ function ServiceCard({ service, index }: { service: OfferService; index: number 
           autoplaying: four cards autoplaying at once is four videos competing
           for bandwidth and a page that sounds like a fairground. */}
       {(service.thumbnailUrl || service.videoUrl) && (
-        <div className="relative aspect-video w-full overflow-hidden bg-black">
+        <OfferMediaFrame fill={service.thumbnailUrl || undefined}>
           {playing && service.videoUrl ? (
             <video
               src={service.videoUrl}
               controls
               autoPlay
               playsInline
-              className="h-full w-full object-cover"
+              className={offerMediaFit}
             />
           ) : (
             <>
               {service.thumbnailUrl ? (
-                <img src={service.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                <img src={service.thumbnailUrl} alt="" className={offerMediaFit} />
               ) : (
-                <video src={`${service.videoUrl}#t=0.1`} preload="metadata" muted playsInline className="h-full w-full object-cover" />
+                <video src={`${service.videoUrl}#t=0.1`} preload="metadata" muted playsInline className={offerMediaFit} />
               )}
               {service.videoUrl && (
                 <button
@@ -177,7 +178,7 @@ function ServiceCard({ service, index }: { service: OfferService; index: number 
               )}
             </>
           )}
-        </div>
+        </OfferMediaFrame>
       )}
 
       <div className="flex flex-1 flex-col p-6">

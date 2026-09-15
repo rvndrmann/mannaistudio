@@ -5,6 +5,7 @@ import {
   Check, Eye, EyeOff, Film, GripVertical, Image as ImageIcon, Loader2,
   Plus, Star, Trash2, Upload, X,
 } from "lucide-react"
+import OfferMediaFrame, { offerMediaFit } from "@/components/managed/OfferMedia"
 import { createClient } from "@/lib/supabase/client"
 import { formatUsdWithInr } from "@/lib/currency"
 import { buildCatalogue, type OfferPackage, type OfferService } from "@/lib/managed-offers"
@@ -562,19 +563,21 @@ function MediaField({
     <div>
       <p className="text-xs font-bold text-white/55">{label}</p>
       <div className="mt-1.5 overflow-hidden rounded-xl border border-white/10 bg-black">
-        <div className="grid aspect-video place-items-center">
+        {/* Shown exactly as the cards show it, whole rather than cropped, so
+            what is uploaded here is what is being judged. */}
+        <OfferMediaFrame fill={value && kind === "image" ? value : undefined} className="h-[220px]">
           {value ? (
             kind === "image" ? (
-              <img src={value} alt="" className="h-full w-full object-cover" />
+              <img src={value} alt="" className={offerMediaFit} />
             ) : (
-              <video src={`${value}#t=0.1`} controls preload="metadata" className="h-full w-full object-contain" />
+              <video src={`${value}#t=0.1`} controls preload="metadata" className={offerMediaFit} />
             )
           ) : (
             <span className="text-white/20">
               {kind === "image" ? <ImageIcon className="h-6 w-6" /> : <Film className="h-6 w-6" />}
             </span>
           )}
-        </div>
+        </OfferMediaFrame>
       </div>
       <div className="mt-2 flex gap-2">
         <button
