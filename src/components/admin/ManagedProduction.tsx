@@ -3,12 +3,13 @@
 import Link from "next/link"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
-  Clapperboard, ExternalLink, Film, Inbox, Loader2, Plus, RefreshCcw, Send, Tags, Wand2,
+  Clapperboard, ExternalLink, File, Film, Inbox, Loader2, Plus, RefreshCcw, Send, Tags, Wand2,
 } from "lucide-react"
 import { formatUsdWithInr } from "@/lib/currency"
 import { MANAGED_STATUSES, MANAGED_STATUS_LABELS } from "@/lib/managed-production"
 import { offerServiceName } from "@/lib/managed-offers"
 import ManagedOffers from "@/components/admin/ManagedOffers"
+import AbandonedBriefs from "@/components/admin/AbandonedBriefs"
 import ProjectChat from "@/components/managed/ProjectChat"
 import { briefDigest, parseManagedBrief } from "@/lib/managed-brief"
 import type { ManagedProjectPayload } from "@/components/managed/types"
@@ -60,7 +61,7 @@ export default function ManagedProduction() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [openId, setOpenId] = useState<string | null>(null)
-  const [view, setView] = useState<"orders" | "offers">("orders")
+  const [view, setView] = useState<"orders" | "offers" | "briefs">("orders")
 
   const load = useCallback(async () => {
     try {
@@ -97,7 +98,7 @@ export default function ManagedProduction() {
         </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-md border border-white/12 p-0.5">
-            {([["orders", "Orders", Inbox], ["offers", "Offers", Tags]] as const).map(([key, label, Icon]) => (
+            {([["orders", "Orders", Inbox], ["briefs", "Briefs", File], ["offers", "Offers", Tags]] as const).map(([key, label, Icon]) => (
               <button
                 key={key}
                 type="button"
@@ -123,6 +124,8 @@ export default function ManagedProduction() {
           )}
         </div>
       </div>
+
+      {view === "briefs" && <AbandonedBriefs />}
 
       {view === "offers" && <ManagedOffers />}
 

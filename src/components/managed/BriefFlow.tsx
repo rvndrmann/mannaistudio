@@ -6,6 +6,7 @@ import Link from "next/link"
 import { AnimatePresence, motion } from "framer-motion"
 import { ArrowLeft, ArrowRight, Check, Loader2, LogIn, Sparkles } from "lucide-react"
 import { useAuth } from "@/components/auth/auth-provider"
+import { getVisitorId } from "@/lib/analytics"
 import { AttachmentPicker, ChipPicker, Field, LinkList, TextArea, TextField } from "@/components/managed/BriefFields"
 import { useManagedCheckout } from "@/components/managed/useManagedCheckout"
 import { emptyManagedBrief, type ManagedBrief } from "@/lib/managed-brief"
@@ -44,6 +45,10 @@ export default function BriefFlow() {
   const [brief, setBrief] = useState<ManagedBrief>(() => emptyManagedBrief())
   const [packageKey, setPackageKey] = useState("")
   const [prefilled, setPrefilled] = useState("")
+  // Nothing is written until the visitor has typed or moved. Opening the page —
+  // or having last year's brief filled in for you — is not a lead, and a list
+  // of everyone who ever glanced at the form is a list nobody reads.
+  const [touched, setTouched] = useState(false)
 
   const service = catalogue ? serviceFromCatalogue(catalogue, serviceKey) : null
 
@@ -65,7 +70,19 @@ export default function BriefFlow() {
   const activePackageKey = packageKey || defaultPackageFor(service)?.key || ""
 
   const { submit, pending, error } = useManagedCheckout({
-    onDone: (projectId) => router.push(`/hire-us/projects/${projectId}?welcome=1`),
+    onDone: (projectId) => {
+      // Same browser, same service: the draft this order came from stops
+      // counting as abandoned. The admin list infers it from the order anyway
+      // if this request never lands, so a closed tab cannot leave a paying
+      // client sitting in a follow-up queue.
+      void fetch("/api/managed/brief-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        keepalive: true,
+        body: JSON.stringify({ type: "converted", visitorId: getVisitorId(), serviceKey, projectId }),
+      }).catch(() => undefined)
+      router.push(`/hire-us/projects/${projectId}?welcome=1`)
+    },
   })
 
   const selected = useMemo(
@@ -98,6 +115,40 @@ export default function BriefFlow() {
     return () => { active = false }
   }, [user, repeatFrom])
 
+  /**
+   * The brief, saved while it is still being written.
+   *
+   * Seven steps of typing used to exist only in this component: someone who
+   * described their product in detail and then closed the tab at the price
+   * left nothing behind at all, and the only briefs anybody could read were
+   * the ones already paid for. This writes a draft a second and a half after
+   * the last keystroke — one row per browser per service, updated in place —
+   * so an abandoned brief is something the team can follow up rather than
+   * something that never happened.
+   */
+  useEffect(() => {
+    if (!touched || !service) return
+    const timer = window.setTimeout(() => {
+      void fetch("/api/managed/brief-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Survives the navigation that interrupts it — closing the tab is the
+        // most likely way this brief ends, and that is the save that matters.
+        keepalive: true,
+        body: JSON.stringify({
+          type: "save",
+          visitorId: getVisitorId(),
+          serviceKey: service.key,
+          packageKey: activePackageKey,
+          brief,
+          furthestStep: step,
+          totalSteps: STEPS.length,
+        }),
+      }).catch(() => undefined)
+    }, 1_500)
+    return () => window.clearTimeout(timer)
+  }, [touched, service, activePackageKey, brief, step])
+
   if (catalogue === null) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center pt-32">
@@ -115,8 +166,15 @@ export default function BriefFlow() {
     )
   }
 
-  const set = <K extends keyof ManagedBrief>(key: K, value: ManagedBrief[K]) =>
+  const set = <K extends keyof ManagedBrief>(key: K, value: ManagedBrief[K]) => {
+    setTouched(true)
     setBrief((current) => ({ ...current, [key]: value }))
+  }
+
+  const goToStep = (next: number) => {
+    setTouched(true)
+    setStep(next)
+  }
 
   const lastStep = STEPS.length - 1
   const canCheckout = Boolean(service.quoteOnly || selected)
@@ -157,7 +215,7 @@ export default function BriefFlow() {
           <li key={label} className="flex items-center gap-1.5">
             <button
               type="button"
-              onClick={() => setStep(index)}
+              onClick={() => goToStep(index)}
               className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
                 index === step
                   ? "bg-primary text-black"
@@ -396,7 +454,7 @@ export default function BriefFlow() {
         <button
           type="button"
           disabled={step === 0}
-          onClick={() => setStep((current) => Math.max(0, current - 1))}
+          onClick={() => goToStep(Math.max(0, step - 1))}
           className="flex h-11 items-center gap-2 rounded-md border border-white/12 px-4 text-sm font-medium text-white/60 transition hover:bg-white/[0.06] hover:text-white disabled:opacity-30"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -405,7 +463,7 @@ export default function BriefFlow() {
         {step < lastStep && (
           <button
             type="button"
-            onClick={() => setStep((current) => Math.min(lastStep, current + 1))}
+            onClick={() => goToStep(Math.min(lastStep, step + 1))}
             className="flex h-11 items-center gap-2 rounded-md bg-white/10 px-5 text-sm font-semibold text-white transition hover:bg-white/15 active:scale-[0.97]"
           >
             Continue
