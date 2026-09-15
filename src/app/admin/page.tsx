@@ -22,6 +22,7 @@ import {
     Tooltip, ResponsiveContainer, AreaChart, Area
 } from 'recharts'
 import type { Challenge, ChallengeSubmission, Course, CourseLesson, ShowcaseItem } from "@/lib/data"
+import { showcaseCategories } from "@/lib/showcase"
 import {
     fetchServiceRequests,
     getServiceRequestClient,
@@ -94,6 +95,82 @@ function mapChallengeSubmissionRow(row: any): ChallengeSubmission {
         timestamp: row.created_at ? new Date(row.created_at).toLocaleDateString() : "Just now",
         thumbnail: row.thumbnail || "",
     }
+}
+
+/**
+ * The reel's optional facts, as the columns they are stored in.
+ *
+ * One place, so the insert and the update cannot drift apart — the two paths
+ * that write a showcase row are forty lines apart and were already writing the
+ * same four fields twice.
+ */
+function showcaseReelColumns(item: ShowcaseItem) {
+    return {
+        category: item.category || 'other',
+        brand: item.brand || '',
+        position: typeof item.position === 'number' ? item.position : 0,
+        is_featured: item.isFeatured === true,
+    }
+}
+
+/**
+ * What the homepage reel needs to know about a video, beside what it is.
+ *
+ * None of it is required: a video with no category, no order and no star still
+ * appears, in the order it was uploaded, exactly as every video did before
+ * these fields existed. They only decide how the reel arranges itself.
+ */
+function ShowcaseReelFields({ value, onChange }: {
+    value: ShowcaseItem
+    onChange: (patch: Partial<ShowcaseItem>) => void
+}) {
+    return (
+        <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-white/30">Homepage reel</p>
+            <div className="grid grid-cols-2 gap-3">
+                <div>
+                    <label className="text-[10px] font-bold text-white/30 mb-1 block">Format</label>
+                    <select
+                        value={value.category || 'other'}
+                        onChange={(e) => onChange({ category: e.target.value })}
+                        className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary w-full"
+                    >
+                        {showcaseCategories.map((category) => (
+                            <option key={category.key} value={category.key}>{category.label}</option>
+                        ))}
+                    </select>
+                </div>
+                <div>
+                    <label className="text-[10px] font-bold text-white/30 mb-1 block">Order</label>
+                    <input
+                        type="number"
+                        value={value.position ?? 0}
+                        onChange={(e) => onChange({ position: Number(e.target.value) || 0 })}
+                        className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary w-full"
+                        placeholder="0"
+                    />
+                </div>
+            </div>
+            <div>
+                <label className="text-[10px] font-bold text-white/30 mb-1 block">Brand / client (optional)</label>
+                <input
+                    value={value.brand || ''}
+                    onChange={(e) => onChange({ brand: e.target.value })}
+                    className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary w-full"
+                    placeholder="Shown above the title on the homepage"
+                />
+            </div>
+            <label className="flex items-center gap-2.5 text-sm text-white/70">
+                <input
+                    type="checkbox"
+                    checked={value.isFeatured === true}
+                    onChange={(e) => onChange({ isFeatured: e.target.checked })}
+                    className="h-4 w-4 accent-[#b9f42e]"
+                />
+                Feature this one — the reel leads with it
+            </label>
+        </div>
+    )
 }
 
 function AdminGate({ children }: { children: React.ReactNode }) {
@@ -728,6 +805,10 @@ function AdminDashboardContent() {
                     description: r.description,
                     thumbnail: r.thumbnail,
                     videoUrl: r.video_url,
+                    category: r.category || 'other',
+                    brand: r.brand || '',
+                    position: typeof r.position === 'number' ? r.position : 0,
+                    isFeatured: r.is_featured === true,
                 })))
             }
         } catch { setMockShowcase(adminShowcase) }
@@ -753,7 +834,11 @@ function AdminDashboardContent() {
             title: "New Showcase Video",
             description: "Describe this featured work...",
             thumbnail: "",
-            videoUrl: ""
+            videoUrl: "",
+            category: "other",
+            brand: "",
+            position: 0,
+            isFeatured: false,
         }
         setShowcaseEditForm(newItem)
         setEditingShowcaseId(newItem.id)
@@ -802,15 +887,15 @@ function AdminDashboardContent() {
             if (isNew) {
                 const { data, error } = await supabase
                     .from('showcase_items')
-                    .insert({ title: showcaseEditForm.title, description: showcaseEditForm.description, thumbnail: thumbnailUrl, video_url: videoUrl })
+                    .insert({ title: showcaseEditForm.title, description: showcaseEditForm.description, thumbnail: thumbnailUrl, video_url: videoUrl, ...showcaseReelColumns(showcaseEditForm) })
                     .select('*')
                     .single()
                 if (error) throw error
-                setMockShowcase(prev => [{ id: data.id, title: data.title, description: data.description, thumbnail: data.thumbnail, videoUrl: data.video_url }, ...prev])
+                setMockShowcase(prev => [{ id: data.id, title: data.title, description: data.description, thumbnail: data.thumbnail, videoUrl: data.video_url, category: data.category || 'other', brand: data.brand || '', position: data.position ?? 0, isFeatured: data.is_featured === true }, ...prev])
             } else {
                 const { error } = await supabase
                     .from('showcase_items')
-                    .update({ title: showcaseEditForm.title, description: showcaseEditForm.description, thumbnail: thumbnailUrl, video_url: videoUrl })
+                    .update({ title: showcaseEditForm.title, description: showcaseEditForm.description, thumbnail: thumbnailUrl, video_url: videoUrl, ...showcaseReelColumns(showcaseEditForm) })
                     .eq('id', showcaseEditForm.id)
                 if (error) throw error
                 setMockShowcase(prev => prev.map(s => s.id === showcaseEditForm.id ? { ...showcaseEditForm, thumbnail: thumbnailUrl, videoUrl } : s))
@@ -1868,6 +1953,10 @@ function AdminDashboardContent() {
                                                 <input type="file" accept="image/*" onChange={(e) => setShowcaseThumbnailFile(e.target.files?.[0] || null)} className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-primary/20 file:px-3 file:py-1 file:text-primary file:text-xs file:font-bold" />
                                             </div>
                                             <input value={showcaseEditForm.thumbnail} onChange={(e) => setShowcaseEditForm(prev => prev ? { ...prev, thumbnail: e.target.value } : prev)} className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full" placeholder="Or paste Thumbnail URL" />
+                                            <ShowcaseReelFields
+                                                value={showcaseEditForm}
+                                                onChange={(patch) => setShowcaseEditForm(prev => prev ? { ...prev, ...patch } : prev)}
+                                            />
                                         </div>
                                         {uploadStatus && showcaseSaving && (
                                             <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3 p-3 bg-primary/10 border border-primary/20 rounded-xl">
@@ -1949,6 +2038,12 @@ function AdminDashboardContent() {
                                                                 placeholder="https://... or leave blank to upload"
                                                             />
                                                         </div>
+                                                        {showcaseEditForm && (
+                                                            <ShowcaseReelFields
+                                                                value={showcaseEditForm}
+                                                                onChange={(patch) => setShowcaseEditForm(prev => prev ? { ...prev, ...patch } : prev)}
+                                                            />
+                                                        )}
                                                     </div>
                                                     {uploadStatus && showcaseSaving && (
                                                         <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3 p-3 bg-primary/10 border border-primary/20 rounded-xl">

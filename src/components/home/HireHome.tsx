@@ -6,132 +6,116 @@ import { motion } from "framer-motion"
 import {
   ArrowRight,
   Check,
-  Clock,
+  Clapperboard,
   Download,
   FileText,
+  Layers,
+  LineChart,
   MessageSquare,
-  Play,
-  RefreshCw,
-  Tag,
+  Search,
+  Sparkles,
+  Star,
+  Video,
 } from "lucide-react"
 import Footer from "@/components/Footer"
-import OfferMediaFrame, { offerMediaFit } from "@/components/managed/OfferMedia"
+import ShowcaseReel from "@/components/home/ShowcaseReel"
 import { useAuth } from "@/components/auth/auth-provider"
+import { createClient } from "@/lib/supabase/client"
 import { formatUsdWithInr } from "@/lib/currency"
-import { cheapestPackage, type OfferService } from "@/lib/managed-offers"
+import { cheapestPackage, type OfferPackage, type OfferService } from "@/lib/managed-offers"
+import type { OriginalsSeriesSummary } from "@/lib/originals"
+import { sortShowcase, toShowcaseVideo, type ShowcaseVideo } from "@/lib/showcase"
 import { materialize, springUI } from "@/lib/motion"
 
 /**
- * The done-for-you homepage.
+ * The homepage of a production company that happens to run on its own software.
  *
- * Sells the outcome and nothing else. A visitor here is buying finished ads,
- * not software: there is no mention of the Studio, the Director, the models or
- * a prompt anywhere on the page, because every sentence about how the work is
- * made is a sentence asking them to become a different kind of customer — the
- * kind who has to do something.
+ * Outcome first, service second, technology third. A DTC owner arriving from a
+ * Meta ad has to understand in one screen that we make their ads and that they
+ * can buy that today — so nothing above the fold mentions a model, a prompt, an
+ * agent or an API key, and the Creative Studio is never named at all. It is the
+ * factory, not the product: the client orders what comes out of it, and the
+ * team operates it.
  *
- * It carries its own header for the same reason the Originals homepage does:
- * the shared Navbar leads with a Creator Studio button, which sends the exact
- * person this page is written for into the tool they are paying not to use.
+ * It carries its own header rather than the shared Navbar, which leads with a
+ * Creator Studio button — the one door this visitor should never be pushed
+ * through.
  */
 
-/**
- * The two promises the page is built around.
- *
- * Stated here rather than read from the catalogue because they are a pitch
- * rather than a per-package field: a package carries its own revision count,
- * and where a card shows one it shows that number, not this one. Change these
- * two constants and the page changes with them.
- */
-const FIRST_CUT_HOURS = 24
-const REVISION_ROUNDS = 2
+/** The service the volume plans are sold under, seeded in the catalogue. */
+const PLAN_SERVICE_KEY = "performance_ads"
 
-const PROMISES = [
-  {
-    icon: Clock,
-    title: `First cut in ${FIRST_CUT_HOURS} hours`,
-    body: "Send the brief today. Watch something tomorrow — not a status update, an actual video.",
-  },
-  {
-    icon: RefreshCw,
-    title: `${REVISION_ROUNDS} rounds of changes included`,
-    body: "Leave a note on the second it applies to. We recut it. No hourly billing, no negotiating over an email.",
-  },
-  {
-    icon: Tag,
-    title: "One price, agreed first",
-    body: "You pick a package and see the price before anything is charged. Bigger jobs are quoted in writing.",
-  },
-  {
-    icon: Download,
-    title: "Finished files, not projects",
-    body: "Approved cuts download ready to run, in the sizes and platforms you asked for.",
-  },
-]
-
-const YOUR_PART = [
-  "Tell us the product, the goal and who it is for.",
-  "Watch each cut and say what you want changed.",
-  "Download the finals and run them.",
-]
-
-const OUR_PART = [
-  "Writing the hook and the script.",
-  "Casting the faces and locking the look.",
-  "Producing every shot in the ad.",
-  "Editing, grading, sound and captions.",
-  "Cutting the sizes each platform wants.",
-  "Keeping the whole set consistent.",
+const FORMATS = [
+  { icon: Video, title: "UGC Ads", body: "Natural creator-style performance ads.", category: "ugc" },
+  { icon: Sparkles, title: "Product Ads", body: "Showcase the product, the benefit and the offer.", category: "product" },
+  { icon: LineChart, title: "Direct Response Ads", body: "Hook → problem → solution → call to action.", category: "direct_response" },
+  { icon: Clapperboard, title: "Cinematic Ads", body: "Premium brand storytelling, produced end to end.", category: "cinematic" },
+  { icon: Layers, title: "Creative Variations", body: "Multiple hooks and concepts, built to be tested against each other.", category: "" },
+  { icon: MessageSquare, title: "Social Content", body: "Organic-style content that doubles as paid creative.", category: "" },
 ]
 
 const STEPS = [
   {
     icon: FileText,
-    title: "Send the brief",
-    body: "A short guided form: brand, product, goal, audience, where it runs. Ten minutes, once.",
+    title: "Tell us about your brand",
+    body: "Your website, the product, who it is for, what the campaign has to do — and any references you already like.",
   },
   {
-    icon: Play,
-    title: "We make it",
-    body: `Script, direction, production, edit. The first cut lands in your project within ${FIRST_CUT_HOURS} hours.`,
+    icon: Search,
+    title: "We research",
+    body: "Brand, customer, competitors, the angles already working in your category and the ones nobody is running.",
   },
   {
-    icon: MessageSquare,
-    title: "Say what to change",
-    body: `Notes pinned to the timestamp they belong to, and a chat with the people doing the work. ${REVISION_ROUNDS} rounds included.`,
+    icon: Sparkles,
+    title: "Concepts and scripts",
+    body: "Hooks and scripts written for the campaign, so you see the idea before anything is produced.",
+  },
+  {
+    icon: Video,
+    title: "We produce",
+    body: "Storyboard, visuals, voice, edit and assembly — handled by our team on our own production system.",
   },
   {
     icon: Download,
-    title: "Take the files",
-    body: "Approve a cut and it becomes a download. Everything stays in the project if you need it again.",
+    title: "Review and download",
+    body: "Ads arrive in your dashboard. Comment, ask for changes, approve, download. Nothing to install.",
   },
 ]
 
-const ANSWERS = [
-  {
-    question: "Do I need to know anything about AI?",
-    answer:
-      "No. You never see a prompt, a model or a timeline. You describe the product the way you would describe it to a person, because that is who reads it.",
-  },
-  {
-    question: "What if the first cut is wrong?",
-    answer: `That is what the ${REVISION_ROUNDS} revision rounds are for. Tell us at which second it goes wrong and what you want instead — the note sits on the frame, so nothing is lost in translation.`,
-  },
-  {
-    question: "Where does everything live?",
-    answer:
-      "In your project: the chat with the team, every version we send, your notes against each one, and the approved files. Nothing moves to email unless you want it to.",
-  },
+const DASHBOARD_POINTS = [
+  "Start a project and submit your brand and product",
+  "Watch every cut as it is delivered",
+  "Leave notes pinned to the second they apply to",
+  "Chat with the team doing the work",
+  "Request revisions without an email chain",
+  "Approve and download the finished files",
 ]
+
+const PIPELINE = ["Brief", "Research", "Concepts", "Production", "Review", "Delivery"]
 
 export default function HireHome() {
   const { user } = useAuth()
+  const [videos, setVideos] = useState<ShowcaseVideo[]>([])
   const [services, setServices] = useState<OfferService[] | null>(null)
+  const [originals, setOriginals] = useState<OriginalsSeriesSummary[]>([])
   const [hasProjects, setHasProjects] = useState(false)
 
-  // The catalogue is edited in the admin panel, so the page asks what is on
-  // sale rather than shipping a copy of it that can go stale against the prices
-  // checkout actually charges.
+  // The admin's chosen reel, from the showcase system that has always fed this
+  // page. Nine is the most a visitor scrolls through before deciding.
+  useEffect(() => {
+    let active = true
+    createClient()
+      .from("showcase_items")
+      .select("*")
+      .then(({ data }) => {
+        if (!active || !data) return
+        setVideos(sortShowcase(data.map(toShowcaseVideo)).filter((video) => video.videoUrl).slice(0, 9))
+      })
+    return () => { active = false }
+  }, [])
+
+  // Prices come from the catalogue, never from this file: the admin edits them
+  // in Managed Production → Offers and checkout charges from the same rows.
   useEffect(() => {
     let active = true
     fetch("/api/managed/offers")
@@ -141,8 +125,15 @@ export default function HireHome() {
     return () => { active = false }
   }, [])
 
-  // A client who already has work with us should be shown the way back to it
-  // rather than sold the same thing twice.
+  useEffect(() => {
+    let active = true
+    fetch("/api/originals", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : { series: [] }))
+      .then((data) => { if (active) setOriginals((data.series ?? []).slice(0, 3)) })
+      .catch(() => undefined)
+    return () => { active = false }
+  }, [])
+
   useEffect(() => {
     if (!user) return
     let active = true
@@ -153,171 +144,155 @@ export default function HireHome() {
     return () => { active = false }
   }, [user])
 
+  const planService = services?.find((service) => service.key === PLAN_SERVICE_KEY)
+  const plans = planService?.packages ?? []
+  // Until the volume plans are priced and published, the rest of the catalogue
+  // is what is actually on sale — so the section sells that rather than showing
+  // an empty space where the prices should be.
+  const fallbackServices = (services ?? []).filter((service) => service.key !== PLAN_SERVICE_KEY)
+  const startHref = planService ? `/hire-us/brief?service=${planService.key}` : "/hire-us/brief"
+
   return (
     <main className="min-h-screen">
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-black/70 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-6">
-          <Link href="/" className="flex items-center gap-2.5 text-lg font-semibold">
-            <img src="/logo.png" alt="" className="h-8 w-8 rounded-full" />
-            <span className="hidden sm:inline">AI Director <span className="text-primary">Hub</span></span>
-          </Link>
-          <div className="flex items-center gap-2">
-            {hasProjects ? (
-              <Link
-                href="/hire-us/projects"
-                className="flex h-10 items-center rounded-md border border-white/15 px-4 text-sm font-medium text-white/75 transition hover:bg-white/[0.06] hover:text-white"
-              >
-                Your projects
-              </Link>
-            ) : (
-              <Link
-                href={user ? "/account" : "/login"}
-                className="hidden h-10 items-center rounded-md px-3 text-sm font-medium text-white/55 transition hover:text-white sm:flex"
-              >
-                {user ? "Account" : "Sign in"}
-              </Link>
-            )}
-            <Link
-              href="/hire-us/brief"
-              className="flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"
-            >
-              Start a brief
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-        </div>
-      </header>
+      <SiteHeader hasProjects={hasProjects} user={Boolean(user)} startHref={startHref} />
 
-      <section className="mx-auto max-w-6xl px-6 pb-16 pt-32 sm:pt-40">
+      {/* 1 — What we make, who it is for, and what to press. */}
+      <section className="mx-auto max-w-6xl px-5 pb-14 pt-28 sm:px-6 sm:pt-36">
         <motion.div {...materialize} className="max-w-3xl">
-          <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">
-            <Clock className="h-3.5 w-3.5" />
-            First cut in {FIRST_CUT_HOURS} hours
+          <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-[11px] font-semibold text-primary sm:text-xs">
+            <LineChart className="h-3.5 w-3.5" />
+            AI performance ad creative
           </span>
-          <h1 className="mt-5 text-4xl font-bold leading-[1.05] tracking-tight sm:text-6xl">
-            You sell the product.
+          <h1 className="mt-5 text-[2.1rem] font-bold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl">
+            Performance Ads.
             <br />
-            <span className="text-primary">We make the ads.</span>
+            Made to Test. <span className="text-primary">Built to Scale.</span>
           </h1>
-          <p className="mt-6 text-lg leading-relaxed text-white/60 sm:text-xl">
-            Tell us about the product once. Get finished video ads back — written, produced,
-            edited and cut for wherever you run them. First cut inside {FIRST_CUT_HOURS} hours,
-            {" "}{REVISION_ROUNDS} rounds of changes included, and you never open an editor.
+          <p className="mt-5 max-w-2xl text-base leading-relaxed text-white/60 sm:text-lg">
+            AI-powered video ads for brands that need fresh creative every week. We research the
+            angle, develop the concept, create the ad and deliver it ready for Meta, TikTok,
+            Instagram and every other paid-social campaign you run.
           </p>
-          <div className="mt-8 flex flex-wrap items-center gap-3">
+          <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
             <Link
-              href="/hire-us/brief"
-              className="flex h-12 items-center gap-2 rounded-md bg-primary px-6 text-sm font-semibold text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"
+              href={startHref}
+              className="flex h-12 items-center justify-center gap-2 rounded-md bg-primary px-6 text-sm font-semibold text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"
             >
-              Tell us about your product
+              Start My First Ad
               <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link
-              href="/hire-us"
-              className="flex h-12 items-center gap-2 rounded-md border border-white/15 px-6 text-sm font-medium text-white/80 transition hover:bg-white/[0.06] hover:text-white"
+            <a
+              href="#work"
+              className="flex h-12 items-center justify-center gap-2 rounded-md border border-white/15 px-6 text-sm font-medium text-white/80 transition hover:bg-white/[0.06] hover:text-white"
             >
-              See what we make
-            </Link>
+              See Our Ads
+            </a>
           </div>
-          <p className="mt-4 text-xs text-white/35">
-            No call to book. No scope document. A form, and then videos.
+          <p className="mt-5 text-xs text-white/35">
+            UGC Ads · Product Ads · Direct Response · Cinematic Ads
           </p>
         </motion.div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 pb-20">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {PROMISES.map((promise, index) => (
-            <motion.div
-              key={promise.title}
-              {...materialize}
-              transition={{ ...springUI, delay: index * 0.05 }}
-              className="glass-card rounded-2xl border-white/10 p-5"
-            >
-              <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary/15 text-primary">
-                <promise.icon className="h-4 w-4" />
-              </span>
-              <h2 className="mt-4 text-sm font-bold">{promise.title}</h2>
-              <p className="mt-1.5 text-xs leading-relaxed text-white/45">{promise.body}</p>
-            </motion.div>
-          ))}
+      {/* 2 — Proof, immediately. The reel is the argument. */}
+      <section id="work" className="mx-auto max-w-6xl scroll-mt-20 px-5 pb-20 sm:px-6">
+        <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Ads We&rsquo;ve Created</h2>
+        <p className="mt-2 text-sm text-white/45">
+          From scroll-stopping product ads to cinematic brand campaigns.
+        </p>
+        <div className="mt-7">
+          {videos.length ? (
+            <ShowcaseReel videos={videos} />
+          ) : (
+            <div className="rounded-2xl border border-dashed border-white/12 p-10 text-center text-sm text-white/35">
+              The reel is empty. Add work in Admin → Showcase Manager.
+            </div>
+          )}
         </div>
       </section>
 
-      {/* The whole pitch in one comparison: a short list of what is asked of the
-          client beside a long one of what is not. */}
-      <section className="mx-auto max-w-6xl px-6 pb-20">
-        <div className="grid gap-5 lg:grid-cols-2">
-          <motion.div {...materialize} className="rounded-2xl border border-primary/25 bg-primary/[0.06] p-7">
-            <h2 className="text-xl font-bold tracking-tight">What you do</h2>
-            <p className="mt-1 text-xs text-white/40">Three things, and none of them take an afternoon.</p>
-            <ul className="mt-5 space-y-3">
-              {YOUR_PART.map((item) => (
-                <li key={item} className="flex items-start gap-2.5 text-sm text-white/80">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                  {item}
-                </li>
-              ))}
-            </ul>
+      {/* 3 — The pain, named in the media buyer's own words. */}
+      <section className="mx-auto max-w-6xl px-5 pb-20 sm:px-6">
+        <div className="grid gap-8 lg:grid-cols-2 lg:items-center">
+          <motion.div {...materialize}>
+            <h2 className="text-2xl font-bold leading-tight tracking-tight sm:text-3xl">
+              Your Media Buyer Needs More Creative.
+              <br />
+              <span className="text-primary">We Make It.</span>
+            </h2>
+            <p className="mt-4 text-sm leading-relaxed text-white/55">
+              Performance campaigns live on testing, and every winning ad fatigues eventually.
+              Traditional production is too slow and too expensive to feed that, and a rotating
+              cast of freelancers never produces two ads that look like the same brand.
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-white/55">
+              So you need a steady supply of new hooks, angles, concepts, UGC variations, product
+              ads and direct-response creative — arriving weekly, not quarterly.
+            </p>
+            <p className="mt-5 rounded-xl border border-primary/25 bg-primary/[0.07] p-4 text-sm leading-relaxed text-white/80">
+              AI Director Hub gives your brand a continuous creative production engine without
+              building an internal production team.
+            </p>
           </motion.div>
 
-          <motion.div {...materialize} transition={{ ...springUI, delay: 0.05 }} className="glass-card rounded-2xl border-white/10 p-7">
-            <h2 className="text-xl font-bold tracking-tight">What we do</h2>
-            <p className="mt-1 text-xs text-white/40">Everything that usually needs an agency, a crew and a month.</p>
-            <ul className="mt-5 grid gap-3 sm:grid-cols-2">
-              {OUR_PART.map((item) => (
-                <li key={item} className="flex items-start gap-2.5 text-sm text-white/55">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-white/25" />
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </motion.div>
+          <motion.ul {...materialize} transition={{ ...springUI, delay: 0.05 }} className="grid gap-3 sm:grid-cols-2">
+            {["Hooks", "Angles", "Concepts", "UGC variations", "Product ads", "Direct response"].map((need) => (
+              <li key={need} className="glass-card rounded-xl border-white/10 px-4 py-4 text-sm font-semibold text-white/75">
+                {need}
+              </li>
+            ))}
+          </motion.ul>
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 pb-20">
-        <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">What you can order</h2>
-        <p className="mt-2 text-sm text-white/45">Pick the one that matches the job. The price you see is the price.</p>
+      {/* 4 — Something to buy, not a call to book. */}
+      <section id="pricing" className="mx-auto max-w-6xl scroll-mt-20 px-5 pb-20 sm:px-6">
+        <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Choose Your Creative Volume</h2>
+        <p className="mt-2 text-sm text-white/45">
+          Pick the number of ads your testing needs. The price you see is the price.
+        </p>
 
         {services === null ? (
-          <div className="mt-8 grid gap-5 md:grid-cols-2">
-            {[0, 1].map((key) => (
-              <div key={key} className="h-52 animate-pulse rounded-2xl border border-white/[0.06] bg-white/[0.03]" />
+          <div className="mt-8 grid gap-4 md:grid-cols-3">
+            {[0, 1, 2].map((key) => (
+              <div key={key} className="h-80 animate-pulse rounded-2xl border border-white/[0.06] bg-white/[0.03]" />
             ))}
           </div>
-        ) : services.length === 0 ? (
-          <div className="mt-8 rounded-2xl border border-dashed border-white/12 p-10 text-center">
-            <p className="text-sm text-white/45">
-              We are between intakes right now.{" "}
-              <Link href="/contact" className="font-semibold text-primary hover:underline">Tell us what you need</Link>{" "}
-              and we will come back to you when we reopen.
-            </p>
+        ) : plans.length ? (
+          <div className="mt-8 grid gap-4 md:grid-cols-3">
+            {plans.map((plan) => (
+              <PlanCard key={plan.key} plan={plan} serviceKey={PLAN_SERVICE_KEY} />
+            ))}
+          </div>
+        ) : fallbackServices.length ? (
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {fallbackServices.map((service) => (
+              <ServiceCard key={service.key} service={service} />
+            ))}
           </div>
         ) : (
-          <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-2">
-            {services.map((service, index) => (
-              <OfferCard key={service.key} service={service} index={index} />
-            ))}
+          <div className="mt-8 rounded-2xl border border-dashed border-white/12 p-10 text-center text-sm text-white/40">
+            Nothing is on sale yet. Add a service in Admin → Managed Production → Offers.
           </div>
         )}
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 pb-20">
-        <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">How it goes</h2>
-        <ol className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* 5 — The process, so nobody has to ask what happens after they pay. */}
+      <section id="how" className="mx-auto max-w-6xl scroll-mt-20 px-5 pb-20 sm:px-6">
+        <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">From Product URL to Finished Ads</h2>
+        <ol className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {STEPS.map((step, index) => (
             <motion.li
               key={step.title}
               {...materialize}
-              transition={{ ...springUI, delay: index * 0.05 }}
+              transition={{ ...springUI, delay: index * 0.04 }}
               className="glass-card rounded-2xl border-white/10 p-5"
             >
               <div className="flex items-center gap-2.5">
                 <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary/15 text-primary">
                   <step.icon className="h-4 w-4" />
                 </span>
-                <span className="text-xs font-bold text-white/30">Step {index + 1}</span>
+                <span className="text-[11px] font-bold text-white/30">0{index + 1}</span>
               </div>
               <h3 className="mt-3 text-sm font-bold">{step.title}</h3>
               <p className="mt-1.5 text-xs leading-relaxed text-white/45">{step.body}</p>
@@ -326,34 +301,173 @@ export default function HireHome() {
         </ol>
       </section>
 
-      <section className="mx-auto max-w-4xl px-6 pb-20">
-        <div className="space-y-3">
-          {ANSWERS.map((entry) => (
-            <div key={entry.question} className="glass-card rounded-2xl border-white/10 p-6">
-              <h3 className="text-sm font-bold">{entry.question}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-white/50">{entry.answer}</p>
-            </div>
+      {/* 6 — How it is possible, now that they know what it is. No tool names:
+             the client is buying what comes out of the factory. */}
+      <section className="mx-auto max-w-6xl px-5 pb-20 sm:px-6">
+        <div className="glass-card rounded-3xl border-white/10 p-7 sm:p-10">
+          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+            Powered by Our Proprietary AI Production System
+          </h2>
+          <p className="mt-4 max-w-3xl text-sm leading-relaxed text-white/55">
+            Traditional agencies coordinate freelancers, production crews and a dozen tools. Behind
+            every AI Director Hub campaign is one internal system that combines creative research,
+            scripting, storyboarding, AI production, editing and project management — which is why
+            a week of an agency&rsquo;s calendar is a day of ours.
+          </p>
+          <div className="mt-7 flex flex-wrap items-center gap-2">
+            {PIPELINE.map((stage, index) => (
+              <span key={stage} className="flex items-center gap-2">
+                <span className="rounded-full border border-white/12 bg-white/[0.04] px-3.5 py-1.5 text-xs font-semibold text-white/70">
+                  {stage}
+                </span>
+                {index < PIPELINE.length - 1 && <ArrowRight className="h-3.5 w-3.5 text-white/20" />}
+              </span>
+            ))}
+          </div>
+          <p className="mt-6 text-sm text-white/45">
+            You send the brief. Our team runs the machinery. There is nothing for you to learn,
+            install or operate.
+          </p>
+        </div>
+      </section>
+
+      {/* 7 — The thing they get access to, which already exists. */}
+      <section className="mx-auto max-w-6xl px-5 pb-20 sm:px-6">
+        <div className="grid gap-8 lg:grid-cols-2 lg:items-center">
+          <motion.div {...materialize}>
+            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+              Everything Happens Inside Your Dashboard
+            </h2>
+            <p className="mt-4 text-sm leading-relaxed text-white/55">
+              No endless email chains. No chasing freelancers. No production software to manage.
+              Every project has one page, and everything about it lives there.
+            </p>
+            <Link
+              href={hasProjects ? "/hire-us/projects" : startHref}
+              className="mt-6 inline-flex h-11 items-center gap-2 rounded-md border border-white/15 px-5 text-sm font-medium text-white/80 transition hover:bg-white/[0.06] hover:text-white"
+            >
+              {hasProjects ? "Open your projects" : "Start a project"}
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </motion.div>
+
+          <motion.ul {...materialize} transition={{ ...springUI, delay: 0.05 }} className="glass-card space-y-3 rounded-2xl border-white/10 p-6">
+            {DASHBOARD_POINTS.map((point) => (
+              <li key={point} className="flex items-start gap-2.5 text-sm text-white/65">
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                {point}
+              </li>
+            ))}
+          </motion.ul>
+        </div>
+      </section>
+
+      {/* 8 — One partner, every format they were about to hire separately for. */}
+      <section className="mx-auto max-w-6xl px-5 pb-20 sm:px-6">
+        <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+          One Creative Partner. Multiple Ad Formats.
+        </h2>
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {FORMATS.map((format, index) => (
+            <motion.div
+              key={format.title}
+              {...materialize}
+              transition={{ ...springUI, delay: index * 0.04 }}
+              className="glass-card rounded-2xl border-white/10 p-5"
+            >
+              <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary/15 text-primary">
+                <format.icon className="h-4 w-4" />
+              </span>
+              <h3 className="mt-4 text-sm font-bold">{format.title}</h3>
+              <p className="mt-1.5 text-xs leading-relaxed text-white/45">{format.body}</p>
+              {format.category && videos.some((video) => video.category === format.category) && (
+                <a href="#work" className="mt-3 inline-flex text-[11px] font-semibold text-primary hover:underline">
+                  See examples
+                </a>
+              )}
+            </motion.div>
           ))}
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 pb-24">
+      {/* 9 — Originals, kept and repositioned: proof of range, not the offer. */}
+      {originals.length > 0 && (
+        <section className="mx-auto max-w-6xl px-5 pb-20 sm:px-6">
+          <div className="glass-card rounded-3xl border-white/10 p-7 sm:p-10">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold tracking-tight sm:text-2xl">AI Director Hub Originals</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/50">
+                  We also use our production engine to make original AI films and short-form series,
+                  pushing the same system that produces our clients&rsquo; campaigns.
+                </p>
+              </div>
+              <Link
+                href="/originals"
+                className="flex h-10 items-center gap-2 rounded-md border border-white/15 px-4 text-sm font-medium text-white/80 transition hover:bg-white/[0.06] hover:text-white"
+              >
+                Watch Originals
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+            <div className="mt-6 grid grid-cols-3 gap-3">
+              {originals.map((series) => (
+                <Link
+                  key={series.id}
+                  href={`/originals/${series.slug}`}
+                  className="group overflow-hidden rounded-xl border border-white/10 bg-black"
+                >
+                  <span className="block aspect-[2/3] w-full overflow-hidden">
+                    {series.posterUrl ? (
+                      <img
+                        src={series.posterUrl}
+                        alt={series.title}
+                        loading="lazy"
+                        className="h-full w-full object-cover transition group-hover:scale-105"
+                      />
+                    ) : (
+                      <span className="grid h-full w-full place-items-center text-xs text-white/25">
+                        {series.title}
+                      </span>
+                    )}
+                  </span>
+                  <span className="block truncate px-3 py-2 text-[11px] font-semibold text-white/70">
+                    {series.title}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* 10 — The ask. */}
+      <section className="mx-auto max-w-6xl px-5 pb-24 sm:px-6">
         <motion.div
           {...materialize}
-          className="rounded-3xl border border-primary/25 bg-gradient-to-br from-primary/[0.12] to-transparent p-10 text-center sm:p-14"
+          className="rounded-3xl border border-primary/25 bg-gradient-to-br from-primary/[0.12] to-transparent p-8 text-center sm:p-14"
         >
-          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">Tell us about your product.</h2>
+          <h2 className="text-2xl font-bold leading-tight tracking-tight sm:text-4xl">
+            Your Next Winning Ad Starts With Another Test.
+          </h2>
           <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-white/55">
-            Ten minutes of typing is the whole of your involvement. The first cut is with you
-            inside {FIRST_CUT_HOURS} hours.
+            Send us your product. We will turn it into performance-ready creative.
           </p>
-          <Link
-            href="/hire-us/brief"
-            className="mt-8 inline-flex h-12 items-center gap-2 rounded-md bg-primary px-7 text-sm font-semibold text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"
-          >
-            Start a brief
-            <ArrowRight className="h-4 w-4" />
-          </Link>
+          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+            <Link
+              href={startHref}
+              className="flex h-12 items-center justify-center gap-2 rounded-md bg-primary px-7 text-sm font-semibold text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"
+            >
+              Start My First Ad
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <a
+              href="#work"
+              className="flex h-12 items-center justify-center gap-2 rounded-md border border-white/15 px-7 text-sm font-medium text-white/80 transition hover:bg-white/[0.06] hover:text-white"
+            >
+              See Our Work
+            </a>
+          </div>
         </motion.div>
       </section>
 
@@ -362,69 +476,147 @@ export default function HireHome() {
   )
 }
 
-function OfferCard({ service, index }: { service: OfferService; index: number }) {
-  const cheapest = cheapestPackage(service)
+/**
+ * The public navigation: five links and one button.
+ *
+ * Studio and Courses are absent by design — they are internal tooling, and a
+ * visitor who has come to buy ads should never be offered the machine that
+ * makes them. Neither route is removed; both stay exactly where the team
+ * reaches them.
+ */
+function SiteHeader({ hasProjects, user, startHref }: { hasProjects: boolean; user: boolean; startHref: string }) {
+  return (
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-black/75 backdrop-blur-xl">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5 sm:px-6">
+        <Link href="/" className="flex shrink-0 items-center gap-2.5 text-base font-semibold sm:text-lg">
+          <img src="/logo.png" alt="" className="h-8 w-8 rounded-full" />
+          <span className="hidden sm:inline">AI Director <span className="text-primary">Hub</span></span>
+        </Link>
 
+        <nav className="hidden items-center gap-1 lg:flex">
+          {[
+            { href: "#work", label: "Work" },
+            { href: "#how", label: "How It Works" },
+            { href: "#pricing", label: "Pricing" },
+          ].map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              className="rounded-md px-3 py-2 text-sm font-medium text-white/55 transition hover:text-white"
+            >
+              {link.label}
+            </a>
+          ))}
+          <Link href="/originals" className="rounded-md px-3 py-2 text-sm font-medium text-white/55 transition hover:text-white">
+            Originals
+          </Link>
+        </nav>
+
+        <div className="flex items-center gap-2">
+          {hasProjects ? (
+            <Link
+              href="/hire-us/projects"
+              className="flex h-10 items-center rounded-md border border-white/15 px-3 text-sm font-medium text-white/75 transition hover:bg-white/[0.06] hover:text-white sm:px-4"
+            >
+              Projects
+            </Link>
+          ) : (
+            <Link
+              href={user ? "/account" : "/login"}
+              className="hidden h-10 items-center rounded-md px-3 text-sm font-medium text-white/55 transition hover:text-white sm:flex"
+            >
+              {user ? "Account" : "Login"}
+            </Link>
+          )}
+          <Link
+            href={startHref}
+            className="flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"
+          >
+            Start a Project
+          </Link>
+        </div>
+      </div>
+    </header>
+  )
+}
+
+/** One volume plan, priced by the catalogue. */
+function PlanCard({ plan, serviceKey }: { plan: OfferPackage; serviceKey: string }) {
   return (
     <motion.div
       {...materialize}
-      transition={{ ...springUI, delay: index * 0.05 }}
-      className="glass-card flex flex-col overflow-hidden rounded-2xl border-white/10"
+      className={`glass-card relative flex flex-col rounded-2xl p-6 ${
+        plan.popular ? "border-primary/40 bg-primary/[0.05]" : "border-white/10"
+      }`}
     >
-      {/* The gig's own art, muted and still, and whole — most of these are
-          9:16. A homepage with four videos competing for bandwidth loads like a
-          fairground, so the ones that play live on /hire-us, one click away. */}
-      {(service.thumbnailUrl || service.videoUrl) && (
-        <OfferMediaFrame fill={service.thumbnailUrl || undefined}>
-          {service.thumbnailUrl ? (
-            <img src={service.thumbnailUrl} alt="" className={offerMediaFit} />
-          ) : (
-            <video src={`${service.videoUrl}#t=0.1`} preload="metadata" muted playsInline className={offerMediaFit} />
-          )}
-        </OfferMediaFrame>
+      {plan.popular && (
+        <span className="absolute -top-3 left-6 inline-flex items-center gap-1 rounded-full bg-primary px-3 py-1 text-[10px] font-bold text-black">
+          <Star className="h-3 w-3" />
+          Most Popular
+        </span>
+      )}
+      <h3 className="text-lg font-bold tracking-tight">{plan.name}</h3>
+      <p className="mt-1 text-sm text-primary/90">{plan.summary}</p>
+      <p className="mt-4 text-2xl font-bold">{formatUsdWithInr(plan.priceInr)}</p>
+
+      {!plan.isPublished && (
+        <p className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] font-semibold text-amber-200">
+          Draft — only you can see this. Set the price and publish it in Admin → Managed
+          Production → Offers.
+        </p>
       )}
 
-      <div className="flex flex-1 flex-col p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h3 className="text-lg font-bold tracking-tight">{service.name}</h3>
-            {service.tagline && <p className="mt-1 text-sm text-primary/90">{service.tagline}</p>}
-          </div>
-          {cheapest && (
-            <div className="shrink-0 text-right">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-white/30">From</p>
-              <p className="text-sm font-bold">{formatUsdWithInr(cheapest.priceInr)}</p>
-            </div>
-          )}
-        </div>
+      {plan.includes.length > 0 && (
+        <ul className="mt-5 flex-1 space-y-2">
+          {plan.includes.map((item) => (
+            <li key={item} className="flex items-start gap-2 text-sm text-white/55">
+              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+              {item}
+            </li>
+          ))}
+        </ul>
+      )}
 
-        {service.deliverables.length > 0 && (
-          <ul className="mt-5 space-y-2">
-            {service.deliverables.slice(0, 3).map((item) => (
-              <li key={item} className="flex items-start gap-2 text-sm text-white/55">
-                <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-                {item}
-              </li>
-            ))}
-          </ul>
-        )}
+      <Link
+        href={`/hire-us/brief?service=${serviceKey}&package=${plan.key}`}
+        className={`mt-6 flex h-11 items-center justify-center gap-2 rounded-md px-5 text-sm font-semibold transition duration-press ease-out active:scale-[0.97] ${
+          plan.popular
+            ? "bg-primary text-black hover:brightness-110"
+            : "border border-white/15 text-white hover:bg-white/[0.06]"
+        }`}
+      >
+        Start {plan.name}
+        <ArrowRight className="h-4 w-4" />
+      </Link>
+    </motion.div>
+  )
+}
 
-        {/* The package's own revision count, not the page's headline number:
-            where the two disagree the one being sold is the true one. */}
-        {cheapest && cheapest.revisions > 0 && (
-          <p className="mt-4 text-xs text-white/35">
-            {cheapest.revisions} revision{cheapest.revisions === 1 ? "" : "s"} included on this package.
-          </p>
-        )}
-
-        <Link
-          href={`/hire-us/brief?service=${service.key}`}
-          className="mt-6 flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-semibold text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"
-        >
-          {service.cta}
-          <ArrowRight className="h-4 w-4" />
-        </Link>
-      </div>
+/** What is on sale when the volume plans have not been published yet. */
+function ServiceCard({ service }: { service: OfferService }) {
+  const cheapest = cheapestPackage(service)
+  return (
+    <motion.div {...materialize} className="glass-card flex flex-col rounded-2xl border-white/10 p-6">
+      <h3 className="text-lg font-bold tracking-tight">{service.name}</h3>
+      {service.tagline && <p className="mt-1 text-sm text-primary/90">{service.tagline}</p>}
+      {cheapest && <p className="mt-4 text-2xl font-bold">{formatUsdWithInr(cheapest.priceInr)}</p>}
+      {service.deliverables.length > 0 && (
+        <ul className="mt-5 flex-1 space-y-2">
+          {service.deliverables.slice(0, 4).map((item) => (
+            <li key={item} className="flex items-start gap-2 text-sm text-white/55">
+              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+              {item}
+            </li>
+          ))}
+        </ul>
+      )}
+      <Link
+        href={`/hire-us/brief?service=${service.key}`}
+        className="mt-6 flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-semibold text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"
+      >
+        {service.cta}
+        <ArrowRight className="h-4 w-4" />
+      </Link>
     </motion.div>
   )
 }

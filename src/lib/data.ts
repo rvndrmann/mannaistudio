@@ -32,6 +32,12 @@ export type ShowcaseItem = {
     description: string
     thumbnail: string
     videoUrl: string
+    // How the homepage reel sorts and filters this video. All optional: a row
+    // saved before these existed carries none of them and still renders.
+    category?: string
+    brand?: string
+    position?: number
+    isFeatured?: boolean
 }
 
 export type ChallengeSubmission = {
