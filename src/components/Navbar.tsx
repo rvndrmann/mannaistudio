@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import { springUI, materialize } from "@/lib/motion"
-import { Clapperboard, Play, User, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, BookOpen, PlugZap, Sparkles, Users, KeyRound, ChevronDown, Menu, Briefcase } from "lucide-react"
+import { Clapperboard, Play, User, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, BookOpen, PlugZap, Sparkles, Users, KeyRound, ChevronDown, Menu, Briefcase, LayoutDashboard } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -27,6 +27,10 @@ const baseNavLinks = [
     // studio it is sold to everyone — so it sits in the nav for viewers too,
     // not behind the admin-only flag the SaaS-era surfaces carry.
     { key: "hireUs", name: "Hire Our Team", href: "/hire-us", icon: Briefcase, public: true },
+    // Where a client watches the work they paid for. Deliberately not keyed to
+    // the `hireUs` feature flag: pausing new orders closes the shop, and a
+    // client whose campaign is mid-production still has to be able to reach it.
+    { key: "projects", name: "My Projects", href: "/hire-us/projects", icon: LayoutDashboard, needsUser: true },
     { key: "account", name: "My Account", href: "/account", icon: CreditCard, needsUser: true },
     { key: "social", name: "Social", href: "/social", icon: Play, adminOnly: true },
     { key: "calendar", name: "Calendar", href: "/calendar", icon: BookOpen, adminOnly: true },
@@ -193,6 +197,19 @@ export default function Navbar() {
                             >
                                 <Briefcase className="h-4 w-4 shrink-0" />
                                 <span className="hidden min-[420px]:inline">Hire Us</span>
+                            </Link>
+                        )}
+                        {/* A client's own dashboard, which on a phone was three
+                            taps deep inside More. Icon-only until there is room
+                            for the word, like its neighbour. */}
+                        {visibleNavLinks.some((link) => link.key === "projects") && (
+                            <Link
+                                href="/hire-us/projects"
+                                title="My projects"
+                                className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-white/15 bg-white/[0.06] px-2.5 text-sm font-medium text-white/85 transition duration-press ease-out hover:bg-white/10 hover:text-white active:scale-[0.97]"
+                            >
+                                <LayoutDashboard className="h-4 w-4 shrink-0 text-primary" />
+                                <span className="hidden min-[520px]:inline">Projects</span>
                             </Link>
                         )}
                     </div>

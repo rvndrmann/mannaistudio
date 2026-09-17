@@ -162,7 +162,7 @@ export default function HireHome() {
 
   return (
     <main className="min-h-screen">
-      <SiteHeader hasProjects={hasProjects} user={Boolean(user)} startHref={startHref} />
+      <SiteHeader user={Boolean(user)} startHref={startHref} />
 
       {/* 1 — What we make, who it is for, and what to press. */}
       <section className="mx-auto max-w-6xl px-5 pb-14 pt-28 sm:px-6 sm:pt-36">
@@ -500,7 +500,7 @@ export default function HireHome() {
  * makes them. Neither route is removed; both stay exactly where the team
  * reaches them.
  */
-function SiteHeader({ hasProjects, user, startHref }: { hasProjects: boolean; user: boolean; startHref: string }) {
+function SiteHeader({ user, startHref }: { user: boolean; startHref: string }) {
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-black/75 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5 sm:px-6">
@@ -517,10 +517,26 @@ function SiteHeader({ hasProjects, user, startHref }: { hasProjects: boolean; us
         <nav className="flex min-w-0 items-center gap-0.5 sm:gap-1">
           <Link
             href="/hire-us"
-            className="rounded-md px-2.5 py-2 text-sm font-semibold text-white/85 transition hover:text-white sm:px-3"
+            className="whitespace-nowrap rounded-md px-2.5 py-2 text-sm font-semibold text-white/85 transition hover:text-white sm:px-3"
           >
-            Hire Our Team
+            {/* Two words on a phone, where the full name wraps to a second line
+                as soon as Projects sits beside it. Same shortening the shared
+                nav uses at that width. */}
+            <span className="sm:hidden">Hire Us</span>
+            <span className="hidden sm:inline">Hire Our Team</span>
           </Link>
+          {/* The client's dashboard, offered to anyone signed in rather than
+              only to someone we have already confirmed has a project. Waiting
+              on that fetch meant the link appeared a beat late, or never — and
+              the page it leads to explains an empty list perfectly well. */}
+          {user && (
+            <Link
+              href="/hire-us/projects"
+              className="whitespace-nowrap rounded-md px-2.5 py-2 text-sm font-semibold text-white/85 transition hover:text-white sm:px-3"
+            >
+              Projects
+            </Link>
+          )}
           {[
             { href: "#work", label: "Work" },
             { href: "#how", label: "How It Works" },
@@ -543,21 +559,12 @@ function SiteHeader({ hasProjects, user, startHref }: { hasProjects: boolean; us
         </nav>
 
         <div className="flex items-center gap-2">
-          {hasProjects ? (
-            <Link
-              href="/hire-us/projects"
-              className="flex h-10 items-center rounded-md border border-white/15 px-3 text-sm font-medium text-white/75 transition hover:bg-white/[0.06] hover:text-white sm:px-4"
-            >
-              Projects
-            </Link>
-          ) : (
-            <Link
-              href={user ? "/account" : "/login"}
-              className="hidden h-10 items-center rounded-md px-3 text-sm font-medium text-white/55 transition hover:text-white sm:flex"
-            >
-              {user ? "Account" : "Login"}
-            </Link>
-          )}
+          <Link
+            href={user ? "/account" : "/login"}
+            className="hidden h-10 items-center rounded-md px-3 text-sm font-medium text-white/55 transition hover:text-white sm:flex"
+          >
+            {user ? "Account" : "Login"}
+          </Link>
           <Link
             href={startHref}
             className="flex h-10 shrink-0 items-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97] sm:px-4"
