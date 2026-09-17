@@ -509,7 +509,18 @@ function SiteHeader({ hasProjects, user, startHref }: { hasProjects: boolean; us
           <span className="hidden sm:inline">AI Director <span className="text-primary">Hub</span></span>
         </Link>
 
-        <nav className="hidden items-center gap-1 lg:flex">
+        {/* Hire Our Team is the page this site is for, and it was the one thing
+            the header did not name — the whole nav was hidden below lg, so on a
+            phone there was no way to reach the catalogue except the CTA. It is
+            first and it never hides; the in-page anchors, which only mean
+            anything on this page, are what drop away as the bar narrows. */}
+        <nav className="flex min-w-0 items-center gap-0.5 sm:gap-1">
+          <Link
+            href="/hire-us"
+            className="rounded-md px-2.5 py-2 text-sm font-semibold text-white/85 transition hover:text-white sm:px-3"
+          >
+            Hire Our Team
+          </Link>
           {[
             { href: "#work", label: "Work" },
             { href: "#how", label: "How It Works" },
@@ -518,12 +529,15 @@ function SiteHeader({ hasProjects, user, startHref }: { hasProjects: boolean; us
             <a
               key={link.href}
               href={link.href}
-              className="rounded-md px-3 py-2 text-sm font-medium text-white/55 transition hover:text-white"
+              className="hidden rounded-md px-3 py-2 text-sm font-medium text-white/55 transition hover:text-white lg:block"
             >
               {link.label}
             </a>
           ))}
-          <Link href="/originals" className="rounded-md px-3 py-2 text-sm font-medium text-white/55 transition hover:text-white">
+          <Link
+            href="/originals"
+            className="hidden rounded-md px-3 py-2 text-sm font-medium text-white/55 transition hover:text-white sm:block"
+          >
             Originals
           </Link>
         </nav>
@@ -546,7 +560,7 @@ function SiteHeader({ hasProjects, user, startHref }: { hasProjects: boolean; us
           )}
           <Link
             href={startHref}
-            className="flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"
+            className="flex h-10 shrink-0 items-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97] sm:px-4"
           >
             Start a Project
           </Link>

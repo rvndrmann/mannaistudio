@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
-  Check, Eye, EyeOff, Film, GripVertical, Image as ImageIcon, Loader2,
+  Check, ChevronDown, ChevronUp, Eye, EyeOff, Film, Image as ImageIcon, Loader2,
   Plus, Star, Trash2, Upload, X,
 } from "lucide-react"
 import OfferMediaFrame, { offerMediaFit } from "@/components/managed/OfferMedia"
@@ -41,6 +41,47 @@ const BLANK_PACKAGE: OfferPackage = {
   revisions: 2, priceInr: 0, includes: [], popular: false, isPublished: true, position: 0,
 }
 
+/**
+ * Up and down, for a list whose order is the order customers see.
+ *
+ * Arrows rather than the drag handle that used to sit here doing nothing:
+ * dragging is a poor fit for a narrow column that scrolls, and this list is
+ * rarely more than a handful of rows. The ends are disabled rather than
+ * wrapping, because a gig silently jumping from top to bottom is not what
+ * anybody pressing "up" meant.
+ */
+function ReorderButtons({
+  index, total, onMove, busy,
+}: { index: number; total: number; onMove: (to: number) => void; busy?: boolean }) {
+  const step = (to: number, label: string) => (
+    <button
+      type="button"
+      disabled={busy || to < 0 || to >= total}
+      onClick={(event) => { event.stopPropagation(); onMove(to) }}
+      aria-label={label}
+      title={label}
+      className="grid h-5 w-6 place-items-center rounded text-white/30 transition hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-20"
+    >
+      {to < index ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+    </button>
+  )
+  return (
+    <span className="flex shrink-0 flex-col">
+      {step(index - 1, "Move up")}
+      {step(index + 1, "Move down")}
+    </span>
+  )
+}
+
+/** Moves one item of a list to another index, returning a new list. */
+export function reorder<T>(items: T[], from: number, to: number): T[] {
+  if (from === to || from < 0 || to < 0 || from >= items.length || to >= items.length) return items
+  const next = [...items]
+  const [moved] = next.splice(from, 1)
+  next.splice(to, 0, moved)
+  return next
+}
+
 /** A key a human typed, in the shape the database will accept. */
 function toKey(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 58)
@@ -53,6 +94,7 @@ export default function ManagedOffers() {
   const [openId, setOpenId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState("")
+  const [moving, setMoving] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -73,6 +115,35 @@ export default function ManagedOffers() {
   }, [supabase])
 
   useEffect(() => { load() }, [load])
+
+  /**
+   * The order customers see, changed in place.
+   *
+   * The new order is applied locally first so the row moves under the cursor,
+   * then sent whole — the full id list, not "this one went up" — so pressing
+   * the arrow twice quickly cannot interleave into an order nobody asked for.
+   * A failure puts the old order back rather than leaving the screen
+   * disagreeing with the database.
+   */
+  const moveService = async (from: number, to: number) => {
+    const previous = services
+    const next = reorder(services, from, to)
+    if (next === previous) return
+    setServices(next)
+    setMoving(true)
+    try {
+      const { error: moveError } = await supabase.rpc("admin_reorder_managed_services", {
+        p_ids: next.map((service) => service.id),
+      })
+      if (moveError) throw moveError
+      setError("")
+    } catch (cause) {
+      setServices(previous)
+      setError(cause instanceof Error ? cause.message : "Could not reorder the gigs.")
+    } finally {
+      setMoving(false)
+    }
+  }
 
   const open = services.find((service) => service.id === openId) ?? null
 
@@ -104,16 +175,19 @@ export default function ManagedOffers() {
       ) : (
         <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
           <ul className="space-y-2">
-            {services.map((service) => (
-              <li key={service.id}>
+            {services.map((service, index) => (
+              <li
+                key={service.id}
+                className={`flex items-center gap-1 rounded-xl border pr-2 transition ${
+                  service.id === openId
+                    ? "border-primary/50 bg-primary/[0.08]"
+                    : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                }`}
+              >
                 <button
                   type="button"
                   onClick={() => { setCreating(false); setOpenId(service.id === openId ? null : service.id) }}
-                  className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
-                    service.id === openId
-                      ? "border-primary/50 bg-primary/[0.08]"
-                      : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
-                  }`}
+                  className="flex min-w-0 flex-1 items-center gap-3 p-3 text-left"
                 >
                   <span className="grid h-11 w-16 shrink-0 place-items-center overflow-hidden rounded-lg bg-black">
                     {service.thumbnailUrl ? (
@@ -141,8 +215,13 @@ export default function ManagedOffers() {
                           : "No tiers yet"}
                     </span>
                   </span>
-                  <GripVertical className="h-3.5 w-3.5 shrink-0 text-white/15" />
                 </button>
+                <ReorderButtons
+                  index={index}
+                  total={services.length}
+                  busy={moving}
+                  onMove={(to) => moveService(index, to)}
+                />
               </li>
             ))}
             {services.length === 0 && (
@@ -377,6 +456,37 @@ function PackageEditor({
   const update = (index: number, patch: Partial<OfferPackage>) =>
     setDrafts((current) => current.map((option, i) => (i === index ? { ...option, ...patch } : option)))
 
+  /**
+   * The order the tiers are offered in — cheapest first, or the popular one
+   * where the eye lands, whichever sells.
+   *
+   * Only saved tiers go to the server; a tier still being typed has no id yet.
+   * It moves on screen with the rest and takes its place when it is saved,
+   * which is the only moment it has a row to order.
+   */
+  const moveTier = async (from: number, to: number) => {
+    const previous = drafts
+    const next = reorder(drafts, from, to)
+    if (next === previous) return
+    setDrafts(next)
+    const ids = next.map((option) => option.id).filter(Boolean)
+    if (!ids.length) return
+    setBusy("reorder")
+    try {
+      const { error } = await supabase.rpc("admin_reorder_managed_packages", {
+        p_service_id: serviceId,
+        p_ids: ids,
+      })
+      if (error) throw error
+      setMessage("")
+    } catch (cause) {
+      setDrafts(previous)
+      setMessage(cause instanceof Error ? cause.message : "Could not reorder the tiers.")
+    } finally {
+      setBusy("")
+    }
+  }
+
   const save = async (option: OfferPackage) => {
     setBusy(option.id || "new")
     setMessage("")
@@ -439,9 +549,17 @@ function PackageEditor({
       <ul className="mt-3 space-y-3">
         {drafts.map((option, index) => (
           <li key={option.id || `new-${index}`} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Input value={option.name} onChange={(value) => update(index, { name: value })} placeholder="UGC Ad Pack" />
-              <Input value={option.summary} onChange={(value) => update(index, { summary: value })} placeholder="3 × 30-second videos" />
+            <div className="flex items-start gap-2">
+              <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
+                <Input value={option.name} onChange={(value) => update(index, { name: value })} placeholder="UGC Ad Pack" />
+                <Input value={option.summary} onChange={(value) => update(index, { summary: value })} placeholder="3 × 30-second videos" />
+              </div>
+              <ReorderButtons
+                index={index}
+                total={drafts.length}
+                busy={busy === "reorder"}
+                onMove={(to) => moveTier(index, to)}
+              />
             </div>
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
               <NumberField label="Price ₹" value={option.priceInr} onChange={(value) => update(index, { priceInr: value })} />
