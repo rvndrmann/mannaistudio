@@ -2,14 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
-  Check, ChevronDown, ChevronUp, Eye, EyeOff, Film, Image as ImageIcon, Loader2,
-  Plus, Star, Trash2, Upload, X,
+  Check, ChevronDown, ChevronUp, Eye, EyeOff, Film, Image as ImageIcon,
+  Link as LinkIcon, Loader2, Plus, Star, Trash2, Upload, X,
 } from "lucide-react"
 import OfferMediaFrame, { offerMediaFit } from "@/components/managed/OfferMedia"
 import { createClient } from "@/lib/supabase/client"
 import { formatUsdWithInr } from "@/lib/currency"
 import { buildCatalogue, type OfferPackage, type OfferService } from "@/lib/managed-offers"
 import { inspectVideoFile, videoUploadProblems } from "@/lib/video-upload-check"
+import { embedThumbnailUrl, isEmbeddedVideo, videoEmbedUrl } from "@/lib/video-embed"
 
 /**
  * The Hire Us catalogue, editable.
@@ -647,6 +648,29 @@ function MediaField({
   const [busy, setBusy] = useState(false)
   const [warnings, setWarnings] = useState<string[]>([])
   const [error, setError] = useState("")
+  // A promo that already lives on YouTube or Instagram does not need uploading
+  // again — and a reel cannot be uploaded at all without downloading it first.
+  // Held separately from `value` so a half-typed URL never becomes the gig's
+  // video; it is committed on Use, and only if it parses.
+  const [link, setLink] = useState("")
+  const [linking, setLinking] = useState(false)
+
+  const embed = kind === "video" ? videoEmbedUrl(value, { controls: true }) : null
+  const linked = kind === "video" && isEmbeddedVideo(value)
+
+  const applyLink = () => {
+    const trimmed = link.trim()
+    if (!trimmed) return
+    if (!isEmbeddedVideo(trimmed)) {
+      setError("That is not a YouTube or Instagram link. Paste the video's page URL, or upload a file.")
+      return
+    }
+    setError("")
+    setWarnings([])
+    onChange(trimmed)
+    setLink("")
+    setLinking(false)
+  }
 
   const pick = async (file: File | undefined) => {
     if (!file) return
@@ -683,10 +707,23 @@ function MediaField({
       <div className="mt-1.5 overflow-hidden rounded-xl border border-white/10 bg-black">
         {/* Shown exactly as the cards show it, whole rather than cropped, so
             what is uploaded here is what is being judged. */}
-        <OfferMediaFrame fill={value && kind === "image" ? value : undefined} className="h-[220px]">
+        <OfferMediaFrame
+          fill={(kind === "image" ? value : embedThumbnailUrl(value)) || undefined}
+          className="h-[220px]"
+        >
           {value ? (
             kind === "image" ? (
               <img src={value} alt="" className={offerMediaFit} />
+            ) : embed ? (
+              // Shown in the platform's own player, which is how the gig card
+              // will show it — so a wrong link is obvious here, not after saving.
+              <iframe
+                src={embed}
+                title={label}
+                className="h-full w-full"
+                allow="encrypted-media; picture-in-picture; fullscreen"
+                allowFullScreen
+              />
             ) : (
               <video src={`${value}#t=0.1`} controls preload="metadata" className={offerMediaFit} />
             )
@@ -707,6 +744,20 @@ function MediaField({
           {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
           {value ? "Replace" : "Upload"}
         </button>
+        {kind === "video" && (
+          <button
+            type="button"
+            onClick={() => { setLinking(!linking); setError("") }}
+            className={`flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border text-[11px] font-medium transition ${
+              linking
+                ? "border-primary/50 bg-primary/10 text-primary"
+                : "border-white/12 text-white/60 hover:bg-white/[0.06] hover:text-white"
+            }`}
+          >
+            <LinkIcon className="h-3 w-3" />
+            {linked ? "Change link" : "Paste link"}
+          </button>
+        )}
         {value && (
           <button
             type="button"
@@ -718,6 +769,37 @@ function MediaField({
           </button>
         )}
       </div>
+      {linking && kind === "video" && (
+        <div className="mt-2 space-y-1.5">
+          <div className="flex gap-2">
+            <input
+              value={link}
+              autoFocus
+              onChange={(event) => setLink(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); applyLink() } }}
+              placeholder="https://www.instagram.com/reel/… or https://youtu.be/…"
+              className="h-8 min-w-0 flex-1 rounded-md border border-white/12 bg-white/5 px-2.5 text-[11px] text-white placeholder:text-white/25 focus:border-primary focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={applyLink}
+              className="h-8 shrink-0 rounded-md bg-primary px-3 text-[11px] font-semibold text-black transition hover:brightness-110"
+            >
+              Use
+            </button>
+          </div>
+          <p className="text-[10px] text-white/30">
+            A reel, post or Short plays here in Instagram&rsquo;s or YouTube&rsquo;s own player. Instagram
+            publishes no still image, so add a thumbnail above if you want the card to show one
+            before it is played.
+          </p>
+        </div>
+      )}
+      {linked && !linking && (
+        <p className="mt-2 truncate text-[10px] text-white/30" title={value}>
+          Linked: {value}
+        </p>
+      )}
       {warnings.length > 0 && (
         <ul className="mt-2 space-y-1">
           {warnings.map((line) => (

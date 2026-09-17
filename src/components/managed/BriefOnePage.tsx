@@ -13,6 +13,7 @@ import { emptyManagedBrief, managedBriefSchema, type ManagedBrief } from "@/lib/
 import { MANAGED_ASPECT_RATIOS, MANAGED_CTAS, MANAGED_GOALS, MANAGED_PLATFORMS } from "@/lib/managed-production"
 import { cheapestPackage, defaultPackageFor, publishedOffers, serviceFromCatalogue, type OfferService } from "@/lib/managed-offers"
 import { formatUsdWithInr } from "@/lib/currency"
+import { embedThumbnailUrl, isEmbeddedVideo } from "@/lib/video-embed"
 import { fadeIn } from "@/lib/motion"
 
 /**
@@ -616,7 +617,11 @@ function ServiceOption({ service, active, onPick }: {
   onPick: () => void
 }) {
   const cheapest = cheapestPackage(service)
-  const poster = service.thumbnailUrl || ""
+  // A gig whose promo lives on YouTube or Instagram has no file to take a first
+  // frame from. YouTube hands us a still; Instagram does not, so a reel without
+  // its own thumbnail shows the placeholder rather than a black square.
+  const poster = service.thumbnailUrl || embedThumbnailUrl(service.videoUrl) || ""
+  const linked = isEmbeddedVideo(service.videoUrl)
 
   return (
     <button
@@ -633,7 +638,7 @@ function ServiceOption({ service, active, onPick }: {
       <span className="relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-black">
         {poster ? (
           <img src={poster} alt="" className="h-full w-full object-cover" />
-        ) : service.videoUrl ? (
+        ) : service.videoUrl && !linked ? (
           <video src={`${service.videoUrl}#t=0.1`} preload="metadata" muted playsInline className="h-full w-full object-cover" />
         ) : (
           <Sparkles className="h-5 w-5 text-white/25" />

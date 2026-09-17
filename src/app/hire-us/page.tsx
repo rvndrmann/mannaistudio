@@ -11,6 +11,9 @@ import { formatUsdWithInr } from "@/lib/currency"
 import { cheapestPackage, publishedOffers, type OfferService } from "@/lib/managed-offers"
 import { materialize, springUI } from "@/lib/motion"
 import OfferMediaFrame, { offerMediaFit } from "@/components/managed/OfferMedia"
+import {
+  embedThumbnailUrl, isEmbeddedVideo, videoEmbedUrl, youtubeFallbackThumbnailUrl,
+} from "@/lib/video-embed"
 
 /**
  * Hire Our Creative Team.
@@ -138,6 +141,22 @@ export default function HireUsPage() {
 function ServiceCard({ service, index }: { service: OfferService; index: number }) {
   const cheapest = cheapestPackage(service)
   const [playing, setPlaying] = useState(false)
+  const [posterMissing, setPosterMissing] = useState(false)
+
+  // A promo can be an uploaded file or a link to one that lives on YouTube or
+  // Instagram. Only the file can be played by a `<video>` element; a link needs
+  // the platform's own player in an iframe, which is why a gig pointing at a
+  // reel used to show a black rectangle with a play button that did nothing.
+  const embed = videoEmbedUrl(service.videoUrl, { autoplay: true, controls: true })
+  const linked = isEmbeddedVideo(service.videoUrl)
+  // YouTube publishes a still for every video, so a gig can point at one and
+  // still have a poster without uploading anything. Instagram publishes none,
+  // so a reel falls back to the gig's own thumbnail, and to the play badge on
+  // black when there is not one.
+  const derivedPoster = posterMissing
+    ? youtubeFallbackThumbnailUrl(service.videoUrl)
+    : embedThumbnailUrl(service.videoUrl)
+  const poster = service.thumbnailUrl || derivedPoster || ""
 
   return (
     <motion.div
@@ -148,20 +167,40 @@ function ServiceCard({ service, index }: { service: OfferService; index: number 
       {/* The gig's own media. A promo video plays in place on click rather than
           autoplaying: four cards autoplaying at once is four videos competing
           for bandwidth and a page that sounds like a fairground. */}
-      {(service.thumbnailUrl || service.videoUrl) && (
-        <OfferMediaFrame fill={service.thumbnailUrl || undefined}>
+      {(poster || service.videoUrl) && (
+        <OfferMediaFrame fill={poster || undefined}>
           {playing && service.videoUrl ? (
-            <video
-              src={service.videoUrl}
-              controls
-              autoPlay
-              playsInline
-              className={offerMediaFit}
-            />
+            embed ? (
+              // The frame is fitted rather than filled, so the player is given
+              // the whole band and keeps its own shape inside it.
+              <iframe
+                src={embed}
+                title={`${service.name} showreel`}
+                className="h-full w-full"
+                allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                allowFullScreen
+              />
+            ) : (
+              <video
+                src={service.videoUrl}
+                controls
+                autoPlay
+                playsInline
+                className={offerMediaFit}
+              />
+            )
           ) : (
             <>
-              {service.thumbnailUrl ? (
-                <img src={service.thumbnailUrl} alt="" className={offerMediaFit} />
+              {poster ? (
+                <img
+                  src={poster}
+                  alt=""
+                  onError={() => setPosterMissing(true)}
+                  className={offerMediaFit}
+                />
+              ) : linked ? (
+                // A reel with no thumbnail: nothing to show but the invitation.
+                <span className="absolute inset-0" />
               ) : (
                 <video src={`${service.videoUrl}#t=0.1`} preload="metadata" muted playsInline className={offerMediaFit} />
               )}
