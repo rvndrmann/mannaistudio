@@ -23,6 +23,7 @@ import {
 } from 'recharts'
 import type { Challenge, ChallengeSubmission, Course, CourseLesson, ShowcaseItem } from "@/lib/data"
 import { showcaseCategories } from "@/lib/showcase"
+import { youtubeFallbackThumbnailUrl } from "@/lib/video-embed"
 import {
     fetchServiceRequests,
     getServiceRequestClient,
@@ -2078,7 +2079,10 @@ function AdminDashboardContent() {
                                             ) : (
                                                 <>
                                                     <div className="relative aspect-video">
-                                                        <ImageOrPlaceholder src={item.thumbnail} className="w-full h-full object-cover" />
+                                                        {/* A row holding a YouTube link rarely has a thumbnail
+                                                            uploaded with it; YouTube's own still says which video
+                                                            this card is, instead of a grey film icon. */}
+                                                        <ImageOrPlaceholder src={item.thumbnail || youtubeFallbackThumbnailUrl(item.videoUrl)} className="w-full h-full object-cover" />
                                                         <div className="absolute top-4 right-4 flex gap-2">
                                                             <button
                                                                 onClick={() => handleEditShowcase(item)}

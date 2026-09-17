@@ -2,6 +2,7 @@
 
 import Footer from "@/components/Footer"
 import { isFreeCourse } from "@/lib/course-price"
+import { isVerticalVideo, youtubeEmbedUrl } from "@/lib/video-embed"
 import LeadChatWidget from "@/components/LeadChatWidget"
 import Navbar from "@/components/Navbar"
 import HoverSoundVideo from "@/components/HoverSoundVideo"
@@ -114,29 +115,6 @@ const adFormats = [
         gradient: "bg-[radial-gradient(circle_at_50%_30%,rgba(255,199,64,0.25),transparent_60%),linear-gradient(135deg,#241d0a,#08090a)]",
     },
 ]
-
-/**
- * Turns a YouTube link into an embeddable one.
- *
- * A showcase entry may hold a YouTube page URL rather than an uploaded file.
- * `<video>` can only play actual media, so such an entry rendered as an empty
- * black box. Returns null for anything that is a real media URL, which keeps the
- * normal video element in use for uploads.
- */
-/** A Short is shot vertically, so the frame that holds it should be too. */
-function isVerticalVideo(url: string) {
-    return /youtube\.com\/shorts\//i.test(url || "")
-}
-
-function youtubeEmbedUrl(url: string): string | null {
-    if (!url) return null
-    const watch = url.match(/(?:youtube\.com\/watch\?(?:.*&)?v=|youtu\.be\/|youtube\.com\/(?:embed|shorts|live)\/)([A-Za-z0-9_-]{6,})/)
-    if (!watch) return null
-    const start = url.match(/[?&](?:t|start)=(\d+)/)
-    // The standard domain, not youtube-nocookie: the privacy-enhanced host
-    // refuses some videos — Shorts especially — that youtube.com serves fine.
-    return `https://www.youtube.com/embed/${watch[1]}?rel=0&modestbranding=1${start ? `&start=${start[1]}` : ""}`
-}
 
 export default function StudioHome() {
     const { user, signInWithGoogle } = useAuth()
@@ -320,7 +298,7 @@ export default function StudioHome() {
                             )}>
                                 {heroFeatured?.videoUrl && youtubeEmbedUrl(heroFeatured.videoUrl) ? (
                                     <iframe
-                                        src={`${youtubeEmbedUrl(heroFeatured.videoUrl)}&autoplay=1&mute=1&controls=0&playsinline=1`}
+                                        src={youtubeEmbedUrl(heroFeatured.videoUrl, { autoplay: true, muted: true, controls: false })!}
                                         title={heroFeatured.title}
                                         allow="autoplay; encrypted-media; picture-in-picture"
                                         className="pointer-events-none h-full w-full"
@@ -612,7 +590,7 @@ export default function StudioHome() {
                                 <div className={cn("relative w-full overflow-hidden", ad.aspect, ad.gradient)}>
                                     {showcaseItem?.videoUrl && youtubeEmbedUrl(showcaseItem.videoUrl) ? (
                                         <iframe
-                                            src={`${youtubeEmbedUrl(showcaseItem.videoUrl)}&autoplay=1&mute=1&loop=1&controls=0&playsinline=1&playlist=${youtubeEmbedUrl(showcaseItem.videoUrl)?.split("/embed/")[1]?.split("?")[0]}`}
+                                            src={youtubeEmbedUrl(showcaseItem.videoUrl, { autoplay: true, muted: true, loop: true, controls: false })!}
                                             title={slotTitle}
                                             allow="autoplay; encrypted-media; picture-in-picture"
                                             className="pointer-events-none h-full w-full"
@@ -738,7 +716,7 @@ export default function StudioHome() {
                                 {youtubeEmbedUrl(playingVideo.url) ? (
                                     <iframe
                                         key={playingVideo.url}
-                                        src={`${youtubeEmbedUrl(playingVideo.url)}&autoplay=1`}
+                                        src={youtubeEmbedUrl(playingVideo.url, { autoplay: true, controls: true })!}
                                         title={playingVideo.title}
                                         allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
                                         allowFullScreen
