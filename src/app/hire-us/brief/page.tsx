@@ -3,14 +3,16 @@
 import { Suspense } from "react"
 import { Loader2 } from "lucide-react"
 import Navbar from "@/components/Navbar"
-import BriefFlow from "@/components/managed/BriefFlow"
+import BriefOnePage from "@/components/managed/BriefOnePage"
 
 /**
  * The brief.
  *
- * A Suspense boundary because the flow reads `?service=` and `?repeat=` from
- * the URL, and useSearchParams opts the tree into client rendering — without
- * one the whole route would be forced dynamic at build.
+ * One page rather than seven steps: pick the gig, describe the product, hand
+ * over the media, pay. A Suspense boundary because it reads `?service=`,
+ * `?package=` and `?repeat=` from the URL, and useSearchParams opts the tree
+ * into client rendering — without one the whole route would be forced dynamic
+ * at build.
  */
 export default function BriefPage() {
   return (
@@ -23,7 +25,7 @@ export default function BriefPage() {
           </div>
         }
       >
-        <BriefFlow />
+        <BriefOnePage />
       </Suspense>
     </main>
   )

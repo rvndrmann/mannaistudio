@@ -150,7 +150,12 @@ export default function HireHome() {
   // is what is actually on sale — so the section sells that rather than showing
   // an empty space where the prices should be.
   const fallbackServices = (services ?? []).filter((service) => service.key !== PLAN_SERVICE_KEY)
-  const startHref = planService ? `/hire-us/brief?service=${planService.key}` : "/hire-us/brief"
+  // Always the catalogue, never a gig chosen on the visitor's behalf. Pointing
+  // this at one service meant "Start a Project" sold performance ads to someone
+  // who came for UGC — and when that gig was an unpublished draft, at the brief
+  // for a service the checkout would refuse. Picking what to buy is the first
+  // question, so /hire-us is where it gets asked.
+  const startHref = "/hire-us"
 
   return (
     <main className="min-h-screen">
