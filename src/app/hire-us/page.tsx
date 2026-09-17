@@ -8,7 +8,7 @@ import Navbar from "@/components/Navbar"
 import Footer from "@/components/Footer"
 import { useAuth } from "@/components/auth/auth-provider"
 import { formatUsdWithInr } from "@/lib/currency"
-import { cheapestPackage, type OfferService } from "@/lib/managed-offers"
+import { cheapestPackage, publishedOffers, type OfferService } from "@/lib/managed-offers"
 import { materialize, springUI } from "@/lib/motion"
 import OfferMediaFrame, { offerMediaFit } from "@/components/managed/OfferMedia"
 
@@ -35,14 +35,15 @@ export default function HireUsPage() {
   const [services, setServices] = useState<OfferService[] | null>(null)
 
   // The catalogue is editable from the admin panel, so the page asks what is on
-  // sale rather than shipping a copy of it. An admin also sees their own
-  // unpublished drafts here, because the same query answers both — a separate
-  // preview is a second thing that can disagree with the live page.
+  // sale rather than shipping a copy of it — and shows only what is published,
+  // an admin included. A draft on the page that sells is a gig somebody can
+  // click through to a checkout that refuses to price it; it belongs in Admin →
+  // Managed Production → Offers, which reads the catalogue unfiltered.
   useEffect(() => {
     let active = true
     fetch("/api/managed/offers")
       .then((response) => (response.ok ? response.json() : { services: [] }))
-      .then((data) => { if (active) setServices(data.services ?? []) })
+      .then((data) => { if (active) setServices(publishedOffers(data.services ?? [])) })
       .catch(() => { if (active) setServices([]) })
     return () => { active = false }
   }, [])
@@ -208,12 +209,6 @@ function ServiceCard({ service, index }: { service: OfferService; index: number 
               </li>
             ))}
           </ul>
-        )}
-
-        {!service.isPublished && (
-          <p className="mt-4 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] font-semibold text-amber-200">
-            Draft — only you can see this. Publish it in Admin → Managed Production → Offers.
-          </p>
         )}
 
         <Link

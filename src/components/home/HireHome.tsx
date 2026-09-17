@@ -22,7 +22,7 @@ import ShowcaseReel from "@/components/home/ShowcaseReel"
 import { useAuth } from "@/components/auth/auth-provider"
 import { createClient } from "@/lib/supabase/client"
 import { formatUsdWithInr } from "@/lib/currency"
-import { cheapestPackage, type OfferPackage, type OfferService } from "@/lib/managed-offers"
+import { cheapestPackage, publishedOffers, type OfferPackage, type OfferService } from "@/lib/managed-offers"
 import type { OriginalsSeriesSummary } from "@/lib/originals"
 import { sortShowcase, toShowcaseVideo, type ShowcaseVideo } from "@/lib/showcase"
 import { materialize, springUI } from "@/lib/motion"
@@ -116,11 +116,14 @@ export default function HireHome() {
 
   // Prices come from the catalogue, never from this file: the admin edits them
   // in Managed Production → Offers and checkout charges from the same rows.
+  // Published rows only — this is the shop window, and an admin should be
+  // looking at the page their customers get, not at one with their own drafts
+  // priced in it.
   useEffect(() => {
     let active = true
     fetch("/api/managed/offers")
       .then((response) => (response.ok ? response.json() : { services: [] }))
-      .then((data) => { if (active) setServices(data.services ?? []) })
+      .then((data) => { if (active) setServices(publishedOffers(data.services ?? [])) })
       .catch(() => { if (active) setServices([]) })
     return () => { active = false }
   }, [])
@@ -252,9 +255,17 @@ export default function HireHome() {
 
       {/* 4 — Something to buy, not a call to book. */}
       <section id="pricing" className="mx-auto max-w-6xl scroll-mt-20 px-5 pb-20 sm:px-6">
-        <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Choose Your Creative Volume</h2>
+        {/* The heading follows whichever grid renders. With the volume plans
+            published it is a choice of how many ads a month; without them it is
+            a choice of what to have made, and calling that "volume" describes a
+            section that is not on the page. */}
+        <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+          {plans.length ? "Choose Your Creative Volume" : "Choose What We Make You"}
+        </h2>
         <p className="mt-2 text-sm text-white/45">
-          Pick the number of ads your testing needs. The price you see is the price.
+          {plans.length
+            ? "Pick the number of ads your testing needs. The price you see is the price."
+            : "Pick the kind of ad you need. The price you see is the price."}
         </p>
 
         {services === null ? (
@@ -563,13 +574,6 @@ function PlanCard({ plan, serviceKey }: { plan: OfferPackage; serviceKey: string
       <h3 className="text-lg font-bold tracking-tight">{plan.name}</h3>
       <p className="mt-1 text-sm text-primary/90">{plan.summary}</p>
       <p className="mt-4 text-2xl font-bold">{formatUsdWithInr(plan.priceInr)}</p>
-
-      {!plan.isPublished && (
-        <p className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] font-semibold text-amber-200">
-          Draft — only you can see this. Set the price and publish it in Admin → Managed
-          Production → Offers.
-        </p>
-      )}
 
       {plan.includes.length > 0 && (
         <ul className="mt-5 flex-1 space-y-2">

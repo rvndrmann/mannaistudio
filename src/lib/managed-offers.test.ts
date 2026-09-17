@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest"
 import {
   buildCatalogue, cheapestPackage, defaultPackageFor, offerPackageName,
-  offerServiceName, packageFromCatalogue, parseOfferSnapshot, serviceFromCatalogue, snapshotFor,
+  offerServiceName, packageFromCatalogue, parseOfferSnapshot, publishedOffers,
+  serviceFromCatalogue, snapshotFor,
 } from "./managed-offers"
 
 const services = [
@@ -147,5 +148,48 @@ describe("offerServiceName", () => {
   it("names the package from the snapshot", () => {
     expect(offerPackageName({ packageName: "UGC Ad Pack" }, "ugc_pack")).toBe("UGC Ad Pack")
     expect(offerPackageName({}, "ugc_pack")).toBe("ugc_pack")
+  })
+})
+
+describe("publishedOffers", () => {
+  // A draft gig reaches an admin's browser — RLS lets it — and the pages that
+  // sell must not put it on a card with a Pay button under it.
+  const draftService = {
+    id: "33333333-3333-3333-3333-333333333333", key: "performance_ads", name: "Performance Ad Creative",
+    tagline: "", description: "", cta: "Start Project",
+    thumbnail_url: "", video_url: "", deliverables: [], styles: [],
+    quote_only: false, is_published: false, position: 0,
+  }
+  const draftPackage = {
+    id: "bbbbbbbb-0000-0000-0000-000000000001", service_id: draftService.id, key: "ads_growth",
+    name: "Growth", summary: "12 a month", video_count: 12, duration_seconds: 30,
+    revisions: 2, price_inr: 59_999, includes: [], popular: true, is_published: false, position: 1,
+  }
+
+  it("drops an unpublished service and everything under it", () => {
+    const mixed = buildCatalogue([...services, draftService], [...packages, draftPackage])
+    const live = publishedOffers(mixed)
+    expect(live.map((service) => service.key)).toEqual(["ugc", "micro_drama"])
+  })
+
+  it("drops an unpublished tier but keeps the gig its published tiers belong to", () => {
+    const extraDraft = { ...draftPackage, service_id: services[0].id, key: "ugc_draft" }
+    const live = publishedOffers(buildCatalogue(services, [...packages, extraDraft]))
+    expect(live[0].packages.map((option) => option.key)).toEqual(["ugc_starter", "ugc_pack"])
+  })
+
+  it("drops a gig whose every tier is a draft, because it has no price to show", () => {
+    const published = { ...draftService, is_published: true }
+    const live = publishedOffers(buildCatalogue([published], [draftPackage]))
+    expect(live).toEqual([])
+  })
+
+  it("keeps a quote-only gig, which is sold without packages by design", () => {
+    const live = publishedOffers(buildCatalogue(services, packages))
+    expect(live.map((service) => service.key)).toContain("micro_drama")
+  })
+
+  it("leaves a fully published catalogue untouched", () => {
+    expect(publishedOffers(catalogue)).toEqual(catalogue)
   })
 })

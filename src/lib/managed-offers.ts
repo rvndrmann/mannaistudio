@@ -137,6 +137,34 @@ export function buildCatalogue(services: ServiceRow[], packages: PackageRow[]): 
   )
 }
 
+/**
+ * The catalogue with the drafts taken out.
+ *
+ * RLS already hides an unpublished gig from everyone but an admin, so a
+ * customer never saw one — but the admin did, on the live homepage, sitting in
+ * the pricing grid behind a "only you can see this" badge. That made the page
+ * an admin looks at a different page from the one being sold, and the badge was
+ * the only thing standing between them and a Pay button that checkout refuses.
+ *
+ * So the selling pages filter to what is actually on sale, for everyone. The
+ * drafts are still there to edit in Admin → Managed Production → Offers, which
+ * reads the catalogue unfiltered and is where a half-built gig belongs.
+ *
+ * A service with no published package is dropped too: a gig whose every tier is
+ * a draft has no price, and a price card with nothing to charge is the same
+ * dead end one step further in. Quote-only gigs are the exception — they are
+ * sold without packages by design.
+ */
+export function publishedOffers(catalogue: OfferService[]): OfferService[] {
+  return catalogue
+    .filter((service) => service.isPublished)
+    .map((service) => ({
+      ...service,
+      packages: service.packages.filter((option) => option.isPublished),
+    }))
+    .filter((service) => service.quoteOnly || service.packages.length > 0)
+}
+
 export function serviceFromCatalogue(catalogue: OfferService[], key: string): OfferService | null {
   return catalogue.find((service) => service.key === key) ?? null
 }

@@ -11,7 +11,7 @@ import { AttachmentPicker, ChipPicker, Field, LinkList, TextArea, TextField } fr
 import { useManagedCheckout } from "@/components/managed/useManagedCheckout"
 import { emptyManagedBrief, managedBriefSchema, type ManagedBrief } from "@/lib/managed-brief"
 import { MANAGED_ASPECT_RATIOS, MANAGED_CTAS, MANAGED_GOALS, MANAGED_PLATFORMS } from "@/lib/managed-production"
-import { cheapestPackage, defaultPackageFor, serviceFromCatalogue, type OfferService } from "@/lib/managed-offers"
+import { cheapestPackage, defaultPackageFor, publishedOffers, serviceFromCatalogue, type OfferService } from "@/lib/managed-offers"
 import { formatUsdWithInr } from "@/lib/currency"
 import { fadeIn } from "@/lib/motion"
 
@@ -108,12 +108,15 @@ export default function BriefOnePage() {
   const service = catalogue ? serviceFromCatalogue(catalogue, serviceKey) : null
 
   // The catalogue is editable, so the brief asks what is currently on sale
-  // rather than shipping a copy of the gigs and their packages.
+  // rather than shipping a copy of the gigs and their packages — and only what
+  // is published, because this is the page that takes the money and checkout
+  // refuses to price a draft. A `?service=` naming one falls through to the
+  // picker, which is the right answer: it is not for sale.
   useEffect(() => {
     let active = true
     fetch("/api/managed/offers")
       .then((response) => (response.ok ? response.json() : { services: [] }))
-      .then((data) => { if (active) setCatalogue(data.services ?? []) })
+      .then((data) => { if (active) setCatalogue(publishedOffers(data.services ?? [])) })
       .catch(() => { if (active) setCatalogue([]) })
     return () => { active = false }
   }, [])
