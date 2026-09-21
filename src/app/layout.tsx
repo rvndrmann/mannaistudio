@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth/auth-provider";
 import AnalyticsTracker from "@/components/AnalyticsTracker";
+import PwaRegister from "@/components/pwa-register";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -20,6 +21,7 @@ export const metadata: Metadata = {
         icon: "/favicon.png",
         apple: "/favicon.png",
     },
+    manifest: "/manifest.webmanifest",
     verification: {
         google: "1cdMIW-YPWsCQnOsrGBbFBXZ2VuSmEalv1BM6LUPu1s",
     },
@@ -41,6 +43,7 @@ export default function RootLayout({
                 />
             </head>
             <body dir="ltr" className={`${inter.className} bg-black text-white selection:bg-primary/30`}>
+                <PwaRegister />
                 {/* Google Analytics 4 */}
                 <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`} strategy="afterInteractive" />
                 <Script id="ga4" strategy="afterInteractive">
