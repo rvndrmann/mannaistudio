@@ -29,6 +29,7 @@ const submitSchema = z.object({
   prompt: z.string().trim().min(1).max(20_000),
   model: z.string().refine(isVideoGenerationModel, "Unsupported video model"),
   referenceImages: z.array(z.string().max(2_000)).max(50).default([]),
+  excludedReferenceImages: z.array(z.string().max(2_000)).max(50).optional(),
   characterEntityIds: z.array(z.string().uuid()).max(10).default([]),
   mentionedEntityIds: z.array(z.string().uuid()).max(20).default([]),
   generationMode: z.enum(["keyframe", "multi_image"]).default("keyframe"),
@@ -76,6 +77,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const shot = await verifyShot(context, projectId, input.shotId)
     if (!shot) return NextResponse.json({ error: "Shot not found" }, { status: 404 })
     const provider = generationProvider(input.model)
+    // A storyboard location remains linked for continuity, but a director may
+    // deliberately omit its image from this render. Treat that saved choice as
+    // authoritative even when an older browser state submits the old tile.
+    const shotMetadata = (shot.metadata as Record<string, unknown>) || {}
+    const referenceExclusions = new Set(
+      input.excludedReferenceImages ?? (Array.isArray(shotMetadata.reference_image_exclusions)
+        ? shotMetadata.reference_image_exclusions.filter((value): value is string => typeof value === "string")
+        : []),
+    )
+    const submittedReferenceImages = input.referenceImages.filter((path) => !referenceExclusions.has(path))
 
     const resolvedEntityIds = Array.from(new Set([...input.characterEntityIds, ...input.mentionedEntityIds]))
     const { data: resolvedEntities, error: resolvedEntityError } = resolvedEntityIds.length
@@ -190,6 +201,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     if (resolvedEntities && resolvedEntities.length > 0) {
       for (const entity of resolvedEntities) {
+        const chosenReference = entityPrimaryReference(entity as MentionableEntity)
+        if (chosenReference && referenceExclusions.has(chosenReference)) continue
         const rawEntityAssetId = typeof entity.metadata === "object" && entity.metadata !== null ? (entity.metadata as Record<string, unknown>).byteplus_asset_id : null
         const byteplusAssetId = typeof rawEntityAssetId === "string" && rawEntityAssetId.trim() ? rawEntityAssetId.trim() : typeof entity.byteplus_asset_id === "string" && entity.byteplus_asset_id.trim() ? entity.byteplus_asset_id.trim() : null
 
@@ -247,7 +260,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // request for an unsupported image format.
     const looksLikeVideo = (path: string) => /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(path)
     const pickedVideoPaths: string[] = []
-    for (const refPath of input.referenceImages) {
+    for (const refPath of submittedReferenceImages) {
       if (rawImagesToOmit.has(refPath)) continue
       if (looksLikeVideo(refPath)) {
         pickedVideoPaths.push(refPath)

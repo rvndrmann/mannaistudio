@@ -5211,8 +5211,14 @@ function ShotMediaWorkspace({
   const [picker, setPicker] = useState(false);
   const [referenceSourcePicker, setReferenceSourcePicker] = useState(false);
   const [referenceTarget, setReferenceTarget] = useState<"references" | "start" | "end" | "motion">("references");
+  const [referenceExclusions, setReferenceExclusions] = useState<Set<string>>(() => {
+    const saved = media.shot.metadata?.reference_image_exclusions;
+    return new Set(Array.isArray(saved) ? saved.filter((value): value is string => typeof value === "string" && value.length > 0) : []);
+  });
   const [references, setReferences] = useState<string[]>(() => {
     const seeded: string[] = [];
+    const saved = media.shot.metadata?.reference_image_exclusions;
+    const exclusions = new Set(Array.isArray(saved) ? saved.filter((value): value is string => typeof value === "string") : []);
     // The shot's own keyframe used to be attached by the server whether or not
     // it was in this strip, so Multi Image showed a cast the render did not
     // match and there was no way to film the shot without its still frame.
@@ -5228,7 +5234,7 @@ function ShotMediaWorkspace({
         .map((e) => entityPrimaryReference(e))
         .filter((url): url is string => typeof url === "string" && url.length > 0));
     }
-    return Array.from(new Set(seeded));
+    return Array.from(new Set(seeded)).filter((path) => !exclusions.has(path));
   });
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>(media.shot.referenced_entities || []);
   // "Reference 2" says nothing; "@Lena" is what the user actually needs to
@@ -5244,9 +5250,29 @@ function ShotMediaWorkspace({
     media.shot.metadata = { ...meta, keyframe_reference_removed: removed };
     save({ action: "setShotKeyframeReference", shotId: media.shot.id, removed }).catch(() => {});
   };
+  const rememberReferenceExclusions = (next: Set<string>) => {
+    const exclusions = Array.from(next);
+    setReferenceExclusions(new Set(exclusions));
+    media.shot.metadata = { ...(media.shot.metadata || {}), reference_image_exclusions: exclusions };
+    save({ action: "setShotReferenceExclusions", shotId: media.shot.id, exclusions }).catch(() => {});
+  };
+  const excludeReference = (path: string) => {
+    const next = new Set(referenceExclusions);
+    next.add(path);
+    rememberReferenceExclusions(next);
+  };
+  const includeReference = (path: string) => {
+    if (!referenceExclusions.has(path)) return;
+    const next = new Set(referenceExclusions);
+    next.delete(path);
+    rememberReferenceExclusions(next);
+  };
   const removeReferenceAt = (index: number) => {
     setReferences((items) => {
+      // Keyframes have a pre-existing persisted flag. Do not issue a second
+      // metadata write for the same click, which could race and overwrite it.
       if (items[index] === media.shot.keyframe_image) rememberKeyframeReference(true);
+      else if (items[index]) excludeReference(items[index]);
       return items.filter((_, i) => i !== index);
     });
   };
@@ -5400,7 +5426,7 @@ function ShotMediaWorkspace({
     setPromptExpanded(false);
     if (!activeGen) return;
     if (activeGen.prompt?.trim()) setPrompt(activeGen.prompt);
-    if (activeGen.referenceImages?.length) setReferences(activeGen.referenceImages);
+    if (activeGen.referenceImages?.length) setReferences(activeGen.referenceImages.filter((path) => !referenceExclusions.has(path) && !(path === media.shot.keyframe_image && media.shot.metadata?.keyframe_reference_removed === true)));
     // The clip it continued from, so a regeneration keeps the continuity — or
     // drops it deliberately, rather than by not knowing it was there.
     if (activeGen.videoReferencePaths) setVideoReferencePaths(activeGen.videoReferencePaths);
@@ -5621,6 +5647,7 @@ function ShotMediaWorkspace({
       return;
     }
     if (previewSrc === media.shot.keyframe_image) rememberKeyframeReference(false);
+    includeReference(previewSrc);
     setReferences((current) => current.includes(previewSrc) ? current : [...current, previewSrc]);
   };
   const toggleCharacterSelection = (id: string) => {
@@ -5635,7 +5662,7 @@ function ShotMediaWorkspace({
     if (gen.quality && ["Low", "Medium", "High", "Ultra", "Max"].includes(gen.quality)) {
       setQuality(gen.quality as CreditQuality);
     }
-    if (gen.referenceImages.length) setReferences(gen.referenceImages);
+    if (gen.referenceImages.length) setReferences(gen.referenceImages.filter((path) => !referenceExclusions.has(path) && !(path === media.shot.keyframe_image && media.shot.metadata?.keyframe_reference_removed === true)));
     if (gen.videoReferencePaths?.length) setVideoReferencePaths(gen.videoReferencePaths);
   };
 
@@ -5707,7 +5734,7 @@ function ShotMediaWorkspace({
         await reload(true);
       } else {
         setGenerationStatus("Submitting video generation job…");
-        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, referenceVideos: videoReferencePaths, characterEntityIds, mentionedEntityIds, generationMode: videoInputMode, startFrame: videoInputMode === "keyframe" ? startFrame : null, endFrame: videoInputMode === "keyframe" ? endFrame : null, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
+        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, referenceVideos: videoReferencePaths, excludedReferenceImages: Array.from(referenceExclusions), characterEntityIds, mentionedEntityIds, generationMode: videoInputMode, startFrame: videoInputMode === "keyframe" ? startFrame : null, endFrame: videoInputMode === "keyframe" ? endFrame : null, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
         const body = await readGenerationResponse(response);
         if (!response.ok) {
           const errorMsg = body.error || "Video generation failed";
@@ -5942,6 +5969,7 @@ function ShotMediaWorkspace({
       return;
     }
     if (path === media.shot.keyframe_image) rememberKeyframeReference(false);
+    includeReference(path);
     setReferences((current) => current.includes(path) ? current : [...current, path]);
   };
   // A clip dropped where images go was sent for image registration and failed
@@ -6819,6 +6847,7 @@ function ShotMediaWorkspace({
             else if (referenceTarget === "motion") setVideoReferencePaths((current) => Array.from(new Set([...current, ...items])));
             else {
               if (media.shot.keyframe_image) rememberKeyframeReference(!items.includes(media.shot.keyframe_image));
+              for (const item of items) includeReference(item);
               setReferences(items);
             }
             setPicker(false);

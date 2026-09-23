@@ -129,6 +129,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (error) throw error
       return NextResponse.json({ success: true })
     }
+    if (body.action === "setShotReferenceExclusions") {
+      // Storyboard entities are the durable shot cast, while this list is a
+      // deliberate per-render override. Keeping the two separate means a
+      // director can omit a location or prop for a render without destroying
+      // the storyboard's continuity information.
+      const exclusions = Array.isArray(body.exclusions)
+        ? Array.from(new Set(body.exclusions.filter((value: unknown): value is string => typeof value === "string" && value.trim().length > 0))).slice(0, 50)
+        : []
+      const { data: current, error: currentError } = await supabase.from("creator_shots").select("metadata").eq("id", body.shotId).single()
+      if (currentError) throw currentError
+      const metadata = { ...((current?.metadata as Record<string, unknown>) || {}), reference_image_exclusions: exclusions }
+      const { error } = await supabase.from("creator_shots").update({ metadata }).eq("id", body.shotId)
+      if (error) throw error
+      return NextResponse.json({ success: true, exclusions })
+    }
     if (body.action === "deleteJob") {
       const { error } = await supabase.from("creator_generation_jobs").delete().eq("id", body.jobId).eq("project_id", projectId)
       if (error) throw error
