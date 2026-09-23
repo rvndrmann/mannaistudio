@@ -18,7 +18,7 @@ import { buildEntityMentionContext, entityPrimaryReference, type MentionableEnti
 import { openAIImageQuality, projectImageQuality, projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 import { applyCameraSettings, cameraBlockForEntityType, projectCameraDefaults, resolveCameraSettings } from "@/lib/studio/camera-settings"
-import { composeLookDirectives, MAX_STYLE_REFERENCE_IMAGES, projectStyleDna, resolveStyleDna, styleBlockForEntityType, styleDnaSchema, styleReferenceClause, styleReferenceImagesOf } from "@/lib/studio/style-dna"
+import { composeLookDirectives, projectStyleDna, resolveStyleDna, styleBlockForEntityType, styleDnaSchema } from "@/lib/studio/style-dna"
 import { recordExistingAsset } from "@/lib/studio/byteplus-assets"
 import { VERIFIED_ASSET } from "@/lib/studio/asset-verification"
 
@@ -269,11 +269,9 @@ export async function renderProjectImage(
     // edit model as permission to re-render everything.
     const styleDna = input.drawEdit ? null : resolveStyleDna({ override: input.styleDna, projectDefault: projectStyleDna(context.project) })
     const styleBlock = input.target === "shot" ? "shot" : styleBlockForEntityType(typeof assetData?.type === "string" ? assetData.type : null)
-    // The look reference is pixels, and a provider is handed one flat list it
-    // treats as things to reproduce — so these are kept out of the cast's budget
-    // rather than added to it, and named in the prompt as look-only below.
-    const styleReferencePaths = styleReferenceImagesOf(styleDna)
-    const castBudget = 8 - Math.min(styleReferencePaths.length, MAX_STYLE_REFERENCE_IMAGES)
+    // Look & Feel photos are analysed once into style DNA. Sending their pixels
+    // with the cast gives the model access to their people and clothing, which
+    // can bleed into a character despite a look-only prompt instruction.
     // Regenerating an asset with an edit model and no reference attached means
     // "edit this asset's picture" — it cannot mean anything else, because an
     // edit model has nothing to work from otherwise. Sending nothing made the
@@ -285,10 +283,7 @@ export async function renderProjectImage(
       && !input.referenceImages.length
       ? [entityPrimaryReference(assetData as { reference_images?: string[] | null; primary_reference_image?: string | null })].filter((path): path is string => Boolean(path))
       : []
-    const castReferencePaths = Array.from(new Set([...mentionReferencePaths, ...input.referenceImages, ...ownImageFallback]))
-      .filter((path) => !styleReferencePaths.includes(path))
-      .slice(0, castBudget)
-    const combinedReferencePaths = [...castReferencePaths, ...styleReferencePaths]
+    const combinedReferencePaths = Array.from(new Set([...mentionReferencePaths, ...input.referenceImages, ...ownImageFallback])).slice(0, 8)
     const projectDefaultAspect = typeof context.project.default_aspect === "string" ? context.project.default_aspect : null
     const effectiveAspectRatio = input.aspectRatio || (shotData && typeof shotData.aspect_ratio === "string" ? shotData.aspect_ratio : null) || projectDefaultAspect || "9:16"
     // The camera clause is composed here, at submit time, from the base prompt
@@ -318,7 +313,6 @@ export async function renderProjectImage(
       framedPrompt,
       `Required composition: ${effectiveAspectRatio}.`,
       ...(input.drawEdit ? [`Required project style: ${style}.`, visualStyleDirective(style)] : composeLookDirectives(style, styleDna, styleBlock)),
-      styleReferenceClause(styleReferencePaths.length),
       mentionContext,
     ].filter(Boolean).join("\n\n")
 
@@ -349,7 +343,7 @@ export async function renderProjectImage(
           // a new mood board must not change what this frame was shot under, and
           // "regenerate this exact frame" needs the look it was shot under.
           styleDnaUsed: styleDna,
-          styleReferenceImages: styleReferencePaths,
+          styleReferenceImages: [],
           basePrompt: input.prompt,
           composedPrompt: resolvedPrompt,
           ...(input.drawEdit ? { drawEdit: input.drawEdit } : {}),

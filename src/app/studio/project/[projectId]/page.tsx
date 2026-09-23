@@ -90,7 +90,7 @@ import { StyleDnaPanel } from "@/components/studio/StyleDnaPanel";
 import { AutopilotModeControl, AutopilotRunner, autopilotActionsFrom } from "@/components/studio/autopilot";
 import { defaultAutopilotBudget, readAutopilotSettings, type AutopilotBudget, type AutopilotMode } from "@/lib/studio/autopilot";
 import { RevisionNotes } from "@/components/studio/RevisionNotes";
-import { describeStyleDna, normalizeStyleDna, projectStyleDna, styleReferenceImagesOf, type StyleDna } from "@/lib/studio/style-dna";
+import { describeStyleDna, normalizeStyleDna, projectStyleDna, type StyleDna } from "@/lib/studio/style-dna";
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
 import { parseVoiceToolCall, type VoiceToolCall } from "@/lib/studio/voice";
 import { createClient } from "@/lib/supabase/client";
@@ -3769,7 +3769,7 @@ function AssetWorkspace({
                         <span
                           className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[11px] font-semibold text-zinc-300"
                           title={recipeByImage.get(activeImage)?.styleDna
-                            ? `This image copied a look reference. ${recipeByImage.get(activeImage)!.styleDna!.overrideProjectStyle ? "The reference decided the medium." : "The Visual Style setting decided the medium; the reference supplied palette, light and texture."}`
+                            ? `This image used the extracted Look & Feel description. ${recipeByImage.get(activeImage)!.styleDna!.overrideProjectStyle ? "The description decided the medium." : "The Visual Style setting decided the medium; the description supplied palette, light and texture."}`
                             : "No look reference was applied. This image followed the Visual Style setting alone."}
                         >
                           <Palette className={`h-3 w-3 ${recipeByImage.get(activeImage)?.styleDna ? "text-[#b9f42e]" : "text-zinc-600"}`} />
@@ -5695,7 +5695,7 @@ function ShotMediaWorkspace({
       videoReferencePaths: [...videoReferencePaths],
       cameraSettingsUsed: media.type === "image" && cameraEnabled ? cameraSettings : null,
       styleDnaUsed: media.type === "image" ? effectiveShotStyleDna : null,
-      styleReferenceImages: media.type === "image" ? styleReferenceImagesOf(effectiveShotStyleDna) : [],
+      styleReferenceImages: [],
       videoUrl: null,
       error: null,
       createdAt: Date.now(),
@@ -6372,7 +6372,7 @@ function ShotMediaWorkspace({
                         <span
                           className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[11px] font-semibold text-zinc-300"
                           title={activeGen.styleDnaUsed
-                            ? `This image copied a look reference. ${activeGen.styleDnaUsed.overrideProjectStyle ? "The reference decided the medium." : "The Visual Style setting decided the medium; the reference supplied palette, light and texture."}`
+                            ? `This image used the extracted Look & Feel description. ${activeGen.styleDnaUsed.overrideProjectStyle ? "The description decided the medium." : "The Visual Style setting decided the medium; the description supplied palette, light and texture."}`
                             : "No look reference was applied. This image followed the Visual Style setting alone."}
                         >
                           <Palette className={`h-3 w-3 ${activeGen.styleDnaUsed ? "text-[#b9f42e]" : "text-zinc-600"}`} />

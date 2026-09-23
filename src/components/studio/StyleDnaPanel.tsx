@@ -5,7 +5,7 @@ import Image from "next/image";
 import { Loader2, Sparkles, Trash2, Upload, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { isVideoReferencePath } from "@/lib/studio/media-reference";
-import { MAX_STYLE_REFERENCE_IMAGES, isEmptyStyleDna, type StyleDna } from "@/lib/studio/style-dna";
+import { isEmptyStyleDna, type StyleDna } from "@/lib/studio/style-dna";
 
 /**
  * The Look & Feel control: drop reference images, read the look back as fields,
@@ -221,7 +221,7 @@ export function StyleDnaPanel({
         <div>
           <p className="text-xs font-bold text-zinc-400">{heading}</p>
           <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-            {blurb} The first {MAX_STYLE_REFERENCE_IMAGES} are also sent to the image model as look references.
+            {blurb} Images are analysed into a Look & Feel description. Generation uses that description, not the original images.
           </p>
         </div>
         {lock}
