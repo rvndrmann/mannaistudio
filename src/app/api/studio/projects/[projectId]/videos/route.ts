@@ -305,6 +305,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // what filled the account's 50-image library within hours; the registry
     // makes it once and remembers it.
     const facePathList = combinedReferencePaths.filter((path) => facePaths.has(path))
+    // Why a reference is going out as a plain picture. Seedance answers that
+    // with "may contain real person", which describes the picture and not the
+    // fault: the Asset Library was unreachable, or the account's group had been
+    // deleted, and the render was doomed before it was submitted. Keeping the
+    // reason lets the failure say so instead of blaming the character.
+    const registrationFailures = new Map<string, string>()
     for (let index = 0; index < facePathList.length; index += 1) {
       const path = facePathList[index]
       const signed = faceReferences[index]
@@ -316,6 +322,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         name: path.split("/").pop() || undefined,
         projectId,
         userId: context.user.id,
+        onFailure: (reason) => registrationFailures.set(path, reason),
       })
       if (!assetUri) continue
       // `references` and `faceReferences` are signed in separate calls, so
@@ -512,10 +519,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const refund = await refundGenerationCredits(context.user.id, creditCost, `generation-job:${job.id}`, "Refund: failed video generation", job.id, context.supabase)
       pendingRefund = null
       const rejected = parseSeedanceRejectedReference(errorMessage)
+      // A rejected reference that we already know we could not register is not
+      // a verification the user has left undone — it is the registration
+      // itself failing, and verifying again by hand will fail the same way.
+      const rejectedPath = rejected ? combinedReferencePaths[rejected.referenceIndex] : null
+      const registrationFailure = (rejectedPath && registrationFailures.get(rejectedPath))
+        || (rejected ? Array.from(registrationFailures.values())[0] : undefined)
+      const registrationNote = registrationFailure
+        ? ` A reference could not be registered with the BytePlus Asset Library before the request was sent, which is why the picture itself went to Seedance: ${registrationFailure}`
+        : ""
       return NextResponse.json({
         error: missingAsset
           ? `Stale reference asset (${missingAsset.assetId}) was missing from BytePlus. Stale asset cache has been cleaned up. Please try generating again.`
-          : errorMessage,
+          : `${errorMessage}${registrationNote}`,
         inputImages: combinedReferencePaths,
         videoReferencePaths,
         rejectedReference: rejected ? {
