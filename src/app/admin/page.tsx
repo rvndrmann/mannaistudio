@@ -10,7 +10,7 @@ import {
     Save, X, Download, FileText, Video, Trophy,
     Inbox, Mail, Clock, DollarSign, Loader2, Phone,
     ChevronLeft, ChevronRight, Calendar, Pause, PauseCircle, PlayCircle,
-    Image as ImageIcon, RefreshCw, FolderKanban, Clapperboard, BarChart3, Briefcase
+    Image as ImageIcon, RefreshCw, FolderKanban, Clapperboard, BarChart3, Briefcase, Sparkles
 } from "lucide-react"
 import { courses, adminShowcase, challenges } from "@/lib/data"
 import { useEffect, useState } from "react"
@@ -44,6 +44,7 @@ import BlogManager from "@/components/admin/BlogManager"
 import OriginalsManager from "@/components/admin/OriginalsManager"
 import ViewerAnalytics from "@/components/admin/ViewerAnalytics"
 import ManagedProduction from "@/components/admin/ManagedProduction"
+import AcademyManager from "@/components/admin/AcademyManager"
 import { defaultHomeVariant, fetchHomeVariant, homeVariants, type HomeVariant } from "@/lib/home-variant"
 
 type EnrolledStudent = {
@@ -58,6 +59,10 @@ type EnrolledStudent = {
     membership_expires_at?: string | null
     is_trial?: boolean | null
     bids?: number | null
+    entitlement_keys?: string[]
+    product_count?: number
+    project_count?: number
+    course_progress?: Record<string, number>
 }
 
 type AdminStats = {
@@ -424,6 +429,13 @@ function AdminDashboardContent() {
                 p_price: editForm.price,
             })
             if (error) throw error
+            const { error: visibilityError } = await supabase.from('courses').update({
+                is_published: editForm.is_published !== false,
+                is_featured: editForm.is_featured === true,
+                grants_creator_studio: editForm.grants_creator_studio === true,
+                creator_studio_access_days: editForm.creator_studio_access_days || null,
+            }).eq('id', editForm.id)
+            if (visibilityError) throw visibilityError
             const saved = { ...editForm, thumbnail }
             setMockCourses(prev => prev.map(c => c.id === editingId ? saved : c))
             setEditingId(null)
@@ -1168,6 +1180,30 @@ function AdminDashboardContent() {
                 .order('created_at', { ascending: false })
             const profiles = profileData || []
 
+            const [entitlementRows, productPurchaseRows, progressRows, projectRows] = await Promise.all([
+                supabase.from('user_entitlements').select('profile_id,entitlement_key,starts_at,expires_at'),
+                supabase.from('digital_product_purchases').select('profile_id,product_id'),
+                supabase.from('course_progress').select('profile_id,course_id,completed_chapters'),
+                supabase.rpc('admin_project_overview'),
+            ])
+            const entitlementMap = new Map<string, string[]>()
+            ;(entitlementRows.data || []).forEach((row: any) => {
+                if ((row.starts_at && new Date(row.starts_at).getTime() > Date.now()) || (row.expires_at && new Date(row.expires_at).getTime() <= Date.now())) return
+                const current = entitlementMap.get(row.profile_id) || []
+                current.push(row.entitlement_key)
+                entitlementMap.set(row.profile_id, current)
+            })
+            const productCounts = new Map<string, number>()
+            ;(productPurchaseRows.data || []).forEach((row: any) => productCounts.set(row.profile_id, (productCounts.get(row.profile_id) || 0) + 1))
+            const projectCounts = new Map<string, number>()
+            ;(projectRows.data || []).forEach((row: any) => projectCounts.set(row.owner_id, (projectCounts.get(row.owner_id) || 0) + 1))
+            const progressMap = new Map<string, Record<string, number>>()
+            ;(progressRows.data || []).forEach((row: any) => {
+                const current = progressMap.get(row.profile_id) || {}
+                current[row.course_id] = Array.isArray(row.completed_chapters) ? row.completed_chapters.length : 0
+                progressMap.set(row.profile_id, current)
+            })
+
             const profileMap = new Map(profiles.map((p: any) => [p.id, p]))
             const students: EnrolledStudent[] = (enrollments || []).map((e: any) => {
                 const p: any = profileMap.get(e.profile_id) || {}
@@ -1183,6 +1219,10 @@ function AdminDashboardContent() {
                     membership_expires_at: p.membership_expires_at,
                     is_trial: p.is_trial,
                     bids: p.bids,
+                    entitlement_keys: entitlementMap.get(e.profile_id) || [],
+                    product_count: productCounts.get(e.profile_id) || 0,
+                    project_count: projectCounts.get(e.profile_id) || 0,
+                    course_progress: progressMap.get(e.profile_id) || {},
                 }
             })
             const enrolledProfileIds = new Set(students.map((student) => student.profile_id))
@@ -1200,6 +1240,10 @@ function AdminDashboardContent() {
                     membership_expires_at: profile.membership_expires_at,
                     is_trial: profile.is_trial,
                     bids: profile.bids,
+                    entitlement_keys: entitlementMap.get(profile.id) || [],
+                    product_count: productCounts.get(profile.id) || 0,
+                    project_count: projectCounts.get(profile.id) || 0,
+                    course_progress: progressMap.get(profile.id) || {},
                 }))
             setEnrolledStudents([...students, ...freeStudents])
 
@@ -1403,6 +1447,15 @@ function AdminDashboardContent() {
                                 )}
                             >
                                 <BookOpen className="w-4 h-4" /> Manage Courses
+                            </button>
+                            <button
+                                onClick={() => setActiveTab("academy")}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
+                                    activeTab === "academy" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                )}
+                            >
+                                <Sparkles className="w-4 h-4" /> Academy Ecosystem
                             </button>
                             <button
                                 onClick={() => setActiveTab("showcase")}
@@ -1813,18 +1866,23 @@ function AdminDashboardContent() {
                                                                                 onClick={() => setEditForm(prev => prev ? { ...prev, price: option.value } : prev)}
                                                                                 className={cn(
                                                                                     "px-4 py-2 rounded-lg text-xs font-bold transition-colors",
-                                                                                    editForm?.price === option.value
-                                                                                        ? "bg-primary text-black"
-                                                                                        : "text-white/40 hover:text-white hover:bg-white/5"
+                                                                                    option.value === "Free" ? (editForm?.price === "Free" || editForm?.price === "$0" ? "bg-primary text-black" : "text-white/40 hover:text-white hover:bg-white/5") : (editForm?.price === "Free" || editForm?.price === "$0" ? "text-white/40 hover:text-white hover:bg-white/5" : "bg-primary text-black")
                                                                                 )}
                                                                             >
                                                                                 {option.label}
                                                                             </button>
                                                                         ))}
                                                                     </div>
+                                                                    {editForm?.price !== "Free" && editForm?.price !== "$0" && <label className="block max-w-xs text-xs text-white/50">One-time course price (₹)<input type="number" min="1" value={Number.isFinite(Number(editForm?.price)) ? Number(editForm?.price) : ""} onChange={(e) => setEditForm(prev => prev ? { ...prev, price: e.target.value || "Paid" } : prev)} className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" placeholder="Leave blank to use Pro Membership" /></label>}
                                                                     <p className="text-xs text-white/30">
-                                                                        Pro Membership courses require the current monthly plan.
+                                                                        Set a one-time price to sell this course directly. Leave it blank to keep Pro Membership access.
                                                                     </p>
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-5 text-sm text-white/70">
+                                                                    <label className="flex items-center gap-2"><input type="checkbox" checked={editForm?.is_published !== false} onChange={(e) => setEditForm(prev => prev ? { ...prev, is_published: e.target.checked } : prev)} className="accent-primary"/> Published for students</label>
+                                                                    <label className="flex items-center gap-2"><input type="checkbox" checked={editForm?.is_featured === true} onChange={(e) => setEditForm(prev => prev ? { ...prev, is_featured: e.target.checked } : prev)} className="accent-primary"/> Feature on Academy homepage</label>
+                                                                    <label className="flex items-center gap-2"><input type="checkbox" checked={editForm?.grants_creator_studio === true} onChange={(e) => setEditForm(prev => prev ? { ...prev, grants_creator_studio: e.target.checked } : prev)} className="accent-primary"/> Include Creator Studio access</label>
+                                                                    {editForm?.grants_creator_studio && <label className="flex items-center gap-2">Access days <input type="number" min="1" value={editForm.creator_studio_access_days || ""} onChange={e=>setEditForm(prev=>prev?{...prev,creator_studio_access_days:e.target.value?Number(e.target.value):null}:prev)} placeholder="Lifetime" className="w-24 rounded-lg border border-white/10 bg-white/5 px-2 py-1"/></label>}
                                                                 </div>
                                                                 <div className="flex items-center gap-3">
                                                                     <button
@@ -1857,6 +1915,7 @@ function AdminDashboardContent() {
                                                                         )}
                                                                     </div>
                                                                     <p className="text-sm text-white/40 line-clamp-2">{course.description}</p>
+                                                                    <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-white/35">{course.is_published === false ? "Draft · hidden from students" : "Published"}{course.is_featured ? " · Academy featured" : ""}</p>
                                                                 </div>
                                                                 <div className="flex flex-wrap items-center gap-4 text-[10px] font-bold tracking-widest text-white/30">
                                                                     <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {adminStats.courseEnrollments[course.id] || 0} Enrolled</span>
@@ -1910,6 +1969,12 @@ function AdminDashboardContent() {
                                         </div>
                                     </>
                                 )}
+                            </motion.div>
+                        )}
+
+                        {activeTab === "academy" && (
+                            <motion.div key="academy" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
+                                <AcademyManager />
                             </motion.div>
                         )}
 
@@ -2585,6 +2650,9 @@ function AdminDashboardContent() {
                                                                 )}>{memberLabel}</span>
                                                                 <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-white/5 text-white/50">{student.bids ?? 0} bids</span>
                                                                 <span className="text-xs font-bold text-primary">{enrolledCourseCount} course{enrolledCourseCount === 1 ? '' : 's'}</span>
+                                                                {student.entitlement_keys?.includes('creator_studio_access') && <span className="rounded-lg bg-primary/10 px-2.5 py-1 text-[10px] font-bold text-primary">Creator Studio access</span>}
+                                                                <span className="text-xs text-white/45">{student.product_count || 0} product purchases</span>
+                                                                <span className="text-xs text-white/45">{student.project_count || 0} Creator Studio projects</span>
                                                             </div>
                                                         </div>
                                                         <div className="flex flex-wrap gap-2">
@@ -2606,6 +2674,7 @@ function AdminDashboardContent() {
                                                                             e.status === 'active' ? "bg-emerald-400/10 text-emerald-400" : "bg-white/5 text-white/40"
                                                                         )}>{e.status}</span>
                                                                         <span className="text-white/20">{new Date(e.created_at).toLocaleDateString()}</span>
+                                                                        {(student.course_progress?.[e.course_id] || 0) > 0 && <span className="text-primary">{student.course_progress?.[e.course_id]} chapters complete</span>}
                                                                     </div>
                                                                 )
                                                             })}
@@ -3216,6 +3285,8 @@ function AdminDashboardContent() {
                                             )
                                         })}
                                     </div>
+
+                                    <p className="text-xs text-white/40">Preview without changing the live homepage: <a href={`/?home=${homeVariant}`} target="_blank" rel="noreferrer" className="font-mono text-primary underline">open current selection</a>{" · "}<a href="/?home=academy" target="_blank" rel="noreferrer" className="font-mono text-primary underline">preview AI Video Academy</a></p>
 
                                     {homeVariantMessage && <p className="text-sm font-bold text-primary">{homeVariantMessage}</p>}
 

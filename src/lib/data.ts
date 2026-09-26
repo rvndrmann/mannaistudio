@@ -23,6 +23,10 @@ export type Course = {
     instructor: string
     price: string
     is_paused?: boolean
+    is_published?: boolean
+    is_featured?: boolean
+    grants_creator_studio?: boolean
+    creator_studio_access_days?: number | null
     lessons: CourseLesson[]
 }
 

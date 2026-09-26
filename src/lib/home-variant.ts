@@ -12,7 +12,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
  *   originals — the short-drama funnel, with no mention of the studio at all
  *   hire      — the done-for-you offer: send a brief, receive finished ads
  */
-export type HomeVariant = "studio" | "originals" | "hire"
+export type HomeVariant = "studio" | "originals" | "hire" | "academy"
 
 export const defaultHomeVariant: HomeVariant = "studio"
 
@@ -47,6 +47,12 @@ export const homeVariants: Array<{
     label: "Done-for-you ads",
     description: "The Hire Our Creative Team offer as the front door: send a brief, first cut in 24 hours, two revisions, finished files. Sells the service, never the software.",
     confirmation: "Homepage now sells the done-for-you service.",
+  },
+  {
+    id: "academy",
+    label: "AI Video Academy",
+    description: "Education-first homepage for AI video creators. Promotes courses, digital AI tools, 1:1 coaching and Creator Studio access for eligible students.",
+    confirmation: "Homepage now shows AI Video Academy.",
   },
 ]
 

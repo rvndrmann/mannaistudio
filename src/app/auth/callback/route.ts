@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { isAuthRetryableFetchError, type AuthError } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { safeNextPath } from '@/lib/auth-redirect'
+import { cookies } from 'next/headers'
 
 /**
  * Exchange the OAuth code, retrying only when the request never reached
@@ -44,7 +45,11 @@ export async function GET(request: Request) {
     // Validated, not trusted. This parameter is now set on real sign-in links,
     // so it is also reachable by anyone who can hand a visitor a link to our
     // own sign-in — an unchecked value here is an open redirect.
-    const next = safeNextPath(searchParams.get('next'))
+    const cookieStore = await cookies()
+    const savedNext = cookieStore.get('aidh_auth_next')?.value
+    let decodedNext: string | undefined
+    try { decodedNext = savedNext ? decodeURIComponent(savedNext) : undefined } catch { /* Invalid cookie falls back to home. */ }
+    const next = safeNextPath(searchParams.get('next') ?? decodedNext)
 
     const errorParam = searchParams.get('error')
     const errorDescription = searchParams.get('error_description')
@@ -73,7 +78,9 @@ export async function GET(request: Request) {
                 // One-time 20 free bids so free accounts can post & bid on AI jobs
                 await supabase.rpc('grant_starter_bids', { p_user_id: user.id })
             }
-            return NextResponse.redirect(`${origin}${next}`)
+            const response = NextResponse.redirect(`${origin}${next}`)
+            response.cookies.delete('aidh_auth_next')
+            return response
         } else {
             console.error('[auth/callback] code exchange failed:', error.message, error)
             const kind = isAuthRetryableFetchError(error) ? 'network' : 'auth'

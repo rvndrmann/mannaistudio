@@ -39,6 +39,11 @@ export const showcaseCategories = [
   { key: "food", label: "Food & Beverage" },
   { key: "real_estate", label: "Real Estate" },
   { key: "other", label: "Other" },
+  { key: "ai_film", label: "AI Films" },
+  { key: "ai_commercial", label: "AI Commercials" },
+  { key: "microdrama", label: "Microdramas" },
+  { key: "product_video", label: "Product Videos" },
+  { key: "ai_ugc", label: "AI UGC" },
 ] as const
 
 export type ShowcaseCategory = (typeof showcaseCategories)[number]["key"]

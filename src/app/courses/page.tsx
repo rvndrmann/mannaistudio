@@ -9,7 +9,6 @@ import { courses as mockCourses } from "@/lib/data"
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/components/auth/auth-provider"
-import { fetchBillingSettings, hasPremiumAccess, isAdminUser } from "@/lib/membership"
 
 interface Course {
     id: string
@@ -26,7 +25,7 @@ interface Course {
 
 export default function CoursesPage() {
     const router = useRouter()
-    const { user, signInWithGoogle } = useAuth()
+    const { user } = useAuth()
     const [courses, setCourses] = useState<Course[]>([])
     const [loading, setLoading] = useState(true)
     const [checkingCourseId, setCheckingCourseId] = useState<string | null>(null)
@@ -38,6 +37,7 @@ export default function CoursesPage() {
                 const { data, error } = await supabase
                     .from('courses')
                     .select('*')
+                    .eq('is_published', true)
                     .order('created_at', { ascending: true })
                 if (error || !data) {
                     setCourses(mockCourses.filter((c: any) => !c.is_paused))
@@ -54,45 +54,11 @@ export default function CoursesPage() {
 
     const handleOpenCourse = async (course: Course) => {
         if (!user) {
-            signInWithGoogle()
-            return
-        }
-
-        const isFree = isFreeCourse(course.price)
-        if (isFree) {
             router.push(`/courses/${course.id}`)
             return
         }
-
         setCheckingCourseId(course.id)
-        try {
-            const supabase = createClient()
-            const [{ data: enrollment }, { data: profile }, isAdmin, billingSettings] = await Promise.all([
-                supabase
-                    .from('enrollments')
-                    .select('status')
-                    .eq('profile_id', user.id)
-                    .eq('course_id', course.id)
-                    .single(),
-                supabase
-                    .from('profiles')
-                    .select('membership_status, membership_expires_at')
-                    .eq('id', user.id)
-                    .single(),
-                isAdminUser(supabase, user.id),
-                fetchBillingSettings(supabase),
-            ])
-
-            if (enrollment?.status === 'active' || hasPremiumAccess(profile, isAdmin)) {
-                router.push(`/courses/${course.id}`)
-            } else {
-                router.push('/billing')
-            }
-        } catch {
-            router.push('/billing')
-        } finally {
-            setCheckingCourseId(null)
-        }
+        router.push(`/courses/${course.id}`)
     }
 
     return (
@@ -106,7 +72,7 @@ export default function CoursesPage() {
                         animate={{ opacity: 1, x: 0 }}
                         className="text-4xl font-bold mb-4"
                     >
-                        AI Director Hub <span className="text-primary">Academy</span>
+                        <span className="text-primary">Master AI Video Creation</span>
                     </motion.h1>
                     <motion.p
                         initial={{ opacity: 0, x: -20 }}
@@ -114,7 +80,7 @@ export default function CoursesPage() {
                         transition={{ delay: 0.1 }}
                         className="text-white/60"
                     >
-                        Level up your skills with our expert-led AI video tutorials.
+                        Learn professional AI filmmaking, commercials, cinematography, character consistency, prompting, editing and production workflows.
                     </motion.p>
                 </header>
 

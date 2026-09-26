@@ -95,6 +95,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
     const [billingSettings, setBillingSettings] = useState(defaultBillingSettings)
     const [enrollLoading, setEnrollLoading] = useState(false)
     const [checkingEnrollment, setCheckingEnrollment] = useState(true)
+    const [checkoutError, setCheckoutError] = useState("")
     const ytHostRef = useRef<HTMLDivElement | null>(null)
     const completeRef = useRef<() => void>(() => {})
 
@@ -103,10 +104,11 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
         const load = async () => {
             try {
                 const supabase = createClient()
-                const { data: courseData } = await supabase
+                const { data: courseData, error: courseError } = await supabase
                     .from('courses')
                     .select('*')
                     .eq('id', id)
+                    .eq('is_published', true)
                     .single()
                 if (courseData) {
                     const { data: lessonData } = await supabase
@@ -125,9 +127,10 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                     }))
                     setCourse({ ...courseData, lessons })
                 } else {
-                    // Fallback to mock
-                    const mock = mockCourses.find(c => c.id === id) || mockCourses[0]
-                    setCourse(mock)
+                    // RLS returns no row for drafts and unknown IDs. Never
+                    // substitute mock content for a course the database hid.
+                    if (courseError?.code === "PGRST116") setCourse(null)
+                    else setCourse(mockCourses.find(c => c.id === id) || mockCourses[0])
                 }
             } catch {
                 const mock = mockCourses.find(c => c.id === id) || mockCourses[0]
@@ -152,7 +155,17 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
     // Restore any chapters this person already finished.
     useEffect(() => {
         if (!course) return
-        setCompletedChapters(readProgress(course.id, user?.id))
+        const localProgress = readProgress(course.id, user?.id)
+        setCompletedChapters(localProgress)
+        if (!user) return
+        let active = true
+        createClient().from("course_progress").select("completed_chapters").eq("profile_id", user.id).eq("course_id", course.id).maybeSingle().then(({data}) => {
+            if (!active || !data) return
+            const merged = Array.from(new Set([...localProgress, ...(data.completed_chapters || [])])).sort((a,b)=>a-b)
+            setCompletedChapters(merged)
+            writeProgress(course.id, merged, user.id)
+        })
+        return () => { active = false }
     }, [course?.id, user?.id])
 
     const isFree = course?.price === "Free" || course?.price === "$0" || course?.price === 0 || course?.price === "0" || !course?.price
@@ -168,6 +181,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
         const check = async () => {
             if (user) {
                 const enrolled = await checkEnrollment(course.id)
+                if (isFree && !enrolled) await enrollFreeCourse(course.id)
                 const supabase = createClient()
                 const [{ data: profile }, nextBillingSettings, nextIsAdmin] = await Promise.all([
                     supabase
@@ -193,6 +207,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
             const next = [...completedChapters, activeChapter]
             setCompletedChapters(next)
             if (course) writeProgress(course.id, next, user?.id)
+            if (course && user) void createClient().from("course_progress").upsert({profile_id:user.id,course_id:course.id,completed_chapters:next,updated_at:new Date().toISOString()},{onConflict:"profile_id,course_id"})
             setShowXPAlert(true)
             confetti({
                 particleCount: 100,
@@ -258,12 +273,32 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
         }
 
         setEnrollLoading(true)
+        setCheckoutError("")
 
         if (isFree) {
             const success = await enrollFreeCourse(course.id)
             if (success) {
                 setIsEnrolled(true)
                 confetti({ particleCount: 50, spread: 60 })
+            }
+        } else if (Number.isFinite(Number(course.price)) && Number(course.price) > 0) {
+            try {
+                if (!(window as any).Razorpay) {
+                    const script = document.createElement("script")
+                    script.src = "https://checkout.razorpay.com/v1/checkout.js"
+                    await new Promise<void>((resolve,reject)=>{script.onload=()=>resolve();script.onerror=()=>reject(new Error("Could not load payment checkout."));document.body.appendChild(script)})
+                }
+                const response=await fetch("/api/courses/checkout",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({courseId:course.id})})
+                const order=await response.json()
+                if(!response.ok)throw new Error(order.error||"Could not start course checkout.")
+                const checkout=new (window as any).Razorpay({key:order.keyId,order_id:order.orderId,amount:order.amount,currency:"INR",name:"AI Director Hub",description:order.courseTitle,prefill:{email:order.email,name:order.name},theme:{color:"#b9f42e"},handler:async(payment:any)=>{
+                    try{const verified=await fetch("/api/courses/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payment)});const result=await verified.json();if(!verified.ok)throw new Error(result.error||"Payment verification failed.");setIsEnrolled(true);fbTrack("Purchase",{content_type:"course",content_ids:[course.id],content_name:course.title,value:Number(course.price),currency:"INR"})}catch(error){setCheckoutError(error instanceof Error?error.message:"Payment verification failed.")}
+                    setEnrollLoading(false)
+                },modal:{ondismiss:()=>setEnrollLoading(false)}})
+                checkout.open()
+                return
+            } catch(error) {
+                setCheckoutError(error instanceof Error?error.message:"Could not start checkout.")
             }
         } else {
             window.location.href = '/billing'
@@ -274,7 +309,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
 
     const activePlanPrice = getActivePlanPrice(billingSettings)
 
-    if (courseLoading || !course) {
+    if (courseLoading) {
         return (
             <main className="min-h-screen pb-20">
                 <Navbar />
@@ -284,6 +319,8 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
             </main>
         )
     }
+
+    if (!course) return <main className="min-h-screen bg-[#070807] text-white"><Navbar/><div className="mx-auto max-w-3xl px-6 pt-40 text-center"><h1 className="text-3xl font-semibold">Course unavailable</h1><p className="mt-3 text-white/55">This course may be unpublished or no longer available.</p><Link href="/courses" className="mt-6 inline-flex rounded-lg bg-primary px-5 py-3 font-semibold text-black">Browse courses</Link></div></main>
 
     return (
         <main className="min-h-screen pb-20">
@@ -373,8 +410,8 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                         {!hasCourseAccess && !checkingEnrollment && (
                             <div className="glass-card p-6 rounded-2xl border border-primary/20 bg-primary/5 flex items-center justify-between">
                                 <div className="space-y-1">
-                                    <h3 className="font-bold text-lg">Get Full Access with Pro</h3>
-                                    <p className="text-sm text-white/50">{formatUsd(activePlanPrice)}/month • paid courses • 10 portfolio videos</p>
+                                    <h3 className="font-bold text-lg">{Number.isFinite(Number(course.price)) && Number(course.price)>0 ? "Get lifetime access to this course" : "Get Full Access with Pro"}</h3>
+                                    <p className="text-sm text-white/50">{Number.isFinite(Number(course.price)) && Number(course.price)>0 ? `₹${course.price} · one-time purchase` : `${formatUsd(activePlanPrice)}/month • paid courses • 10 portfolio videos`}</p>
                                 </div>
                                 <button
                                     onClick={handleEnroll}
@@ -388,10 +425,11 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     ) : (
                                         <ShoppingCart className="w-4 h-4" />
                                     )}
-                                    {enrollLoading ? 'Processing...' : `Start Pro`}
+                                    {enrollLoading ? 'Processing...' : Number.isFinite(Number(course.price)) && Number(course.price)>0 ? 'Buy Course' : 'Start Pro'}
                                 </button>
                             </div>
                         )}
+                        {checkoutError&&<p role="alert" className="rounded-lg border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-200">{checkoutError}</p>}
 
                         <div className="glass-card p-8 rounded-2xl border-white/10">
                             <div className="flex items-center justify-between mb-8">

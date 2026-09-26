@@ -27,11 +27,12 @@ export async function fetchCourses() {
     const { data, error } = await supabase
         .from('courses')
         .select('*')
+        .eq('is_published', true)
         .order('created_at', { ascending: false })
 
     if (error || !data || data.length === 0) {
         const { courses } = await import('./data')
-        return courses.filter(c => !c.is_paused)
+        return courses.filter(c => !c.is_paused && c.is_published !== false)
     }
 
     return data.filter((c: any) => !c.is_paused)

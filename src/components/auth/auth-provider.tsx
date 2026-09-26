@@ -94,7 +94,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // safeNextPath rather than the raw location: this ends up in a URL that
         // a signed-out visitor can be handed, and the callback redirects to it.
         const target = safeNextPath(next ?? `${window.location.pathname}${window.location.search}`)
-        if (target !== '/') callback.searchParams.set('next', target)
+        // Keep the OAuth callback identical to the Supabase redirect allowlist.
+        // A query-bearing callback can be rejected and fall back to Site URL.
+        document.cookie = `aidh_auth_next=${encodeURIComponent(target)}; Path=/; Max-Age=600; SameSite=Lax${window.location.protocol === 'https:' ? '; Secure' : ''}`
         await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {

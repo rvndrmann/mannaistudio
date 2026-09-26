@@ -14,11 +14,12 @@ import {
   Plus,
   Sparkles,
   Trash2,
-  Users, KeyRound, Wand2,} from "lucide-react";
+  Users, KeyRound, Wand2, X,} from "lucide-react";
 import { BillingModeToggle } from "@/components/studio/BillingModeToggle";
 import CreditBadge from "@/components/CreditBadge";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useByokEnabled } from "@/lib/byok/use-byok-enabled"
+import { createClient } from "@/lib/supabase/client"
 
 type Project = {
   id: string;
@@ -42,6 +43,7 @@ export default function StudioHome() {
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [studioEntitled, setStudioEntitled] = useState<boolean | null>(null)
 
 
   const load = async () => {
@@ -68,12 +70,22 @@ export default function StudioHome() {
   };
 
   useEffect(() => {
-    if (user) {
+    if (!user) { setStudioEntitled(false); return }
+    let active = true
+    fetch("/api/entitlements/creator-studio", { cache: "no-store" })
+      .then((res) => res.ok ? res.json() : { entitled: false })
+      .then((data) => { if (active) setStudioEntitled(Boolean(data.entitled)) })
+      .catch(() => { if (active) setStudioEntitled(false) })
+    return () => { active = false }
+  }, [user])
+
+  useEffect(() => {
+    if (user && studioEntitled === true) {
       load();
-    } else {
+    } else if (!user || studioEntitled === false) {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, studioEntitled]);
 
   const handleCreateProject = async (name: string = "Untitled production") => {
     if (!user) {
@@ -145,13 +157,24 @@ export default function StudioHome() {
             </div>
           )}
 
-          {error && (
+          {user && studioEntitled === false && (
+            <div className="mx-auto my-12 max-w-3xl rounded-3xl border border-[#b9f42e]/25 bg-[radial-gradient(ellipse_at_top,rgba(185,244,46,.12),transparent_65%)] p-8 text-center sm:p-12">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-[#b9f42e]/25 bg-[#b9f42e]/10"><Sparkles className="h-7 w-7 text-[#b9f42e]"/></div>
+              <p className="mt-6 text-xs font-semibold tracking-[.22em] text-[#b9f42e]">AI DIRECTOR HUB CREATOR STUDIO</p>
+              <h1 className="mt-3 text-3xl font-semibold text-white sm:text-4xl">Learn it. Then build it.</h1>
+              <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-zinc-300">Creator Studio is where AI Director Hub students turn what they learn into real projects. Eligible courses and coaching programs include access to the production workspace.</p>
+              <div className="mt-8 grid gap-3 text-left sm:grid-cols-3">{["Plan complete video projects", "Develop characters and storyboards", "Create and organize your shots"].map((feature)=><div key={feature} className="rounded-xl border border-white/10 bg-black/30 p-4 text-sm text-zinc-300">{feature}</div>)}</div>
+              <div className="mt-8 flex flex-wrap justify-center gap-3"><Link href="/courses" className="rounded-xl bg-[#b9f42e] px-6 py-3 text-sm font-semibold text-black">Explore Courses</Link><Link href="/contact?topic=coaching" className="rounded-xl border border-white/15 px-6 py-3 text-sm font-semibold text-white">Learn With Me 1:1</Link></div>
+            </div>
+          )}
+
+          {user && studioEntitled === false ? null : error && (
             <p className="mx-auto mt-6 max-w-5xl rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-200">
               {error}
             </p>
           )}
 
-          <section className="mt-6">
+          {(!user || studioEntitled === true) && <section className="mt-6">
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
               <h1 className="text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">
                 Recent projects
@@ -197,7 +220,7 @@ export default function StudioHome() {
                 ))}
               </div>
             )}
-          </section>
+          </section>}
         </div>
       </section>
     </main>
@@ -206,10 +229,28 @@ export default function StudioHome() {
 
 function ProjectGalleryCard({ project, onDelete }: { project: Project; onDelete?: (id: string) => void }) {
   const images = project.gallery_images || [];
+  const [submitting, setSubmitting] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const [showSubmit, setShowSubmit] = useState(false)
+  const [submissionTitle, setSubmissionTitle] = useState(project.name)
+  const [submissionUrl, setSubmissionUrl] = useState("")
+  const [displayName, setDisplayName] = useState("")
+  const [allowName, setAllowName] = useState(false)
+  const [submitError, setSubmitError] = useState("")
+  const submitProject = async () => {
+    setSubmitting(true); setSubmitError("")
+    const supabase=createClient()
+    const {data:{user}}=await supabase.auth.getUser()
+    if(!user){setSubmitError("Sign in again to submit your project.");setSubmitting(false);return}
+    const {error}=await supabase.from("student_showcase_submissions").insert({project_id:project.id,profile_id:user.id,title:submissionTitle.trim(),video_url:submissionUrl.trim(),category:"cinematic",display_name:displayName.trim()||null,allow_display_name:allowName})
+    if(error){setSubmitError(error.message)}else{setSubmitted(true);setShowSubmit(false)}
+    setSubmitting(false)
+  }
   return (
+    <div className="relative">
     <Link
       href={`/studio/project/${project.id}`}
-      className="group relative h-56 overflow-hidden rounded-2xl border border-white/10 bg-[#171817] shadow-[0_12px_36px_rgba(0,0,0,.24)] transition hover:-translate-y-1 hover:border-[#b9f42e]/55"
+      className="group relative block h-56 overflow-hidden rounded-2xl border border-white/10 bg-[#171817] shadow-[0_12px_36px_rgba(0,0,0,.24)] transition hover:-translate-y-1 hover:border-[#b9f42e]/55"
     >
       {images.length ? (
         <div
@@ -272,6 +313,9 @@ function ProjectGalleryCard({ project, onDelete }: { project: Project; onDelete?
         </p>
       </div>
     </Link>
+    {!project.shared && (submitted ? <p className="mt-2 text-xs text-[#b9f42e]">Submitted for admin review</p> : <button type="button" onClick={()=>setShowSubmit(true)} className="mt-2 rounded-lg border border-[#b9f42e]/30 px-3 py-2 text-xs font-semibold text-[#b9f42e] hover:bg-[#b9f42e]/10">Submit to Student Showcase</button>)}
+    {showSubmit&&<div className="fixed inset-0 z-[100] grid place-items-center bg-black/80 p-4" role="dialog" aria-modal="true" aria-label="Submit project to student showcase"><div className="w-full max-w-lg space-y-4 rounded-2xl border border-white/15 bg-[#111310] p-6"><div className="flex items-center justify-between"><h2 className="text-lg font-semibold">Submit project for review</h2><button onClick={()=>setShowSubmit(false)} aria-label="Close" className="text-zinc-400"><X/></button></div><p className="text-sm text-zinc-400">Your project stays private unless an admin approves it.</p><input value={submissionTitle} onChange={e=>setSubmissionTitle(e.target.value)} placeholder="Project title" className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm"/><input value={submissionUrl} onChange={e=>setSubmissionUrl(e.target.value)} placeholder="Public video URL" className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm"/><input value={displayName} onChange={e=>setDisplayName(e.target.value)} placeholder="Display name (optional)" className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm"/><label className="flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={allowName} onChange={e=>setAllowName(e.target.checked)} className="accent-[#b9f42e]"/>Show my display name if approved</label>{submitError&&<p className="text-xs text-red-300">{submitError}</p>}<div className="flex justify-end gap-2"><button onClick={()=>setShowSubmit(false)} className="rounded-lg border border-white/10 px-4 py-2 text-sm">Cancel</button><button disabled={submitting||!submissionTitle.trim()||!submissionUrl.trim()} onClick={()=>void submitProject()} className="rounded-lg bg-[#b9f42e] px-4 py-2 text-sm font-semibold text-black disabled:opacity-50">{submitting?"Submitting…":"Submit for review"}</button></div></div></div>}
+    </div>
   );
 }
 

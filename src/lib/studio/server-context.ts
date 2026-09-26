@@ -1,5 +1,6 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase/server"
+import { hasCreatorStudioEntitlement } from "@/lib/studio/entitlement"
 
 export class StudioAccessError extends Error {
   constructor(message: string, public readonly status: 401 | 403 | 404) {
@@ -21,6 +22,9 @@ export async function requireAuthenticatedProject(
   const supabase = client ?? await createClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) throw new StudioAccessError("Unauthorized", 401)
+  if (!await hasCreatorStudioEntitlement(supabase, user.id)) {
+    throw new StudioAccessError("Creator Studio access is included with eligible courses and coaching.", 403)
+  }
 
   // RLS already restricts this row to the owner and anyone the project is shared
   // with, so no explicit user_id filter is applied here. Filtering by owner would

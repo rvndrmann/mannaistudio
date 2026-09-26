@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import { springUI, materialize } from "@/lib/motion"
-import { Clapperboard, Play, User, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, BookOpen, PlugZap, Sparkles, Users, KeyRound, ChevronDown, Menu, Briefcase, LayoutDashboard } from "lucide-react"
+import { Clapperboard, Play, User, ShieldCheck, LogIn, LogOut, Loader2, CreditCard, BookOpen, PlugZap, Sparkles, Users, KeyRound, ChevronDown, Menu, Briefcase, LayoutDashboard, Video } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -45,7 +45,7 @@ const baseNavLinks = [
 
 const adminLink = { key: "admin", name: "Admin", href: "/admin", icon: ShieldCheck } as (typeof baseNavLinks)[number]
 
-export default function Navbar() {
+export default function Navbar({ academy = false }: { academy?: boolean }) {
     const [isAdmin, setIsAdmin] = useState(false)
     const [offerText, setOfferText] = useState("")
     // null until the real setting arrives. Starting from the defaults — which
@@ -53,6 +53,7 @@ export default function Navbar() {
     // removed the paused links when the fetch landed, so a paused feature was
     // briefly clickable on every load.
     const [siteFeatures, setSiteFeatures] = useState<SiteFeatures | null>(null)
+    const [homeVariant, setHomeVariant] = useState<string>("studio")
     const { user, loading, signInWithGoogle, signOut } = useAuth()
     const pathname = usePathname()
     const [moreOpen, setMoreOpen] = useState(false)
@@ -92,6 +93,8 @@ export default function Navbar() {
         const loadSettings = async () => {
             try {
                 const supabase = createClient()
+                const { data: homeSetting } = await supabase.from("site_settings").select("value").eq("key", "home_variant").maybeSingle()
+                setHomeVariant(typeof homeSetting?.value?.variant === "string" ? homeSetting.value.variant : "studio")
                 const [settings, feats] = await Promise.all([
                     fetchBillingSettings(supabase),
                     fetchSiteFeatures(supabase),
@@ -128,15 +131,33 @@ export default function Navbar() {
 
     const navLinks = isAdmin ? [...permittedNavLinks, adminLink] : permittedNavLinks
 
+    const academyNavLinks = user
+        ? [
+            { key: "my-courses", name: "My Courses", href: "/my-courses", icon: BookOpen },
+            { key: "creator-studio", name: "Creator Studio", href: "/studio", icon: Sparkles },
+            { key: "my-projects", name: "My Projects", href: "/studio", icon: LayoutDashboard },
+            { key: "account", name: "My Account", href: "/account", icon: User },
+          ]
+        : [
+            { key: "academy", name: "Academy", href: "/learn", icon: Sparkles, public: true },
+            { key: "courses", name: "Courses", href: "/courses", icon: BookOpen, public: true },
+            { key: "student-work", name: "Student Work", href: "/learn#student-work", icon: Video, public: true },
+            { key: "originals", name: "Originals", href: "/originals", icon: Clapperboard, public: true },
+            { key: "hireUs", name: "Hire Our Team", href: "/hire-us", icon: Briefcase, public: true },
+            { key: "about", name: "About", href: "/about", icon: User, public: true },
+          ]
+    const isAcademyNav = academy || homeVariant === "academy"
+    const activeNavLinks = isAcademyNav ? academyNavLinks : navLinks
+
     // What a signed-out visitor is shown: the catalogue, because the first
     // episodes of every series play free and hiding it behind sign-in would
     // hide the thing the sign-in is for — and anything else marked `public`,
     // which today is the managed service. Both are things the site sells to
     // strangers, and a shop window nobody can find is not a shop window. The
     // operator surfaces stay hidden, as they were.
-    const visibleNavLinks = user
-        ? navLinks
-        : navLinks.filter((link) => link.key === "originals" || link.public)
+    const visibleNavLinks = isAcademyNav
+        ? (isAdmin ? [...activeNavLinks, adminLink] : activeNavLinks)
+        : user ? navLinks : navLinks.filter((link) => link.key === "originals" || link.public)
 
     return (
         <nav className="fixed top-0 left-0 right-0 z-50 flex justify-center p-4">
@@ -299,7 +320,7 @@ export default function Navbar() {
                                                     </>
                                                 )}
 
-                                                {navLinks.map((link) => (
+                                                {visibleNavLinks.map((link) => (
                                                     <Link
                                                         key={link.name}
                                                         href={link.href}
@@ -388,7 +409,12 @@ export default function Navbar() {
                         </Link>
                     ))}
 
-                    {!loading && isAdmin && (
+                    {!loading && isAcademyNav && (
+                        <Link href="/courses" className="flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md bg-primary px-4 text-sm font-semibold text-black transition hover:brightness-110">
+                            Start Learning <Sparkles className="h-4 w-4" />
+                        </Link>
+                    )}
+                    {!loading && isAdmin && !isAcademyNav && (
                         <Link
                             href="/studio"
                             className="flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md bg-primary px-4 text-sm font-medium text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"

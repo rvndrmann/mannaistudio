@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/service"
 import { createStudioProjectInputSchema, isMissingProductionModeSchema } from "@/lib/studio/domain"
 
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
+import { hasCreatorStudioEntitlement } from "@/lib/studio/entitlement"
 
 function getDbClient(fallback: any, accessToken?: string) {
   try {
@@ -54,6 +55,7 @@ function extractErrorMessage(err: unknown): string {
 export async function GET() {
   try {
     const { supabase, user } = await currentUser()
+    if (!await hasCreatorStudioEntitlement(supabase, user.id)) return NextResponse.json({ error: "Creator Studio access is included with eligible courses and coaching." }, { status: 403 })
     const { data, error } = await supabase.from("creator_projects").select("*").order("created_at", { ascending: false })
     if (error) throw error
 
@@ -108,6 +110,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const { supabase, user, db } = await currentUser()
+    if (!await hasCreatorStudioEntitlement(supabase, user.id)) return NextResponse.json({ error: "Creator Studio access is included with eligible courses and coaching." }, { status: 403 })
     const rawBody = await request.json().catch(() => ({}))
     const parsed = createStudioProjectInputSchema.safeParse(rawBody)
     if (!parsed.success) {
