@@ -145,6 +145,12 @@ export default function AcademyHome() {
           <Link href="/hire-us" className="inline-flex h-12 shrink-0 items-center gap-2 rounded-md bg-primary px-6 font-semibold text-black">Hire Our Team <ArrowRight className="h-4 w-4"/></Link>
         </div>
       </section>
+      <section className="border-t border-white/10 px-5 py-16 sm:px-8">
+        <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-6 rounded-2xl border border-white/10 bg-black/30 p-6 sm:p-10 md:flex-row md:items-center">
+          <div><p className="text-xs font-semibold tracking-[.2em] text-primary">AI DIRECTOR HUB ORIGINALS</p><h2 className="mt-3 text-3xl font-semibold">Watch original AI films and short series.</h2><p className="mt-3 max-w-2xl text-white/55">See what the same creative system can produce through original stories, episodes and cinematic experiments.</p></div>
+          <Link href="/originals" className="inline-flex h-12 shrink-0 items-center gap-2 rounded-md border border-primary/50 px-6 font-semibold text-primary hover:bg-primary/10">Explore Originals <ArrowRight className="h-4 w-4"/></Link>
+        </div>
+      </section>
       <Footer />
     </main>
   )

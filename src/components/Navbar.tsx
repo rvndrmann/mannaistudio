@@ -137,6 +137,7 @@ export default function Navbar({ academy = false }: { academy?: boolean }) {
             { key: "creator-studio", name: "Creator Studio", href: "/studio", icon: Sparkles },
             { key: "my-projects", name: "My Projects", href: "/studio", icon: LayoutDashboard },
             { key: "account", name: "My Account", href: "/account", icon: User },
+            { key: "originals", name: "Originals", href: "/originals", icon: Clapperboard, public: true },
             { key: "hireUs", name: "Hire Our Team", href: "/hire-us", icon: Briefcase, public: true },
           ]
         : [
