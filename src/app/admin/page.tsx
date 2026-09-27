@@ -288,6 +288,8 @@ function AdminDashboardContent() {
     const [analyticsMode, setAnalyticsMode] = useState<'daily' | 'weekly' | 'monthly'>('daily')
     const [analyticsDate, setAnalyticsDate] = useState(new Date())
     const [totalRevenue, setTotalRevenue] = useState(0)
+    const [revenueError, setRevenueError] = useState("")
+    const [latestPaymentAt, setLatestPaymentAt] = useState<string | null>(null)
     const [todayRevenue, setTodayRevenue] = useState(0)
     const [billingSettings, setBillingSettings] = useState<BillingSettings>(defaultBillingSettings)
     const [billingMessage, setBillingMessage] = useState("")
@@ -1279,15 +1281,15 @@ function AdminDashboardContent() {
 
             // Revenue comes from real successful payments (subscriptions + bid purchases),
             // not course enrollments.
-            const { data: paymentsData } = await supabase
-                .from('payments')
-                .select('amount, created_at, status')
-                .eq('status', 'success')
-            const payments = (paymentsData || []).map((p: any) => ({
+            const { data: paymentsData, error: revenueError } = await supabase.rpc('admin_revenue_receipts')
+            if (revenueError) { setRevenueError(revenueError.message); throw revenueError }
+            setRevenueError("")
+            const payments: { amount: number; created_at: string }[] = (paymentsData || []).map((p: any) => ({
                 amount: Number(p.amount) || 0,
                 created_at: p.created_at,
             }))
             setAllPayments(payments)
+            setLatestPaymentAt(payments.length ? payments[0].created_at : null)
 
             const today = new Date().toDateString()
             setTodayRevenue(
@@ -1420,6 +1422,14 @@ function AdminDashboardContent() {
         loadAdminData()
         loadShowcaseItems()
     }, [])
+
+    useEffect(() => {
+        if (activeTab !== "overview") return
+        const refresh = () => { if (!document.hidden) void loadAdminData() }
+        const timer = window.setInterval(refresh, 60000)
+        window.addEventListener("focus", refresh)
+        return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh) }
+    }, [activeTab])
 
     return (
         <main className="min-h-screen pb-20 bg-[#0a0a0f]">
@@ -1612,7 +1622,7 @@ function AdminDashboardContent() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                                     <StatCard label="Total Students" value={String(adminStats.totalStudents)} change="Live" icon={Users} color="text-lime-400" />
                                     <StatCard label="Total Enrollments" value={String(adminStats.totalEnrollments)} change="Live" icon={CheckCircle2} color="text-emerald-400" />
-                                    <StatCard label="Total Revenue" value={`₹${totalRevenue.toLocaleString('en-IN')}`} change="Subscriptions + bids" icon={DollarSign} color="text-lime-300" />
+                                    <StatCard label="Total Revenue" value={`₹${totalRevenue.toLocaleString('en-IN')}`} change="All successful payments" icon={DollarSign} color="text-lime-300" />
                                     <StatCard label="Today's Sales" value={`₹${todayRevenue.toLocaleString('en-IN')}`} change="Live" icon={TrendingUp} color="text-amber-400" />
                                     <StatCard label="Active Challenges" value={String(adminStats.activeChallenges)} change="Live" icon={Play} color="text-red-400" />
                                 </div>
@@ -1623,7 +1633,10 @@ function AdminDashboardContent() {
                                     <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                                         <div>
                                             <h3 className="font-bold text-lg">Revenue Analytics</h3>
-                                            <p className="text-xs text-white/30">Subscriptions + bid purchases • {getAnalyticsLabel()}</p>
+                                            {revenueError && <p role="alert" className="text-xs text-red-300">Could not refresh revenue: {revenueError}</p>}
+                                            <button type="button" onClick={() => void loadAdminData()} className="text-xs font-semibold text-primary">Refresh data</button>
+                                            <p className="text-xs text-white/30">All successful payments • {getAnalyticsLabel()}</p>
+                                            <p className="mt-1 text-xs text-white/40">{latestPaymentAt ? `Latest recorded payment: ${new Date(latestPaymentAt).toLocaleDateString('en-IN')}` : 'No successful payments recorded.'}</p>
                                         </div>
                                         <div className="flex items-center gap-3">
                                             {/* Mode Toggle */}
