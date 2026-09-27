@@ -321,6 +321,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
     }
 
     if (!course) return <main className="min-h-screen bg-[#070807] text-white"><Navbar/><div className="mx-auto max-w-3xl px-6 pt-40 text-center"><h1 className="text-3xl font-semibold">Course unavailable</h1><p className="mt-3 text-white/55">This course may be unpublished or no longer available.</p><Link href="/courses" className="mt-6 inline-flex rounded-lg bg-primary px-5 py-3 font-semibold text-black">Browse courses</Link></div></main>
+    if (!user) return <main className="min-h-screen bg-[#070807] text-white"><Navbar/><div className="mx-auto max-w-xl px-6 pt-40 text-center"><div className="rounded-2xl border border-white/10 bg-white/[.03] p-10"><Lock className="mx-auto h-10 w-10 text-primary"/><h1 className="mt-5 text-3xl font-semibold">Sign in to view this course</h1><p className="mt-3 text-white/55">Create or sign in to your AI Director Hub account to view lessons, enroll and track your progress.</p><button onClick={() => signInWithGoogle(`/courses/${id}`)} className="mt-7 rounded-lg bg-primary px-6 py-3 font-semibold text-black">Continue with Google</button><Link href="/courses" className="mt-4 block text-sm text-white/50 hover:text-white">Back to courses</Link></div></div></main>
 
     return (
         <main className="min-h-screen pb-20">
