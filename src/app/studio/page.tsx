@@ -161,10 +161,10 @@ export default function StudioHome() {
             <div className="mx-auto my-12 max-w-3xl rounded-3xl border border-[#b9f42e]/25 bg-[radial-gradient(ellipse_at_top,rgba(185,244,46,.12),transparent_65%)] p-8 text-center sm:p-12">
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-[#b9f42e]/25 bg-[#b9f42e]/10"><Sparkles className="h-7 w-7 text-[#b9f42e]"/></div>
               <p className="mt-6 text-xs font-semibold tracking-[.22em] text-[#b9f42e]">AI DIRECTOR HUB CREATOR STUDIO</p>
-              <h1 className="mt-3 text-3xl font-semibold text-white sm:text-4xl">Learn it. Then build it.</h1>
-              <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-zinc-300">Creator Studio is where AI Director Hub students turn what they learn into real projects. Eligible courses and coaching programs include access to the production workspace.</p>
+              <h1 className="mt-3 text-3xl font-semibold text-white sm:text-4xl">Creator Studio is invite only.</h1>
+              <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-zinc-300">Creator Studio access is available through an admin invitation or a one-on-one coaching package that includes Studio access. Contact our team to request an invitation or arrange coaching.</p>
               <div className="mt-8 grid gap-3 text-left sm:grid-cols-3">{["Plan complete video projects", "Develop characters and storyboards", "Create and organize your shots"].map((feature)=><div key={feature} className="rounded-xl border border-white/10 bg-black/30 p-4 text-sm text-zinc-300">{feature}</div>)}</div>
-              <div className="mt-8 flex flex-wrap justify-center gap-3"><Link href="/courses" className="rounded-xl bg-[#b9f42e] px-6 py-3 text-sm font-semibold text-black">Explore Courses</Link><Link href="/contact?topic=coaching" className="rounded-xl border border-white/15 px-6 py-3 text-sm font-semibold text-white">Learn With Me 1:1</Link></div>
+              <div className="mt-8 flex flex-wrap justify-center gap-3"><Link href="/contact?topic=studio-access" className="rounded-xl bg-[#b9f42e] px-6 py-3 text-sm font-semibold text-black">Request an Invitation</Link><Link href="/courses" className="rounded-xl border border-white/15 px-6 py-3 text-sm font-semibold text-white">Explore Courses</Link></div>
             </div>
           )}
 

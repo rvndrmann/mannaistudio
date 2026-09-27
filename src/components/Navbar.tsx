@@ -137,6 +137,7 @@ export default function Navbar({ academy = false }: { academy?: boolean }) {
             { key: "creator-studio", name: "Creator Studio", href: "/studio", icon: Sparkles },
             { key: "my-projects", name: "My Projects", href: "/studio", icon: LayoutDashboard },
             { key: "account", name: "My Account", href: "/account", icon: User },
+            { key: "hireUs", name: "Hire Our Team", href: "/hire-us", icon: Briefcase, public: true },
           ]
         : [
             { key: "academy", name: "Academy", href: "/learn", icon: Sparkles, public: true },
@@ -289,7 +290,8 @@ export default function Navbar({ academy = false }: { academy?: boolean }) {
                                                 <div className="flex items-center gap-2">
                                                     <NotificationBell />
                                                     <Link
-                                                        href={isAdmin ? "/profile" : "/account"}
+                                                        href="/profile"
+                                                        aria-label="Open profile"
                                                         className="flex items-center gap-2 rounded-md bg-white/10 px-3 py-2 transition hover:bg-white/20"
                                                     >
                                                         {user.user_metadata?.avatar_url ? (
@@ -365,11 +367,11 @@ export default function Navbar({ academy = false }: { academy?: boolean }) {
                                             )}
 
                                             <Link
-                                                href={isAdmin ? "/profile" : "/account"}
+                                                href="/profile"
                                                 className="flex min-h-[44px] items-center gap-2.5 rounded-md px-3 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
                                             >
                                                 <User className="h-4 w-4 text-primary" />
-                                                {isAdmin ? "Profile" : "My Account"}
+                                                Profile
                                             </Link>
                                         </>
                                     ) : (

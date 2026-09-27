@@ -301,7 +301,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                 setCheckoutError(error instanceof Error?error.message:"Could not start checkout.")
             }
         } else {
-            window.location.href = '/billing'
+            setCheckoutError("This course does not have a purchase price yet. Please contact the team for pricing.")
         }
 
         setEnrollLoading(false)
@@ -350,8 +350,8 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                         <Lock className="w-12 h-12 text-white/40" />
                                     </div>
                                     <div className="text-center space-y-2">
-                                        <h3 className="text-xl font-bold">Membership Required</h3>
-                                        <p className="text-white/50 text-sm">Start Pro for {formatUsd(activePlanPrice)}/month ({formatInr(activePlanPrice)}, billed by Razorpay) to unlock paid courses</p>
+                                        <h3 className="text-xl font-bold">Enroll to access this course</h3>
+                                        <p className="text-white/50 text-sm">{Number.isFinite(Number(course.price)) && Number(course.price)>0 ? `₹${course.price} · one-time course purchase` : "Contact the team for course pricing."}</p>
                                     </div>
                                     <button
                                         onClick={handleEnroll}
@@ -363,7 +363,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                         ) : (
                                             <ShoppingCart className="w-5 h-5" />
                                         )}
-                                        {enrollLoading ? 'Processing...' : `Start Pro ${formatUsd(activePlanPrice)}/mo`}
+                                        {enrollLoading ? 'Processing...' : Number.isFinite(Number(course.price)) && Number(course.price)>0 ? 'Buy Course' : 'Check Course Pricing'}
                                     </button>
                                 </div>
                             ) : activeLessonYouTubeUrl ? (
@@ -410,8 +410,8 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                         {!hasCourseAccess && !checkingEnrollment && (
                             <div className="glass-card p-6 rounded-2xl border border-primary/20 bg-primary/5 flex items-center justify-between">
                                 <div className="space-y-1">
-                                    <h3 className="font-bold text-lg">{Number.isFinite(Number(course.price)) && Number(course.price)>0 ? "Get lifetime access to this course" : "Get Full Access with Pro"}</h3>
-                                    <p className="text-sm text-white/50">{Number.isFinite(Number(course.price)) && Number(course.price)>0 ? `₹${course.price} · one-time purchase` : `${formatUsd(activePlanPrice)}/month • paid courses • 10 portfolio videos`}</p>
+                                    <h3 className="font-bold text-lg">Get access to this course</h3>
+                                    <p className="text-sm text-white/50">{Number.isFinite(Number(course.price)) && Number(course.price)>0 ? `₹${course.price} · one-time purchase` : "Contact the team for course pricing."}</p>
                                 </div>
                                 <button
                                     onClick={handleEnroll}
@@ -425,7 +425,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     ) : (
                                         <ShoppingCart className="w-4 h-4" />
                                     )}
-                                    {enrollLoading ? 'Processing...' : Number.isFinite(Number(course.price)) && Number(course.price)>0 ? 'Buy Course' : 'Start Pro'}
+                                    {enrollLoading ? 'Processing...' : Number.isFinite(Number(course.price)) && Number(course.price)>0 ? 'Buy Course' : 'Check Course Pricing'}
                                 </button>
                             </div>
                         )}

@@ -10,6 +10,7 @@ import { useAuth } from "@/components/auth/auth-provider"
 import { createClient } from "@/lib/supabase/client"
 import { sortShowcase, toShowcaseVideo, type ShowcaseVideo } from "@/lib/showcase"
 import { isFreeCourse } from "@/lib/course-price"
+import { youtubeEmbedUrl } from "@/lib/video-embed"
 
 type Course = {
   id: string; title: string; description: string; thumbnail: string; level: string
@@ -44,7 +45,7 @@ export default function AcademyHome() {
     let active = true
     const supabase = createClient()
     void Promise.all([
-      supabase.from("showcase_items").select("*").eq("is_featured", true).order("position").limit(9),
+      supabase.from("showcase_items").select("*").order("is_featured", { ascending: false }).order("position").limit(9),
       supabase.from("courses").select("*").eq("is_published", true).eq("is_paused", false).eq("is_featured", true).limit(6),
       supabase.from("digital_products").select("id,name,description,product_type,price,is_free,image_url").eq("active", true).eq("featured", true).limit(4),
       supabase.from("academy_offers").select("id,title,description,price,duration_minutes,session_count,benefits").eq("offer_type", "coaching").eq("active", true).eq("featured", true).limit(1).maybeSingle(),
@@ -101,10 +102,8 @@ export default function AcademyHome() {
             <p className="mt-6 text-xs font-medium tracking-wide text-white/45">LEARN <span className="px-2 text-primary">→</span> CREATE <span className="px-2 text-primary">→</span> PRACTICE <span className="px-2 text-primary">→</span> IMPROVE</p>
           </div>
           {showcase[0] && <div className="relative mx-auto aspect-video w-full max-w-2xl overflow-hidden rounded-2xl border border-white/15 bg-black shadow-2xl shadow-black/60">
-            {showcase[0].thumbnail ? <img src={showcase[0].thumbnail} alt={showcase[0].title} className="h-full w-full object-cover" /> : <div className="h-full w-full bg-gradient-to-br from-primary/20 to-black" />}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-            <div className="absolute bottom-4 left-5"><p className="text-xs uppercase tracking-[.2em] text-primary">Featured work</p><p className="mt-1 text-lg font-semibold">{showcase[0].title}</p></div>
-            <a href="#work" aria-label="Explore featured AI video work" className="absolute inset-0" />
+            {youtubeEmbedUrl(showcase[0].videoUrl) ? <iframe src={youtubeEmbedUrl(showcase[0].videoUrl, { autoplay: true, muted: true, loop: true })!} title={showcase[0].title} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen className="h-full w-full" /> : <video key={showcase[0].id} src={showcase[0].videoUrl} poster={showcase[0].thumbnail || undefined} autoPlay muted loop playsInline controls preload="metadata" aria-label={showcase[0].title} className="h-full w-full object-contain" />}
+            <div className="pointer-events-none absolute left-0 right-0 top-0 bg-gradient-to-b from-black/80 to-transparent px-5 pb-10 pt-4"><p className="text-xs uppercase tracking-[.2em] text-primary">Featured work</p><p className="mt-1 text-lg font-semibold">{showcase[0].title}</p></div>
           </div>}
         </div>
       </section>
@@ -137,9 +136,15 @@ export default function AcademyHome() {
 
       {content.show_instructor && (content.instructor_name || content.instructor_bio) && <section className="border-y border-white/5 bg-white/[.02] px-5 py-20 sm:px-8"><div className="mx-auto grid max-w-6xl gap-8 sm:grid-cols-[220px_1fr] sm:items-center">{content.instructor_photo&&<img src={content.instructor_photo} alt={content.instructor_name} className="aspect-square w-full rounded-2xl object-cover"/>}<div><p className="text-xs font-semibold tracking-[.2em] text-primary">YOUR INSTRUCTOR</p><h2 className="mt-3 text-3xl font-semibold">{content.instructor_name}</h2><p className="mt-3 max-w-3xl whitespace-pre-line text-sm leading-relaxed text-white/60">{content.instructor_bio}</p>{content.instructor_experience&&<p className="mt-4 whitespace-pre-line text-sm text-white/45">{content.instructor_experience}</p>}</div></div></section>}
 
-      {content.show_creator_studio && <section className="border-y border-white/5 bg-gradient-to-br from-primary/[.08] to-transparent px-5 py-20 sm:px-8"><div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-[1fr_auto] md:items-center"><div><p className="text-xs uppercase tracking-[.2em] text-primary">LEARN IT. THEN BUILD IT.</p><h2 className="mt-3 text-3xl font-semibold">Put your new skills to work in Creator Studio.</h2><p className="mt-3 max-w-2xl text-white/55">Eligible AI Director Hub students get access to a creative environment where they can apply what they learn and build real AI video projects.</p></div><Link href={user && hasStudioAccess ? "/studio" : "/courses"} className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-primary px-6 font-semibold text-black">{user && hasStudioAccess ? "Open Creator Studio" : <><LockKeyhole className="h-4 w-4"/> Get Creator Studio Access</>}<ArrowRight className="h-4 w-4"/></Link></div></section>}
+      {content.show_creator_studio && <section className="border-y border-white/5 bg-gradient-to-br from-primary/[.08] to-transparent px-5 py-20 sm:px-8"><div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-[1fr_auto] md:items-center"><div><p className="text-xs uppercase tracking-[.2em] text-primary">LEARN IT. THEN BUILD IT.</p><h2 className="mt-3 text-3xl font-semibold">Put your new skills to work in Creator Studio.</h2><p className="mt-3 max-w-2xl text-white/55">Creator Studio is invite only. Request an invitation from our team to apply what you learn and build real AI video projects.</p></div><Link href={"/studio"} className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-primary px-6 font-semibold text-black">{user && hasStudioAccess ? "Open Creator Studio" : <><LockKeyhole className="h-4 w-4"/> Creator Studio · Invite Only</>}<ArrowRight className="h-4 w-4"/></Link></div></section>}
 
       <section className="mx-auto max-w-7xl px-5 py-20 text-center sm:px-8"><Video className="mx-auto h-8 w-8 text-primary"/><h2 className="mt-4 text-3xl font-semibold">Start creating with intention.</h2><p className="mx-auto mt-3 max-w-xl text-white/55">Begin with a free course, build a repeatable process and make work that feels like yours.</p><Link href="/courses" className="mt-7 inline-flex h-12 items-center gap-2 rounded-md bg-primary px-6 font-semibold text-black">Start Learning <ArrowRight className="h-4 w-4"/></Link></section>
+      <section className="border-t border-white/10 bg-white/[.02] px-5 py-16 sm:px-8">
+        <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-6 rounded-2xl border border-primary/20 bg-primary/[.04] p-6 sm:p-10 md:flex-row md:items-center">
+          <div><p className="text-xs font-semibold tracking-[.2em] text-primary">DONE FOR YOU</p><h2 className="mt-3 text-3xl font-semibold">Have a project in mind? Hire our creative team.</h2><p className="mt-3 max-w-2xl text-white/55">From scripts and creative direction to AI production, editing and delivery — let our team bring your next video to life.</p></div>
+          <Link href="/hire-us" className="inline-flex h-12 shrink-0 items-center gap-2 rounded-md bg-primary px-6 font-semibold text-black">Hire Our Team <ArrowRight className="h-4 w-4"/></Link>
+        </div>
+      </section>
       <Footer />
     </main>
   )

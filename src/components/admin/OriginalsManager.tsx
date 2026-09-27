@@ -31,9 +31,11 @@ type SeriesRow = {
   /** Presale: what the season pass costs until `presale_ends_at`. Null when off. */
   presale_price_inr: number | null
   presale_ends_at: string | null
+  season_pass_price_inr: number
 }
 
 type EpisodeRow = {
+  is_free: boolean
   id: string
   series_id: string
   episode_number: number
@@ -61,6 +63,7 @@ const blankSeries = (): SeriesRow => ({
   planned_episodes: null,
   presale_price_inr: null,
   presale_ends_at: null,
+  season_pass_price_inr: SEASON_PASS_PRICE_INR,
 })
 
 /**
@@ -177,7 +180,7 @@ export default function OriginalsManager() {
     setSaving(true)
     setStatus(null)
     try {
-      const { error } = await supabase.rpc("admin_upsert_originals_series", {
+      const { data: savedId, error } = await supabase.rpc("admin_upsert_originals_series", {
         p_id: draft.id || null,
         p_slug: draft.slug,
         p_title: draft.title,
@@ -195,6 +198,10 @@ export default function OriginalsManager() {
         p_presale_ends_at: draft.presale_ends_at,
       })
       if (error) throw new Error(error.message)
+      const { error: accessError } = await supabase.rpc("admin_set_originals_access", {
+        p_series_id: savedId, p_season_pass_price: draft.season_pass_price_inr,
+      })
+      if (accessError) throw new Error(accessError.message)
       setStatus({ tone: "ok", message: `Saved "${draft.title}"` })
       setDraft(null)
       await load()
@@ -219,7 +226,7 @@ export default function OriginalsManager() {
     setSaving(true)
     setStatus(null)
     try {
-      const { error } = await supabase.rpc("admin_upsert_originals_episode", {
+      const { data: savedId, error } = await supabase.rpc("admin_upsert_originals_episode", {
         p_id: episode.id || null,
         p_series_id: episode.series_id,
         p_episode_number: episode.episode_number,
@@ -231,6 +238,8 @@ export default function OriginalsManager() {
         p_is_published: episode.is_published,
       })
       if (error) throw new Error(error.message)
+      const { error: accessError } = await supabase.rpc("admin_set_originals_episode_free", { p_episode_id: savedId, p_is_free: episode.is_free === true })
+      if (accessError) throw new Error(accessError.message)
       setStatus({ tone: "ok", message: `Saved episode ${episode.episode_number}` })
       await loadEpisodes(episode.series_id)
     } catch (err) {
@@ -271,6 +280,7 @@ export default function OriginalsManager() {
           thumbnail_url: "",
           duration_seconds: null,
           is_published: true,
+          is_free: false,
         },
       ],
     }))
@@ -411,6 +421,10 @@ export default function OriginalsManager() {
               />
             </label>
 
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-white/50">Season pass price (₹) — 0 makes the whole series free</span>
+              <input type="number" min={0} step={1} className={inputClass} value={draft.season_pass_price_inr ?? SEASON_PASS_PRICE_INR} onChange={e => setDraft({ ...draft, season_pass_price_inr: Math.max(0, parseInt(e.target.value) || 0) })} />
+            </label>
             {/* Presale — the season pass sold under its standing price until a
                 stated moment. Price and deadline travel together: either both
                 are set or the presale is off, because a price with no closing
@@ -420,7 +434,7 @@ export default function OriginalsManager() {
                 <div>
                   <p className="text-sm font-semibold text-white/85">Presale</p>
                   <p className="mt-0.5 text-[11px] text-white/40">
-                    Sell the season pass early, under the usual ₹{SEASON_PASS_PRICE_INR}. Off unless both fields are filled.
+                    Sell the season pass early, under the usual ₹{draft.season_pass_price_inr}. Off unless both fields are filled.
                   </p>
                 </div>
                 {presaleLive && (
@@ -441,8 +455,8 @@ export default function OriginalsManager() {
                   <input
                     type="number"
                     min={1}
-                    max={SEASON_PASS_PRICE_INR - 1}
-                    placeholder={`Blank for the usual ₹${SEASON_PASS_PRICE_INR}`}
+                    max={Math.max(1, draft.season_pass_price_inr - 1)}
+                    placeholder={`Blank for the usual ₹${draft.season_pass_price_inr}`}
                     className={inputClass}
                     value={draft.presale_price_inr ?? ""}
                     onChange={(e) => setDraft({
@@ -462,9 +476,9 @@ export default function OriginalsManager() {
                 </label>
               </div>
 
-              {draft.presale_price_inr !== null && draft.presale_price_inr >= SEASON_PASS_PRICE_INR && (
+              {draft.presale_price_inr !== null && draft.presale_price_inr >= draft.season_pass_price_inr && (
                 <p className="mt-2.5 text-[11px] font-medium text-amber-300">
-                  A presale at or above ₹{SEASON_PASS_PRICE_INR} is not an offer — viewers would be shown the usual price.
+                  A presale at or above ₹{draft.season_pass_price_inr} is not an offer — viewers would be shown the usual price.
                 </p>
               )}
               {(draft.presale_price_inr === null) !== (draft.presale_ends_at === null) && (
@@ -641,7 +655,7 @@ export default function OriginalsManager() {
 
                   <div className="space-y-3">
                     {(episodes[row.id] || []).map((episode, index) => {
-                      const free = episode.episode_number <= row.free_episodes
+                      const free = row.season_pass_price_inr === 0 || episode.is_free || episode.episode_number <= row.free_episodes
                       return (
                         <div key={episode.id || `new-${index}`} className="rounded-xl border border-white/[0.08] bg-black/30 p-4">
                           <div className="grid gap-3 md:grid-cols-[80px_1fr_140px]">
@@ -735,6 +749,7 @@ export default function OriginalsManager() {
 
                           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                             <div className="flex items-center gap-3">
+                              <label className="flex items-center gap-2 text-xs text-white/70"><input type="checkbox" checked={episode.is_free === true} onChange={e => patchEpisode(row.id, index, { is_free: e.target.checked })} />Make this episode free</label>
                               <span
                                 className={`rounded-md px-2.5 py-1 text-[11px] font-bold ${
                                   free ? "bg-primary/15 text-primary" : "bg-white/10 text-white/60"

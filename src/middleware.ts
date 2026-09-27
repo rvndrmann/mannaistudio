@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { hasCreatorStudioEntitlement } from '@/lib/studio/entitlement'
 
 // Routes that require authentication (everything else is public).
 //
@@ -36,7 +37,7 @@ const pausedPaths = ['/feed', '/services', '/challenges', '/messages']
  * forgotten is the one someone finds.
  */
 const adminOnlyPaths = [
-    '/billing', '/studio', '/profile', '/courses', '/portfolio', '/credits',
+    '/billing', '/portfolio', '/credits',
     '/social', '/marketing', '/analytics', '/ads', '/calendar', '/competitors', '/blog',
 ]
 
@@ -133,6 +134,10 @@ export async function middleware(request: NextRequest) {
             // product is, rather than bounce them to a landing page they have
             // already been past.
             if (!admin) return NextResponse.redirect(new URL('/originals', request.url))
+        }
+
+        if (request.nextUrl.pathname.startsWith('/studio/') && !await hasCreatorStudioEntitlement(supabase, user.id)) {
+            return NextResponse.redirect(new URL('/studio', request.url))
         }
 
         return res

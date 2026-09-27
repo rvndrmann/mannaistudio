@@ -35,9 +35,6 @@ export function useSeasonPassCheckout(options: { onPurchased?: () => void } = {}
     setPending(true)
     setError(null)
     try {
-      const ready = await loadGateway()
-      if (!ready) throw new Error("Could not reach the payment gateway.")
-
       const res = await fetch("/api/originals/season-pass", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -45,6 +42,9 @@ export function useSeasonPassCheckout(options: { onPurchased?: () => void } = {}
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Could not start checkout")
+      if (data.free) { onPurchased?.(); setPending(false); return }
+      const ready = await loadGateway()
+      if (!ready) throw new Error("Could not reach the payment gateway.")
 
       const RazorpayCtor = (window as unknown as { Razorpay: new (config: unknown) => { open: () => void } }).Razorpay
       const checkout = new RazorpayCtor({

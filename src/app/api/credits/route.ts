@@ -6,6 +6,7 @@ import { getUserCredits } from "@/lib/studio/credits"
 import { isAdminUser, isMembershipActive } from "@/lib/membership"
 import { CREDIT_PACKAGES } from "@/lib/credits-packages"
 import { sendCapiEvent } from "@/lib/meta-capi"
+import { hasCreatorStudioEntitlement } from "@/lib/studio/entitlement"
 
 const topUpSchema = z.object({
   packageId: z.string().optional(),
@@ -19,6 +20,8 @@ export async function GET() {
     const supabase = await createClient()
     const { data: { user }, error } = await supabase.auth.getUser()
     if (error || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    if (!await hasCreatorStudioEntitlement(supabase, user.id)) return NextResponse.json({ error: "Creator Studio access is required." }, { status: 403 })
 
     const credits = await getUserCredits(user.id, supabase)
     const { data: profile } = await supabase.from("profiles").select("membership_status, membership_expires_at").eq("id", user.id).maybeSingle()
@@ -62,14 +65,7 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error } = await supabase.auth.getUser()
     if (error || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("membership_status, membership_expires_at")
-      .eq("id", user.id)
-      .maybeSingle()
-    if (!isMembershipActive(profile)) {
-      return NextResponse.json({ error: "An active subscription is required to buy generation credits." }, { status: 403 })
-    }
+    if (!await hasCreatorStudioEntitlement(supabase, user.id)) return NextResponse.json({ error: "Creator Studio access is required to buy generation credits." }, { status: 403 })
 
     // A POST with no body throws inside JSON.parse, and the route reported it
     // as an unhandled SyntaxError rather than a bad request — which is what it

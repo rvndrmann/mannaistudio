@@ -1,4 +1,5 @@
 "use client"
+import ContactRequests from "@/components/admin/ContactRequests"
 
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
@@ -65,6 +66,7 @@ export default function AcademyManager() {
   const saveAcademyContent=async()=>{const {error}=await supabase.rpc("admin_update_academy_content",{p_content:content});setMessage(error?.message||"Academy homepage settings saved.")}
 
   return <div className="space-y-10">
+    <ContactRequests />
     <header><h1 className="text-3xl font-bold">AI Video Academy</h1><p className="mt-2 text-sm text-white/45">Manage digital products, coaching, Studio access and student work submissions.</p></header>
     {message&&<p className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-primary">{message}</p>}
     {loading?<div className="flex justify-center py-10"><Loader2 className="animate-spin text-primary"/></div>:<>

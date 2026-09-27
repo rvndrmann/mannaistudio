@@ -48,6 +48,7 @@ export type SeasonPassOffer = {
 
 /** The two columns a presale is written in, as they come off the series row. */
 export type PresaleColumns = {
+  season_pass_price_inr?: number
   presale_price_inr?: number | null
   presale_ends_at?: string | null
 }
@@ -65,15 +66,16 @@ export type PresaleColumns = {
  * come from the same function reading the same row and the same clock.
  */
 export function seasonPassOffer(series: PresaleColumns | null | undefined, now: number = Date.now()): SeasonPassOffer {
-  const standing = { priceInr: SEASON_PASS_PRICE_INR, fullPriceInr: SEASON_PASS_PRICE_INR, endsAt: null }
+  const fullPrice = series?.season_pass_price_inr ?? SEASON_PASS_PRICE_INR
+  const standing = { priceInr: fullPrice, fullPriceInr: fullPrice, endsAt: null }
   const price = series?.presale_price_inr ?? null
   const endsAt = series?.presale_ends_at ?? null
   if (price === null || endsAt === null || price <= 0) return standing
   const closes = new Date(endsAt).getTime()
   if (!Number.isFinite(closes) || closes <= now) return standing
   // A presale dearer than the standing price is somebody's typo, not an offer.
-  if (price >= SEASON_PASS_PRICE_INR) return standing
-  return { priceInr: price, fullPriceInr: SEASON_PASS_PRICE_INR, endsAt: new Date(closes).toISOString() }
+  if (price >= fullPrice) return standing
+  return { priceInr: price, fullPriceInr: fullPrice, endsAt: new Date(closes).toISOString() }
 }
 
 /**

@@ -3,17 +3,38 @@
 import Navbar from "@/components/Navbar"
 import Footer from "@/components/Footer"
 import { Mail, MapPin, MessageSquare, Clock } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useAuth } from "@/components/auth/auth-provider"
 
 export default function ContactPage() {
+    const { user, signInWithGoogle } = useAuth()
     const [form, setForm] = useState({ name: "", email: "", subject: "", message: "" })
     const [sent, setSent] = useState(false)
+    const [submitting, setSubmitting] = useState(false)
+    const [submitError, setSubmitError] = useState("")
+    useEffect(() => {
+        const topic = new URLSearchParams(window.location.search).get("topic")
+        setForm(current => ({
+            ...current,
+            email: user?.email || "",
+            name: user?.user_metadata?.full_name || user?.user_metadata?.name || current.name,
+            subject: current.subject || (topic === "studio-access" ? "Creator Studio invitation request" : ""),
+        }))
+        setSent(false)
+    }, [user?.id, user?.email])
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        const mailtoLink = `mailto:rvndr.mann@gmail.com?subject=${encodeURIComponent(form.subject)}&body=${encodeURIComponent(`Name: ${form.name}\nEmail: ${form.email}\n\n${form.message}`)}`
-        window.open(mailtoLink)
-        setSent(true)
+        if(!user){void signInWithGoogle();return}
+        setSubmitting(true);setSubmitError("")
+        try{
+            const rawTopic=new URLSearchParams(window.location.search).get("topic")
+            const topic=rawTopic==="studio-access"||rawTopic==="coaching"?rawTopic:"general"
+            const response=await fetch("/api/contact",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:form.name,subject:form.subject,message:form.message,topic})})
+            const result=await response.json()
+            if(!response.ok)throw new Error(result.error||"Could not save your request.")
+            setSent(true)
+        }catch(error){setSubmitError(error instanceof Error?error.message:"Could not save your request.")}finally{setSubmitting(false)}
     }
 
     return (
@@ -41,8 +62,8 @@ export default function ContactPage() {
                     <div>
                         {sent ? (
                             <div className="glass-card p-8 rounded-2xl border-white/10 text-center">
-                                <p className="text-lg font-bold text-emerald-300 mb-2">Message ready to send!</p>
-                                <p className="text-sm text-white/50">Your email client should have opened with the message. If not, email us directly at rvndr.mann@gmail.com.</p>
+                                <p className="text-lg font-bold text-emerald-300 mb-2">Request submitted!</p>
+                                <p className="text-sm text-white/50">Your request has been saved for our team to review. Your signed-in account email is attached.</p>
                             </div>
                         ) : (
                             <form onSubmit={handleSubmit} className="glass-card p-6 rounded-2xl border-white/10 space-y-4">
@@ -61,10 +82,12 @@ export default function ContactPage() {
                                         <input
                                             required
                                             type="email"
-                                            value={form.email}
+                                            value={user?.email || form.email}
+                                            readOnly={Boolean(user?.email)}
                                             onChange={(e) => setForm({ ...form, email: e.target.value })}
                                             className="mt-1 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
                                         />
+                                        {user?.email && <p className="mt-1 text-xs text-white/40">Using your signed-in account email.</p>}
                                     </div>
                                 </div>
                                 <div>
@@ -86,7 +109,8 @@ export default function ContactPage() {
                                         className="mt-1 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary resize-none"
                                     />
                                 </div>
-                                <button type="submit" className="btn-primary px-8 py-3">Send Message</button>
+                                {submitError&&<p role="alert" className="text-sm text-red-300">{submitError}</p>}
+                                <button type="submit" disabled={submitting} className="btn-primary px-8 py-3 disabled:opacity-50">{submitting?"Submitting…":user?"Submit Request":"Sign In to Submit"}</button>
                             </form>
                         )}
                     </div>

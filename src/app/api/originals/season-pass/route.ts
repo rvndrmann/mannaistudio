@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     const admin = createServiceClient()
     const { data: series } = await admin
       .from("originals_series")
-      .select("id,slug,title,is_published,presale_price_inr,presale_ends_at")
+      .select("id,slug,title,is_published,presale_price_inr,presale_ends_at,season_pass_price_inr")
       .eq("id", input.seriesId)
       .maybeSingle()
     if (!series || !series.is_published) {
@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
     }
 
     const offer = seasonPassOffer(series)
+    if (offer.priceInr === 0) return NextResponse.json({ free: true, seriesTitle: series.title })
 
     const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret })
     const order = await razorpay.orders.create({

@@ -43,6 +43,7 @@ export default function SeasonPassCard({
   passExpiresAt, signedIn, onSignIn, onPurchased,
 }: Props) {
   const { buyPass, pending, error } = useSeasonPassCheckout({ onPurchased })
+  if (offer.priceInr === 0) return <div className="mt-5 rounded-2xl border border-primary/25 bg-primary/[0.07] px-4 py-3 text-sm text-primary">Free season — every published episode is available to watch. No payment required.</div>
 
   const offerEnds = earlyPassTimeRemaining(offer.endsAt)
   const onOffer = offer.priceInr < offer.fullPriceInr && offerEnds !== null

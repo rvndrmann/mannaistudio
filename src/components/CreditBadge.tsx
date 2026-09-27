@@ -8,6 +8,7 @@ import { CREDIT_PACKAGES } from "@/lib/credits-packages"
 import { formatUsdWithInr } from "@/lib/currency"
 import CreditUsageTab from "@/components/credits/CreditUsageTab"
 import TeamTab from "@/components/credits/TeamTab"
+import { useAuth } from "@/components/auth/auth-provider"
 
 type AccountTab = "topup" | "usage" | "team"
 
@@ -18,6 +19,8 @@ const accountTabs: { id: AccountTab; label: string }[] = [
 ]
 
 export default function CreditBadge({ className }: { className?: string }) {
+  const { user } = useAuth()
+  const [hasStudioAccess, setHasStudioAccess] = useState(false)
   const [credits, setCredits] = useState<number | null>(null)
   const [pending, setPending] = useState(0)
   const [showModal, setShowModal] = useState(false)
@@ -36,13 +39,22 @@ export default function CreditBadge({ className }: { className?: string }) {
         const json = await res.json()
         setCredits(json.credits)
         setPending(Number(json.pendingCredits) || 0)
+        setHasStudioAccess(true)
+      } else {
+        setHasStudioAccess(false)
+        setShowModal(false)
       }
     } catch (err) {
+      setHasStudioAccess(false)
+      setShowModal(false)
       console.warn("Could not fetch credits:", err)
     }
   }
 
   useEffect(() => {
+    setHasStudioAccess(false)
+    setShowModal(false)
+    if (!user) return
     fetchCredits()
     const handleBalanceChanged = (event: Event) => {
       const balance = (event as CustomEvent<{ balance?: number }>).detail?.balance
@@ -55,7 +67,7 @@ export default function CreditBadge({ className }: { className?: string }) {
       window.removeEventListener(creditBalanceChangedEvent, handleBalanceChanged)
       clearInterval(interval)
     }
-  }, [])
+  }, [user?.id])
 
   const loadRazorpayScript = () =>
     new Promise<boolean>((resolve) => {
@@ -123,6 +135,8 @@ export default function CreditBadge({ className }: { className?: string }) {
       setLoadingPkgId(null)
     }
   }
+
+  if (!user || !hasStudioAccess) return null
 
   return (
     <>

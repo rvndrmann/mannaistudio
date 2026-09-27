@@ -26,7 +26,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     const { data: series, error } = await admin
       .from("originals_series")
-      .select("id, slug, title, description, poster_url, banner_url, genre, tags, free_episodes, episode_price, planned_episodes, presale_price_inr, presale_ends_at")
+      .select("id, slug, title, description, poster_url, banner_url, genre, tags, free_episodes, episode_price, planned_episodes, presale_price_inr, presale_ends_at, season_pass_price_inr")
       .eq("slug", slug)
       .eq("is_published", true)
       .maybeSingle()
@@ -36,7 +36,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     const { data: episodeRows } = await admin
       .from("originals_episodes")
-      .select("id, episode_number, title, description, thumbnail_url, duration_seconds")
+      .select("id, episode_number, title, description, thumbnail_url, duration_seconds, is_free")
       .eq("series_id", series.id)
       .eq("is_published", true)
       .order("episode_number", { ascending: true })
@@ -76,7 +76,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       description: row.description,
       thumbnailUrl: row.thumbnail_url,
       durationSeconds: row.duration_seconds,
-      isFree: row.episode_number <= freeEpisodes,
+      isFree: series.season_pass_price_inr === 0 || row.is_free || row.episode_number <= freeEpisodes,
       // A live pass plays the whole series, so the grid must not
       // draw padlocks over episodes this viewer can already watch.
       isUnlocked: unlockExpiry.has(row.id) || Boolean(passExpiresAt),
