@@ -7,7 +7,6 @@ import { AlertCircle, ArrowLeft, BellRing, Bookmark, Film, Loader2, Lock, Maximi
 import Navbar from "@/components/Navbar"
 import CreditPackModal from "@/components/originals/CreditPackModal"
 import EpisodePaywall from "@/components/originals/EpisodePaywall"
-import SeasonPassCard from "@/components/originals/SeasonPassCard"
 import NotifyMeSheet from "@/components/originals/NotifyMeSheet"
 import { useAuth } from "@/components/auth/auth-provider"
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events"
@@ -473,14 +472,12 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
                     seriesTitle={series.title}
                     posterUrl={series.posterUrl}
                     episodePrice={episodePrice}
-                    seasonPass={series.seasonPass}
                     balance={credits}
                     signedIn={Boolean(user)}
                     onSignIn={() => signInWithGoogle()}
                     onUnlock={unlockCurrent}
                     unlocking={openingId === current.id}
                     onBalanceChange={setCredits}
-                    onPassPurchased={async () => { await load(); openEpisode(current) }}
                     error={unlockError}
                   />
                 )}
@@ -695,22 +692,6 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
               </button>
             </div>
 
-            {/* The pass, on the page people arrive at. A presale runs before
-                any episode is locked, so the paywall cannot be the only place
-                it is sold. */}
-            <SeasonPassCard
-              seriesId={series.id}
-              seriesTitle={series.title}
-              offer={series.seasonPass}
-              episodeCount={episodes.length}
-              plannedEpisodes={series.plannedEpisodes}
-              freeEpisodes={series.freeEpisodes}
-              passExpiresAt={series.passExpiresAt}
-              signedIn={Boolean(user)}
-              onSignIn={() => signInWithGoogle()}
-              onPurchased={() => { void load() }}
-            />
-
             {/* Episode grid */}
             <div className="mt-6">
               <div className="flex flex-wrap items-center gap-4">
@@ -729,7 +710,7 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
                   )
                 })}
                 <span className="ml-auto text-xs text-white/35">
-                  {series.freeEpisodes} free, then {episodePrice} credits each
+                  {episodes.filter(episode => episode.isFree).length} free episodes
                 </span>
               </div>
 

@@ -76,7 +76,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       description: row.description,
       thumbnailUrl: row.thumbnail_url,
       durationSeconds: row.duration_seconds,
-      isFree: series.season_pass_price_inr === 0 || row.is_free || row.episode_number <= freeEpisodes,
+      isFree: row.is_free === true,
       // A live pass plays the whole series, so the grid must not
       // draw padlocks over episodes this viewer can already watch.
       isUnlocked: unlockExpiry.has(row.id) || Boolean(passExpiresAt),

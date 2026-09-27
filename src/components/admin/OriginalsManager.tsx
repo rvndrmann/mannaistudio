@@ -236,10 +236,9 @@ export default function OriginalsManager() {
         p_thumbnail_url: episode.thumbnail_url || null,
         p_duration_seconds: episode.duration_seconds,
         p_is_published: episode.is_published,
+        p_is_free: episode.is_free === true,
       })
       if (error) throw new Error(error.message)
-      const { error: accessError } = await supabase.rpc("admin_set_originals_episode_free", { p_episode_id: savedId, p_is_free: episode.is_free === true })
-      if (accessError) throw new Error(accessError.message)
       setStatus({ tone: "ok", message: `Saved episode ${episode.episode_number}` })
       await loadEpisodes(episode.series_id)
     } catch (err) {
@@ -295,8 +294,7 @@ export default function OriginalsManager() {
         <div>
           <h2 className="text-2xl font-semibold text-white">Originals</h2>
           <p className="mt-1 text-sm text-white/40">
-            Series and episodes for /originals. First {DEFAULT_FREE_EPISODES} episodes free by default, then{" "}
-            {DEFAULT_EPISODE_PRICE} credits each — both adjustable per series.
+            Series and episodes for /originals. Set each episode to Free or Paid below; paid episodes use the series credit price.
           </p>
         </div>
         <button
@@ -655,7 +653,7 @@ export default function OriginalsManager() {
 
                   <div className="space-y-3">
                     {(episodes[row.id] || []).map((episode, index) => {
-                      const free = row.season_pass_price_inr === 0 || episode.is_free || episode.episode_number <= row.free_episodes
+                      const free = episode.is_free === true
                       return (
                         <div key={episode.id || `new-${index}`} className="rounded-xl border border-white/[0.08] bg-black/30 p-4">
                           <div className="grid gap-3 md:grid-cols-[80px_1fr_140px]">

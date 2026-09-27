@@ -44,6 +44,9 @@ export default function StudioHome() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [studioEntitled, setStudioEntitled] = useState<boolean | null>(null)
+  const [invitationRequested, setInvitationRequested] = useState(false)
+  const [invitationBusy, setInvitationBusy] = useState(false)
+  const [invitationError, setInvitationError] = useState("")
 
 
   const load = async () => {
@@ -78,6 +81,36 @@ export default function StudioHome() {
       .catch(() => { if (active) setStudioEntitled(false) })
     return () => { active = false }
   }, [user])
+
+  useEffect(() => {
+    if (!user || studioEntitled !== false) return
+    fetch("/api/contact", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => setInvitationRequested(Boolean(data.submitted)))
+      .catch(() => setInvitationRequested(false))
+  }, [user, studioEntitled])
+
+  const requestInvitation = async () => {
+    if (!user || invitationRequested || invitationBusy) return
+    setInvitationBusy(true); setInvitationError("")
+    try {
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0] || "User",
+          subject: "Creator Studio invitation request",
+          message: "Please review my request for Creator Studio access.",
+          topic: "studio-access",
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "Could not submit request")
+      setInvitationRequested(true)
+    } catch (err) {
+      setInvitationError(err instanceof Error ? err.message : "Could not submit request")
+    } finally { setInvitationBusy(false) }
+  }
 
   useEffect(() => {
     if (user && studioEntitled === true) {
@@ -164,7 +197,8 @@ export default function StudioHome() {
               <h1 className="mt-3 text-3xl font-semibold text-white sm:text-4xl">Creator Studio is invite only.</h1>
               <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-zinc-300">Creator Studio access is available through an admin invitation or a one-on-one coaching package that includes Studio access. Contact our team to request an invitation or arrange coaching.</p>
               <div className="mt-8 grid gap-3 text-left sm:grid-cols-3">{["Plan complete video projects", "Develop characters and storyboards", "Create and organize your shots"].map((feature)=><div key={feature} className="rounded-xl border border-white/10 bg-black/30 p-4 text-sm text-zinc-300">{feature}</div>)}</div>
-              <div className="mt-8 flex flex-wrap justify-center gap-3"><Link href="/contact?topic=studio-access" className="rounded-xl bg-[#b9f42e] px-6 py-3 text-sm font-semibold text-black">Request an Invitation</Link><Link href="/courses" className="rounded-xl border border-white/15 px-6 py-3 text-sm font-semibold text-white">Explore Courses</Link></div>
+              <div className="mt-8 flex flex-wrap justify-center gap-3"><button type="button" onClick={() => void requestInvitation()} disabled={invitationRequested || invitationBusy} className="rounded-xl bg-[#b9f42e] px-6 py-3 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-60">{invitationBusy ? "Sending…" : invitationRequested ? "Request Sent" : "Request an Invitation"}</button><Link href="/courses" className="rounded-xl border border-white/15 px-6 py-3 text-sm font-semibold text-white">Explore Courses</Link></div>
+              {invitationError && <p className="mt-3 text-sm text-red-300">{invitationError}</p>}
             </div>
           )}
 

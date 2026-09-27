@@ -135,14 +135,14 @@ export default function Navbar({ academy = false }: { academy?: boolean }) {
         ? [
             { key: "my-courses", name: "My Courses", href: "/my-courses", icon: BookOpen },
             { key: "creator-studio", name: "Creator Studio", href: "/studio", icon: Sparkles },
-            { key: "my-projects", name: "My Projects", href: "/studio", icon: LayoutDashboard },
+            { key: "my-projects", name: "My Projects", href: "/hire-us/projects", icon: LayoutDashboard },
             { key: "account", name: "My Account", href: "/account", icon: User },
             { key: "originals", name: "Originals", href: "/originals", icon: Clapperboard, public: true },
             { key: "hireUs", name: "Hire Our Team", href: "/hire-us", icon: Briefcase, public: true },
           ]
         : [
             { key: "academy", name: "Academy", href: "/learn", icon: Sparkles, public: true },
-            { key: "courses", name: "Courses", href: "/courses", icon: BookOpen, public: true },
+            { key: "courses", name: "Courses", href: "/my-courses", icon: BookOpen, public: true },
             { key: "student-work", name: "Student Work", href: "/learn#student-work", icon: Video, public: true },
             { key: "originals", name: "Originals", href: "/originals", icon: Clapperboard, public: true },
             { key: "hireUs", name: "Hire Our Team", href: "/hire-us", icon: Briefcase, public: true },
@@ -413,7 +413,7 @@ export default function Navbar({ academy = false }: { academy?: boolean }) {
                     ))}
 
                     {!loading && isAcademyNav && (
-                        <Link href="/courses" className="flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md bg-primary px-4 text-sm font-semibold text-black transition hover:brightness-110">
+                        <Link href="/my-courses" className="flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md bg-primary px-4 text-sm font-semibold text-black transition hover:brightness-110">
                             Start Learning <Sparkles className="h-4 w-4" />
                         </Link>
                     )}

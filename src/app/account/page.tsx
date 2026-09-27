@@ -3,27 +3,20 @@
 import Link from "next/link"
 import { useCallback, useEffect, useState } from "react"
 import {
-  AlertCircle,
   Briefcase,
-  Check,
   Clapperboard,
   CreditCard,
   Loader2,
   Play,
   Receipt,
-  Ticket,
   Zap,
 } from "lucide-react"
 import Navbar from "@/components/Navbar"
 import Footer from "@/components/Footer"
 import { useAuth } from "@/components/auth/auth-provider"
-import { useCreditPackCheckout } from "@/components/originals/use-credit-pack-checkout"
 import { createClient } from "@/lib/supabase/client"
-import { formatUsdWithInr } from "@/lib/currency"
 import { fetchMyPayments, type PaymentRecord } from "@/lib/membership"
 import {
-  DEFAULT_EPISODE_PRICE,
-  ORIGINALS_CREDIT_PACKAGES,
   UNLOCK_WINDOW_DAYS,
   unlockTimeRemaining,
 } from "@/lib/originals"
@@ -67,14 +60,8 @@ export default function AccountPage() {
   const [passes, setPasses] = useState<PassRow[]>([])
   const [payments, setPayments] = useState<PaymentRecord[]>([])
   const [loading, setLoading] = useState(true)
-  const [success, setSuccess] = useState<string | null>(null)
 
   const { projects: managedProjects, loading: managedLoading } = useManagedProjects()
-
-  const { buyPack, pendingPackId, error } = useCreditPackCheckout({
-    onPurchased: setBalance,
-    onSuccess: setSuccess,
-  })
 
   const load = useCallback(async () => {
     if (!user) { setLoading(false); return }
@@ -153,21 +140,8 @@ export default function AccountPage() {
       <div className="mx-auto max-w-4xl px-4 pb-20 pt-28">
         <h1 className="text-2xl font-bold sm:text-3xl">My Account</h1>
         <p className="mt-1 text-sm text-white/45">
-          Credits, unlocked episodes, and your payment history.
+          Your account, unlocked episodes, and payment history.
         </p>
-
-        {success && (
-          <div className="mt-5 flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/15 p-3 text-xs font-semibold text-primary">
-            <Check className="h-4 w-4 shrink-0" />
-            <span>{success}</span>
-          </div>
-        )}
-        {error && (
-          <div className="mt-5 flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/15 p-3 text-xs font-semibold text-red-300">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
 
         {/* Balance ---------------------------------------------------------- */}
         <section className="mt-6 rounded-2xl border border-white/10 bg-gradient-to-br from-primary/[0.12] to-transparent p-6">
@@ -178,10 +152,7 @@ export default function AccountPage() {
                 {balance === null ? "—" : balance.toLocaleString()}
                 <span className="ml-2 text-base font-medium text-white/40">credits</span>
               </p>
-              <p className="mt-1 text-xs text-white/45">
-                {DEFAULT_EPISODE_PRICE} credits per episode · about{" "}
-                {balance === null ? "—" : Math.floor(balance / DEFAULT_EPISODE_PRICE)} episodes
-              </p>
+              <p className="mt-1 text-xs text-white/45">Credits are managed through Creator Studio.</p>
             </div>
             <Link
               href="/originals"
@@ -206,74 +177,6 @@ export default function AccountPage() {
             </div>
             <div className="mt-3">
               <ManagedProjectCards projects={managedProjects} loading={managedLoading} showEmpty={false} />
-            </div>
-          </section>
-        )}
-
-        {/* Packs ------------------------------------------------------------ */}
-        <section className="mt-8">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-white/40">Top up</h2>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {Object.entries(ORIGINALS_CREDIT_PACKAGES).map(([id, pack]) => {
-              const best = id === "500"
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  disabled={pendingPackId !== null}
-                  onClick={() => buyPack(id)}
-                  className={`relative rounded-2xl border p-5 text-left transition disabled:opacity-60 ${
-                    best
-                      ? "border-primary bg-primary/[0.08] hover:bg-primary/[0.12]"
-                      : "border-white/10 bg-white/[0.03] hover:border-white/25"
-                  }`}
-                >
-                  {best && (
-                    <span className="absolute -top-2.5 left-5 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-black">
-                      Best value
-                    </span>
-                  )}
-                  <p className="text-2xl font-semibold tabular-nums">{pack.credits.toLocaleString()}</p>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-white/40">credits</p>
-                  <p className="mt-3 text-sm font-semibold text-primary">{formatUsdWithInr(pack.priceInr)}</p>
-                  <p className="mt-0.5 flex items-center gap-1 text-[11px] text-white/45">
-                    <Play className="h-3 w-3" />
-                    about {Math.floor(pack.credits / DEFAULT_EPISODE_PRICE)} episodes
-                  </p>
-                  {pendingPackId === id && (
-                    <Loader2 className="absolute right-4 top-4 h-4 w-4 animate-spin text-white/70" />
-                  )}
-                </button>
-              )
-            })}
-          </div>
-          <p className="mt-3 text-[11px] text-white/35">
-            🔒 Secure checkout by Razorpay. Credits never expire.
-          </p>
-        </section>
-
-        {/* Season passes ---------------------------------------------------- */}
-        {passes.length > 0 && (
-          <section className="mt-10">
-            <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-white/40">
-              <Ticket className="h-4 w-4" /> Season passes
-            </h2>
-            <div className="mt-3 space-y-2">
-              {passes.map((pass) => (
-                <Link
-                  key={pass.series_id}
-                  href={pass.series ? `/originals/${pass.series.slug}` : "/originals"}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/[0.06] p-4 transition hover:border-primary/60"
-                >
-                  <div>
-                    <p className="text-sm font-semibold">{pass.series?.title || "Season pass"}</p>
-                    <p className="text-xs text-white/45">Every episode until {dateLabel(pass.expires_at)}</p>
-                  </div>
-                  <span className="shrink-0 text-xs font-semibold text-primary">
-                    {unlockTimeRemaining(pass.expires_at, 30) || "Active"}
-                  </span>
-                </Link>
-              ))}
             </div>
           </section>
         )}
