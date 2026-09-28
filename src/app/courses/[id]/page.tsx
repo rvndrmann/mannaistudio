@@ -401,12 +401,9 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     <p className="text-sm">No video available for this lesson</p>
                                 </div>
                             )}
-                            <div className="pointer-events-none absolute bottom-6 left-6 right-6 flex items-center justify-between">
+                            <div className="pointer-events-none absolute bottom-6 left-6 right-6 flex items-center">
                                 <div className="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 text-xs font-medium">
                                     Chapter {activeChapter}: {activeLesson?.title || "Lesson"}
-                                </div>
-                                <div className="bg-primary px-3 py-1.5 rounded-lg text-xs font-bold animate-pulse">
-                                    EARN +150 XP
                                 </div>
                             </div>
                         </div>
