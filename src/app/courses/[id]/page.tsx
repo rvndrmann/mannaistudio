@@ -14,7 +14,6 @@ import { fbTrack } from "@/lib/fbpixel"
 import { claimOnce } from "@/lib/track-once"
 import { formatInr, formatUsd } from "@/lib/currency"
 import { readProgress, writeProgress } from "@/lib/course-progress"
-import CoachingOfferCard from "@/components/home/CoachingOfferCard"
 import CourseDigitalProducts from "@/components/courses/CourseDigitalProducts"
 import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, hasAllCoursesAccess, hasPremiumAccess, isAdminUser } from "@/lib/membership"
 // @ts-ignore
@@ -437,7 +436,6 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                         )}
                         {checkoutError&&<p role="alert" className="rounded-lg border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-200">{checkoutError}</p>}
 
-                        <CoachingOfferCard />
                         <CourseDigitalProducts courseId={course.id} />
 
                         <div className="glass-card p-8 rounded-2xl border-white/10">
