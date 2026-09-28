@@ -17,7 +17,7 @@ type DigitalProduct = {
   included_with_course: string[]
 }
 
-export default function CourseDigitalProducts({ courseId }: { courseId: string }) {
+export default function CourseDigitalProducts({ courseId }: { courseId?: string }) {
   const [products, setProducts] = useState<DigitalProduct[]>([])
 
   useEffect(() => {
@@ -38,7 +38,7 @@ export default function CourseDigitalProducts({ courseId }: { courseId: string }
     <p className="mt-2 text-sm text-white/50">Explore the latest agents, assets and tools from AI Director Hub.</p>
     <div className="mt-5 grid gap-4 sm:grid-cols-2">
       {products.map((product) => {
-        const included = (product.included_with_course || []).includes(courseId)
+        const included = Boolean(courseId && (product.included_with_course || []).includes(courseId))
         const priceLabel = included ? "Included with this course" : product.is_free ? "Free" : product.standalone_purchase ? `₹${product.price}` : "Available with selected access"
         return <Link key={product.id} href={`/products/${product.id}`} className="group overflow-hidden rounded-xl border border-white/10 bg-black/20 transition hover:border-primary/40">
           {product.image_url ? <img src={product.image_url} alt="" loading="lazy" className="aspect-video w-full object-cover" /> : <div className="flex aspect-video items-center justify-center bg-primary/[.06]"><Sparkles className="h-10 w-10 text-primary" /></div>}
