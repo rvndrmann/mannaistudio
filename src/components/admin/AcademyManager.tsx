@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client"
 import { Check, Loader2, Plus, Save, X } from "lucide-react"
 
 type Product = { id:string; name:string; description:string; product_type:string; price:number; is_free:boolean; active:boolean; featured:boolean; image_url:string|null; access_url:string; standalone_purchase:boolean; included_with_course:string[]; included_with_coaching:boolean; grants_creator_studio:boolean; access_days:number|null }
-type Offer = { id:string; title:string; description:string; price:number; duration_minutes:number; session_count:number; benefits:string[]; active:boolean; featured:boolean; grants_creator_studio:boolean; creator_studio_access_days:number|null; max_purchases:number|null; weekly_capacity:number|null; sold_count?:number }
+type Offer = { id:string; title:string; description:string; price:number; duration_minutes:number; session_count:number; benefits:string[]; active:boolean; featured:boolean; grants_creator_studio:boolean; creator_studio_access_days:number|null; max_purchases:number|null; weekly_capacity:number|null; manual_slots_left:number|null; sold_count?:number }
 type CoachingPurchase = { id:string; offer_id:string; profile_id:string; payment_id:string; amount:number; created_at:string; booking_week_start:string|null; offer_title:string; buyer_name:string; email:string; phone:string|null }
 type Submission = { id:string; profile_id:string; title:string; description:string; video_url:string; category:string; display_name:string|null; allow_display_name:boolean; status:string }
 type AcademyContent = {headline:string;description:string;instructor_name:string;instructor_bio:string;instructor_photo:string;instructor_experience:string;show_showreel:boolean;show_transformation:boolean;show_courses:boolean;show_workflow:boolean;show_products:boolean;show_coaching:boolean;show_creator_studio:boolean;show_student_work:boolean;show_instructor:boolean}
@@ -63,7 +63,7 @@ export default function AcademyManager() {
   }
   const saveOffer=async(offer:Offer)=>{
     const benefits=(offer.benefits||[]).map(item=>item.trim()).filter(Boolean)
-    const {error}=await supabase.from("academy_offers").update({title:offer.title,description:offer.description,price:Number(offer.price)||0,duration_minutes:60,session_count:Number(offer.session_count)||1,benefits,active:offer.active,featured:offer.featured,grants_creator_studio:offer.grants_creator_studio,creator_studio_access_days:offer.creator_studio_access_days||null,max_purchases:offer.max_purchases||null,weekly_capacity:offer.weekly_capacity||null}).eq("id",offer.id)
+    const {error}=await supabase.from("academy_offers").update({title:offer.title,description:offer.description,price:Number(offer.price)||0,duration_minutes:60,session_count:Number(offer.session_count)||1,benefits,active:offer.active,featured:offer.featured,grants_creator_studio:offer.grants_creator_studio,creator_studio_access_days:offer.creator_studio_access_days||null,max_purchases:offer.max_purchases||null,weekly_capacity:offer.weekly_capacity||null,manual_slots_left:offer.manual_slots_left ?? null}).eq("id",offer.id)
     setMessage(error?.message||"Coaching offer saved.")
   }
   const moderate=async(id:string,status:"approved"|"rejected"|"featured")=>{

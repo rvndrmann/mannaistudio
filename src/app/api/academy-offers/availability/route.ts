@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   const [currentWeekStart, nextWeekStart] = coachingWeekStarts()
   const admin = createServiceClient()
   const { data: offer, error: offerError } = await admin.from("academy_offers")
-    .select("id,weekly_capacity")
+    .select("id,weekly_capacity,manual_slots_left")
     .eq("id", offerId)
     .eq("active", true)
     .maybeSingle()
@@ -27,8 +27,10 @@ export async function GET(request: NextRequest) {
   const availability = weeks.map((weekStart) => {
     const booked = (purchaseResult.data || []).filter((row) => row.booking_week_start === weekStart).length
     const reserved = (reservationResult.data || []).filter((row) => row.week_start === weekStart).length
-    const full = offer.weekly_capacity !== null && booked + reserved >= offer.weekly_capacity
-    return { weekStart, booked, reserved, capacity: offer.weekly_capacity, full }
+    const manual = index === 0 ? offer.manual_slots_left : null
+    const capacity = manual ?? offer.weekly_capacity
+    const full = capacity !== null && booked + reserved >= capacity
+    return { weekStart, booked, reserved, capacity, full }
   })
 
   return NextResponse.json({ weeks: availability }, { headers: { "Cache-Control": "no-store" } })
