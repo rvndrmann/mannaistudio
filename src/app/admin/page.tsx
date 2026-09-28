@@ -9,7 +9,7 @@ import {
     Tv, Settings, LogOut, Plus, Edit2, Trash2,
     Save, X, Download, FileText, Video, Trophy,
     Inbox, Mail, Clock, DollarSign, Loader2, Phone,
-    ChevronLeft, ChevronRight, Calendar, Pause, PauseCircle, PlayCircle,
+    ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Calendar, Pause, PauseCircle, PlayCircle,
     Image as ImageIcon, RefreshCw, FolderKanban, Clapperboard, BarChart3, Briefcase, Sparkles
 } from "lucide-react"
 import { courses, adminShowcase, challenges } from "@/lib/data"
@@ -404,6 +404,23 @@ function AdminDashboardContent() {
         setCourseThumbnailError("")
     }
 
+    const handleMoveCourse = async (courseId: string, direction: -1 | 1) => {
+        const index = mockCourses.findIndex(course => course.id === courseId)
+        const target = index + direction
+        if (target < 0 || target >= mockCourses.length) return
+        const reordered = [...mockCourses]
+        ;[reordered[index], reordered[target]] = [reordered[target], reordered[index]]
+        try {
+            const supabase = await getServiceRequestClient()
+            if (!supabase) throw new Error('Could not connect to Supabase')
+            const { error } = await supabase.rpc('admin_reorder_courses', { p_course_ids: reordered.map(course => course.id) })
+            if (error) throw error
+            setMockCourses(reordered.map((course, position) => ({ ...course, sort_order: position })))
+        } catch (err: any) {
+            alert('Failed to reorder courses: ' + (err.message || 'Unknown error'))
+        }
+    }
+
     // Picked in the course editor, uploaded on save.
     const [courseThumbnailFile, setCourseThumbnailFile] = useState<File | null>(null)
     const [courseThumbnailUploading, setCourseThumbnailUploading] = useState(false)
@@ -415,6 +432,7 @@ function AdminDashboardContent() {
         try {
             const supabase = await getServiceRequestClient()
             if (!supabase) return
+            const highlights = (editForm.highlights || []).map(point => point.trim()).filter(Boolean)
             // A picked file becomes the thumbnail, replacing whatever URL the
             // field holds. Uploaded first, because a course saved with the old
             // URL and an upload that then failed would report success while
@@ -436,9 +454,10 @@ function AdminDashboardContent() {
                 is_featured: editForm.is_featured === true,
                 grants_creator_studio: editForm.grants_creator_studio === true,
                 creator_studio_access_days: editForm.creator_studio_access_days || null,
+                highlights,
             }).eq('id', editForm.id)
             if (visibilityError) throw visibilityError
-            const saved = { ...editForm, thumbnail }
+            const saved = { ...editForm, thumbnail, highlights }
             setMockCourses(prev => prev.map(c => c.id === editingId ? saved : c))
             setEditingId(null)
             setCourseThumbnailFile(null)
@@ -464,6 +483,8 @@ function AdminDashboardContent() {
             instructor: "Admin",
             price: "Free",
             lessons: [],
+            highlights: [],
+            sort_order: 1000000,
         }
         try {
             const supabase = await getServiceRequestClient()
@@ -475,7 +496,7 @@ function AdminDashboardContent() {
                 p_price: newCourse.price,
             })
             if (error) throw error
-            setMockCourses(prev => [newCourse, ...prev])
+            setMockCourses(prev => [...prev, newCourse])
             handleEditCourse(newCourse)
         } catch (err: any) {
             alert('Failed to add course: ' + (err.message || 'Unknown error'))
@@ -1113,6 +1134,7 @@ function AdminDashboardContent() {
             const { data: dbCourses } = await supabase
                 .from('courses')
                 .select('*')
+                .order('sort_order', { ascending: true })
                 .order('created_at', { ascending: true })
             if (dbCourses) {
                 // Fetch lessons for all courses
@@ -1816,6 +1838,15 @@ function AdminDashboardContent() {
                                                                     className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary w-full h-24"
                                                                     placeholder="Description"
                                                                 />
+                                                                <label className="block space-y-2 text-xs font-bold text-white/60">
+                                                                    <span>What you get (one point per line)</span>
+                                                                    <textarea
+                                                                        value={(editForm?.highlights || []).join('\n')}
+                                                                        onChange={(e) => setEditForm(prev => prev ? { ...prev, highlights: e.target.value.split('\n') } : prev)}
+                                                                        className="w-full h-28 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-normal text-white focus:outline-none focus:border-primary"
+                                                                        placeholder={'Prompt templates\nPractical video workflow\nDownloadable resources'}
+                                                                    />
+                                                                </label>
                                                                 <div className="space-y-2">
                                                                     <p className="text-[10px] font-bold text-white/30">Thumbnail</p>
                                                                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -1928,6 +1959,7 @@ function AdminDashboardContent() {
                                                                         )}
                                                                     </div>
                                                                     <p className="text-sm text-white/40 line-clamp-2">{course.description}</p>
+                                                                    {Boolean(course.highlights?.length) && <ul className="mt-2 list-disc pl-5 text-xs text-white/55">{course.highlights?.filter(Boolean).slice(0, 3).map((point, index) => <li key={index}>{point}</li>)}</ul>}
                                                                     <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-white/35">{course.is_published === false ? "Draft · hidden from students" : "Published"}{course.is_featured ? " · Academy featured" : ""}</p>
                                                                 </div>
                                                                 <div className="flex flex-wrap items-center gap-4 text-[10px] font-bold tracking-widest text-white/30">
@@ -1944,6 +1976,8 @@ function AdminDashboardContent() {
                                                                     <span className="flex items-center gap-1 text-primary"><FileText className="w-3 h-3" /> {course.lessons?.length || 0} Lessons with resources</span>
                                                                 </div>
                                                                 <div className="flex items-center gap-3 pt-4 border-t border-white/5">
+                                                                    <button type="button" onClick={() => handleMoveCourse(course.id, -1)} disabled={mockCourses[0]?.id === course.id} className="p-2 bg-white/5 rounded-lg hover:bg-white/10 text-white/60 disabled:opacity-30" title="Move course up" aria-label={`Move ${course.title} up`}><ChevronUp className="w-4 h-4" /></button>
+                                                                    <button type="button" onClick={() => handleMoveCourse(course.id, 1)} disabled={mockCourses[mockCourses.length - 1]?.id === course.id} className="p-2 bg-white/5 rounded-lg hover:bg-white/10 text-white/60 disabled:opacity-30" title="Move course down" aria-label={`Move ${course.title} down`}><ChevronDown className="w-4 h-4" /></button>
                                                                     <button onClick={() => handleEditCourse(course)} className="p-2 bg-white/5 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors" title="Edit Course Details">
                                                                         <Edit2 className="w-4 h-4" />
                                                                     </button>

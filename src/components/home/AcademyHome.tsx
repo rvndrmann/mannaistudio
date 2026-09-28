@@ -46,7 +46,7 @@ export default function AcademyHome() {
     const supabase = createClient()
     void Promise.all([
       supabase.from("showcase_items").select("*").order("is_featured", { ascending: false }).order("position").limit(9),
-      supabase.from("courses").select("*").eq("is_published", true).eq("is_paused", false).eq("is_featured", true).limit(6),
+      supabase.from("courses").select("*").eq("is_published", true).eq("is_paused", false).eq("is_featured", true).order("sort_order", { ascending: true }).limit(6),
       supabase.from("digital_products").select("id,name,description,product_type,price,is_free,image_url").eq("active", true).eq("featured", true).limit(4),
       supabase.from("academy_offers").select("id,title,description,price,duration_minutes,session_count,benefits").eq("offer_type", "coaching").eq("active", true).eq("featured", true).limit(1).maybeSingle(),
       supabase.from("student_showcase_submissions").select("id,title,video_url,category,display_name,allow_display_name").in("status", ["approved","featured"]).order("created_at", { ascending: false }).limit(6),

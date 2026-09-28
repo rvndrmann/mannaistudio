@@ -141,12 +141,9 @@ export default function Navbar({ academy = false }: { academy?: boolean }) {
             { key: "hireUs", name: "Hire Our Team", href: "/hire-us", icon: Briefcase, public: true },
           ]
         : [
-            { key: "academy", name: "Academy", href: "/learn", icon: Sparkles, public: true },
             { key: "courses", name: "Courses", href: "/my-courses", icon: BookOpen, public: true },
-            { key: "student-work", name: "Student Work", href: "/learn#student-work", icon: Video, public: true },
             { key: "originals", name: "Originals", href: "/originals", icon: Clapperboard, public: true },
             { key: "hireUs", name: "Hire Our Team", href: "/hire-us", icon: Briefcase, public: true },
-            { key: "about", name: "About", href: "/about", icon: User, public: true },
           ]
     const isAcademyNav = academy || homeVariant === "academy"
     const activeNavLinks = isAcademyNav ? academyNavLinks : navLinks

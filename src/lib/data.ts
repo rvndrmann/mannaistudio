@@ -22,6 +22,8 @@ export type Course = {
     chapters: number
     instructor: string
     price: string
+    sort_order?: number
+    highlights?: string[]
     is_paused?: boolean
     is_published?: boolean
     is_featured?: boolean

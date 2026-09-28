@@ -40,7 +40,15 @@ async function exchangeCodeWithRetry(code: string, attempts = 3) {
 }
 
 export async function GET(request: Request) {
-    const { searchParams, origin } = new URL(request.url)
+    const callbackUrl = new URL(request.url)
+    const { searchParams } = callbackUrl
+    // A dev server bound to 0.0.0.0 may expose that bind address in request.url.
+    // It is not a browser destination; keep OAuth redirects on the localhost
+    // host the user actually opened. Only accept loopback hosts here.
+    const requestHost = request.headers.get('host') || ''
+    const origin = callbackUrl.hostname === '0.0.0.0' && /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(requestHost)
+        ? `${callbackUrl.protocol}//${requestHost}`
+        : callbackUrl.origin
     const code = searchParams.get('code')
     // Validated, not trusted. This parameter is now set on real sign-in links,
     // so it is also reachable by anyone who can hand a visitor a link to our

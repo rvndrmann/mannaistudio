@@ -28,7 +28,8 @@ export async function fetchCourses() {
         .from('courses')
         .select('*')
         .eq('is_published', true)
-        .order('created_at', { ascending: false })
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: true })
 
     if (error || !data || data.length === 0) {
         const { courses } = await import('./data')
