@@ -10,6 +10,12 @@ import { coachingWeekStarts } from "@/lib/coaching-week"
 type Offer = { id: string; title: string; description: string; price: number; duration_minutes: number; session_count: number; benefits: string[] }
 type Week = { weekStart: string; booked: number; reserved: number; capacity: number | null; full: boolean }
 
+async function readJson(response: Response) {
+  const text = await response.text()
+  if (!text.trim()) throw new Error(`Availability request failed (${response.status}).`)
+  try { return JSON.parse(text) as { weeks?: Week[]; error?: string } } catch { throw new Error("Availability returned an invalid response.") }
+}
+
 export default function CoachingOfferCard() {
   const { user } = useAuth()
   const [offer, setOffer] = useState<Offer | null>(null)
@@ -21,7 +27,7 @@ export default function CoachingOfferCard() {
 
   const refreshAvailability = useCallback(async (offerId: string) => {
     const response = await fetch(`/api/academy-offers/availability?id=${encodeURIComponent(offerId)}`, { cache: "no-store" })
-    const data = await response.json()
+    const data = await readJson(response)
     if (!response.ok) throw new Error(data.error || "Could not load coaching availability.")
     setWeeks(data.weeks || [])
     setSelectedWeek((selected) => (data.weeks || []).some((week: Week) => week.weekStart === selected && !week.full)
@@ -40,7 +46,7 @@ export default function CoachingOfferCard() {
         if (!active || !data) return
         setOffer(data)
         const response = await fetch(`/api/academy-offers/availability?id=${encodeURIComponent(data.id)}`, { cache: "no-store" })
-        const result = await response.json()
+        const result = await readJson(response)
         if (!response.ok) throw new Error(result.error || "Could not load coaching availability.")
         if (active) {
           setWeeks(result.weeks || [])

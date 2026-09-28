@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   if (reservationResult.error) return NextResponse.json({ error: reservationResult.error.message }, { status: 500 })
 
   const weeks = [currentWeekStart, nextWeekStart]
-  const availability = weeks.map((weekStart) => {
+  const availability = weeks.map((weekStart, index) => {
     const booked = (purchaseResult.data || []).filter((row) => row.booking_week_start === weekStart).length
     const reserved = (reservationResult.data || []).filter((row) => row.week_start === weekStart).length
     const manual = index === 0 ? offer.manual_slots_left : null
