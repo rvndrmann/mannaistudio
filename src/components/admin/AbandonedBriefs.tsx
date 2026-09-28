@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { ChevronDown, ChevronRight, Loader2, Mail, RefreshCcw, UserX } from "lucide-react"
 import { briefDigest, parseManagedBrief } from "@/lib/managed-brief"
 import { formatUsdWithInr } from "@/lib/currency"
+import BriefAttachments from "@/components/admin/BriefAttachments"
 
 /**
  * Who described their product to us and then did not buy.
@@ -192,9 +193,7 @@ function DraftRow({ draft, open, onToggle }: { draft: Draft; open: boolean; onTo
           </pre>
 
           {brief.attachments.length > 0 && (
-            <p className="mt-2 text-[11px] text-white/35">
-              {brief.attachments.length} file{brief.attachments.length === 1 ? "" : "s"} already uploaded with this brief.
-            </p>
+            <BriefAttachments draftId={draft.id} />
           )}
         </div>
       )}

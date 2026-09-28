@@ -10,6 +10,7 @@ import { MANAGED_STATUSES, MANAGED_STATUS_LABELS } from "@/lib/managed-productio
 import { offerServiceName } from "@/lib/managed-offers"
 import ManagedOffers from "@/components/admin/ManagedOffers"
 import AbandonedBriefs from "@/components/admin/AbandonedBriefs"
+import BriefAttachments from "@/components/admin/BriefAttachments"
 import ProjectChat from "@/components/managed/ProjectChat"
 import { briefDigest, parseManagedBrief } from "@/lib/managed-brief"
 import type { ManagedProjectPayload } from "@/components/managed/types"
@@ -429,9 +430,7 @@ function OrderPanel({ projectId, onChanged }: { projectId: string; onChanged: ()
         </summary>
         <pre className="mt-3 whitespace-pre-wrap text-[11px] leading-relaxed text-white/60">{briefDigest(brief)}</pre>
         {brief.attachments.length > 0 && (
-          <p className="mt-3 text-[11px] text-white/35">
-            {brief.attachments.length} file(s) attached — imported into the Studio production as references.
-          </p>
+          <BriefAttachments projectId={project.id} />
         )}
       </details>
     </div>
