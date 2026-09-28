@@ -6,7 +6,7 @@ import { ArrowRight, BookOpen, Loader2 } from "lucide-react"
 import Navbar from "@/components/Navbar"
 import { useAuth } from "@/components/auth/auth-provider"
 import { createClient } from "@/lib/supabase/client"
-import { hasPremiumAccess, isAdminUser } from "@/lib/membership"
+import { hasAllCoursesAccess, hasPremiumAccess, isAdminUser } from "@/lib/membership"
 import { isFreeCourse } from "@/lib/course-price"
 import { CourseHighlights } from "@/components/courses/CourseHighlights"
 
@@ -26,21 +26,22 @@ export default function MyCoursesPage(){
       setLoading(true)
       setError(null)
       const supabase=createClient()
-      const [enrollments,profile,admin,progressRows]=await Promise.all([
+      const [enrollments,profile,admin,allCourseAccess,progressRows]=await Promise.all([
         supabase.from("enrollments").select("course_id,status").eq("profile_id",user.id).eq("status","active"),
         supabase.from("profiles").select("membership_status,membership_expires_at").eq("id",user.id).maybeSingle(),
         isAdminUser(supabase,user.id),
+        hasAllCoursesAccess(supabase,user.id),
         supabase.from("course_progress").select("course_id,completed_chapters").eq("profile_id",user.id),
       ])
       const ids=(enrollments.data||[]).map(row=>row.course_id)
       if(enrollments.error)throw new Error(enrollments.error.message)
       if(profile.error)throw new Error(profile.error.message)
       if(progressRows.error)throw new Error(progressRows.error.message)
-      const {data:catalog,error:catalogError}=await supabase.from("courses").select("*").eq("is_published",true).eq("is_paused",false).order("created_at",{ascending:true})
+      const {data:catalog,error:catalogError}=await supabase.from("courses").select("*").eq("is_published",true).eq("is_paused",false).order("sort_order",{ascending:true}).order("created_at",{ascending:true})
       if(catalogError)throw new Error(catalogError.message)
       let courseRows:Course[]=[]
       if(ids.length){const {data,error:courseError}=await supabase.from("courses").select("*").in("id",ids).eq("is_published",true);if(courseError)throw new Error(courseError.message);courseRows=(data||[]) as Course[]}
-      if(hasPremiumAccess(profile.data,admin)){
+      if(hasPremiumAccess(profile.data,admin)||allCourseAccess){
         const {data,error:courseError}=await supabase.from("courses").select("*").eq("is_published",true).eq("is_paused",false)
         if(courseError)throw new Error(courseError.message)
         const byId=new Map(courseRows.map(course=>[course.id,course]));(data||[]).forEach(course=>byId.set(course.id,course));courseRows=Array.from(byId.values())

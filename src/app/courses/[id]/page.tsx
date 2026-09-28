@@ -14,7 +14,9 @@ import { fbTrack } from "@/lib/fbpixel"
 import { claimOnce } from "@/lib/track-once"
 import { formatInr, formatUsd } from "@/lib/currency"
 import { readProgress, writeProgress } from "@/lib/course-progress"
-import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, hasPremiumAccess, isAdminUser } from "@/lib/membership"
+import CoachingOfferCard from "@/components/home/CoachingOfferCard"
+import CourseDigitalProducts from "@/components/courses/CourseDigitalProducts"
+import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, hasAllCoursesAccess, hasPremiumAccess, isAdminUser } from "@/lib/membership"
 // @ts-ignore
 import confetti from "canvas-confetti"
 
@@ -91,6 +93,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
     const [showXPAlert, setShowXPAlert] = useState(false)
     const [isEnrolled, setIsEnrolled] = useState(false)
     const [isMember, setIsMember] = useState(false)
+    const [hasAllCourseEntitlement, setHasAllCourseEntitlement] = useState(false)
     const [isAdmin, setIsAdmin] = useState(false)
     const [billingSettings, setBillingSettings] = useState(defaultBillingSettings)
     const [enrollLoading, setEnrollLoading] = useState(false)
@@ -170,7 +173,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
 
     const isFree = course?.price === "Free" || course?.price === "$0" || course?.price === 0 || course?.price === "0" || !course?.price
     // Courses are gated behind Pro membership. Trial members (active membership) keep access; everyone else must subscribe.
-    const hasCourseAccess = isFree || isEnrolled || isMember || isAdmin
+    const hasCourseAccess = isFree || isEnrolled || isMember || isAdmin || hasAllCourseEntitlement
     const progress = course ? (completedChapters.length / (course.chapters || 1)) * 100 : 0
     const activeLesson = course?.lessons?.find((lesson: any) => lesson.id === activeChapter)
     const activeLessonYouTubeUrl = activeLesson?.videoUrl ? getYouTubeEmbedUrl(activeLesson.videoUrl) : null
@@ -183,7 +186,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                 const enrolled = await checkEnrollment(course.id)
                 if (isFree && !enrolled) await enrollFreeCourse(course.id)
                 const supabase = createClient()
-                const [{ data: profile }, nextBillingSettings, nextIsAdmin] = await Promise.all([
+                const [{ data: profile }, nextBillingSettings, nextIsAdmin, nextAllCourseAccess] = await Promise.all([
                     supabase
                         .from('profiles')
                         .select('membership_status, membership_expires_at')
@@ -191,9 +194,11 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                         .single(),
                     fetchBillingSettings(supabase),
                     isAdminUser(supabase, user.id),
+                    hasAllCoursesAccess(supabase, user.id),
                 ])
                 setBillingSettings(nextBillingSettings)
                 setIsAdmin(nextIsAdmin)
+                setHasAllCourseEntitlement(nextAllCourseAccess)
                 setIsMember(hasPremiumAccess(profile, nextIsAdmin))
                 setIsEnrolled(enrolled || isFree)
             }
@@ -431,6 +436,9 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                             </div>
                         )}
                         {checkoutError&&<p role="alert" className="rounded-lg border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-200">{checkoutError}</p>}
+
+                        <CoachingOfferCard />
+                        <CourseDigitalProducts courseId={course.id} />
 
                         <div className="glass-card p-8 rounded-2xl border-white/10">
                             <div className="flex items-center justify-between mb-8">

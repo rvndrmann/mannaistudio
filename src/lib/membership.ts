@@ -62,6 +62,18 @@ export function hasPremiumAccess(profile: any, isAdmin = false) {
     return isAdmin || isMembershipActive(profile)
 }
 
+export async function hasAllCoursesAccess(supabase: SupabaseClient, userId: string) {
+    const { data, error } = await supabase
+        .from("user_entitlements")
+        .select("starts_at,expires_at")
+        .eq("profile_id", userId)
+        .eq("entitlement_key", "academy_all_courses")
+        .lte("starts_at", new Date().toISOString())
+        .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+        .limit(1)
+    return !error && Boolean(data?.length)
+}
+
 export function getPortfolioLimit(profile: any, isAdmin = false) {
     return hasPremiumAccess(profile, isAdmin) ? membershipPlan.portfolioLimit : membershipPlan.freePortfolioLimit
 }

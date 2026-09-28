@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/client"
 import { sortShowcase, toShowcaseVideo, type ShowcaseVideo } from "@/lib/showcase"
 import { isFreeCourse } from "@/lib/course-price"
 import { youtubeEmbedUrl } from "@/lib/video-embed"
+import CoachingOfferCard from "@/components/home/CoachingOfferCard"
 
 type Course = {
   id: string; title: string; description: string; thumbnail: string; level: string
@@ -34,9 +35,6 @@ export default function AcademyHome() {
   const [showcase, setShowcase] = useState<ShowcaseVideo[]>([])
   const [courses, setCourses] = useState<Course[]>([])
   const [products, setProducts] = useState<Array<{id:string;name:string;description:string;product_type:string;price:number;is_free:boolean;image_url:string|null}>>([])
-  const [coaching, setCoaching] = useState<{id:string;title:string;description:string;price:number;duration_minutes:number;session_count:number;benefits:string[]}|null>(null)
-  const [coachingBusy,setCoachingBusy]=useState(false)
-  const [coachingNotice,setCoachingNotice]=useState("")
   const [hasStudioAccess, setHasStudioAccess] = useState(false)
   const [studentWork, setStudentWork] = useState<Array<{id:string;title:string;video_url:string;category:string;display_name:string|null;allow_display_name:boolean}>>([])
   const [content, setContent] = useState(defaultContent)
@@ -48,15 +46,13 @@ export default function AcademyHome() {
       supabase.from("showcase_items").select("*").order("is_featured", { ascending: false }).order("position").limit(9),
       supabase.from("courses").select("*").eq("is_published", true).eq("is_paused", false).eq("is_featured", true).order("sort_order", { ascending: true }).limit(6),
       supabase.from("digital_products").select("id,name,description,product_type,price,is_free,image_url").eq("active", true).eq("featured", true).limit(4),
-      supabase.from("academy_offers").select("id,title,description,price,duration_minutes,session_count,benefits").eq("offer_type", "coaching").eq("active", true).eq("featured", true).limit(1).maybeSingle(),
       supabase.from("student_showcase_submissions").select("id,title,video_url,category,display_name,allow_display_name").in("status", ["approved","featured"]).order("created_at", { ascending: false }).limit(6),
       supabase.from("site_settings").select("value").eq("key","academy_content").maybeSingle(),
-    ]).then(([work, courseRows, productRows, coachingRow, studentRows, contentRow]) => {
+    ]).then(([work, courseRows, productRows, studentRows, contentRow]) => {
       if (!active) return
       if (work.data) setShowcase(sortShowcase(work.data.map(toShowcaseVideo)).filter((item) => item.videoUrl).slice(0, 9))
       if (courseRows.data) setCourses(courseRows.data as Course[])
       if (productRows.data) setProducts(productRows.data as typeof products)
-      if (coachingRow.data) setCoaching(coachingRow.data)
       if (studentRows.data) setStudentWork(studentRows.data)
       if (contentRow.data?.value) setContent({...defaultContent,...contentRow.data.value})
     })
@@ -72,17 +68,6 @@ export default function AcademyHome() {
       .catch(() => { if (active) setHasStudioAccess(false) })
     return () => { active = false }
   }, [user])
-
-  const purchaseCoaching=async()=>{
-    if(!coaching)return
-    if(!user){window.location.href="/login?next=%2Flearn";return}
-    setCoachingBusy(true);setCoachingNotice("")
-    try{
-      if(!(window as any).Razorpay){const script=document.createElement("script");script.src="https://checkout.razorpay.com/v1/checkout.js";await new Promise<void>((resolve,reject)=>{script.onload=()=>resolve();script.onerror=()=>reject(new Error("Could not load payment checkout."));document.body.appendChild(script)})}
-      const response=await fetch("/api/academy-offers/checkout",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:coaching.id})});const order=await response.json();if(!response.ok)throw new Error(order.error||"Could not start checkout.")
-      const checkout=new (window as any).Razorpay({key:order.keyId,order_id:order.orderId,amount:order.amount,currency:"INR",name:"AI Director Hub",description:order.offerTitle,prefill:{email:order.email,name:order.name},theme:{color:"#b9f42e"},handler:async(payment:any)=>{const verified=await fetch("/api/academy-offers/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payment)});const result=await verified.json();setCoachingNotice(verified.ok?result.message:result.error);setCoachingBusy(false)},modal:{ondismiss:()=>setCoachingBusy(false)}});checkout.open()
-    }catch(error){setCoachingNotice(error instanceof Error?error.message:"Could not start checkout.");setCoachingBusy(false)}
-  }
 
   return (
     <main className="min-h-screen bg-[#070807] text-white">
@@ -129,7 +114,7 @@ export default function AcademyHome() {
 
       {(content.show_products || content.show_coaching) && <section className="mx-auto max-w-7xl px-5 py-20 sm:px-8"><SectionTitle eyebrow="MORE WAYS TO LEARN" title="Build Your AI Video Toolkit" body="Add focused tools and personal guidance as your practice grows."/>
         {content.show_products && products.length > 0 && <div className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{products.map((product)=><Link href={`/products/${product.id}`} key={product.id} className="rounded-2xl border border-white/10 bg-white/[.03] p-5 transition hover:border-primary/40">{product.image_url ? <img src={product.image_url} alt="" className="mb-4 h-28 w-full rounded-lg object-cover"/>:<Sparkles className="mb-4 h-6 w-6 text-primary"/>}<p className="text-[10px] uppercase tracking-[.18em] text-primary">{product.product_type}</p><h3 className="mt-2 font-semibold">{product.name}</h3><p className="mt-2 text-sm text-white/50">{product.description}</p><div className="mt-4 flex items-center justify-between"><p className="text-sm font-semibold">{product.is_free ? "Free" : `₹${product.price}`}</p><span className="text-xs text-primary">Explore →</span></div></Link>)}</div>}
-        {content.show_coaching && coaching && <div className="mt-8 flex flex-col justify-between gap-5 rounded-2xl border border-primary/20 bg-primary/[.05] p-6 sm:flex-row sm:items-center"><div><p className="text-xs uppercase tracking-[.2em] text-primary">1:1 COACHING · {coaching.duration_minutes} MINUTES · {coaching.session_count} SESSION{coaching.session_count===1?"":"S"}</p><h3 className="mt-2 text-xl font-semibold">{coaching.title}</h3><p className="mt-2 max-w-2xl text-sm text-white/55">{coaching.description}</p>{coaching.benefits?.length>0&&<ul className="mt-4 grid gap-2 text-sm text-white/60 sm:grid-cols-2">{coaching.benefits.map((benefit,index)=><li key={index}>• {benefit}</li>)}</ul>}{coachingNotice&&<p className="mt-3 text-xs text-primary">{coachingNotice}</p>}</div><button onClick={()=>void purchaseCoaching()} disabled={coachingBusy} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-md border border-primary/40 px-5 text-sm font-semibold text-primary disabled:opacity-50">{coachingBusy?"Opening checkout…":`Learn With Me · ₹${coaching.price}`}<ArrowRight className="h-4 w-4"/></button></div>}
+        {content.show_coaching && <div className="mt-8"><CoachingOfferCard /></div>}
       </section>}
 
       {content.show_student_work && studentWork.length > 0 && <section id="student-work" className="mx-auto max-w-7xl scroll-mt-24 px-5 py-20 sm:px-8"><SectionTitle eyebrow="STUDENT WORK" title="Created by AI Director Hub Students" body="Shared by students who chose to submit their projects for public display."/><div className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{studentWork.map((project)=><article key={project.id} className="overflow-hidden rounded-xl border border-white/10 bg-white/[.03]"><video src={project.video_url} controls playsInline preload="none" className="aspect-video w-full bg-black"/><div className="p-4"><p className="font-semibold">{project.title}</p>{project.allow_display_name && project.display_name && <p className="mt-1 text-xs text-white/45">By {project.display_name}</p>}<p className="mt-2 text-[10px] uppercase tracking-widest text-primary">{project.category.replaceAll("_", " ")}</p></div></article>)}</div></section>}

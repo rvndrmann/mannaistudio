@@ -59,6 +59,9 @@ export default function AccountPage() {
   const [unlocks, setUnlocks] = useState<UnlockRow[]>([])
   const [passes, setPasses] = useState<PassRow[]>([])
   const [payments, setPayments] = useState<PaymentRecord[]>([])
+  const [contactPhone, setContactPhone] = useState("")
+  const [savingPhone, setSavingPhone] = useState(false)
+  const [phoneNotice, setPhoneNotice] = useState("")
   const [loading, setLoading] = useState(true)
 
   const { projects: managedProjects, loading: managedLoading } = useManagedProjects()
@@ -70,7 +73,7 @@ export default function AccountPage() {
     // thing a viewer opens after paying, and it should not spend a second
     // waiting on requests that do not depend on each other.
     const [profileRes, unlockRes, passRes, paymentRows] = await Promise.all([
-      supabase.from("profiles").select("credits_balance").eq("id", user.id).maybeSingle(),
+      supabase.from("profiles").select("credits_balance,contact_phone").eq("id", user.id).maybeSingle(),
       supabase.rpc("originals_my_unlocks", { p_profile_id: user.id }),
       supabase
         .from("originals_season_passes")
@@ -81,6 +84,7 @@ export default function AccountPage() {
       fetchMyPayments(supabase, user.id),
     ])
     setBalance(Number(profileRes.data?.credits_balance ?? 0))
+    setContactPhone(profileRes.data?.contact_phone || "")
     setUnlocks((unlockRes.data as UnlockRow[] | null) || [])
     setPasses(((passRes.data as unknown as PassRow[] | null) || []))
     setPayments(paymentRows)
@@ -88,6 +92,20 @@ export default function AccountPage() {
   }, [user])
 
   useEffect(() => { if (!authLoading) load() }, [authLoading, load])
+
+  const saveContactPhone = async () => {
+    if (!user) return
+    const phone = contactPhone.trim()
+    if (phone && !/^\+?[0-9()\s-]{6,25}$/.test(phone)) {
+      setPhoneNotice("Enter a valid phone number, including your country code if needed.")
+      return
+    }
+    setSavingPhone(true)
+    setPhoneNotice("")
+    const { error } = await createClient().from("profiles").update({ contact_phone: phone || null }).eq("id", user.id)
+    setPhoneNotice(error ? `Could not save phone number: ${error.message}` : "Phone number saved. Our team can use it to arrange your coaching sessions.")
+    setSavingPhone(false)
+  }
 
   // The nav's credit badge and this page must never disagree about the balance.
   // An event with no figure means "re-read it", not "it is zero".
@@ -142,6 +160,16 @@ export default function AccountPage() {
         <p className="mt-1 text-sm text-white/45">
           Your account, unlocked episodes, and payment history.
         </p>
+
+        <section id="contact-details" className="mt-6 scroll-mt-28 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+          <h2 className="text-base font-semibold">Contact details</h2>
+          <p className="mt-1 text-sm text-white/50">Add a phone number so our team can contact you to schedule one-on-one coaching.</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <input type="tel" autoComplete="tel" aria-label="Phone number" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} placeholder="Phone number, including country code" className="min-w-[240px] flex-1 rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm text-white outline-none focus:border-primary" />
+            <button type="button" onClick={() => void saveContactPhone()} disabled={savingPhone} className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-black disabled:opacity-50">{savingPhone ? "Saving…" : "Save number"}</button>
+          </div>
+          {phoneNotice && <p role="status" className="mt-3 text-sm text-primary">{phoneNotice}</p>}
+        </section>
 
         {/* Balance ---------------------------------------------------------- */}
         <section className="mt-6 rounded-2xl border border-white/10 bg-gradient-to-br from-primary/[0.12] to-transparent p-6">
