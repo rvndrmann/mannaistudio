@@ -27,10 +27,14 @@ export async function GET(request: NextRequest) {
   const availability = weeks.map((weekStart, index) => {
     const booked = (purchaseResult.data || []).filter((row) => row.booking_week_start === weekStart).length
     const reserved = (reservationResult.data || []).filter((row) => row.week_start === weekStart).length
-    const manual = index === 0 ? offer.manual_slots_left : null
-    const capacity = manual ?? offer.weekly_capacity
-    const full = capacity !== null && booked + reserved >= capacity
-    return { weekStart, booked, reserved, capacity, full }
+    const capacity = offer.weekly_capacity
+    const placesLeft = index === 0 && offer.manual_slots_left !== null
+      ? Math.max(0, offer.manual_slots_left)
+      : capacity === null
+        ? null
+        : Math.max(0, capacity - booked - reserved)
+    const full = placesLeft !== null && placesLeft <= 0
+    return { weekStart, booked, reserved, capacity, placesLeft, full }
   })
 
   return NextResponse.json({ weeks: availability }, { headers: { "Cache-Control": "no-store" } })
