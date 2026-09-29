@@ -196,19 +196,19 @@ export default function CoachingOfferCard() {
 
   if (!offer) return null;
   return (
-    <section className="rounded-2xl border border-primary/20 bg-primary/[.04] p-6 sm:p-7">
+    <section className="w-full min-w-0 rounded-2xl border border-primary/20 bg-primary/[.04] p-5 sm:p-7">
       <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.18em] text-primary">
         <CalendarClock className="h-4 w-4" /> Private coaching
       </div>
-      <div className="mt-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-        <div>
+      <div className="mt-3 flex min-w-0 flex-col justify-between gap-3 sm:flex-row sm:items-start">
+        <div className="min-w-0">
           <h2 className="text-xl font-semibold">{offer.title}</h2>
           <p className="mt-2 max-w-3xl text-sm leading-relaxed text-white/55">
             {offer.description ||
               "Get one-on-one help with your AI video workflow."}
           </p>
         </div>
-        <p className="shrink-0 text-lg font-bold text-primary">
+        <p className="shrink-0 self-start text-lg font-bold text-primary sm:pt-0.5">
           ₹{offer.price}
         </p>
       </div>
@@ -232,12 +232,12 @@ export default function CoachingOfferCard() {
             onClick={() => setSelectedWeek(week.weekStart)}
             className={`rounded-xl border p-4 text-left transition ${selectedWeek === week.weekStart ? "border-primary bg-primary/10" : "border-white/10 bg-black/20"} ${week.full ? "cursor-not-allowed opacity-55" : "hover:border-primary/50"}`}
           >
-            <span className="flex items-center justify-between gap-3">
+            <span className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
               <span className="font-semibold">
                 {index === 0 ? "This week" : "Next week"}
               </span>
               <span
-                className={`text-xs ${week.full ? "text-amber-300" : "text-primary"}`}
+                className={`text-left text-xs sm:text-right ${week.full ? "text-amber-300" : "text-primary"}`}
               >
                 {week.full
                   ? "Fully booked"
@@ -283,7 +283,7 @@ export default function CoachingOfferCard() {
           !selectedWeek ||
           weeks.find((week) => week.weekStart === selectedWeek)?.full
         }
-        className="mt-5 inline-flex h-11 items-center gap-2 rounded-md bg-primary px-5 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-50"
+        className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
       >
         {purchaseComplete
           ? "Booking confirmed"
