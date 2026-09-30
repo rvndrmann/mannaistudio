@@ -4,8 +4,10 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Zap, ArrowLeft, Check, Loader2, Sparkles, AlertCircle, CreditCard } from "lucide-react"
 import CreditUsageTab from "@/components/credits/CreditUsageTab"
-import { formatInr, formatUsd, formatUsdWithInr } from "@/lib/currency"
+import { formatInr, formatUsd, formatUsdWithInr, INR_PER_USD } from "@/lib/currency"
 import TeamTab from "@/components/credits/TeamTab"
+
+const MIN_TOP_UP_INR = Math.ceil(5 * INR_PER_USD)
 
 type CreditsTab = "topup" | "usage" | "team"
 
@@ -17,7 +19,8 @@ const creditsTabs: { id: CreditsTab; label: string }[] = [
 
 export default function CreditsPage() {
   const [credits, setCredits] = useState<number | null>(null)
-  const [customAmount, setCustomAmount] = useState<number>(1000)
+  const [canBuyCredits, setCanBuyCredits] = useState(false)
+  const [customAmount, setCustomAmount] = useState<number>(MIN_TOP_UP_INR)
   const [loading, setLoading] = useState(false)
   const [topUpSuccess, setTopUpSuccess] = useState<string | null>(null)
   const [topUpError, setTopUpError] = useState<string | null>(null)
@@ -29,6 +32,7 @@ export default function CreditsPage() {
       if (res.ok) {
         const json = await res.json()
         setCredits(json.credits)
+        setCanBuyCredits(Boolean(json.canBuyCredits))
       }
     } catch (err) {
       console.warn("Could not fetch credits:", err)
@@ -50,8 +54,8 @@ export default function CreditsPage() {
     })
 
   const handleTopUp = async (amountInr: number) => {
-    if (amountInr < 1000) {
-      setTopUpError(`Minimum purchase is 1,000 credits (${formatUsdWithInr(1000)}).`)
+    if (amountInr < MIN_TOP_UP_INR) {
+      setTopUpError(`Minimum purchase is $5 (${formatUsdWithInr(MIN_TOP_UP_INR)}).`)
       return
     }
 
@@ -143,7 +147,9 @@ export default function CreditsPage() {
               ? "Every credit movement on your account, newest first."
               : tab === "team"
                 ? "Share credits with your team and manage who can spend them."
-                : `Buy credits from 1,000 (${formatUsdWithInr(1000)}). Secure Razorpay payment integration.`}
+              : canBuyCredits
+                ? `Buy credits from $5 (${formatUsdWithInr(MIN_TOP_UP_INR)}). Secure Razorpay payment integration.`
+                : "An active subscription is required to buy additional credits."}
           </p>
         </div>
 
@@ -187,7 +193,7 @@ export default function CreditsPage() {
                 <div>
                   <span className="t-caption text-[#b9f42e]">Flexible Top-Up</span>
                   <h3 className="text-xl font-bold text-white mt-1">Buy Custom Credit Amount</h3>
-                  <p className="text-xs text-zinc-400 mt-1">1 credit per ₹1, minimum 1,000 — {formatUsdWithInr(1000)}</p>
+                  <p className="text-xs text-zinc-400 mt-1">1 credit per ₹1, minimum $5 — {formatUsdWithInr(MIN_TOP_UP_INR)}</p>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
@@ -196,11 +202,12 @@ export default function CreditsPage() {
                       key={preset}
                       type="button"
                       onClick={() => setCustomAmount(preset)}
+                      disabled={!canBuyCredits}
                       className={`rounded-xl border px-3 py-1.5 text-xs font-bold transition ${
                         customAmount === preset
                           ? "border-[#b9f42e] bg-[#b9f42e] text-black"
                           : "border-white/10 bg-white/[0.04] text-white hover:border-white/20"
-                      }`}
+                      } disabled:cursor-not-allowed disabled:opacity-40`}
                     >
                       {formatUsd(preset)}
                     </button>
@@ -213,7 +220,7 @@ export default function CreditsPage() {
                   <span className="absolute left-4 top-3 text-lg font-bold text-[#b9f42e]">₹</span>
                   <input
                     type="number"
-                    min={1000}
+                    min={MIN_TOP_UP_INR}
                     step={100}
                     value={customAmount}
                     onChange={(e) => setCustomAmount(Math.max(0, parseInt(e.target.value) || 0))}
@@ -223,7 +230,7 @@ export default function CreditsPage() {
                 </div>
 
                 <button
-                  disabled={loading || customAmount < 1000}
+                  disabled={loading || customAmount < MIN_TOP_UP_INR || !canBuyCredits}
                   onClick={() => handleTopUp(customAmount)}
                   className="flex items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-8 py-3 text-sm font-semibold text-black hover:bg-[#a6de25] transition disabled:opacity-40"
                 >
@@ -268,7 +275,7 @@ export default function CreditsPage() {
                   <div className="mt-6 flex items-center justify-between border-t border-white/[0.06] pt-4">
                     <span className="text-lg font-semibold text-white">{pkg.price}</span>
                     <button
-                      disabled={loading}
+                    disabled={loading || !canBuyCredits}
                       onClick={() => handleTopUp(pkg.credits)}
                       className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-5 py-2.5 text-xs font-semibold text-black hover:bg-[#a6de25] transition disabled:opacity-50"
                     >

@@ -101,6 +101,68 @@ export async function POST(req: Request) {
             return NextResponse.json({ received: true })
         }
 
+        const isStudioSubscription = subscription?.notes?.type === 'creator_studio_monthly'
+        if (isStudioSubscription) {
+            switch (eventType) {
+                case 'subscription.activated': {
+                    await supabase.from('user_entitlements').upsert({
+                        profile_id: profileId,
+                        entitlement_key: 'creator_studio_access',
+                        source_type: 'studio_subscription',
+                        source_id: subscriptionId,
+                        starts_at: new Date().toISOString(),
+                        expires_at: null,
+                    }, { onConflict: 'profile_id,entitlement_key,source_type,source_id' })
+                    break
+                }
+                case 'subscription.charged': {
+                    const paymentId = paymentEntity?.id || subscriptionId
+                    const credits = Number(subscription?.notes?.credits || 3000)
+                    if (credits !== 3000) return NextResponse.json({ error: 'Invalid Studio subscription credit amount.' }, { status: 400 })
+                    await supabase.from('user_entitlements').upsert({
+                        profile_id: profileId,
+                        entitlement_key: 'creator_studio_access',
+                        source_type: 'studio_subscription',
+                        source_id: subscriptionId,
+                        starts_at: new Date().toISOString(),
+                        expires_at: null,
+                    }, { onConflict: 'profile_id,entitlement_key,source_type,source_id' })
+                    await supabase.rpc('grant_subscription_credits', {
+                        p_profile_id: profileId,
+                        p_amount: credits,
+                        p_payment_id: paymentId,
+                        p_tier: 'creator_studio_monthly',
+                        p_description: 'Creator Studio subscription — 3,000 monthly credits',
+                    })
+                    await supabase.rpc('record_payment', {
+                        p_email: email,
+                        p_txnid: paymentId,
+                        p_payment_id: paymentId,
+                        p_amount: paymentEntity?.amount ? String(paymentEntity.amount / 100) : '',
+                        p_product_info: 'Creator Studio subscription — monthly',
+                        p_status: 'success',
+                        p_profile_id: profileId,
+                    })
+                    break
+                }
+                case 'subscription.halted':
+                case 'subscription.cancelled':
+                case 'subscription.completed': {
+                    const endsAt = subscription?.current_end
+                        ? new Date(Number(subscription.current_end) * 1000).toISOString()
+                        : new Date().toISOString()
+                    await supabase.from('user_entitlements')
+                        .update({ expires_at: endsAt })
+                        .eq('profile_id', profileId)
+                        .eq('entitlement_key', 'creator_studio_access')
+                        .eq('source_type', 'studio_subscription')
+                        .eq('source_id', subscriptionId)
+                    break
+                }
+            }
+            return NextResponse.json({ received: true })
+        }
+
         switch (eventType) {
             case 'subscription.charged': {
                 const paymentId = paymentEntity?.id || subscriptionId

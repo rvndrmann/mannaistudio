@@ -70,6 +70,22 @@ export async function POST(request: NextRequest) {
     if (notes.type !== "credits") {
       return NextResponse.json({ error: "This order is not a credit purchase." }, { status: 400 })
     }
+    const isStudioWindowPackage = notes.packageId === "studio-window-3000"
+    if (isStudioWindowPackage) {
+      const deadline = Date.parse(notes.purchase_deadline || "")
+      const orderCreatedAt = Number(order.created_at) * 1000
+      if (
+        Number(notes.credits) !== 3000 ||
+        !Number.isInteger(Number(notes.package_amount_paise)) ||
+        Number(order.amount) !== Number(notes.package_amount_paise) ||
+        order.currency !== "INR" ||
+        !Number.isFinite(deadline) ||
+        !Number.isFinite(orderCreatedAt) ||
+        orderCreatedAt > deadline
+      ) {
+        return NextResponse.json({ error: "This limited-time Studio offer is invalid or expired." }, { status: 400 })
+      }
+    }
 
     // Money is judged on the payment, not on the order. The order aggregate can
     // still read `attempted` for a moment after checkout returns, and failing a
@@ -109,6 +125,20 @@ export async function POST(request: NextRequest) {
     })
     if (error) {
       return NextResponse.json({ error: `Could not add credits: ${error.message}` }, { status: 500 })
+    }
+
+    if (isStudioWindowPackage) {
+      const { error: entitlementError } = await admin.from("user_entitlements").upsert({
+        profile_id: user.id,
+        entitlement_key: "creator_studio_access",
+        source_type: "credit_purchase",
+        source_id: input.razorpay_payment_id,
+        starts_at: new Date().toISOString(),
+        expires_at: null,
+      }, { onConflict: "profile_id,entitlement_key,source_type,source_id" })
+      if (entitlementError) {
+        return NextResponse.json({ error: `Credits were added, but Studio access needs a retry: ${entitlementError.message}` }, { status: 500 })
+      }
     }
 
     const result = Array.isArray(data) ? data[0] : data

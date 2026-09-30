@@ -15,6 +15,7 @@ import { claimOnce } from "@/lib/track-once"
 import { formatUsd } from "@/lib/currency"
 import { readProgress, writeProgress } from "@/lib/course-progress"
 import CourseDigitalProducts from "@/components/courses/CourseDigitalProducts"
+import StudioCreditOffer from "@/components/studio/StudioCreditOffer"
 import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, hasAllCoursesAccess, hasPremiumAccess, isAdminUser } from "@/lib/membership"
 // @ts-ignore
 import confetti from "canvas-confetti"
@@ -98,6 +99,11 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
     const [enrollLoading, setEnrollLoading] = useState(false)
     const [checkingEnrollment, setCheckingEnrollment] = useState(true)
     const [checkoutError, setCheckoutError] = useState("")
+    const [courseInviteStatus, setCourseInviteStatus] = useState<string | null>(null)
+    const [courseInviteBusy, setCourseInviteBusy] = useState(false)
+    const [courseInviteError, setCourseInviteError] = useState("")
+    const [studioEntitled, setStudioEntitled] = useState(false)
+    const [purchaseWindowExpiresAt, setPurchaseWindowExpiresAt] = useState<string | null>(null)
     const ytHostRef = useRef<HTMLDivElement | null>(null)
     const completeRef = useRef<() => void>(() => {})
 
@@ -205,6 +211,60 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
         }
         check()
     }, [user, course?.id, isFree])
+
+    useEffect(() => {
+        if (!user) {
+            setCourseInviteStatus(null)
+            setStudioEntitled(false)
+            return
+        }
+        let active = true
+        Promise.all([
+            fetch("/api/contact?topic=course-studio-access", { cache: "no-store" }).then((res) => res.json()),
+            fetch("/api/entitlements/creator-studio", { cache: "no-store" }).then((res) => res.ok ? res.json() : { entitled: false }),
+        ]).then(([request, access]) => {
+            if (!active) return
+            setCourseInviteStatus(request.status || null)
+            setStudioEntitled(Boolean(access.entitled))
+            setPurchaseWindowExpiresAt(access.purchaseWindowExpiresAt || null)
+        }).catch(() => {
+            if (active) {
+                setCourseInviteStatus(null)
+                setStudioEntitled(false)
+                setPurchaseWindowExpiresAt(null)
+            }
+        })
+        return () => { active = false }
+    }, [user])
+
+    const requestCourseStudioAccess = async () => {
+        if (!user) {
+            signInWithGoogle(`/courses/${id}`)
+            return
+        }
+        setCourseInviteBusy(true)
+        setCourseInviteError("")
+        try {
+            const response = await fetch("/api/contact", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0] || "User",
+                    subject: "Course section Creator Studio access request",
+                    message: `Please review my request for Creator Studio access from the course section (${course?.title || id}).`,
+                    topic: "course-studio-access",
+                }),
+            })
+            const data = await response.json()
+            if (!response.ok) throw new Error(data.error || "Could not submit your request.")
+            const latest = await fetch("/api/contact?topic=course-studio-access", { cache: "no-store" }).then((res) => res.json())
+            setCourseInviteStatus(latest.status || data.status || "pending")
+        } catch (error) {
+            setCourseInviteError(error instanceof Error ? error.message : "Could not submit your request.")
+        } finally {
+            setCourseInviteBusy(false)
+        }
+    }
 
     const handleCompleteChapter = () => {
         if (!completedChapters.includes(activeChapter)) {
@@ -368,7 +428,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                         ) : (
                                             <ShoppingCart className="w-5 h-5" />
                                         )}
-                                        {enrollLoading ? 'Processing...' : Number.isFinite(Number(course.price)) && Number(course.price)>0 ? 'Buy Course' : 'Check Course Pricing'}
+                                        {enrollLoading ? 'Processing...' : Number.isFinite(Number(course.price)) && Number(course.price)>0 ? `Buy Course · ${formatUsd(Number(course.price))}` : 'Check Course Pricing'}
                                     </button>
                                 </div>
                             ) : activeLessonYouTubeUrl ? (
@@ -427,10 +487,36 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     ) : (
                                         <ShoppingCart className="w-4 h-4" />
                                     )}
-                                    {enrollLoading ? 'Processing...' : Number.isFinite(Number(course.price)) && Number(course.price)>0 ? 'Buy Course' : 'Check Course Pricing'}
+                                    {enrollLoading ? 'Processing...' : Number.isFinite(Number(course.price)) && Number(course.price)>0 ? `Buy Course · ${formatUsd(Number(course.price))}` : 'Check Course Pricing'}
                                 </button>
                             </div>
                         )}
+                        <div className="glass-card rounded-2xl border border-primary/20 bg-primary/[.04] p-6">
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <p className="text-xs font-semibold uppercase tracking-[.18em] text-primary">Creator Studio access</p>
+                                    <h3 className="mt-2 text-lg font-bold">Create with AI video tools</h3>
+                                    <p className="mt-1 max-w-2xl text-sm text-white/55">
+                                        Request an invitation. Once an admin approves it, you can purchase 3,000 generation credits for $30.
+                                    </p>
+                                </div>
+                                {!user ? (
+                                    <button onClick={() => signInWithGoogle(`/courses/${id}`)} className="shrink-0 rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-black">Sign in to request access</button>
+                                ) : studioEntitled ? (
+                                    <span className="shrink-0 text-sm font-semibold text-primary">Creator Studio access active</span>
+                                ) : courseInviteStatus === "pending" ? (
+                                    <span className="shrink-0 rounded-lg border border-white/15 px-5 py-3 text-sm font-semibold text-white/70">Request pending</span>
+                                ) : courseInviteStatus === "resolved" ? (
+                                    <span className="shrink-0 rounded-lg border border-white/15 px-5 py-3 text-sm font-semibold text-white/70">Purchase window ended · contact the team</span>
+                                ) : (
+                                    <button onClick={() => void requestCourseStudioAccess()} disabled={courseInviteBusy} className="shrink-0 rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-black disabled:opacity-60">
+                                        {courseInviteBusy ? "Submitting…" : "Request an invitation"}
+                                    </button>
+                                )}
+                            </div>
+                            {user && studioEntitled && purchaseWindowExpiresAt && <div className="mt-5"><StudioCreditOffer expiresAt={purchaseWindowExpiresAt} onPurchased={() => { setStudioEntitled(true); setPurchaseWindowExpiresAt(null) }} /></div>}
+                            {courseInviteError && <p role="status" className="mt-4 text-sm text-white/70">{courseInviteError}</p>}
+                        </div>
                         {checkoutError&&<p role="alert" className="rounded-lg border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-200">{checkoutError}</p>}
 
                         <CourseDigitalProducts courseId={course.id} />

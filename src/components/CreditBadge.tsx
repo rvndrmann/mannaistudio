@@ -8,6 +8,7 @@ import { CREDIT_PACKAGES } from "@/lib/credits-packages"
 import { formatUsdWithInr } from "@/lib/currency"
 import CreditUsageTab from "@/components/credits/CreditUsageTab"
 import TeamTab from "@/components/credits/TeamTab"
+import StudioCreditOffer from "@/components/studio/StudioCreditOffer"
 import { useAuth } from "@/components/auth/auth-provider"
 
 type AccountTab = "topup" | "usage" | "team"
@@ -21,6 +22,8 @@ const accountTabs: { id: AccountTab; label: string }[] = [
 export default function CreditBadge({ className }: { className?: string }) {
   const { user } = useAuth()
   const [hasStudioAccess, setHasStudioAccess] = useState(false)
+  const [purchaseOnly, setPurchaseOnly] = useState(false)
+  const [purchaseWindowExpiresAt, setPurchaseWindowExpiresAt] = useState<string | null>(null)
   const [credits, setCredits] = useState<number | null>(null)
   const [pending, setPending] = useState(0)
   const [showModal, setShowModal] = useState(false)
@@ -39,9 +42,13 @@ export default function CreditBadge({ className }: { className?: string }) {
         const json = await res.json()
         setCredits(json.credits)
         setPending(Number(json.pendingCredits) || 0)
+        setPurchaseOnly(Boolean(json.purchaseOnly))
+        setPurchaseWindowExpiresAt(json.purchaseWindowExpiresAt || null)
         setHasStudioAccess(true)
       } else {
         setHasStudioAccess(false)
+        setPurchaseOnly(false)
+        setPurchaseWindowExpiresAt(null)
         setShowModal(false)
       }
     } catch (err) {
@@ -206,6 +213,16 @@ export default function CreditBadge({ className }: { className?: string }) {
             {tab === "team" && <TeamTab />}
 
             {tab === "topup" && (
+            purchaseOnly && purchaseWindowExpiresAt ? (
+              <StudioCreditOffer
+                expiresAt={purchaseWindowExpiresAt}
+                onPurchased={() => {
+                  setPurchaseOnly(false)
+                  setPurchaseWindowExpiresAt(null)
+                  void fetchCredits()
+                }}
+              />
+            ) : (
             <>
             {topUpSuccess && (
               <div className="mb-4 flex items-center gap-2 rounded-xl border border-[#b9f42e]/40 bg-[#b9f42e]/15 p-3 text-xs font-semibold text-[#b9f42e]">
@@ -267,6 +284,7 @@ export default function CreditBadge({ className }: { className?: string }) {
               🔒 Powered by Razorpay. Full access to AI Video & Image generation.
             </div>
             </>
+            )
             )}
           </div>
         </div>,

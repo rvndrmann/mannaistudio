@@ -17,6 +17,7 @@ import {
   Users, KeyRound, Wand2, X,} from "lucide-react";
 import { BillingModeToggle } from "@/components/studio/BillingModeToggle";
 import CreditBadge from "@/components/CreditBadge";
+import StudioCreditOffer from "@/components/studio/StudioCreditOffer";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useByokEnabled } from "@/lib/byok/use-byok-enabled"
 import { createClient } from "@/lib/supabase/client"
@@ -44,6 +45,7 @@ export default function StudioHome() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [studioEntitled, setStudioEntitled] = useState<boolean | null>(null)
+  const [purchaseWindowExpiresAt, setPurchaseWindowExpiresAt] = useState<string | null>(null)
   const [invitationRequested, setInvitationRequested] = useState(false)
   const [invitationBusy, setInvitationBusy] = useState(false)
   const [invitationError, setInvitationError] = useState("")
@@ -77,10 +79,29 @@ export default function StudioHome() {
     let active = true
     fetch("/api/entitlements/creator-studio", { cache: "no-store" })
       .then((res) => res.ok ? res.json() : { entitled: false })
-      .then((data) => { if (active) setStudioEntitled(Boolean(data.entitled)) })
+      .then((data) => {
+        if (!active) return
+        setStudioEntitled(Boolean(data.entitled))
+        setPurchaseWindowExpiresAt(data.purchaseWindowExpiresAt || null)
+      })
       .catch(() => { if (active) setStudioEntitled(false) })
     return () => { active = false }
   }, [user])
+
+  useEffect(() => {
+    if (!purchaseWindowExpiresAt) return
+    const remaining = Date.parse(purchaseWindowExpiresAt) - Date.now()
+    if (remaining <= 0) {
+      setStudioEntitled(false)
+      setPurchaseWindowExpiresAt(null)
+      return
+    }
+    const timer = window.setTimeout(() => {
+      setStudioEntitled(false)
+      setPurchaseWindowExpiresAt(null)
+    }, remaining)
+    return () => window.clearTimeout(timer)
+  }, [purchaseWindowExpiresAt])
 
   useEffect(() => {
     if (!user || studioEntitled !== false) return
@@ -199,6 +220,12 @@ export default function StudioHome() {
               <div className="mt-8 grid gap-3 text-left sm:grid-cols-3">{["Plan complete video projects", "Develop characters and storyboards", "Create and organize your shots"].map((feature)=><div key={feature} className="rounded-xl border border-white/10 bg-black/30 p-4 text-sm text-zinc-300">{feature}</div>)}</div>
               <div className="mt-8 flex flex-wrap justify-center gap-3"><button type="button" onClick={() => void requestInvitation()} disabled={invitationRequested || invitationBusy} className="rounded-xl bg-[#b9f42e] px-6 py-3 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-60">{invitationBusy ? "Sending…" : invitationRequested ? "Request Sent" : "Request an Invitation"}</button><Link href="/courses" className="rounded-xl border border-white/15 px-6 py-3 text-sm font-semibold text-white">Explore Courses</Link></div>
               {invitationError && <p className="mt-3 text-sm text-red-300">{invitationError}</p>}
+            </div>
+          )}
+
+          {user && studioEntitled === true && purchaseWindowExpiresAt && (
+            <div className="mx-auto mt-8 max-w-5xl">
+              <StudioCreditOffer expiresAt={purchaseWindowExpiresAt} onPurchased={() => { setStudioEntitled(true); setPurchaseWindowExpiresAt(null) }} />
             </div>
           )}
 

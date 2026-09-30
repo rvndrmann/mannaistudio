@@ -38,7 +38,7 @@ const faqs = [
   ["How do credits work?", "Credits are used when generating AI images and videos. Planning, script writing, workflow instructions, and chat guidance are included in your plan."],
   ["How do Razorpay subscriptions work?", "When you subscribe, Razorpay securely establishes a monthly recurring payment mandate. Your plan automatically renews each month, granting fresh credits to your account upon every successful charge."],
   ["Can I cancel my subscription anytime?", "Yes. You can cancel your subscription anytime directly from your billing dashboard. Your membership access and remaining credits stay active until the end of your current billing period."],
-  ["Can I buy extra credits anytime?", `Active subscribers can purchase additional credits starting from 1,000 credits (${formatUsdWithInr(1000)}) up to any custom amount whenever their production needs grow. Free accounts cannot buy credits.`],
+  ["Can I buy extra credits anytime?", `Active subscribers can purchase additional credits starting at $5 (${formatUsdWithInr(Math.ceil(5 * INR_PER_USD))}) up to any custom amount whenever their production needs grow. Free accounts cannot buy credits.`],
   ["Why is my card charged in rupees?", `Prices are shown in US dollars for convenience, but AI Director Hub bills through Razorpay, an Indian payment gateway, so the charge settles in rupees and that is the amount your statement will show. International cards are accepted. Your bank applies its own exchange rate, so the dollar total may differ by a few cents from the figure shown here (currently converted at ₹${INR_PER_USD} to the dollar).`],
 ]
 
@@ -84,7 +84,8 @@ export default function BillingPage() {
   const [subError, setSubError] = useState<string | null>(null)
 
   // Custom Credit Top-Up state
-  const [customCreditAmount, setCustomCreditAmount] = useState<number>(1000)
+  const MIN_TOP_UP_INR = Math.ceil(5 * INR_PER_USD)
+  const [customCreditAmount, setCustomCreditAmount] = useState<number>(MIN_TOP_UP_INR)
   const [topUpLoading, setTopUpLoading] = useState(false)
 
   // Subscription & Transaction history state
@@ -218,8 +219,8 @@ export default function BillingPage() {
       return
     }
 
-    if (amountInr < 1000) {
-      setSubError(`Minimum purchase is 1,000 credits (${formatUsdWithInr(1000)}).`)
+    if (amountInr < MIN_TOP_UP_INR) {
+      setSubError(`Minimum purchase is $5 (${formatUsdWithInr(MIN_TOP_UP_INR)}).`)
       return
     }
 
@@ -504,14 +505,14 @@ export default function BillingPage() {
                 Buy Extra Generation Credits
               </h2>
               <p className="mt-2 max-w-xl text-sm leading-6 text-white/60">
-                Need more credits? Active subscribers can buy top-up credits anytime — <strong className="text-primary font-bold">1,000 credits for {formatUsd(1000)}</strong>.
-                Minimum purchase is 1,000 credits — add as much as you need.
+                Need more credits? Active subscribers can buy top-up credits anytime, starting from <strong className="text-primary font-bold">$5 ({formatUsdWithInr(MIN_TOP_UP_INR)})</strong>.
+                Add as much as you need.
               </p>
             </div>
 
             {/* Quick Preset Buttons */}
             <div className="flex flex-wrap gap-2.5">
-              {[1000, 2500, 5000, 10000].map((preset) => (
+              {[MIN_TOP_UP_INR, 2500, 5000, 10000].map((preset) => (
                 <button
                   key={preset}
                   type="button"
@@ -532,7 +533,7 @@ export default function BillingPage() {
           <div className="mt-8 grid gap-4 rounded-2xl border border-white/10 bg-black/40 p-6 md:grid-cols-[1fr_auto]">
             <div className="flex flex-col gap-2">
               <label htmlFor="custom-credits" className="t-caption text-white/70">
-                Enter Amount — 1 credit per ₹1, minimum 1,000 (Razorpay bills in ₹)
+                Enter Amount — 1 credit per ₹1, minimum $5 (Razorpay bills in ₹)
               </label>
               <div className="relative flex items-center">
                 <span className="absolute left-4 text-lg font-semibold text-primary">₹</span>
@@ -540,7 +541,7 @@ export default function BillingPage() {
                   id="custom-credits"
                   type="number"
                   disabled={!subscription?.active}
-                  min={1000}
+                  min={MIN_TOP_UP_INR}
                   step={100}
                   value={customCreditAmount}
                   onChange={(e) => setCustomCreditAmount(Math.max(0, parseInt(e.target.value) || 0))}
@@ -556,7 +557,7 @@ export default function BillingPage() {
 
             <div className="flex items-end">
               <button
-                disabled={topUpLoading || customCreditAmount < 1000 || !subscription?.active}
+                disabled={topUpLoading || customCreditAmount < MIN_TOP_UP_INR || !subscription?.active}
                 onClick={() => handleBuyCustomCredits(customCreditAmount)}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-8 py-4 text-base font-semibold text-black transition hover:bg-primary/90 disabled:opacity-40 md:w-auto"
               >

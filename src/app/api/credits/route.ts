@@ -6,13 +6,16 @@ import { getUserCredits } from "@/lib/studio/credits"
 import { isAdminUser, isMembershipActive } from "@/lib/membership"
 import { CREDIT_PACKAGES } from "@/lib/credits-packages"
 import { sendCapiEvent } from "@/lib/meta-capi"
-import { hasCreatorStudioEntitlement } from "@/lib/studio/entitlement"
+import { getCreatorStudioAccess } from "@/lib/studio/entitlement"
+import { INR_PER_USD } from "@/lib/currency"
+
+const MIN_TOP_UP_INR = Math.ceil(5 * INR_PER_USD)
 
 const topUpSchema = z.object({
   packageId: z.string().optional(),
   amountInr: z.number().optional(),
-}).refine((data) => (data.amountInr && data.amountInr >= 1000) || (data.packageId && CREDIT_PACKAGES[data.packageId]), {
-  message: "Minimum purchase is ₹1,000 (1,000 credits).",
+}).refine((data) => (data.amountInr && data.amountInr >= MIN_TOP_UP_INR) || (data.packageId && CREDIT_PACKAGES[data.packageId]), {
+  message: `Minimum purchase is $5 (₹${MIN_TOP_UP_INR.toLocaleString("en-IN")}).`,
 })
 
 export async function GET() {
@@ -21,12 +24,14 @@ export async function GET() {
     const { data: { user }, error } = await supabase.auth.getUser()
     if (error || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    if (!await hasCreatorStudioEntitlement(supabase, user.id)) return NextResponse.json({ error: "Creator Studio access is required." }, { status: 403 })
+    const studioAccess = await getCreatorStudioAccess(supabase, user.id)
+    if (!studioAccess.entitled) return NextResponse.json({ error: "Creator Studio access is required." }, { status: 403 })
 
     const credits = await getUserCredits(user.id, supabase)
     const { data: profile } = await supabase.from("profiles").select("membership_status, membership_expires_at").eq("id", user.id).maybeSingle()
     const isAdmin = await isAdminUser(supabase, user.id)
     const activeMember = isAdmin || isMembershipActive(profile)
+    const studioSubscriber = await hasActiveStudioSubscription(supabase, user.id)
 
     // Credits already committed to work still running.
     //
@@ -47,7 +52,7 @@ export async function GET() {
       return total + (Number(job.credits_used) || Number(job.estimated_credits) || 0)
     }, 0)
 
-    return NextResponse.json({ credits, pendingCredits, userId: user.id, isMember: activeMember })
+    return NextResponse.json({ credits, pendingCredits, userId: user.id, isMember: activeMember, canBuyCredits: activeMember || studioSubscriber, purchaseOnly: studioAccess.purchaseOnly, purchaseWindowExpiresAt: studioAccess.purchaseWindowExpiresAt })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Internal error" }, { status: 500 })
   }
@@ -65,7 +70,18 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error } = await supabase.auth.getUser()
     if (error || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    if (!await hasCreatorStudioEntitlement(supabase, user.id)) return NextResponse.json({ error: "Creator Studio access is required to buy generation credits." }, { status: 403 })
+    const studioAccess = await getCreatorStudioAccess(supabase, user.id)
+    if (!studioAccess.entitled) return NextResponse.json({ error: "Creator Studio access is required to buy generation credits." }, { status: 403 })
+    if (studioAccess.purchaseOnly) return NextResponse.json({ error: "During your 24-hour access window, use the 3,000-credit offer to keep Creator Studio access." }, { status: 403 })
+
+    const [{ data: profile }, isAdmin, studioSubscriber] = await Promise.all([
+      supabase.from("profiles").select("membership_status,membership_expires_at").eq("id", user.id).maybeSingle(),
+      isAdminUser(supabase, user.id),
+      hasActiveStudioSubscription(supabase, user.id),
+    ])
+    if (!isAdmin && !isMembershipActive(profile) && !studioSubscriber) {
+      return NextResponse.json({ error: "An active subscription is required to buy additional credits." }, { status: 403 })
+    }
 
     // A POST with no body throws inside JSON.parse, and the route reported it
     // as an unhandled SyntaxError rather than a bad request — which is what it
@@ -81,7 +97,7 @@ export async function POST(request: NextRequest) {
     let credits = 1000
     let packageId = input.packageId || "custom"
 
-    if (input.amountInr && input.amountInr >= 1000) {
+    if (input.amountInr && input.amountInr >= MIN_TOP_UP_INR) {
       priceInr = Math.floor(input.amountInr)
       credits = priceInr
     } else if (input.packageId && CREDIT_PACKAGES[input.packageId]) {
@@ -129,7 +145,20 @@ export async function POST(request: NextRequest) {
       name: user.user_metadata?.full_name || "Creator",
     })
   } catch (err) {
-    if (err instanceof ZodError) return NextResponse.json({ error: "Minimum purchase is ₹1,000 (1,000 credits)." }, { status: 400 })
+    if (err instanceof ZodError) return NextResponse.json({ error: `Minimum purchase is $5 (₹${MIN_TOP_UP_INR.toLocaleString("en-IN")}).` }, { status: 400 })
     return NextResponse.json({ error: err instanceof Error ? err.message : "Order creation failed" }, { status: 500 })
   }
+}
+
+async function hasActiveStudioSubscription(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
+  const now = new Date().toISOString()
+  const { data, error } = await supabase.from("user_entitlements")
+    .select("id")
+    .eq("profile_id", userId)
+    .eq("entitlement_key", "creator_studio_access")
+    .eq("source_type", "studio_subscription")
+    .lte("starts_at", now)
+    .or(`expires_at.is.null,expires_at.gt.${now}`)
+    .limit(1)
+  return !error && Boolean(data?.length)
 }

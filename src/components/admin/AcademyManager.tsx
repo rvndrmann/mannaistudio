@@ -307,18 +307,33 @@ export default function AcademyManager() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
+    const startsAt = new Date();
+    const expiresAt = new Date(startsAt.getTime() + 24 * 60 * 60 * 1000);
+    const { error: previousGrantError } = await supabase
+      .from("user_entitlements")
+      .update({ expires_at: expiresAt.toISOString() })
+      .eq("profile_id", profile.id)
+      .eq("entitlement_key", "creator_studio_access")
+      .eq("source_type", "admin");
+    if (previousGrantError) {
+      setMessage(previousGrantError.message);
+      setGrantBusy(false);
+      return;
+    }
     const { error } = await supabase
       .from("user_entitlements")
       .upsert(
         {
           profile_id: profile.id,
           entitlement_key: "creator_studio_access",
-          source_type: "admin",
+          source_type: "admin_preview",
           source_id: user?.id || null,
+          starts_at: startsAt.toISOString(),
+          expires_at: expiresAt.toISOString(),
         },
         { onConflict: "profile_id,entitlement_key,source_type,source_id" },
       );
-    setMessage(error?.message || `Creator Studio access granted to ${email}.`);
+    setMessage(error?.message || `24-hour Creator Studio access granted to ${email}. They can buy 3,000 credits for $30 before it expires.`);
     if (!error) setGrantEmail("");
     setGrantBusy(false);
   };
@@ -888,8 +903,8 @@ export default function AcademyManager() {
                 Creator Studio entitlements
               </h2>
               <p className="text-xs text-white/40">
-                Manually grant a lifetime access entitlement. Course and
-                coaching rules can grant the same entitlement.
+                Manual grants open Creator Studio for 24 hours. The user can
+                buy 3,000 credits for $30 during that window to keep access.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
