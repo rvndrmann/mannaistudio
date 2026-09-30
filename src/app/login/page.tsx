@@ -28,8 +28,8 @@ function LoginInner() {
                         <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/15 flex items-center justify-center mb-5">
                             <LogIn className="w-8 h-8 text-primary" />
                         </div>
-                        <h1 className="text-3xl font-bold tracking-tight">Welcome to AI Director Hub</h1>
-                        <p className="text-white/50 text-sm mt-2">Free account — post jobs &amp; build your portfolio free. Every new account gets 20 free bids to start.</p>
+                        <h1 className="text-3xl font-bold tracking-tight">Creative AI Education That Gets You Paid</h1>
+                        <p className="text-white/50 text-sm mt-2">Learn AI creative on-demand, get live feedback on your work, and build the skills and portfolio to land better-paying creative projects.</p>
                     </div>
 
                     <button
