@@ -3,7 +3,7 @@ import ContactRequests from "@/components/admin/ContactRequests";
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Check, Loader2, Plus, Save, X } from "lucide-react";
+import { Check, Loader2, Plus, Save, Trash2, X } from "lucide-react";
 
 type Product = {
   id: string;
@@ -263,6 +263,20 @@ export default function AcademyManager() {
       })
       .eq("id", offer.id);
     setMessage(error?.message || "Coaching offer saved.");
+  };
+  const deleteOffer = async (offer: Offer) => {
+    if (offer.sold_count) {
+      setMessage("Offers with purchases cannot be deleted. Deactivate them instead.");
+      return;
+    }
+    if (!window.confirm(`Delete “${offer.title || "this coaching offer"}”?`)) return;
+    const { error } = await supabase
+      .from("academy_offers")
+      .delete()
+      .eq("id", offer.id)
+      .eq("offer_type", "coaching");
+    setMessage(error?.message || "Coaching offer deleted.");
+    if (!error) setOffers((rows) => rows.filter((row) => row.id !== offer.id));
   };
   const moderate = async (
     id: string,
@@ -779,13 +793,24 @@ export default function AcademyManager() {
                     />
                   )}
                 </div>
-                <button
-                  onClick={() => void saveOffer(o)}
-                  className="flex items-center gap-2 justify-self-start rounded-lg border border-white/10 px-3 py-2 text-xs"
-                >
-                  <Save className="h-3.5 w-3.5" />
-                  Save offer
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => void saveOffer(o)}
+                    className="flex items-center gap-2 justify-self-start rounded-lg border border-white/10 px-3 py-2 text-xs"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    Save offer
+                  </button>
+                  <button
+                    onClick={() => void deleteOffer(o)}
+                    disabled={Boolean(o.sold_count)}
+                    title={o.sold_count ? "Deactivate offers with purchases instead" : "Delete offer"}
+                    className="flex items-center gap-2 rounded-lg border border-red-400/30 px-3 py-2 text-xs text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete offer
+                  </button>
+                </div>
               </div>
             ))}
           </section>
