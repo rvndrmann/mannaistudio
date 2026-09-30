@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, Fragment, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -257,6 +258,7 @@ export default function WorkspacePage({
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = use(params);
+  const router = useRouter();
   const { user } = useAuth();
   const byokEnabled = useByokEnabled();
   const [data, setData] = useState<Workspace | null>(null);
@@ -482,6 +484,7 @@ export default function WorkspacePage({
   const [chatSessionMenu, setChatSessionMenu] = useState(false);
   const [showBasicSettings, setShowBasicSettings] = useState(false);
   const openedInitialSettingsRef = useRef(false);
+  const initialProjectSetupRef = useRef(false);
   const autoStartedRef = useRef(false);
   const [projectMenu, setProjectMenu] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -678,10 +681,30 @@ export default function WorkspacePage({
     const url = new URL(window.location.href);
     if (url.searchParams.get("openSettings") !== "1") return;
     openedInitialSettingsRef.current = true;
+    initialProjectSetupRef.current = true;
     setShowBasicSettings(true);
     url.searchParams.delete("openSettings");
     window.history.replaceState(null, "", url.toString());
   }, [data]);
+  const closeBasicSettings = () => {
+    initialProjectSetupRef.current = false;
+    setShowBasicSettings(false);
+  };
+  const cancelInitialProjectSetup = async () => {
+    if (!initialProjectSetupRef.current) {
+      setShowBasicSettings(false);
+      return;
+    }
+    try {
+      const response = await fetch(`/api/studio/projects/${projectId}`, { method: "DELETE" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not cancel project creation.");
+      initialProjectSetupRef.current = false;
+      router.replace("/studio");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not cancel project creation.");
+    }
+  };
   // The stored mode is the project's, so it is read once when the workspace
   // first arrives. Re-reading on every reload would fight the switch: a user
   // who changed the mode would have the saved value put back over their choice
@@ -1757,7 +1780,8 @@ export default function WorkspacePage({
       {showBasicSettings && (
         <BasicSettingsModal
           data={data}
-          close={() => setShowBasicSettings(false)}
+          close={closeBasicSettings}
+          cancel={cancelInitialProjectSetup}
           save={save}
           reload={load}
         />
@@ -2748,11 +2772,13 @@ function CostBar({ data }: { data: Workspace }) {
 function BasicSettingsModal({
   data,
   close,
+  cancel,
   save,
   reload,
 }: {
   data: Workspace;
   close: () => void;
+  cancel: () => void;
   save: (body: unknown) => Promise<unknown>;
   reload: () => Promise<void>;
 }) {
@@ -2860,7 +2886,7 @@ function BasicSettingsModal({
                 ? <>These settings: ⚡ {perShotEstimate.toLocaleString()}/shot · ⚡ {liveEstimate.totalCredits.toLocaleString()} for {liveEstimate.shotCount} shot{liveEstimate.shotCount === 1 ? "" : "s"}</>
                 : <>These settings: ⚡ {liveEstimate.image.unitCredits} per image · ⚡ {liveEstimate.video.unitCredits} {liveEstimate.video.unit}</>}
             </span>
-            <button onClick={close} className="rounded-xl p-2 text-zinc-400 hover:bg-white/10 hover:text-white">
+            <button onClick={cancel} aria-label="Cancel project setup" className="rounded-xl p-2 text-zinc-400 hover:bg-white/10 hover:text-white">
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -3099,7 +3125,7 @@ function BasicSettingsModal({
         {/* Modal Actions */}
         <div className="mt-8 flex justify-end gap-3 border-t border-white/10 pt-6">
           <button
-            onClick={close}
+            onClick={cancel}
             disabled={saving}
             className="rounded-xl border border-white/10 bg-white/5 px-6 py-3 text-sm font-bold text-zinc-300 hover:bg-white/10"
           >
