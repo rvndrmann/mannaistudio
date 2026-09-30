@@ -97,7 +97,7 @@ export default function AcademyHome() {
 
       <section className="border-y border-primary/15 bg-primary/[.04] px-5 py-8 sm:px-8">
         <div className="mx-auto grid max-w-7xl gap-6 md:grid-cols-[1fr_auto] md:items-center">
-          <div><p className="text-sm font-semibold text-primary">The opportunity is already here.</p><p className="mt-1 max-w-3xl text-sm leading-relaxed text-white/65 sm:text-base">Members are landing <span className="font-semibold text-white">$10K–$75K deals</span> making AI creative. The difference isn&apos;t access to another tool — it&apos;s knowing how to turn an idea into work a client can confidently buy.</p></div>
+          <div><p className="text-sm font-semibold text-primary">The opportunity is already here.</p><p className="mt-1 max-w-3xl text-sm leading-relaxed text-white/65 sm:text-base">Members are landing <span className="font-semibold text-white">$1K–$10K deals</span> making AI creative. The difference isn&apos;t access to another tool — it&apos;s knowing how to turn an idea into work a client can confidently buy.</p></div>
           <a href="#courses" className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-primary/40 px-5 text-sm font-semibold text-primary hover:bg-primary/10">See the path <ArrowRight className="h-4 w-4" /></a>
         </div>
       </section>
