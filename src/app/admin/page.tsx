@@ -1205,7 +1205,7 @@ function AdminDashboardContent() {
             const profiles = profileData || []
 
             const [entitlementRows, productPurchaseRows, progressRows, projectRows] = await Promise.all([
-                supabase.from('user_entitlements').select('profile_id,entitlement_key,starts_at,expires_at'),
+                supabase.from('user_entitlements').select('profile_id,entitlement_key,source_type,starts_at,expires_at'),
                 supabase.from('digital_product_purchases').select('profile_id,product_id'),
                 supabase.from('course_progress').select('profile_id,course_id,completed_chapters'),
                 supabase.rpc('admin_project_overview'),
@@ -1213,6 +1213,7 @@ function AdminDashboardContent() {
             const entitlementMap = new Map<string, string[]>()
             ;(entitlementRows.data || []).forEach((row: any) => {
                 if ((row.starts_at && new Date(row.starts_at).getTime() > Date.now()) || (row.expires_at && new Date(row.expires_at).getTime() <= Date.now())) return
+                if (row.entitlement_key === 'creator_studio_access' && row.source_type !== 'studio_subscription' && !(['admin', 'admin_preview'].includes(row.source_type) && row.expires_at)) return
                 const current = entitlementMap.get(row.profile_id) || []
                 current.push(row.entitlement_key)
                 entitlementMap.set(row.profile_id, current)

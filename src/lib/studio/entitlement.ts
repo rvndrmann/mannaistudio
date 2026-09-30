@@ -3,15 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 const STUDIO_ENTITLEMENT_SOURCES = [
   "admin",
   "admin_preview",
-  "coaching_purchase",
-  "coaching_inclusion",
-  "course_purchase",
-  "course_inclusion",
-  "product_purchase",
-  "free_product",
-  "credit_purchase",
   "studio_subscription",
-  "legacy_access",
 ]
 
 export type CreatorStudioAccess = {
@@ -41,7 +33,10 @@ export async function getCreatorStudioAccess(supabase: SupabaseClient, userId: s
   })
   const isPreviewGrant = (grant: { source_type: string; expires_at: string | null }) =>
     grant.source_type === "admin_preview" || (grant.source_type === "admin" && Boolean(grant.expires_at))
-  const permanent = activeGrants.some((grant) => !isPreviewGrant(grant))
+  // Creator Studio is now invite-only until purchase. Do not honor legacy
+  // grandfathered grants or permanent manual grants as paid access. Admins
+  // can still grant a time-limited preview window, and subscriptions qualify.
+  const permanent = activeGrants.some((grant) => grant.source_type === "studio_subscription")
   const previewGrants = activeGrants.filter((grant) => isPreviewGrant(grant) && grant.expires_at)
   const purchaseWindowExpiresAt = previewGrants
     .map((grant) => grant.expires_at as string)
