@@ -56,6 +56,11 @@ export default function AcademyHome() {
       if (productRows.data) setProducts(productRows.data as typeof products)
       if (studentRows.data) setStudentWork(studentRows.data)
       if (contentRow.data?.value) setContent({...defaultContent,...contentRow.data.value})
+    }).catch((error: unknown) => {
+      // These homepage sections are optional; a transient network failure in
+      // one query should not become an unhandled rejection and trigger the
+      // full-screen Next.js development error overlay.
+      if (active) console.warn("Could not load all homepage content.", error)
     })
     return () => { active = false }
   }, [])
