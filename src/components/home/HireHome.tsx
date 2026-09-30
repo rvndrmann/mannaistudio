@@ -21,7 +21,7 @@ import Footer from "@/components/Footer"
 import ShowcaseReel from "@/components/home/ShowcaseReel"
 import { useAuth } from "@/components/auth/auth-provider"
 import { createClient } from "@/lib/supabase/client"
-import { formatUsdWithInr } from "@/lib/currency"
+import { formatUsd } from "@/lib/currency"
 import { cheapestPackage, publishedOffers, type OfferPackage, type OfferService } from "@/lib/managed-offers"
 import type { OriginalsSeriesSummary } from "@/lib/originals"
 import { sortShowcase, toShowcaseVideo, type ShowcaseVideo } from "@/lib/showcase"
@@ -594,7 +594,7 @@ function PlanCard({ plan, serviceKey }: { plan: OfferPackage; serviceKey: string
       )}
       <h3 className="text-lg font-bold tracking-tight">{plan.name}</h3>
       <p className="mt-1 text-sm text-primary/90">{plan.summary}</p>
-      <p className="mt-4 text-2xl font-bold">{formatUsdWithInr(plan.priceInr)}</p>
+      <p className="mt-4 text-2xl font-bold">{formatUsd(plan.priceInr)}</p>
 
       {plan.includes.length > 0 && (
         <ul className="mt-5 flex-1 space-y-2">
@@ -629,7 +629,7 @@ function ServiceCard({ service }: { service: OfferService }) {
     <motion.div {...materialize} className="glass-card flex flex-col rounded-2xl border-white/10 p-6">
       <h3 className="text-lg font-bold tracking-tight">{service.name}</h3>
       {service.tagline && <p className="mt-1 text-sm text-primary/90">{service.tagline}</p>}
-      {cheapest && <p className="mt-4 text-2xl font-bold">{formatUsdWithInr(cheapest.priceInr)}</p>}
+      {cheapest && <p className="mt-4 text-2xl font-bold">{formatUsd(cheapest.priceInr)}</p>}
       {service.deliverables.length > 0 && (
         <ul className="mt-5 flex-1 space-y-2">
           {service.deliverables.slice(0, 4).map((item) => (

@@ -12,7 +12,7 @@ import { checkEnrollment, enrollFreeCourse } from "@/lib/supabase-helpers"
 import { createClient } from "@/lib/supabase/client"
 import { fbTrack } from "@/lib/fbpixel"
 import { claimOnce } from "@/lib/track-once"
-import { formatInr, formatUsd } from "@/lib/currency"
+import { formatUsd } from "@/lib/currency"
 import { readProgress, writeProgress } from "@/lib/course-progress"
 import CourseDigitalProducts from "@/components/courses/CourseDigitalProducts"
 import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, hasAllCoursesAccess, hasPremiumAccess, isAdminUser } from "@/lib/membership"
@@ -356,7 +356,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     </div>
                                     <div className="text-center space-y-2">
                                         <h3 className="text-xl font-bold">Enroll to access this course</h3>
-                                        <p className="text-white/50 text-sm">{Number.isFinite(Number(course.price)) && Number(course.price)>0 ? `₹${course.price} · one-time course purchase` : "Contact the team for course pricing."}</p>
+                                        <p className="text-white/50 text-sm">{Number.isFinite(Number(course.price)) && Number(course.price)>0 ? `${formatUsd(Number(course.price))} · one-time course purchase` : "Contact the team for course pricing."}</p>
                                     </div>
                                     <button
                                         onClick={handleEnroll}
@@ -413,7 +413,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                             <div className="glass-card p-6 rounded-2xl border border-primary/20 bg-primary/5 flex items-center justify-between">
                                 <div className="space-y-1">
                                     <h3 className="font-bold text-lg">Get access to this course</h3>
-                                    <p className="text-sm text-white/50">{Number.isFinite(Number(course.price)) && Number(course.price)>0 ? `₹${course.price} · one-time purchase` : "Contact the team for course pricing."}</p>
+                                    <p className="text-sm text-white/50">{Number.isFinite(Number(course.price)) && Number(course.price)>0 ? `${formatUsd(Number(course.price))} · one-time purchase` : "Contact the team for course pricing."}</p>
                                 </div>
                                 <button
                                     onClick={handleEnroll}

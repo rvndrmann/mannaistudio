@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/components/auth/auth-provider";
 import { createClient } from "@/lib/supabase/client";
 import { coachingWeekStarts } from "@/lib/coaching-week";
+import { formatUsd } from "@/lib/currency";
 
 type Offer = {
   id: string;
@@ -209,7 +210,7 @@ export default function CoachingOfferCard() {
           </p>
         </div>
         <p className="shrink-0 self-start text-lg font-bold text-primary sm:pt-0.5">
-          ₹{offer.price}
+          {formatUsd(offer.price)}
         </p>
       </div>
       <p className="mt-3 text-xs text-white/45">
@@ -289,7 +290,7 @@ export default function CoachingOfferCard() {
           ? "Booking confirmed"
           : busy
             ? "Opening checkout…"
-            : `Book ${selectedWeek === weeks[1]?.weekStart ? "next week" : "this week"} · ₹${offer.price}`}
+            : `Book ${selectedWeek === weeks[1]?.weekStart ? "next week" : "this week"} · ${formatUsd(offer.price)}`}
         <ArrowRight className="h-4 w-4" />
       </button>
     </section>

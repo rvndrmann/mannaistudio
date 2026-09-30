@@ -7,7 +7,7 @@ import { ArrowRight, Check, Clapperboard, Loader2, MessageSquare, Play, Sparkles
 import Navbar from "@/components/Navbar"
 import Footer from "@/components/Footer"
 import { useAuth } from "@/components/auth/auth-provider"
-import { formatUsdWithInr } from "@/lib/currency"
+import { formatUsd } from "@/lib/currency"
 import { cheapestPackage, publishedOffers, type OfferService } from "@/lib/managed-offers"
 import { materialize, springUI } from "@/lib/motion"
 import OfferMediaFrame, { offerMediaFit } from "@/components/managed/OfferMedia"
@@ -230,7 +230,7 @@ function ServiceCard({ service, index }: { service: OfferService; index: number 
           {cheapest && (
             <div className="shrink-0 text-right">
               <p className="text-[10px] font-bold uppercase tracking-wider text-white/35">From</p>
-              <p className="text-sm font-bold text-white">{formatUsdWithInr(cheapest.priceInr)}</p>
+              <p className="text-sm font-bold text-white">{formatUsd(cheapest.priceInr)}</p>
             </div>
           )}
         </div>
