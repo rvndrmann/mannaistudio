@@ -105,12 +105,15 @@ export async function POST(req: Request) {
         if (isStudioSubscription) {
             switch (eventType) {
                 case 'subscription.activated': {
+                    const accessStartsAt = subscription?.start_at
+                        ? new Date(Number(subscription.start_at) * 1000).toISOString()
+                        : new Date().toISOString()
                     await supabase.from('user_entitlements').upsert({
                         profile_id: profileId,
                         entitlement_key: 'creator_studio_access',
                         source_type: 'studio_subscription',
                         source_id: subscriptionId,
-                        starts_at: new Date().toISOString(),
+                        starts_at: accessStartsAt,
                         expires_at: null,
                     }, { onConflict: 'profile_id,entitlement_key,source_type,source_id' })
                     break

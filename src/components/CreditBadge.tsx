@@ -4,8 +4,7 @@ import { useState, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { Zap, Plus, X, Check, Loader2, CreditCard, AlertCircle } from "lucide-react"
 import { creditBalanceChangedEvent } from "@/lib/credit-balance-events"
-import { CREDIT_PACKAGES } from "@/lib/credits-packages"
-import { formatUsdWithInr } from "@/lib/currency"
+import { INR_PER_USD, formatUsd } from "@/lib/currency"
 import CreditUsageTab from "@/components/credits/CreditUsageTab"
 import TeamTab from "@/components/credits/TeamTab"
 import StudioCreditOffer from "@/components/studio/StudioCreditOffer"
@@ -20,8 +19,10 @@ const accountTabs: { id: AccountTab; label: string }[] = [
 ]
 
 export default function CreditBadge({ className }: { className?: string }) {
+  const MIN_TOP_UP_USD = 5
   const { user } = useAuth()
   const [hasStudioAccess, setHasStudioAccess] = useState(false)
+  const [canBuyCredits, setCanBuyCredits] = useState(false)
   const [purchaseOnly, setPurchaseOnly] = useState(false)
   const [purchaseWindowExpiresAt, setPurchaseWindowExpiresAt] = useState<string | null>(null)
   const [credits, setCredits] = useState<number | null>(null)
@@ -32,6 +33,7 @@ export default function CreditBadge({ className }: { className?: string }) {
 
   useEffect(() => { setMounted(true) }, [])
   const [loadingPkgId, setLoadingPkgId] = useState<string | null>(null)
+  const [topUpUsd, setTopUpUsd] = useState(MIN_TOP_UP_USD)
   const [topUpSuccess, setTopUpSuccess] = useState<string | null>(null)
   const [topUpError, setTopUpError] = useState<string | null>(null)
 
@@ -42,17 +44,20 @@ export default function CreditBadge({ className }: { className?: string }) {
         const json = await res.json()
         setCredits(json.credits)
         setPending(Number(json.pendingCredits) || 0)
+        setCanBuyCredits(Boolean(json.canBuyCredits))
         setPurchaseOnly(Boolean(json.purchaseOnly))
         setPurchaseWindowExpiresAt(json.purchaseWindowExpiresAt || null)
         setHasStudioAccess(true)
       } else {
         setHasStudioAccess(false)
+        setCanBuyCredits(false)
         setPurchaseOnly(false)
         setPurchaseWindowExpiresAt(null)
         setShowModal(false)
       }
     } catch (err) {
       setHasStudioAccess(false)
+      setCanBuyCredits(false)
       setShowModal(false)
       console.warn("Could not fetch credits:", err)
     }
@@ -86,8 +91,10 @@ export default function CreditBadge({ className }: { className?: string }) {
       document.body.appendChild(script)
     })
 
-  const handleTopUp = async (packageId: string) => {
-    setLoadingPkgId(packageId)
+  const handleTopUp = async (amountUsd: number) => {
+    const amountInr = Math.ceil(amountUsd * INR_PER_USD)
+    const purchaseId = String(amountUsd)
+    setLoadingPkgId(purchaseId)
     setTopUpSuccess(null)
     setTopUpError(null)
     try {
@@ -97,7 +104,7 @@ export default function CreditBadge({ className }: { className?: string }) {
       const res = await fetch("/api/credits", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packageId }),
+        body: JSON.stringify({ amountInr }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Failed to create payment order")
@@ -108,7 +115,7 @@ export default function CreditBadge({ className }: { className?: string }) {
         amount: data.amount,
         currency: "INR",
         name: "AI Director Hub Studio",
-        description: `${data.credits.toLocaleString()} Generation Credits`,
+        description: `${data.credits.toLocaleString()} Generation Credits (${formatUsd(amountInr)})`,
         prefill: { email: data.email, name: data.name },
         theme: { color: "#b9f42e" },
         handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
@@ -216,11 +223,7 @@ export default function CreditBadge({ className }: { className?: string }) {
             purchaseOnly && purchaseWindowExpiresAt ? (
               <StudioCreditOffer
                 expiresAt={purchaseWindowExpiresAt}
-                onPurchased={() => {
-                  setPurchaseOnly(false)
-                  setPurchaseWindowExpiresAt(null)
-                  void fetchCredits()
-                }}
+                onPurchased={() => void fetchCredits()}
               />
             ) : (
             <>
@@ -238,47 +241,35 @@ export default function CreditBadge({ className }: { className?: string }) {
               </div>
             )}
 
-            <div className="mb-6 space-y-3">
-              {Object.entries(CREDIT_PACKAGES).map(([id, { credits, priceInr }]) => ({
-                id,
-                credits,
-                price: formatUsdWithInr(priceInr),
-                popular: id === "2500",
-              })).map((pkg) => (
-                <div
-                  key={pkg.id}
-                  className={`flex items-center justify-between rounded-xl border p-4 transition ${
-                    pkg.popular ? "border-[#b9f42e] bg-[#b9f42e]/10" : "border-white/10 bg-white/5 hover:border-white/20"
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold">{pkg.credits.toLocaleString()} Credits</span>
-                      {pkg.popular && (
-                        <span className="rounded-md bg-[#b9f42e] px-2 py-0.5 t-caption text-black">
-                          Popular
-                        </span>
-                      )}
-                    </div>
+            {canBuyCredits ? (
+              <div className="mb-6 space-y-4 rounded-xl border border-white/10 bg-white/[.03] p-4">
+                <div>
+                  <label htmlFor="credit-topup-usd" className="text-sm font-semibold">Choose your top-up amount</label>
+                  <p className="mt-1 text-xs text-zinc-400">Minimum {formatUsd(MIN_TOP_UP_USD * INR_PER_USD)} · about {Math.ceil(MIN_TOP_UP_USD * INR_PER_USD).toLocaleString()} credits</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {[5, 10, 25, 50].map((amount) => (
+                    <button key={amount} type="button" onClick={() => setTopUpUsd(amount)} className={`rounded-lg border px-3 py-2 text-xs font-bold ${topUpUsd === amount ? "border-[#b9f42e] bg-[#b9f42e] text-black" : "border-white/10 bg-white/5 text-white hover:border-white/20"}`}>
+                      ${amount}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-2.5 text-sm font-bold text-[#b9f42e]">$</span>
+                    <input id="credit-topup-usd" type="number" min={MIN_TOP_UP_USD} step="1" value={topUpUsd} onChange={(event) => setTopUpUsd(Math.max(0, Number(event.target.value) || 0))} className="w-full rounded-lg border border-white/15 bg-black/50 py-2.5 pl-8 pr-3 text-sm font-semibold text-white outline-none focus:border-[#b9f42e]" />
                   </div>
-
-                  <button
-                    disabled={loadingPkgId !== null}
-                    onClick={() => handleTopUp(pkg.id)}
-                    className="flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-4 py-2 text-xs font-bold text-black hover:bg-[#a6de25] disabled:opacity-50"
-                  >
-                    {loadingPkgId === pkg.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <>
-                        <CreditCard className="h-3 w-3" />
-                        {pkg.price}
-                      </>
-                    )}
+                  <button disabled={loadingPkgId !== null || !Number.isFinite(topUpUsd) || topUpUsd < MIN_TOP_UP_USD} onClick={() => void handleTopUp(topUpUsd)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#b9f42e] px-4 py-2.5 text-sm font-bold text-black disabled:cursor-not-allowed disabled:opacity-50">
+                    {loadingPkgId !== null ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                    Buy credits · {formatUsd(Math.ceil(topUpUsd * INR_PER_USD))}
                   </button>
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="mb-6 rounded-xl border border-white/10 bg-white/[.03] p-4 text-sm text-zinc-400">
+                An active subscription is required to buy additional credits.
+              </div>
+            )}
 
             <div className="rounded-xl border border-white/10 bg-black/40 p-3 text-center text-[11px] text-zinc-400">
               🔒 Powered by Razorpay. Full access to AI Video & Image generation.

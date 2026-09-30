@@ -6,10 +6,13 @@ import {
   Briefcase,
   Clapperboard,
   CreditCard,
+  Calendar,
   Loader2,
   Play,
   Receipt,
+  RotateCw,
   Zap,
+  XCircle,
 } from "lucide-react"
 import Navbar from "@/components/Navbar"
 import Footer from "@/components/Footer"
@@ -22,6 +25,8 @@ import {
 } from "@/lib/originals"
 import { onCreditBalanceChanged } from "@/lib/credit-balance-events"
 import ManagedProjectCards, { useManagedProjects } from "@/components/managed/ManagedProjectCards"
+import { formatUsd } from "@/lib/currency"
+import { billingTiers } from "@/lib/billing-plans"
 
 /**
  * The viewer's account.
@@ -50,6 +55,18 @@ type PassRow = {
   series: { slug: string; title: string; poster_url: string | null } | null
 }
 
+type StudioSubscription = {
+  subscribed: boolean
+  active: boolean
+  pending?: boolean
+  status?: string
+  cancelAtCycleEnd?: boolean
+  currentPeriodEndsAt?: string | null
+  subscriptionId?: string
+  canRenew?: boolean
+  renewalScheduledFor?: string | null
+}
+
 const dateLabel = (value: string) =>
   new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })
 
@@ -63,6 +80,9 @@ export default function AccountPage() {
   const [savingPhone, setSavingPhone] = useState(false)
   const [phoneNotice, setPhoneNotice] = useState("")
   const [loading, setLoading] = useState(true)
+  const [studioSubscription, setStudioSubscription] = useState<StudioSubscription | null>(null)
+  const [studioSubBusy, setStudioSubBusy] = useState(false)
+  const [studioSubNotice, setStudioSubNotice] = useState("")
 
   const { projects: managedProjects, loading: managedLoading } = useManagedProjects()
 
@@ -92,6 +112,81 @@ export default function AccountPage() {
   }, [user])
 
   useEffect(() => { if (!authLoading) load() }, [authLoading, load])
+
+  const loadStudioSubscription = useCallback(async () => {
+    try {
+      const response = await fetch("/api/razorpay/studio-subscription/status", { cache: "no-store" })
+      const data = await response.json()
+      if (response.ok) setStudioSubscription(data)
+      else setStudioSubscription({ subscribed: false, active: false, canRenew: false })
+    } catch {
+      setStudioSubscription({ subscribed: false, active: false, canRenew: false })
+    }
+  }, [])
+
+  useEffect(() => {
+    if (user) void loadStudioSubscription()
+  }, [user, loadStudioSubscription])
+
+  const cancelStudioSubscription = async () => {
+    if (!confirm("Cancel auto-renewal for Creator Studio? Your access and remaining time will continue through the current paid period.")) return
+    setStudioSubBusy(true)
+    setStudioSubNotice("")
+    try {
+      const response = await fetch("/api/razorpay/studio-subscription/cancel", { method: "POST" })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "Could not cancel subscription.")
+      setStudioSubNotice("Auto-renewal cancelled. Creator Studio access remains available until the end of your paid period.")
+      await loadStudioSubscription()
+    } catch (error) {
+      setStudioSubNotice(error instanceof Error ? error.message : "Could not cancel subscription.")
+    } finally {
+      setStudioSubBusy(false)
+    }
+  }
+
+  const renewStudioSubscription = async () => {
+    setStudioSubBusy(true)
+    setStudioSubNotice("")
+    try {
+      if (!(window as any).Razorpay) {
+        const script = document.createElement("script")
+        script.src = "https://checkout.razorpay.com/v1/checkout.js"
+        await new Promise<void>((resolve, reject) => {
+          script.onload = () => resolve()
+          script.onerror = () => reject(new Error("Could not load Razorpay checkout."))
+          document.body.appendChild(script)
+        })
+      }
+      const response = await fetch("/api/razorpay/studio-subscription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ renew: true }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "Could not start renewal.")
+      const checkout = new (window as any).Razorpay({
+        key: data.keyId,
+        subscription_id: data.subscriptionId,
+        name: "AI Director Hub Creator Studio",
+        description: `Creator Studio · ${formatUsd(billingTiers.plus.priceInr)}/month · 3,000 credits/month`,
+        prefill: { email: data.email, name: data.name },
+        theme: { color: "#b9f42e" },
+        handler: () => {
+          setStudioSubNotice(data.startsAt
+            ? `Renewal authorized. Your next subscription is scheduled to start ${dateLabel(data.startsAt)}.`
+            : "Renewal authorized. Creator Studio access and monthly credits activate when Razorpay confirms the payment.")
+          void loadStudioSubscription()
+          setStudioSubBusy(false)
+        },
+        modal: { ondismiss: () => setStudioSubBusy(false) },
+      })
+      checkout.open()
+    } catch (error) {
+      setStudioSubNotice(error instanceof Error ? error.message : "Could not start renewal.")
+      setStudioSubBusy(false)
+    }
+  }
 
   const saveContactPhone = async () => {
     if (!user) return
@@ -169,6 +264,56 @@ export default function AccountPage() {
             <button type="button" onClick={() => void saveContactPhone()} disabled={savingPhone} className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-black disabled:opacity-50">{savingPhone ? "Saving…" : "Save number"}</button>
           </div>
           {phoneNotice && <p role="status" className="mt-3 text-sm text-primary">{phoneNotice}</p>}
+        </section>
+
+        <section className="mt-6 rounded-2xl border border-primary/20 bg-primary/[0.04] p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary">Creator Studio subscription</p>
+              <h2 className="mt-2 text-lg font-semibold">Manage your Studio plan</h2>
+              <p className="mt-1 text-sm text-white/50">{formatUsd(billingTiers.plus.priceInr)}/month · 3,000 credits each paid month</p>
+            </div>
+            {studioSubscription?.active && (
+              <Link href="/studio/credits" className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-black">
+                <Zap className="h-4 w-4" /> Buy credits
+              </Link>
+            )}
+          </div>
+
+          {studioSubscription === null ? (
+            <p className="mt-4 text-sm text-white/45">Loading subscription status…</p>
+          ) : studioSubscription.subscribed ? (
+            <div className="mt-4 flex flex-col gap-4 rounded-xl border border-white/10 bg-black/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className={`text-sm font-semibold ${studioSubscription.active ? "text-primary" : "text-white/60"}`}>
+                  {studioSubscription.pending ? "Subscription setup pending" : studioSubscription.active ? studioSubscription.cancelAtCycleEnd ? "Cancels at the end of this paid period" : "Subscription active" : "Subscription ended"}
+                </p>
+                {studioSubscription.currentPeriodEndsAt && (
+                  <p className="mt-1 flex items-center gap-1.5 text-xs text-white/45">
+                    <Calendar className="h-3.5 w-3.5" />
+                    {studioSubscription.cancelAtCycleEnd ? "Access until " : "Next billing date "}{dateLabel(studioSubscription.currentPeriodEndsAt)}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {studioSubscription.canRenew && (
+                  <button type="button" onClick={() => void renewStudioSubscription()} disabled={studioSubBusy || studioSubscription.pending} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-50">
+                    {studioSubBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
+                    Renew subscription
+                  </button>
+                )}
+                {studioSubscription.active && !studioSubscription.cancelAtCycleEnd && (
+                  <button type="button" onClick={() => void cancelStudioSubscription()} disabled={studioSubBusy} className="inline-flex items-center gap-2 rounded-lg border border-white/15 px-4 py-2.5 text-sm font-semibold text-white/80 disabled:opacity-50">
+                    {studioSubBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                    Cancel subscription
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-white/50">No Creator Studio subscription found. Request an invitation from <Link href="/studio" className="font-semibold text-primary hover:underline">Creator Studio</Link> to get started.</p>
+          )}
+          {studioSubNotice && <p role="status" className="mt-3 text-sm text-primary">{studioSubNotice}</p>}
         </section>
 
         {/* Balance ---------------------------------------------------------- */}
