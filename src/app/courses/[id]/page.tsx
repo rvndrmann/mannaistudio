@@ -468,6 +468,52 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                             </div>
                         </div>
 
+                        {/* Keep the lesson list ahead of the enrollment, Studio, and progress
+                            panels on narrow screens; the sticky sidebar remains on desktop. */}
+                        <div className="glass-card rounded-2xl border-white/10 flex flex-col max-h-80 overflow-hidden lg:hidden">
+                            <div className="p-5 border-b border-white/5">
+                                <h3 className="font-bold flex items-center gap-2">
+                                    <Play className="w-4 h-4 text-primary" /> Course Content
+                                </h3>
+                            </div>
+                            <div className="flex-grow overflow-y-auto p-3 custom-scrollbar">
+                                {(course.lessons || Array.from({ length: course.chapters }, (_, i) => ({ id: i + 1, title: "Lesson Detail", duration: "10:00" }))).map((lesson: any) => (
+                                    <button
+                                        key={lesson.id}
+                                        onClick={() => setActiveChapter(lesson.id)}
+                                        className={cn(
+                                            "w-full text-left p-4 rounded-xl mb-2 transition flex items-center justify-between group",
+                                            activeChapter === lesson.id ? "bg-primary/10 border border-primary/20" : "hover:bg-white/5"
+                                        )}
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <span className={cn(
+                                                "flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold shrink-0",
+                                                completedChapters.includes(lesson.id) ? "bg-emerald-500 text-white" : "bg-white/10 text-white/40"
+                                            )}>
+                                                {completedChapters.includes(lesson.id) ? <CheckCircle2 className="w-4 h-4" /> : lesson.id}
+                                            </span>
+                                            <span className={cn(
+                                                "text-sm font-medium truncate",
+                                                activeChapter === lesson.id ? "text-white" : "text-white/40"
+                                            )}>
+                                                {lesson.title}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            {lesson.resources && lesson.resources.length > 0 && <FileText className="w-3 h-3 text-primary/60" />}
+                                            <Clock className="w-3.5 h-3.5 text-white/20" />
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                            {progress === 100 && (
+                                <Link href={`/courses/${course.id}/certificate`} className="m-3 p-4 bg-gradient-to-r from-amber-400 to-amber-600 rounded-xl text-center font-bold text-black hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+                                    <Trophy className="w-5 h-5" /> Get Certificate
+                                </Link>
+                            )}
+                        </div>
+
                         {/* Enrollment CTA for non-enrolled users */}
                         {!hasCourseAccess && !checkingEnrollment && (
                             <div className="glass-card p-6 rounded-2xl border border-primary/20 bg-primary/5 flex items-center justify-between">
@@ -610,7 +656,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                     </div>
 
                     {/* Sidebar: Chapters */}
-                    <div className="glass-card rounded-2xl border-white/10 flex flex-col h-fit sticky top-24 max-h-[calc(100vh-120px)] overflow-hidden">
+                    <div className="glass-card rounded-2xl border-white/10 hidden lg:flex flex-col h-fit sticky top-24 max-h-[calc(100vh-120px)] overflow-hidden">
                         <div className="p-6 border-b border-white/5">
                             <h3 className="font-bold flex items-center gap-2">
                                 <Play className="w-4 h-4 text-primary" /> Course Content
