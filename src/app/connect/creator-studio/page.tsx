@@ -1,20 +1,20 @@
 import Link from "next/link"
-import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { hasCreatorStudioEntitlement } from "@/lib/studio/entitlement"
 import { fetchSiteFeatures } from "@/lib/studio/feature-flags"
 import { pendingConsent } from "@/lib/studio/mcp/oauth"
 import { isManagedScope, mcpResource, scopeLabels } from "@/lib/studio/mcp/config"
 import Connections from "./Connections"
+import CodexSetup from "./CodexSetup"
 export const dynamic = "force-dynamic"
 export default async function CreatorStudioConnect() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect("/login?next=%2Fconnect%2Fcreator-studio")
   let endpoint: string
   try { endpoint = mcpResource() } catch {
     return <main className="mx-auto max-w-2xl px-6 py-24"><h1 className="text-3xl font-semibold">Connect Creator Studio</h1><p className="mt-4 text-white/70">Assistant connections are being set up. Please try again later.</p><Link href="/studio" className="mt-6 inline-block underline">Back to Studio</Link></main>
   }
+  if (!user) return <main className="mx-auto max-w-3xl px-6 py-16 space-y-8"><Link href="/" className="text-sm text-white/60">← AI Director Hub</Link><header className="space-y-4"><h1 className="text-3xl font-semibold">Connect Creator Studio to Codex</h1><p className="text-white/70">Copy the prompt below to start setup. Sign in to your own website account when Codex opens the authorization page.</p><Link href="/login?next=%2Fconnect%2Fcreator-studio" className="inline-block text-[#b9f42e] underline">Sign in to manage connections →</Link></header><CodexSetup endpoint={endpoint} /></main>
   const pending = await pendingConsent()
   const entitled = await hasCreatorStudioEntitlement(supabase, user.id)
   const enabled = (await fetchSiteFeatures(supabase)).mcp

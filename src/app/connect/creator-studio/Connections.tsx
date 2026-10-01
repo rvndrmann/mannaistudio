@@ -1,5 +1,6 @@
 "use client"
 import { useEffect, useState } from "react"
+import CodexSetup from "./CodexSetup"
 
 type Connection = { id: string; name: string; scopes: string[]; created_at: string }
 export default function Connections({ endpoint }: { endpoint: string }) {
@@ -35,6 +36,7 @@ export default function Connections({ endpoint }: { endpoint: string }) {
       <p className="text-sm text-white/60">Ask to show your projects, create with your AI Director, or check your hired-team orders and final deliveries. Studio generation uses your credits and connected providers.</p>
       <a href="/hire-us" className="inline-block text-sm text-primary underline">Hire our creative team</a>
     </section>
+    <CodexSetup endpoint={endpoint} />
     <section className="space-y-4"><h2 className="text-xl font-semibold">Connected assistants</h2>
       {loading ? <p className="text-white/60">Loading connections…</p> : !connections.length ? <p className="text-white/60">No assistants connected yet.</p> : connections.map((connection) => <div key={connection.id} className="flex items-center justify-between gap-4 rounded-xl border border-white/10 p-4">
         <div><p className="font-medium">{connection.name}</p><p className="mt-1 text-xs text-white/60">Connected {new Date(connection.created_at).toLocaleDateString()}</p></div>
