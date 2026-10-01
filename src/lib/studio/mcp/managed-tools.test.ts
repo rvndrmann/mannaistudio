@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
-const mocks = vi.hoisted(() => ({ list: vi.fn(), context: vi.fn(), message: vi.fn() }))
+const mocks = vi.hoisted(() => ({ list: vi.fn(), context: vi.fn(), message: vi.fn(), draft: vi.fn() }))
 vi.mock("@/app/api/managed/projects/route", () => ({ GET: mocks.list }))
 vi.mock("@/app/api/managed/projects/[projectId]/chat-context/route", () => ({ GET: mocks.context }))
 vi.mock("@/app/api/managed/projects/[projectId]/messages/route", () => ({ POST: mocks.message }))
+vi.mock("@/app/api/managed/order-drafts/route", async (original) => ({ ...await original<typeof import("@/app/api/managed/order-drafts/route")>(), POST: mocks.draft }))
 import { registerManagedMcpTools } from "./managed-tools"
 const id = "11111111-1111-4111-8111-111111111111"
 let client: Client
@@ -52,4 +53,16 @@ describe("managed customer MCP tools", () => {
     await client.callTool({ name: "managed_project_message", arguments: { projectId: id, message: "Please shorten the hook" } })
     expect(mocks.message.mock.calls[0][0].headers.get("authorization")).toBe("Bearer aih_alice")
   })
+})
+
+it("requires explicit order-draft permission and forwards the authenticated brief", async () => {
+  await connect(["managed:read"])
+  expect((await client.listTools()).tools.map(t => t.name)).not.toContain("managed_create_order_draft")
+  await client.close(); await server.close()
+  mocks.draft.mockImplementation(async (request: Request) => Response.json({ checkoutUrl: "https://studio.example/hire-us/brief?draft=mine", auth: request.headers.get("authorization"), ...await request.json() }))
+  await connect(["managed:read", "managed:orders"])
+  const response = await client.callTool({ name: "managed_create_order_draft", arguments: { serviceType: "ugc", packageKey: "starter", brief: { brandName: "Alice shoes" } } })
+  expect(JSON.stringify(response)).toContain("Alice shoes")
+  expect(JSON.stringify(response)).toContain("Bearer aih_alice")
+  expect(JSON.stringify(response)).toContain("checkoutUrl")
 })

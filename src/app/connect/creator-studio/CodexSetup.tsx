@@ -28,6 +28,7 @@ Verify the connection with codex mcp list. If the tools are not available in thi
     "Create a new project called Summer Campaign, then help me plan it with my AI Director.",
     "Open my project and use its existing storyboard, characters, and assets to plan the next scene.",
     "Show my hired-team orders, what is left, and the expected delivery date.",
+    "Show Hire Our Team packages, help me choose one, and save my brief with a checkout link.",
     "Show the approved final delivery for my completed order.",
   ]
   return <div className="space-y-8">

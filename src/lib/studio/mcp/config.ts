@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from "node:crypto"
 import { z } from "zod"
 
-export const mcpScopes = ["projects:read", "projects:write", "director:chat", "director:proposals", "managed:read", "managed:messages"] as const
-export const isManagedScope = (scope: string) => scope === "managed:read" || scope === "managed:messages"
+export const mcpScopes = ["projects:read", "projects:write", "director:chat", "director:proposals", "managed:read", "managed:messages", "managed:orders"] as const
+export const isManagedScope = (scope: string) => scope === "managed:read" || scope === "managed:messages" || scope === "managed:orders"
 export const consentCookie = "creator_mcp_consent"
 export const scopeLabels: Record<string, string> = {
   "projects:read": "View your own projects, storyboards, and generation results",
@@ -10,6 +10,7 @@ export const scopeLabels: Record<string, string> = {
   "director:chat": "Talk to your AI Director and request creative work (uses your account's credits)",
   "director:proposals": "Approve or reject generation proposals (approval can spend your credits)",
   "managed:read": "View your hired-team orders, progress, delivery dates, and published final files",
+  "managed:orders": "Save hired-team order briefs and receive checkout links (payment requires your approval on the website)",
   "managed:messages": "Send messages to the creative team on your own orders",
 }
 export class McpOAuthError extends Error {

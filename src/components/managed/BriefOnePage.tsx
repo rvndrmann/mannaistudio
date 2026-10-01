@@ -75,6 +75,8 @@ export default function BriefOnePage() {
   const params = useSearchParams()
   const { user, loading: authLoading, signInWithGoogle } = useAuth()
 
+  const chatDraftId = params.get("draft") || ""
+  const [chatDraftState, setChatDraftState] = useState<{ loaded: boolean; error: string }>({ loaded: false, error: "" })
   const repeatFrom = params.get("repeat") || ""
 
   const initialServiceKey = params.get("service") || ""
@@ -158,7 +160,7 @@ export default function BriefOnePage() {
   // What we already know about this client. Only fills blanks, so a brief
   // someone has started typing into is never overwritten by their history.
   useEffect(() => {
-    if (!user) return
+    if (!user || chatDraftId) return
     let active = true
     fetch(`/api/managed/prefill${repeatFrom ? `?from=${repeatFrom}` : ""}`)
       .then((response) => (response.ok ? response.json() : null))
@@ -178,7 +180,22 @@ export default function BriefOnePage() {
       })
       .catch(() => undefined)
     return () => { active = false }
-  }, [user, repeatFrom])
+  }, [user, repeatFrom, chatDraftId])
+
+  useEffect(() => {
+    if (!chatDraftId || !user) return
+    let active = true
+    fetch(`/api/managed/order-drafts/${encodeURIComponent(chatDraftId)}`, { cache: "no-store" }).then(async response => {
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "Could not load your saved brief")
+      if (!active) return
+      setBrief(managedBriefSchema.parse(data.draft.brief))
+      setServiceKey(data.draft.service_type)
+      setPackageKey(data.draft.package_key)
+      setChatDraftState({ loaded: true, error: "" })
+    }).catch(error => { if (active) setChatDraftState({ loaded: false, error: error.message }) })
+    return () => { active = false }
+  }, [chatDraftId, user])
 
   /**
    * How far through the form they got, for the abandoned-brief list.
@@ -252,6 +269,7 @@ export default function BriefOnePage() {
   const canCheckout = Boolean(service && (service.quoteOnly || selected)) && !draft
 
   const handleSubmit = () => {
+    if (chatDraftId && user && !chatDraftState.loaded) return
     if (!service) return
     if (!user) {
       stashBrief({ serviceKey: service.key, packageKey: activePackageKey, brief })
@@ -266,6 +284,8 @@ export default function BriefOnePage() {
       brief,
     })
   }
+
+  if (chatDraftId && !authLoading && (!user || !chatDraftState.loaded)) return <div className="mx-auto max-w-2xl px-6 py-32"><h1 className="text-2xl font-semibold">Review your chat brief</h1>{!user ? <><p className="mt-4 text-white/70">Sign in to the same account you connected in your assistant to review the saved brief and pay.</p><button onClick={() => void signInWithGoogle()} className="mt-6 rounded-xl bg-primary px-5 py-3 text-black">Sign in to continue</button></> : <p role="status" className="mt-4 text-white/70">{chatDraftState.error || "Loading your saved brief…"}</p>}</div>
 
   if (catalogue === null) {
     return (

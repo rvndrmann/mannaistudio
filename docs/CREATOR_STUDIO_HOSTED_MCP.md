@@ -183,3 +183,17 @@ Sending a message to the team requires the customer's explicit instruction.
 This change does not send live messages, take a payment, apply migrations, or
 publish the deployment during development. Smoke-test a real payment and two
 customer accounts in staging before release.
+
+## Start hired-team orders from chat
+
+Apply `20261001140000_managed_mcp_order_drafts.sql`. The new `managed:orders`
+permission must be explicitly approved: existing connections must reconnect.
+`managed_list_offers` returns the live published catalogue. After the customer
+chooses a package, `managed_create_order_draft` saves their brief using their
+authenticated user and RLS, and returns `/hire-us/brief?draft=UUID`. The UUID
+is an identifier, not a bearer secret; another account cannot read the brief.
+The website requires the same signed-in account, loads the brief for review,
+and uses the existing checkout and verified-payment flow. Prices are looked up
+again at checkout. No payment or production is started by the MCP tool. After
+verification the paid order is available through the existing managed tools.
+Quote-only services continue through the website enquiry flow.
