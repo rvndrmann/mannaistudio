@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { studioErrorStatus } from "@/lib/studio/server-context"
 import { validateExternalRequest } from "@/lib/studio/external-auth"
+import { createStudioProjectInputSchema } from "@/lib/studio/domain"
+import { enforceStudioRateLimit } from "@/lib/studio/rate-limit"
 
 export async function GET(request: NextRequest) {
   try {
@@ -48,5 +50,23 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not load external projects" }, { status: studioErrorStatus(error) })
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const external = await validateExternalRequest(request, "projects:write")
+    if (!external) return NextResponse.json({ error: "Bearer token required" }, { status: 401 })
+    await enforceStudioRateLimit(external.supabase, "mcp_create_project", 10, 60, external.user.id)
+    const parsed = createStudioProjectInputSchema.omit({ cover_image: true }).safeParse(await request.json())
+    if (!parsed.success) return NextResponse.json({ error: "Invalid project details", issues: parsed.error.flatten().fieldErrors }, { status: 400 })
+    const { data, error } = await external.supabase.rpc("creator_mcp_create_project", {
+      p_name: parsed.data.name, p_description: parsed.data.description || null,
+      p_mode: parsed.data.production_mode || "legacy", p_type: parsed.data.project_type || "unspecified",
+    })
+    if (error || !data) throw error || new Error("Could not create project")
+    return NextResponse.json(data, { status: 201 })
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not create project" }, { status: studioErrorStatus(error) })
   }
 }

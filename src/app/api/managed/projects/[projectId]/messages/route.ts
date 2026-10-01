@@ -25,7 +25,7 @@ const messageSchema = z.object({
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   try {
     const { projectId } = await params
-    const { supabase, user, isAdmin } = await requireManagedProject(projectId)
+    const { supabase, user, isAdmin } = await requireManagedProject(projectId, request, "managed:messages")
     const input = messageSchema.parse(await request.json())
 
     if (!input.body.trim() && !input.attachments.length) {
@@ -33,6 +33,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     const stray = input.attachments.find((attachment) => !isManagedClientPath(projectId, attachment.path))
     if (stray) return NextResponse.json({ error: "That attachment does not belong to this project." }, { status: 400 })
+    if (input.deliverableId) {
+      const { data } = await supabase.from("managed_deliverables").select("id").eq("id", input.deliverableId).eq("project_id", projectId).maybeSingle()
+      if (!data) return NextResponse.json({ error: "That deliverable does not belong to this project." }, { status: 404 })
+    }
 
     const { data, error } = await supabase
       .from("managed_messages")

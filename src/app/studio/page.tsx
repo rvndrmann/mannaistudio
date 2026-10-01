@@ -415,6 +415,13 @@ function TopBar({ onOpenCreate, creating }: { onOpenCreate: () => void; creating
           </button>
           <CreditBadge />
           <Link
+            href="/connect/creator-studio"
+            title="Connect an AI assistant to your own Studio account"
+            className="touch-target rounded-md border border-white/10 px-3 py-2 text-xs font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+          >
+            Connect AI
+          </Link>
+          <Link
             href="/studio/create"
             title="Generate a single image or clip, with no production attached"
             className="touch-target hidden items-center gap-1.5 rounded-md border border-[#b9f42e]/35 px-3 py-2 text-sm font-medium text-[#b9f42e] transition hover:bg-[#b9f42e]/10 md:flex"

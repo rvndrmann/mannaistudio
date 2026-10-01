@@ -5,6 +5,9 @@ import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/service"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { requireAuthenticatedProject, StudioAccessError } from "./server-context"
+import { hasCreatorStudioEntitlement } from "./entitlement"
+import { fetchSiteFeatures } from "./feature-flags"
+import { isManagedScope, mcpResource } from "./mcp/config"
 
 /**
  * A Supabase client that acts as the holder of one access token.
@@ -89,7 +92,7 @@ async function sessionClientFor(user: User): Promise<SupabaseClient | null> {
   )
   const verified = await anon.auth.verifyOtp({ type: "magiclink", token_hash: hashedToken })
   const session = verified.data?.session
-  if (verified.error || !session) return null
+  if (verified.error || !session || verified.data.user?.id !== user.id) return null
 
   const client = createTokenClient(session.access_token)
   actingSessions.set(user.id, {
@@ -99,7 +102,7 @@ async function sessionClientFor(user: User): Promise<SupabaseClient | null> {
   return client
 }
 
-export async function validateExternalRequest(request: Request, requiredScope: string) {
+export async function validateExternalRequest(request: Request, requiredScope?: string) {
   const token = bearerToken(request)
   // Only tokens this app minted are looked up here. Without the prefix check a
   // bearer of any other kind — a Supabase access token, say — was hashed,
@@ -109,12 +112,21 @@ export async function validateExternalRequest(request: Request, requiredScope: s
   const supabase = createServiceClient()
   const { data, error } = await supabase
     .from("creator_external_access_tokens")
-    .select("id,user_id,scopes,revoked_at")
+    .select("id,user_id,scopes,revoked_at,expires_at,resource,mcp_connection_id")
     .eq("token_hash", hashExternalToken(token))
     .maybeSingle()
-  if (error || !data || data.revoked_at) throw new StudioAccessError("Invalid external access token", 401)
-  const scopes = Array.isArray(data.scopes) ? data.scopes : []
-  if (!scopes.includes(requiredScope)) throw new StudioAccessError("External token does not include the required scope", 403)
+  if (error || !data || data.revoked_at || (data.expires_at && (!Number.isFinite(Date.parse(data.expires_at)) || Date.parse(data.expires_at) <= Date.now()))) throw new StudioAccessError("Invalid external access token", 401)
+  if (data.mcp_connection_id) {
+    if (data.resource !== mcpResource()) throw new StudioAccessError("Token was issued for a different Studio resource", 401)
+    const { data: connection, error: connectionError } = await supabase.from("creator_mcp_connections")
+      .select("user_id,revoked_at,resource,scopes").eq("id", data.mcp_connection_id).maybeSingle()
+    if (connectionError || !connection || connection.revoked_at || connection.user_id !== data.user_id || connection.resource !== data.resource) {
+      throw new StudioAccessError("Invalid MCP connection", 401)
+    }
+    if (!Array.isArray(data.scopes) || data.scopes.some((scope: string) => !connection.scopes?.includes(scope))) throw new StudioAccessError("Invalid MCP permissions", 401)
+  }
+  let scopes: string[] = Array.isArray(data.scopes) ? data.scopes : []
+  if (requiredScope && !scopes.includes(requiredScope)) throw new StudioAccessError("External token does not include the required scope", 403)
   await supabase
     .from("creator_external_access_tokens")
     .update({ last_used_at: new Date().toISOString() })
@@ -122,11 +134,18 @@ export async function validateExternalRequest(request: Request, requiredScope: s
   const { data: user, error: userError } = await supabase.auth.admin.getUserById(data.user_id)
   if (userError || !user.user) throw new StudioAccessError("External token user was not found", 401)
 
-  // Falls back to the service client only if a session cannot be minted, so a
-  // token keeps working for reads rather than failing outright — writes that
-  // need an identity will still refuse, which is the safe direction.
+  // Fail closed: project operations must NEVER run as the service role.
   const acting = await sessionClientFor(user.user).catch(() => null)
-  return { supabase: acting || supabase, user: user.user }
+  if (!acting) throw new StudioAccessError("Could not authenticate the connected account. Please reconnect or try again.", 401)
+  if (!requiredScope || !isManagedScope(requiredScope)) {
+    if (!await hasCreatorStudioEntitlement(acting, user.user.id)) {
+      if (requiredScope) throw new StudioAccessError("Creator Studio access is required.", 403)
+      scopes = scopes.filter(isManagedScope)
+      if (!scopes.length) throw new StudioAccessError("Creator Studio access is required.", 403)
+    }
+  }
+  if (!(await fetchSiteFeatures(acting)).mcp) throw new StudioAccessError("Assistant connections are currently paused.", 403)
+  return { supabase: acting, user: user.user, scopes, resource: data.resource, connectionId: data.mcp_connection_id, tokenId: data.id }
 }
 
 export async function requireProjectFromRequest(

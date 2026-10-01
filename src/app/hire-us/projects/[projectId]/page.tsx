@@ -6,6 +6,7 @@ import { ArrowLeft, Building2, Loader2, RefreshCcw, RotateCcw } from "lucide-rea
 import Navbar from "@/components/Navbar"
 import { useAuth } from "@/components/auth/auth-provider"
 import StatusTimeline from "@/components/managed/StatusTimeline"
+import DeliveryPlan from "@/components/managed/DeliveryPlan"
 import ProjectChat from "@/components/managed/ProjectChat"
 import Deliverables, { FinalDelivery } from "@/components/managed/Deliverables"
 import ReviewSheet from "@/components/managed/ReviewSheet"
@@ -162,6 +163,7 @@ export default function ManagedProjectPage({ params }: { params: Promise<{ proje
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_380px]">
           <div className="space-y-6">
+            <DeliveryPlan project={project} />
             <FinalDelivery deliverables={deliverables} versions={versions} />
 
             <section>
@@ -209,6 +211,9 @@ export default function ManagedProjectPage({ params }: { params: Promise<{ proje
               messages={messages}
               deliverables={deliverables}
               viewerId={viewer.id}
+              versions={versions}
+              projectStatus={project.status}
+              expectedDeliverables={project.video_count}
               onSent={load}
             />
           </div>

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { managedErrorMessage, managedErrorStatus, requireUser } from "@/lib/managed/server"
 
 export const dynamic = "force-dynamic"
@@ -11,13 +11,13 @@ export const dynamic = "force-dynamic"
  * campaign would be a lie about work nobody paid for. A proposal request is
  * different — it is a real thing we owe them an answer on, so it stays.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { supabase, user } = await requireUser()
+    const { supabase, user } = await requireUser(request)
 
     const { data: projects, error } = await supabase
       .from("managed_projects")
-      .select("id,name,service_type,status,payment_status,video_count,aspect_ratio,price_inr,created_at,updated_at,client_last_read_at")
+      .select("id,name,service_type,status,payment_status,video_count,aspect_ratio,price_inr,created_at,updated_at,client_last_read_at,delivery_due_at,client_update,remaining_tasks,completed_at")
       .eq("user_id", user.id)
       .in("payment_status", ["paid", "proposal_requested"])
       .order("created_at", { ascending: false })

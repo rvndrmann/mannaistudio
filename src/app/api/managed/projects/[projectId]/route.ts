@@ -17,10 +17,10 @@ export const dynamic = "force-dynamic"
  * to an admin, because to a client it is an internal reference they can do
  * nothing with and should not be shown.
  */
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   try {
     const { projectId } = await params
-    const { supabase, project, isAdmin, user } = await requireManagedProject(projectId)
+    const { supabase, project, isAdmin, user } = await requireManagedProject(projectId, request)
 
     const [{ data: deliverables }, { data: versions }, { data: messages }, { data: comments }] = await Promise.all([
       supabase.from("managed_deliverables").select("*").eq("project_id", projectId).order("position"),

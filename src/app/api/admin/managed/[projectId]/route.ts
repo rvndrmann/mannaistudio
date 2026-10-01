@@ -18,6 +18,12 @@ export const dynamic = "force-dynamic"
 
 const bodySchema = z.discriminatedUnion("action", [
   z.object({
+    action: z.literal("delivery_plan"),
+    deliveryDueAt: z.string().datetime({ offset: true }).nullable(),
+    clientUpdate: z.string().trim().max(3000),
+    remainingTasks: z.array(z.string().trim().min(1).max(300)).max(30),
+  }).strict(),
+  z.object({
     action: z.literal("status"),
     status: z.enum([...MANAGED_STATUSES, "cancelled"] as [string, ...string[]]),
     note: z.string().trim().max(5_000).optional(),
@@ -38,6 +44,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { projectId } = await params
     const { supabase, user, project } = await requireManagedAdmin(projectId)
     const input = bodySchema.parse(await request.json())
+
+    if (input.action === "delivery_plan") {
+      const { data, error } = await supabase.rpc("admin_managed_set_delivery_plan", {
+        p_project_id: projectId, p_due_at: input.deliveryDueAt,
+        p_update: input.clientUpdate, p_remaining: input.remainingTasks,
+      })
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ project: Array.isArray(data) ? data[0] : data })
+    }
 
     if (input.action === "status") {
       const { data, error } = await supabase.rpc("admin_managed_set_status", {

@@ -9,6 +9,7 @@ import { formatUsdWithInr } from "@/lib/currency"
 import { MANAGED_STATUSES, MANAGED_STATUS_LABELS } from "@/lib/managed-production"
 import { offerServiceName } from "@/lib/managed-offers"
 import ManagedOffers from "@/components/admin/ManagedOffers"
+import ManagedDeliveryPlan from "@/components/admin/ManagedDeliveryPlan"
 import AbandonedBriefs from "@/components/admin/AbandonedBriefs"
 import BriefAttachments from "@/components/admin/BriefAttachments"
 import ProjectChat from "@/components/managed/ProjectChat"
@@ -307,6 +308,8 @@ function OrderPanel({ projectId, onChanged }: { projectId: string; onChanged: ()
       </header>
 
       {error && <p className="rounded-xl border border-red-400/25 bg-red-500/10 p-3 text-xs text-red-200">{error}</p>}
+
+      <ManagedDeliveryPlan key={project.id} project={project} busy={Boolean(busy)} save={act} />
 
       <section>
         <h4 className="text-[11px] font-bold uppercase tracking-wider text-white/35">Status</h4>

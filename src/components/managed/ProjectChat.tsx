@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from "react"
 import { FileText, Loader2, Send } from "lucide-react"
 import { AttachmentPicker } from "@/components/managed/BriefFields"
 import MediaThumb, { useSignedMedia } from "@/components/managed/MediaThumb"
+import { FinalDelivery } from "@/components/managed/Deliverables"
 import type { ManagedAttachment } from "@/lib/managed-brief"
-import type { ManagedDeliverable, ManagedMessage } from "@/components/managed/types"
+import type { ManagedDeliverable, ManagedMessage, ManagedVersion } from "@/components/managed/types"
 
 /**
  * The project conversation.
@@ -20,13 +21,16 @@ import type { ManagedDeliverable, ManagedMessage } from "@/components/managed/ty
  * the notification bell already polls on the same cadence.
  */
 export default function ProjectChat({
-  projectId, messages, deliverables, viewerId, onSent, heading,
+  projectId, messages, deliverables, viewerId, onSent, heading, versions = [], projectStatus, expectedDeliverables = 1,
 }: {
   projectId: string
   messages: ManagedMessage[]
   deliverables: ManagedDeliverable[]
   viewerId: string
   onSent: () => void
+  versions?: ManagedVersion[]
+  projectStatus?: string
+  expectedDeliverables?: number
   /**
    * Whose side of the thread this is. The copy is the only difference between
    * the two: a producer needs to be told the client reads this, and a client
@@ -40,6 +44,9 @@ export default function ProjectChat({
   const [sending, setSending] = useState(false)
   const [error, setError] = useState("")
   const endRef = useRef<HTMLDivElement>(null)
+  const finalVersions = versions.filter((version) => version.project_id === projectId && version.is_final)
+  const fullyDelivered = projectStatus === "completed" && deliverables.length >= expectedDeliverables
+    && deliverables.every((deliverable) => deliverable.status === "approved" && finalVersions.some((version) => version.deliverable_id === deliverable.id))
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" })
@@ -117,6 +124,7 @@ export default function ProjectChat({
             </div>
           )
         })}
+        {fullyDelivered && <div><p className="mb-2 text-xs font-semibold text-primary">Completed project delivery</p><FinalDelivery deliverables={deliverables} versions={finalVersions} /></div>}
         <div ref={endRef} />
       </div>
 

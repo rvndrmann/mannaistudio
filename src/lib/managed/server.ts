@@ -2,6 +2,7 @@ import "server-only"
 import type { SupabaseClient, User } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase/server"
 import { isAdminUser } from "@/lib/membership"
+import { bearerToken, validateExternalRequest } from "@/lib/studio/external-auth"
 
 /**
  * Who is asking, and whether they may see this project.
@@ -44,6 +45,10 @@ export type ManagedProjectRow = {
   admin_last_read_at: string | null
   created_at: string
   updated_at: string
+  delivery_due_at?: string | null
+  client_update?: string
+  remaining_tasks?: string[]
+  completed_at?: string | null
 }
 
 export type ManagedContext = {
@@ -53,20 +58,26 @@ export type ManagedContext = {
   project: ManagedProjectRow
 }
 
-export async function requireUser(): Promise<{ supabase: SupabaseClient; user: User }> {
+export async function requireUser(request?: Request, scope = "managed:read"): Promise<{ supabase: SupabaseClient; user: User; external?: boolean }> {
+  if (request && bearerToken(request)) {
+    const account = await validateExternalRequest(request, scope)
+    if (!account) throw new ManagedAccessError("Connect your account first", 401)
+    return { supabase: account.supabase, user: account.user, external: true }
+  }
   const supabase = await createClient()
   const { data: { user }, error } = await supabase.auth.getUser()
   if (error || !user) throw new ManagedAccessError("Sign in to continue.", 401)
   return { supabase, user }
 }
 
-export async function requireManagedProject(projectId: string): Promise<ManagedContext> {
-  const { supabase, user } = await requireUser()
-  const { data, error } = await supabase
+export async function requireManagedProject(projectId: string, request?: Request, scope = "managed:read"): Promise<ManagedContext> {
+  const { supabase, user, external } = await requireUser(request, scope)
+  let query = supabase
     .from("managed_projects")
     .select("*")
     .eq("id", projectId)
-    .maybeSingle()
+  if (external) query = query.eq("user_id", user.id).in("payment_status", ["paid", "proposal_requested"])
+  const { data, error } = await query.maybeSingle()
 
   if (error) {
     console.error("Managed project access check failed:", { projectId, code: error.code, message: error.message })
@@ -74,7 +85,7 @@ export async function requireManagedProject(projectId: string): Promise<ManagedC
   }
   if (!data) throw new ManagedAccessError("Project not found", 404)
 
-  return { supabase, user, isAdmin: await isAdminUser(supabase, user.id), project: data as ManagedProjectRow }
+  return { supabase, user, isAdmin: external ? false : await isAdminUser(supabase, user.id), project: data as ManagedProjectRow }
 }
 
 export async function requireManagedAdmin(projectId: string): Promise<ManagedContext> {
@@ -85,6 +96,7 @@ export async function requireManagedAdmin(projectId: string): Promise<ManagedCon
 
 export function managedErrorStatus(error: unknown): number {
   if (error instanceof ManagedAccessError) return error.status
+  if (error && typeof error === "object" && "status" in error && typeof error.status === "number") return error.status
   return 500
 }
 

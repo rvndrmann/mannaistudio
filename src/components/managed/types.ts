@@ -22,6 +22,10 @@ export type ManagedProject = {
   admin_note: string
   created_at: string
   updated_at: string
+  delivery_due_at?: string | null
+  client_update?: string
+  remaining_tasks?: string[]
+  completed_at?: string | null
 }
 
 export type ManagedDeliverable = {
