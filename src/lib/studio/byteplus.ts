@@ -51,13 +51,27 @@ function assetSigningKeys(): { ak?: string; sk?: string } {
   return { ak: process.env.ARK_ACCESS_KEY, sk: process.env.ARK_SECRET_KEY }
 }
 
-function assetGroupIdFor(): string | undefined {
+/**
+ * A group somebody chose on purpose: a customer's own, or the operator's.
+ *
+ * Kept apart from the remembered one because these two cannot be treated alike
+ * when the provider says the group is gone — a configured id is a deliberate
+ * setting to report, and a remembered id is ours to replace.
+ */
+function pinnedAssetGroupId(): string | undefined {
   const own = activeCredentialPart("byteplus", "assetGroupId")
   if (own) return own
   // A customer's group must never fall back to the platform's: that id does not
   // exist on their account.
   if (isRunningOnCustomerKey("byteplus")) return undefined
-  return process.env.ARK_ASSET_GROUP_ID?.trim() || cachedAssetGroupId
+  return process.env.ARK_ASSET_GROUP_ID?.trim() || undefined
+}
+
+function assetGroupIdFor(): string | undefined {
+  const pinned = pinnedAssetGroupId()
+  if (pinned) return pinned
+  if (isRunningOnCustomerKey("byteplus")) return undefined
+  return cachedAssetGroupId
 }
 
 export function formatBytePlusError(data: Record<string, unknown>, status: number) {
@@ -442,25 +456,31 @@ async function withCreateAssetRetry<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-export async function createBytePlusAsset(input: { imageUrl: string; name?: string; groupId?: string; assetType?: "Image" | "Video" }) {
-  const { ak, sk } = assetSigningKeys()
+/** The provider's way of saying the group in the request does not exist. */
+export function isMissingAssetGroupError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "")
+  return /specified asset_group\s+\S+\s+is not found/i.test(message)
+}
 
-  if (!ak || !sk) {
-    throw new BytePlusProviderError(
-      "BytePlus Asset Library registration requires ARK_ACCESS_KEY and ARK_SECRET_KEY in .env.local (with ArkFullAccess permission). Please add ARK_ACCESS_KEY and ARK_SECRET_KEY to .env.local, or switch to fal.ai Seedance models (Seedance 2.0 Mini via fal.ai).",
-      400
-    )
-  }
-
-  // GroupId is required by CreateAsset, so there is no "attempt without it".
-  // Swallowing a failed group creation here only moved the error one step later
-  // and reported it as a missing parameter, hiding why the group was never made.
-  let groupId = input.groupId || assetGroupIdFor()
+/**
+ * The group this registration belongs in: the one asked for, the one already
+ * known, the account's existing one, or a new one — in that order.
+ *
+ * GroupId is required by CreateAsset, so there is no "attempt without it".
+ * Swallowing a failed group creation only moved the error one step later and
+ * reported it as a missing parameter, hiding why the group was never made.
+ */
+async function resolveAssetGroupId(explicit?: string): Promise<string> {
+  // A group found or created while a customer's key is in force lives on their
+  // account, so it is never kept as the studio's: the platform's next
+  // registration would send an id that account has never heard of.
+  const shared = !isRunningOnCustomerKey("byteplus")
+  let groupId = explicit || assetGroupIdFor()
   // Reuse before create. Without this the studio made a new group per cold
   // start and spent the account's asset allowance on duplicates of itself.
   if (!groupId) {
     groupId = await findBytePlusAssetGroupId()
-    if (groupId) cachedAssetGroupId = groupId
+    if (groupId && shared) cachedAssetGroupId = groupId
   }
   if (!groupId) {
     try {
@@ -468,7 +488,7 @@ export async function createBytePlusAsset(input: { imageUrl: string; name?: stri
       // new group per registration and exhausted the account's group quota,
       // which then surfaced as an unrelated "GroupId is missing" error.
       groupId = await createBytePlusAssetGroup(sharedAssetGroupName, "AI Director character references")
-      cachedAssetGroupId = groupId
+      if (shared) cachedAssetGroupId = groupId
     } catch (err) {
       const detail = err instanceof Error ? err.message : "unknown error"
       const quotaHit = /quota|limit/i.test(detail)
@@ -481,21 +501,32 @@ export async function createBytePlusAsset(input: { imageUrl: string; name?: stri
     }
   }
   if (!groupId) throw new BytePlusProviderError("BytePlus returned no asset group id, so the image cannot be registered.")
+  return groupId
+}
+
+export async function createBytePlusAsset(input: { imageUrl: string; name?: string; groupId?: string; assetType?: "Image" | "Video" }) {
+  const { ak, sk } = assetSigningKeys()
+
+  if (!ak || !sk) {
+    throw new BytePlusProviderError(
+      "BytePlus Asset Library registration requires ARK_ACCESS_KEY and ARK_SECRET_KEY in .env.local (with ArkFullAccess permission). Please add ARK_ACCESS_KEY and ARK_SECRET_KEY to .env.local, or switch to fal.ai Seedance models (Seedance 2.0 Mini via fal.ai).",
+      400
+    )
+  }
 
   const isVideo = input.assetType === "Video" || /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(input.imageUrl)
   const assetType: "Image" | "Video" = input.assetType || (isVideo ? "Video" : "Image")
 
   const query = { Action: "CreateAsset", Version: "2024-01-01" }
-  const body = JSON.stringify({
-    GroupId: groupId,
-    URL: input.imageUrl,
-    Name: input.name || (assetType === "Video" ? "motion_clip" : "actor_portrait"),
-    AssetType: assetType,
-  })
-
-  // Signed inside the retry: the signature carries a timestamp, and replaying
-  // an old one after a backoff is rejected as expired rather than retried.
-  const assetId = await withCreateAssetRetry(async () => {
+  const createInto = (group: string) => withCreateAssetRetry(async () => {
+    const body = JSON.stringify({
+      GroupId: group,
+      URL: input.imageUrl,
+      Name: input.name || (assetType === "Video" ? "motion_clip" : "actor_portrait"),
+      AssetType: assetType,
+    })
+    // Signed inside the retry: the signature carries a timestamp, and replaying
+    // an old one after a backoff is rejected as expired rather than retried.
     const headers = signBytePlusRequest("POST", query, body, ak, sk)
     const res = await fetch(`https://${headers.Host}/?Action=CreateAsset&Version=2024-01-01`, {
       method: "POST",
@@ -509,11 +540,31 @@ export async function createBytePlusAsset(input: { imageUrl: string; name?: stri
     }
     return json.Result?.Id
   })
+
+  let groupId = await resolveAssetGroupId(input.groupId)
+  let assetId: string | undefined
+  try {
+    assetId = await createInto(groupId)
+  } catch (error) {
+    // The group we were about to use no longer exists on this account —
+    // deleted from the Ark console, or belonging to a different account
+    // entirely. Remembering it is what makes this fatal rather than passing:
+    // every registration in this process, and every "Verify for Seedance"
+    // behind them, failed on the same dead id until the process recycled, and
+    // each rejected face then went to Seedance as a plain URL and came back as
+    // "may contain real person". A group nobody configured is ours to replace,
+    // so forget it and register into a live one.
+    if (!isMissingAssetGroupError(error) || groupId === pinnedAssetGroupId()) throw error
+    if (cachedAssetGroupId === groupId) cachedAssetGroupId = undefined
+    groupId = await resolveAssetGroupId()
+    assetId = await createInto(groupId)
+  }
   if (!assetId) throw new BytePlusProviderError("CreateAsset did not return an Asset ID.")
   // The group is returned so the caller can remember it. Only the caller has a
   // database, and a group id that outlives nothing but this process is what
-  // made a new group per registration.
-  return { assetId, groupId }
+  // made a new group per registration. `shared` says whether it is the studio's
+  // to remember at all: a group on a customer's own account is not.
+  return { assetId, groupId, shared: !isRunningOnCustomerKey("byteplus") }
 }
 
 type BytePlusAssetResponse = {

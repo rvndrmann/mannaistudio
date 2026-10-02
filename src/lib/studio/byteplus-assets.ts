@@ -141,15 +141,6 @@ export async function rememberAssetGroupId(supabase: SupabaseClient, groupId: st
   if (error) console.warn("Could not remember the BytePlus asset group id:", error.message)
 }
 
-async function forgetAssetGroupId(supabase: SupabaseClient) {
-  let settingsClient = supabase
-  try { settingsClient = createServiceClient() } catch { /* tests/local setups without a service key */ }
-  const { error } = await settingsClient
-    .from("site_settings")
-    .upsert({ key: ASSET_GROUP_SETTING, value: { group_id: null } }, { onConflict: "key" })
-  if (error) throw new Error(`Could not clear the missing BytePlus asset group: ${error.message}`)
-}
-
 async function rememberRegistration(supabase: SupabaseClient, row: Record<string, unknown>) {
   const { error } = await supabase.from("creator_byteplus_assets").insert(row)
   if (!error) return
@@ -250,20 +241,13 @@ export async function registerAssetOnce(input: {
   const groupId = await sharedAssetGroupId(supabase)
   const isVideo = input.assetType === "Video" || /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(input.sourcePath || input.imageUrl)
   const assetType: "Image" | "Video" = input.assetType || (isVideo ? "Video" : "Image")
-  let created
-  try {
-    created = await createBytePlusAsset({ imageUrl: input.imageUrl, name: input.name, groupId, assetType })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : ""
-    const missingStoredGroup = Boolean(groupId) && /asset[_ ]group.+not found|specified asset_group.+not found/i.test(message)
-    // The operator-owned environment setting is deliberate and cannot safely
-    // be rewritten here. A database-owned group, however, may have been removed
-    // during console cleanup; recover once by replacing that dead shared group.
-    if (!missingStoredGroup || process.env.ARK_ASSET_GROUP_ID?.trim()) throw error
-    await forgetAssetGroupId(supabase)
-    created = await createBytePlusAsset({ imageUrl: input.imageUrl, name: input.name, assetType })
-  }
-  if ((!groupId || created.groupId !== groupId) && created.groupId) {
+  // A stored group that has since been deleted is replaced by the provider
+  // module, which is where the same id is also cached in process memory — both
+  // copies have to go at once or the next call reaches for the dead one again.
+  // What comes back is the group the asset actually landed in, so recording
+  // that is what retires the dead id here.
+  const created = await createBytePlusAsset({ imageUrl: input.imageUrl, name: input.name, groupId, assetType })
+  if (created.shared && created.groupId && created.groupId !== groupId) {
     await rememberAssetGroupId(supabase, created.groupId)
   }
   let assetUri = `asset://${created.assetId}`
@@ -292,6 +276,11 @@ export async function registerAssetOnce(input: {
  * The asset URI for an image, registering it only if it has never been
  * registered before. Returns null when registration is unavailable, so the
  * caller can fall back to sending the plain URL.
+ *
+ * `onFailure` carries the reason out. A face that could not be registered is
+ * still sent to Seedance, which refuses it as possibly showing a real person —
+ * so the only account of what actually went wrong went to a server log, and
+ * the studio told the user their character was the problem.
  */
 export async function resolveRegisteredAsset(input: {
   supabase: SupabaseClient
@@ -303,11 +292,13 @@ export async function resolveRegisteredAsset(input: {
   userId?: string | null
   knownAssetId?: string | null
   assetType?: "Image" | "Video"
+  onFailure?: (reason: string) => void
 }): Promise<string | null> {
   try {
     return (await registerAssetOnce(input)).assetUri
   } catch (error) {
     console.warn(`Could not register ${input.sourcePath} with the BytePlus Asset Library:`, error)
+    input.onFailure?.(error instanceof Error ? error.message : String(error))
     return null
   }
 }
