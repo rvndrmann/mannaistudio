@@ -5,6 +5,7 @@ import { directorTools, type DirectorToolName } from "./tool-registry"
 import { getUserCredits } from "./credits"
 import { stripIdentityDescriptionsFromPrompts } from "./prompt-sanitizer"
 import { projectDirectorVideoModel } from "./generation-models"
+import { projectStoryboardImageModel } from "./project-image-model"
 import { resolveShotSeconds } from "./shot-duration"
 
 // Read from the registry rather than written out again. A second copy of this
@@ -119,6 +120,18 @@ export async function requestDirectorTool(context: AuthenticatedProjectContext, 
   // the same rule before saving the approval proposal so the UI never shows a
   // CHARACTER / ASSET LOCK block that will not be sent to the provider.
   const input = request.tool === "submit_generation"
+    && parsedInput
+    && typeof parsedInput === "object"
+    && "request" in parsedInput
+    && parsedInput.request
+    && typeof parsedInput.request === "object"
+    && "type" in parsedInput.request
+    && parsedInput.request.type === "image"
+    ? {
+        ...parsedInput,
+        request: { ...parsedInput.request, model: projectStoryboardImageModel(context.project) },
+      }
+    : request.tool === "submit_generation"
     && parsedInput
     && typeof parsedInput === "object"
     && "request" in parsedInput

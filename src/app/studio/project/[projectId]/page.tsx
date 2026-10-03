@@ -68,6 +68,7 @@ import { isVideoReferencePath } from "@/lib/studio/media-reference";
 import { calculateCreditCost, getUserCredits, type CreditQuality } from "@/lib/studio/credits";
 import { readGenerationResponse } from "@/lib/studio/generation-response";
 import { requestProjectImage } from "@/lib/studio/image-request";
+import { projectStoryboardImageModel } from "@/lib/studio/project-image-model";
 import { blockedByCredits, resolveGenerationSource } from "@/lib/byok/generation-source";
 import { useConnectedProviders } from "@/lib/byok/use-connected-providers";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -263,6 +264,7 @@ export default function WorkspacePage({
   const { user } = useAuth();
   const byokEnabled = useByokEnabled();
   const [data, setData] = useState<Workspace | null>(null);
+  const defaultImageModel = data ? projectStoryboardImageModel(data.project) : imageGenerationModels[0].id;
   const [tab, setTabState] = useState<string>("canvas");
   // Below xl the chat cannot sit beside the canvas, so it becomes a sheet the
   // user raises over it. Hiding it outright — which is what this layout used to
@@ -1588,7 +1590,7 @@ export default function WorkspacePage({
                   <ChatInlineChoices blocks={item.timeline_blocks} selectedId={selectedChatAction} disabled={chatSending} onChoose={chooseChatAction} />
                 )}
                 <ChatMedia media={item.media} />
-                <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} entities={data.entities} shots={data.shots} projectId={projectId} busyId={proposalBusy} onDecide={decideProposal} onAction={sendDirectorMessageFromUser} onOpenTab={setTab} />
+                <ChatSuggestedActions actions={item.suggested_actions} proposals={data.actionProposals} entities={data.entities} shots={data.shots} projectId={projectId} defaultImageModel={defaultImageModel} busyId={proposalBusy} onDecide={decideProposal} onAction={sendDirectorMessageFromUser} onOpenTab={setTab} />
               </div>
             ))}
             {(chatSending || resumedRunAwaitingReply) && <ThinkingBubble reply={chatSending ? streamingReply : { content: "", status: `Picking up where the Director left off${rejoinedRunMinutes ? ` · ${rejoinedRunMinutes}m` : ""}` }} />}
@@ -1617,6 +1619,7 @@ export default function WorkspacePage({
               entities={data.entities}
               shots={data.shots}
               projectId={projectId}
+              defaultImageModel={defaultImageModel}
               busyId={proposalBusy}
               onDecide={decideProposal}
               onAction={sendDirectorMessageFromUser}
@@ -7597,6 +7600,7 @@ function ChatSuggestedActions({
   entities,
   shots,
   projectId,
+  defaultImageModel,
   busyId,
   onDecide,
   onAction,
@@ -7607,6 +7611,7 @@ function ChatSuggestedActions({
   entities: Entity[];
   shots: Shot[];
   projectId: string;
+  defaultImageModel: string;
   busyId: string | null;
   onDecide: (proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) => void;
   onAction: (intent: string) => void;
@@ -7617,7 +7622,7 @@ function ChatSuggestedActions({
   if (!matched.length) return null;
   return (
     <div className="mt-3 space-y-2">
-      {matched.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} entities={entities} shots={shots} projectId={projectId} busy={busyId === proposal.id} onDecide={onDecide} onAction={onAction} onOpenTab={onOpenTab} />)}
+      {matched.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} entities={entities} shots={shots} projectId={projectId} defaultImageModel={defaultImageModel} busy={busyId === proposal.id} onDecide={onDecide} onAction={onAction} onOpenTab={onOpenTab} />)}
     </div>
   );
 }
@@ -7629,6 +7634,7 @@ function PendingProposalCards({
   entities,
   shots,
   projectId,
+  defaultImageModel,
   busyId,
   onDecide,
   onAction,
@@ -7640,6 +7646,7 @@ function PendingProposalCards({
   entities: Entity[];
   shots: Shot[];
   projectId: string;
+  defaultImageModel: string;
   busyId: string | null;
   onDecide: (proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) => void;
   onAction: (intent: string) => void;
@@ -7665,7 +7672,7 @@ function PendingProposalCards({
   return (
     <div className="mt-4 flex flex-col">
       <div className="space-y-2 mb-2">
-        {pending.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} entities={entities} shots={shots} projectId={projectId} busy={busyId === proposal.id} onDecide={onDecide} onAction={onAction} onOpenTab={onOpenTab} />)}
+        {pending.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} entities={entities} shots={shots} projectId={projectId} defaultImageModel={defaultImageModel} busy={busyId === proposal.id} onDecide={onDecide} onAction={onAction} onOpenTab={onOpenTab} />)}
       </div>
       <div className="border-l-2 border-y border-[#fff878]/50 border-r-0 py-2.5 pl-3 mt-2 mb-1 rounded-l-md bg-gradient-to-r from-[#fff878]/10 to-transparent">
         <p className="text-[11px] font-medium text-zinc-300">Please handle the pending confirmations above before sending a new message</p>
@@ -7688,6 +7695,7 @@ function proposalIdsFromActions(actions?: Array<Record<string, unknown>> | null)
 }
 
 type GenerationProposalRequest = {
+  quality?: CreditQuality;
   type?: string;
   shotIds?: string[];
   shotNumbers?: number[];
@@ -7781,6 +7789,7 @@ function VideoGenerationProposalBlock({
   entities,
   shots,
   projectId,
+  defaultImageModel,
   busy,
   onDecide,
   onAction,
@@ -7790,6 +7799,7 @@ function VideoGenerationProposalBlock({
   entities: Entity[];
   shots: Shot[];
   projectId: string;
+  defaultImageModel: string;
   busy: boolean;
   onDecide: (proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) => void;
   onAction: (intent: string) => void;
@@ -7808,17 +7818,24 @@ function VideoGenerationProposalBlock({
   const setPrompt = (value: string) => setPrompts((current) => ({ ...current, [activeKey]: value }));
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [model, setModel] = useState(() => {
-    if (!isVideo) return request.model || imageGenerationModels[0].id;
+    if (!isVideo) return defaultImageModel;
     return proposalVideoModels.some((option) => option.id === request.model)
       ? request.model!
       : proposalVideoModels[0].id;
   });
+  useEffect(() => {
+    if (!isVideo) setModel(defaultImageModel);
+  }, [defaultImageModel, isVideo]);
   // Follows the request, which defaults to multi_image for video: a storyboard
   // shot's images are its keyframe and its cast, none of them a position in
   // time. Only an explicit ask for keyframe mode gets it.
   const [mode, setMode] = useState<"keyframe" | "multi_image">(request.generationMode === "keyframe" ? "keyframe" : "multi_image");
   const [aspectRatio, setAspectRatio] = useState(request.aspectRatio || "16:9");
   const [resolution, setResolution] = useState(request.resolution || "720p");
+  const [quality, setQuality] = useState<CreditQuality>(() =>
+    ["Low", "Medium", "High", "Ultra", "Max"].includes(request.quality || "")
+      ? request.quality as CreditQuality : "Medium",
+  );
   // Falls back to the shot's own resolved duration when the payload still
   // carries the four-second floor. A legacy proposal saved before the server
   // stamped the resolved value has the LLM's default of 4, and reading that
@@ -7885,7 +7902,7 @@ function VideoGenerationProposalBlock({
     : `${request.shotIds?.length || 1} shot${(request.shotIds?.length || 1) === 1 ? "" : "s"}`;
   const shotLabel = shotNumbers ? `shot ${shotNumbers.join(", ")}` : "this shot";
   const shotCount = request.shotIds?.length || request.shotNumbers?.length || 1;
-  const credits = calculateCreditCost(model, isVideo ? "video" : "image", durationSeconds, { aspectRatio, resolution }) * shotCount;
+  const credits = calculateCreditCost(model, isVideo ? "video" : "image", durationSeconds, { aspectRatio, resolution, quality }) * shotCount;
   const missing = useMemo(() => unresolvedMentions(prompt, entities), [prompt, entities]);
   // The entities this prompt names are resolved into references at generation
   // time, so the card must show them too. Without this it displayed only the
@@ -7961,7 +7978,7 @@ function VideoGenerationProposalBlock({
 
   const confirm = () => {
     if (reopened) {
-      onAction(`Regenerate ${shotLabel} ${isVideo ? "video" : "image"} with these settings: model ${model}, aspect ratio ${aspectRatio}, resolution ${resolution}${isVideo ? `, duration ${durationSeconds}s, audio ${audioEnabled ? "on" : "off"}, ${mode === "multi_image" ? "multi image" : "key frame"} mode` : ""}. Use this exact prompt:\n\n${prompt.trim()}`);
+      onAction(`Regenerate ${shotLabel} ${isVideo ? "video" : "image"} with these settings: model ${model}, aspect ratio ${aspectRatio}, ${isVideo ? `resolution ${resolution}` : `quality ${quality}`}${isVideo ? `, duration ${durationSeconds}s, audio ${audioEnabled ? "on" : "off"}, ${mode === "multi_image" ? "multi image" : "key frame"} mode` : ""}. Use this exact prompt:\n\n${prompt.trim()}`);
       setReopened(false);
       return;
     }
@@ -7972,6 +7989,7 @@ function VideoGenerationProposalBlock({
         model,
         aspectRatio,
         resolution,
+        ...(!isVideo ? { quality } : {}),
         durationSeconds,
         audioEnabled,
         generationMode: mode,
@@ -8245,9 +8263,15 @@ function VideoGenerationProposalBlock({
           <select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value)} disabled={!canDecide} className="rounded-md border border-white/10 bg-[#141414] px-2 py-1 text-zinc-300 outline-none disabled:opacity-60">
             {["16:9", "9:16", "1:1", "4:3", "21:9"].map((option) => <option key={option} value={option}>{option}</option>)}
           </select>
-          <select value={resolution} onChange={(event) => setResolution(event.target.value)} disabled={!canDecide} className="rounded-md border border-white/10 bg-[#141414] px-2 py-1 text-zinc-300 outline-none disabled:opacity-60">
-            {["480p", "720p", "1080p"].map((option) => <option key={option} value={option}>{option}</option>)}
-          </select>
+          {isVideo ? (
+            <select aria-label="Video resolution" value={resolution} onChange={(event) => setResolution(event.target.value)} disabled={!canDecide} className="rounded-md border border-white/10 bg-[#141414] px-2 py-1 text-zinc-300 outline-none disabled:opacity-60">
+              {["480p", "720p", "1080p"].map((option) => <option key={option} value={option}>{option}</option>)}
+            </select>
+          ) : (
+            <select aria-label="Image quality" value={quality} onChange={(event) => setQuality(event.target.value as CreditQuality)} disabled={!canDecide} className="rounded-md border border-white/10 bg-[#141414] px-2 py-1 text-zinc-300 outline-none disabled:opacity-60">
+              {["Low", "Medium", "High", "Ultra", "Max"].map((option) => <option key={option} value={option}>{option}</option>)}
+            </select>
+          )}
           {isVideo && (
             <>
               <select value={durationSeconds} onChange={(event) => setDurationSeconds(Number(event.target.value))} disabled={!canDecide} className="rounded-md border border-white/10 bg-[#141414] px-2 py-1 text-zinc-300 outline-none disabled:opacity-60">
@@ -8534,6 +8558,7 @@ function ProposalCard({
   entities,
   shots,
   projectId,
+  defaultImageModel,
   busy,
   onDecide,
   onAction,
@@ -8543,6 +8568,7 @@ function ProposalCard({
   entities: Entity[];
   shots: Shot[];
   projectId: string;
+  defaultImageModel: string;
   busy: boolean;
   onDecide: (proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) => void;
   onAction: (intent: string) => void;
@@ -8582,6 +8608,7 @@ function ProposalCard({
         entities={entities}
         shots={shots}
         projectId={projectId}
+        defaultImageModel={defaultImageModel}
         busy={busy}
         onDecide={onDecide}
         onAction={onAction}

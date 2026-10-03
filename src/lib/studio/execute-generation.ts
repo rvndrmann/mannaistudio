@@ -179,6 +179,7 @@ export async function executeGenerationJobs(
           const style = projectVisualStyle(context.project)
           const projectDefaultAspect = typeof context.project.default_aspect === "string" ? context.project.default_aspect : null
           const settings = (job.settings as Record<string, unknown>) || {}
+          const imageQuality = ["Low", "Medium", "High", "Ultra", "Max"].includes(String(settings.quality)) ? settings.quality as ReturnType<typeof projectImageQuality> : projectImageQuality(context.project)
           const effectiveAspectRatio = typeof settings.aspectRatio === "string" ? settings.aspectRatio : projectDefaultAspect || "9:16"
           const referencePaths = Array.isArray(job.input_images) ? (job.input_images as string[]) : []
           
@@ -360,7 +361,7 @@ export async function executeGenerationJobs(
           if (job.type === "image" && job.provider === "openai") {
             const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
             if (supportsBackgroundImageResponse(job.model)) {
-              const submitted = await submitOpenAIImage({ userId: context.user.id, model: job.model as OpenAIImageModel, prompt: resolvedPrompt, referenceUrls, aspectRatio: effectiveAspectRatio, quality: openAIImageQuality(projectImageQuality(context.project), job.model) })
+              const submitted = await submitOpenAIImage({ userId: context.user.id, model: job.model as OpenAIImageModel, prompt: resolvedPrompt, referenceUrls, aspectRatio: effectiveAspectRatio, quality: openAIImageQuality(imageQuality, job.model) })
               const { error } = await context.supabase.from("creator_generation_jobs").update({ status: "processing", provider_job_id: submitted.responseId, provider_response: { responseId: submitted.responseId, status: submitted.status } }).eq("id", job.id)
               if (error) throw error
               return
@@ -371,7 +372,7 @@ export async function executeGenerationJobs(
               prompt: resolvedPrompt,
               referenceUrls,
               aspectRatio: effectiveAspectRatio,
-              quality: openAIImageQuality(projectImageQuality(context.project), job.model as string),
+              quality: openAIImageQuality(imageQuality, job.model as string),
             }))
             
             const path = generationStoragePath(context, job)
@@ -404,7 +405,7 @@ export async function executeGenerationJobs(
           } else if (job.type === "image" && ["byteplus", "fal", "google"].includes(job.provider)) {
             const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
             if (job.provider === "fal") {
-              const submitted = await submitFalImage({ model: job.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls, quality: openAIImageQuality(projectImageQuality(context.project), job.model), aspectRatio: effectiveAspectRatio })
+              const submitted = await submitFalImage({ model: job.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls, quality: openAIImageQuality(imageQuality, job.model), aspectRatio: effectiveAspectRatio })
               const { error } = await context.supabase.from("creator_generation_jobs").update({ status: "processing", provider_job_id: submitted.id, provider_response: { requestId: submitted.id, endpoint: submitted.endpoint } }).eq("id", job.id)
               if (error) throw error
               return
@@ -412,7 +413,7 @@ export async function executeGenerationJobs(
             const generated = await withGenerationRetry(context, job, () => job.provider === "google"
               ? generateGoogleImage({ model: job.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls })
               : job.provider === "fal"
-                ? generateFalImage({ model: job.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls, quality: openAIImageQuality(projectImageQuality(context.project), job.model as string), aspectRatio: effectiveAspectRatio })
+                ? generateFalImage({ model: job.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls, quality: openAIImageQuality(imageQuality, job.model as string), aspectRatio: effectiveAspectRatio })
                 : generateBytePlusImage({ model: job.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls }))
             
             let byteplusAssetId: string | null = null

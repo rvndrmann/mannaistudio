@@ -19,6 +19,7 @@ export const generationRequestSchema = z.object({
   durationSeconds: z.number().positive().max(120).default(5),
   aspectRatio: z.string().max(20).default("9:16"),
   resolution: z.string().max(20).default("720p"),
+  quality: z.enum(["Low", "Medium", "High", "Ultra", "Max"]).optional(),
   preference: z.enum(["quality", "balanced", "speed", "cost"]).default("balanced"),
   // Set when the user picks a model in the chat generation block instead of
   // leaving the choice to preference-based routing.
@@ -107,6 +108,7 @@ export function routeGeneration(raw: unknown, models: GenerationModel[] = genera
   if (request.model && !chosen) throw new Error(`Model ${request.model} does not support this ${request.type} request`)
   const selected = chosen ?? [...candidates].sort((a, b) => score(b) - score(a))[0]
   const creditsPerShot = calculateCreditCost(selected.model, request.type, request.durationSeconds, {
+    quality: request.quality,
     resolution: request.resolution,
     aspectRatio: request.aspectRatio,
   })
