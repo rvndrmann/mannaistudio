@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
-import { generateOpenAIImage, type OpenAIImageModel } from "./openai"
+import { generateOpenAIImage, submitOpenAIImage, supportsBackgroundImageResponse, type OpenAIImageModel } from "./openai"
 import { submitBytePlusVideo, generateBytePlusImage, createBytePlusAsset } from "./byteplus"
-import { generateFalImage, submitFalVideo } from "./fal"
+import { generateFalImage, submitFalImage, submitFalVideo } from "./fal"
 import { generateGoogleImage, submitGoogleVideo } from "./google"
 import type { VideoGenerationModelId, ImageGenerationModelId } from "./generation-models"
 import { buildEntityMentionContext, chosenReferences, entityPrimaryReference, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
@@ -106,7 +106,7 @@ async function verifyAttachedOutput(context: AuthenticatedProjectContext, job: R
   return { status: "verified", checkedAt: new Date().toISOString(), checks: result.checks, resultPath }
 }
 
-async function settleWorkflowRun(context: AuthenticatedProjectContext, workflowRunId: unknown) {
+export async function settleWorkflowRun(context: AuthenticatedProjectContext, workflowRunId: unknown) {
   if (typeof workflowRunId !== "string") return
   const { data: jobs } = await context.supabase.from("creator_generation_jobs").select("status,error").eq("workflow_run_id", workflowRunId)
   if (!jobs?.length) return
@@ -334,6 +334,12 @@ export async function executeGenerationJobs(
             ...(Array.isArray(settings.videoReferencePaths) ? settings.videoReferencePaths as string[] : []),
             ...strayClipPaths,
           ])).slice(0, 10)
+          const audioReferenceUrls: string[] = []
+          for (const ref of Array.isArray(settings.referenceAudios) ? settings.referenceAudios : []) {
+            if (typeof ref !== "string") continue
+            const signed = await signReference(ref)
+            if (signed) audioReferenceUrls.push(signed)
+          }
           const videoReferenceUrls: string[] = []
           for (const ref of videoReferencePaths) {
             const signed = await signReference(ref)
@@ -352,6 +358,12 @@ export async function executeGenerationJobs(
 
           if (job.type === "image" && job.provider === "openai") {
             const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
+            if (supportsBackgroundImageResponse(job.model)) {
+              const submitted = await submitOpenAIImage({ userId: context.user.id, model: job.model as OpenAIImageModel, prompt: resolvedPrompt, referenceUrls, aspectRatio: effectiveAspectRatio, quality: openAIImageQuality(projectImageQuality(context.project), job.model) })
+              const { error } = await context.supabase.from("creator_generation_jobs").update({ status: "processing", provider_job_id: submitted.responseId, provider_response: { responseId: submitted.responseId, status: submitted.status } }).eq("id", job.id)
+              if (error) throw error
+              return
+            }
             const imageBuffer = await withGenerationRetry(context, job, () => generateOpenAIImage({
               userId: context.user.id,
               model: job.model as OpenAIImageModel,
@@ -383,6 +395,12 @@ export async function executeGenerationJobs(
 
           } else if (job.type === "image" && ["byteplus", "fal", "google"].includes(job.provider)) {
             const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
+            if (job.provider === "fal") {
+              const submitted = await submitFalImage({ model: job.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls, quality: openAIImageQuality(projectImageQuality(context.project), job.model), aspectRatio: effectiveAspectRatio })
+              const { error } = await context.supabase.from("creator_generation_jobs").update({ status: "processing", provider_job_id: submitted.id, provider_response: { requestId: submitted.id, endpoint: submitted.endpoint } }).eq("id", job.id)
+              if (error) throw error
+              return
+            }
             const generated = await withGenerationRetry(context, job, () => job.provider === "google"
               ? generateGoogleImage({ model: job.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls })
               : job.provider === "fal"
@@ -457,6 +475,7 @@ export async function executeGenerationJobs(
                 referenceUrls,
                 faceReferenceUrls,
                 videoReferenceUrls,
+                audioReferenceUrls,
                 generationMode: settings.generationMode === "keyframe" ? "keyframe" : "multi_image",
                 // Only the shot-owned composition images count as frames; the
                 // cast that follows them is always a plain reference.
@@ -502,6 +521,7 @@ export async function executeGenerationJobs(
                   referenceUrls: freshRefUrls,
                   faceReferenceUrls: freshFaceRefUrls,
                   videoReferenceUrls,
+                audioReferenceUrls,
                   generationMode: settings.generationMode === "multi_image" ? "multi_image" : "keyframe",
                   audioEnabled: typeof settings.audioEnabled === "boolean" ? settings.audioEnabled : true,
                 })
@@ -520,6 +540,11 @@ export async function executeGenerationJobs(
             throw new Error(`Unsupported background generation for ${job.type} / ${job.provider}`)
           }
         } catch (err) {
+          const { data: tracked } = await context.supabase.from("creator_generation_jobs").select("provider_job_id").eq("id", job.id).maybeSingle()
+          if (tracked?.provider_job_id) {
+            await context.supabase.from("creator_generation_jobs").update({ status: "processing", error: "Provider submission is saved; re-poll to recover the result." }).eq("id", job.id)
+            return
+          }
           console.error(`Failed to process generation job ${job.id}:`, err)
           const rawMessage = err instanceof Error ? err.message : "Unknown error"
           const failureStatus = typeof (err as { status?: unknown })?.status === "number" ? (err as { status: number }).status : null

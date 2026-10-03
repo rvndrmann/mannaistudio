@@ -44,6 +44,7 @@ import BlogManager from "@/components/admin/BlogManager"
 import OriginalsManager from "@/components/admin/OriginalsManager"
 import ViewerAnalytics from "@/components/admin/ViewerAnalytics"
 import ManagedProduction from "@/components/admin/ManagedProduction"
+import GenerationRecovery from "@/components/admin/GenerationRecovery"
 import AcademyManager from "@/components/admin/AcademyManager"
 import { defaultHomeVariant, fetchHomeVariant, homeVariants, type HomeVariant } from "@/lib/home-variant"
 
@@ -1517,6 +1518,7 @@ function AdminDashboardContent() {
                             >
                                 <Briefcase className="w-4 h-4" /> Managed Production
                             </button>
+                            <button onClick={() => setActiveTab("generations")} className={`px-4 py-2 rounded-lg text-sm font-bold ${activeTab === "generations" ? "bg-primary text-black" : "text-white/40"}`}>Generations</button>
                             <button
                                 onClick={() => setActiveTab("audience")}
                                 className={cn(
@@ -1628,6 +1630,7 @@ function AdminDashboardContent() {
                 {/* Main Content Area */}
                 <div className="flex-grow">
                     <AnimatePresence mode="wait">
+                        {activeTab === "generations" && <GenerationRecovery />}
                         {activeTab === "overview" && (
                             <motion.div
                                 key="overview"

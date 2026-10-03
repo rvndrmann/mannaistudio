@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import GenerationRecovery from "@/components/studio/GenerationRecovery";
 import { useRouter } from "next/navigation";
 import { FormEvent, Fragment, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -3982,6 +3983,7 @@ function AssetWorkspace({
               </div>
             </div>
 
+            <GenerationRecovery jobs={generationJobs.filter(job => job.entity_id === asset.id && job.type === "image")} projectId={projectId} reload={reload} />
             {persistedGenerationStatus === "generating" && !working && (
               <p role="status" className="mt-4 rounded-xl border border-[#b9f42e]/25 bg-[#b9f42e]/[0.07] p-3 text-xs text-[#d9ff84]">
                 An earlier image for this asset is still rendering — it will drop into the gallery on its own. You can start another one now.
@@ -5177,6 +5179,10 @@ function ShotMediaWorkspace({
     }
     return media.type === "video" && previousShotClip ? [previousShotClip.path] : [];
   });
+  const [audioReferencePaths, setAudioReferencePaths] = useState<string[]>(() => {
+    const saved = (media.shot.metadata?.video_generation as { reference_audios?: string[] } | undefined)?.reference_audios;
+    return Array.isArray(saved) ? saved : [];
+  });
   const savedAspectRatio = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "aspect_ratio" in media.shot.metadata.video_generation ? (media.shot.metadata.video_generation as { aspect_ratio?: string }).aspect_ratio : null;
   const savedResolution = media.shot.metadata?.video_generation && typeof media.shot.metadata.video_generation === "object" && "resolution" in media.shot.metadata.video_generation ? (media.shot.metadata.video_generation as { resolution?: string }).resolution : null;
   const savedQuality = (media.shot.metadata?.image_generation && typeof media.shot.metadata.image_generation === "object" && "quality" in media.shot.metadata.image_generation ? (media.shot.metadata.image_generation as { quality?: string }).quality : null)
@@ -5760,7 +5766,7 @@ function ShotMediaWorkspace({
         await reload(true);
       } else {
         setGenerationStatus("Submitting video generation job…");
-        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, referenceVideos: videoReferencePaths, excludedReferenceImages: Array.from(referenceExclusions), characterEntityIds, mentionedEntityIds, generationMode: videoInputMode, startFrame: videoInputMode === "keyframe" ? startFrame : null, endFrame: videoInputMode === "keyframe" ? endFrame : null, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
+        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, referenceVideos: videoReferencePaths, referenceAudios: audioReferencePaths, excludedReferenceImages: Array.from(referenceExclusions), characterEntityIds, mentionedEntityIds, generationMode: videoInputMode, startFrame: videoInputMode === "keyframe" ? startFrame : null, endFrame: videoInputMode === "keyframe" ? endFrame : null, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
         const body = await readGenerationResponse(response);
         if (!response.ok) {
           const errorMsg = body.error || "Video generation failed";
@@ -6003,12 +6009,31 @@ function ShotMediaWorkspace({
   // with an agent-attached clip, just made by hand here instead. The file's own
   // extension decides which strip it belongs in, so the upload can never end up
   // in the wrong one regardless of which "+" the user clicked to add it.
-  const uploadReference = async (file?: File, target: "reference" | "motion" = "reference") => {
+  const uploadReference = async (file?: File, target: "reference" | "motion" | "audio" = "reference") => {
     if (!file) return;
     setBusy(true);
     setGenerationError(null);
     setGenerationStatus(null);
     try {
+      if (target === "audio") {
+        if (!/\.(mp3|wav)$/i.test(file.name) || file.size > 15 * 1024 * 1024) throw new Error("Choose an MP3 or WAV file up to 15 MB.");
+        const limit = model.includes("seedance-2-5") ? 10 : 3;
+        if (audioReferencePaths.length >= limit) throw new Error(`This model accepts at most ${limit} audio references.`);
+        const maxSeconds = model.includes("seedance-2-5") ? 30 : 15;
+        const objectUrl = URL.createObjectURL(file);
+        try {
+          const durations = await Promise.all([objectUrl, ...await Promise.all(audioReferencePaths.map(async (path) => (await getSignedMediaUrl(path)) || ""))].map((url) => new Promise<number>((resolve, reject) => {
+            const audio = new Audio();
+            const timer = window.setTimeout(() => { audio.src = ""; reject(new Error("Could not read audio duration.")); }, 10000);
+            audio.onloadedmetadata = () => { window.clearTimeout(timer); const duration = audio.duration; audio.src = ""; Number.isFinite(duration) ? resolve(duration) : reject(new Error("Could not read audio duration.")); };
+            audio.onerror = () => { window.clearTimeout(timer); reject(new Error("Could not read audio file.")); };
+            audio.preload = "metadata";
+            audio.src = url;
+          })));
+          if (durations.some((seconds) => seconds < 2 || seconds > maxSeconds) || durations.reduce((total, seconds) => total + seconds, 0) > maxSeconds) throw new Error(`Each audio must be at least 2 seconds; total audio must stay within ${maxSeconds} seconds.`);
+        } finally { URL.revokeObjectURL(objectUrl); }
+
+      }
       const userId = (await createClient().auth.getUser()).data.user?.id;
       if (!userId) throw new Error("Please sign in before uploading a reference.");
       const path = `${userId}/${projectId}/shot-reference-${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
@@ -6016,7 +6041,10 @@ function ShotMediaWorkspace({
         .storage.from("creator-studio-media")
         .upload(path, file);
       if (error) throw error;
-      if (target === "motion" || isVideoReferencePath(path)) {
+      if (target === "audio") {
+        setAudioReferencePaths((current) => [...current, path]);
+        setAudioEnabled(true);
+      } else if (target === "motion" || isVideoReferencePath(path)) {
         setVideoReferencePaths((current) => current.includes(path) ? current : [...current, path]);
       } else {
         addReferencePath(path);
@@ -6670,6 +6698,24 @@ function ShotMediaWorkspace({
                       )}
                     </div>
                   ) : null}
+                  {media.type === "video" && (
+                    <div className="mt-2 rounded-2xl border border-white/10 p-3">
+                      <p className="text-xs font-bold">Audio references</p>
+                      <p className="mt-1 text-[11px] text-zinc-400">Seedance BytePlus Direct supports MP3/WAV, up to 15 MB each. Total audio: 15 seconds on 2.0, 30 seconds on 2.5. Describe how to use it in your prompt.</p>
+                      {audioReferencePaths.map((path, index) => (
+                        <div key={path} className="mt-2 flex items-center gap-2">
+                          <ResolvedMedia src={path} type="audio" className="h-9 w-full" />
+                          <button type="button" aria-label={`Remove audio reference ${index + 1}`} onClick={() => setAudioReferencePaths((items) => items.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></button>
+                        </div>
+                      ))}
+                      {/^(dreamina-seedance-2-[05])/.test(model) ? (
+                        <label className={`mt-2 inline-block rounded-lg border border-white/20 px-3 py-1 text-xs ${busy ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
+                          + Upload audio
+                          <input type="file" accept=".mp3,.wav,audio/mpeg,audio/wav" disabled={busy} className="hidden" onChange={(event) => { uploadReference(event.target.files?.[0], "audio"); event.target.value = ""; }} />
+                        </label>
+                      ) : <p className="mt-2 text-xs text-amber-300">Select a Seedance BytePlus Direct model to use audio references.</p>}
+                    </div>
+                  )}
                   {entities.some((e) => e.type === "character") && (
                     <div className="mt-2 rounded-2xl bg-white/[0.02] p-3 border border-white/5">
                       <p className="text-[10px] font-bold text-zinc-500">Project Characters</p>
@@ -6850,6 +6896,7 @@ function ShotMediaWorkspace({
               </div>
             </div>
 
+            <GenerationRecovery jobs={generationJobs.filter(job => job.shot_id === media.shot.id && job.type === media.type)} projectId={projectId} reload={reload} />
             {generationStatus && <p role="status" className="mt-4 rounded-[16px] border border-sky-500/30 bg-sky-500/10 p-4 text-sm text-sky-100">{generationStatus}</p>}
             {generationError && <p role="alert" className="mt-4 rounded-[16px] border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{generationError}</p>}
           </div>
@@ -10013,7 +10060,7 @@ function Preview({
     </div>
   );
 }
-function ResolvedMedia({ src, type, className }: { src: string; type: "image" | "video"; className?: string }) {
+function ResolvedMedia({ src, type, className }: { src: string; type: "image" | "video" | "audio"; className?: string }) {
   const directUrl = src.startsWith("http") ? src : "";
   const [signedUrl, setSignedUrl] = useState("");
   useEffect(() => {
@@ -10028,6 +10075,7 @@ function ResolvedMedia({ src, type, className }: { src: string; type: "image" | 
   if (!url) {
     return <div className={`grid place-items-center text-xs text-zinc-500 ${className || ""}`}>Loading media…</div>;
   }
+  if (type === "audio") return <audio src={url} controls preload="metadata" className={className} />;
   if (type === "video") {
     return <video src={url} controls muted playsInline preload="metadata" className={className} />;
   }

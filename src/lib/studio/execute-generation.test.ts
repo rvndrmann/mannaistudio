@@ -3,12 +3,25 @@ import type { AuthenticatedProjectContext } from "./server-context"
 import { STALLED_SUBMISSION_MS } from "./stalled-jobs"
 import { canClaimGeneration, claimGeneration, submissionRecoveryExpired } from "./generation-claim"
 import { executeGenerationJobs } from "./execute-generation"
+import { submitOpenAIImage, generateOpenAIImage } from "./openai"
+import { submitFalImage, generateFalImage } from "./fal"
 import { submitBytePlusVideo } from "./byteplus"
 
 vi.mock("./byteplus", () => ({
   submitBytePlusVideo: vi.fn(async () => ({ id: "provider-task", response: { id: "provider-task" } })),
   generateBytePlusImage: vi.fn(),
   createBytePlusAsset: vi.fn(),
+}))
+
+vi.mock("./openai", () => ({
+  submitOpenAIImage: vi.fn(async () => ({ responseId: "resp-image-1", status: "queued" })),
+  generateOpenAIImage: vi.fn(),
+  supportsBackgroundImageResponse: (model: string) => model !== "gpt-image-2.5-sunburst",
+}))
+vi.mock("./fal", () => ({
+  submitFalImage: vi.fn(async () => ({ id: "fal-image-1", endpoint: "fal-ai/test" })),
+  generateFalImage: vi.fn(),
+  submitFalVideo: vi.fn(),
 }))
 
 const now = Date.parse("2026-09-12T00:00:00Z")
@@ -144,5 +157,27 @@ describe("video submission recovery", () => {
   it("never expires a job that reached the provider", () => {
     const job = { ...fixture().row, provider_job_id: "provider-task", approved_at: new Date(now - 10 * STALLED_SUBMISSION_MS).toISOString() }
     expect(submissionRecoveryExpired(job, now)).toBe(false)
+  })
+})
+
+
+describe("automated image tracking", () => {
+  it("persists the OpenAI Responses ID before returning and never uses synchronous generation", async () => {
+    const { row, context } = fixture({ type: "image", provider: "openai", model: "gpt-image-2" })
+    await executeGenerationJobs(context, [row.id])
+    expect(submitOpenAIImage).toHaveBeenCalledOnce()
+    expect(generateOpenAIImage).not.toHaveBeenCalled()
+    expect(row.provider_job_id).toBe("resp-image-1")
+    expect(row.status).toBe("processing")
+    await executeGenerationJobs(context, [row.id])
+    expect(submitOpenAIImage).toHaveBeenCalledOnce()
+  })
+  it("persists fal's request ID and exact endpoint for image recovery", async () => {
+    const { row, context } = fixture({ type: "image", provider: "fal", model: "fal-flux-dev" })
+    await executeGenerationJobs(context, [row.id])
+    expect(submitFalImage).toHaveBeenCalledOnce()
+    expect(generateFalImage).not.toHaveBeenCalled()
+    expect(row.provider_job_id).toBe("fal-image-1")
+    expect(row.provider_response).toEqual({ requestId: "fal-image-1", endpoint: "fal-ai/test" })
   })
 })

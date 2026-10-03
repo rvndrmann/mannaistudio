@@ -464,10 +464,11 @@ export async function renderProjectImage(
       // exactly these jobs.
       const submitted = await submitOpenAIImage({ userId: context.user.id, model: input.model as (typeof openAIImageModels)[number], prompt: resolvedPrompt, referenceUrls, aspectRatio: effectiveAspectRatio, quality: openAIImageQuality(quality, input.model) })
       if (pendingGenerationJobId) {
-        await context.supabase
+        const { error: trackingError } = await context.supabase
           .from("creator_generation_jobs")
           .update({ provider_job_id: submitted.responseId, provider_response: { responseId: submitted.responseId, status: submitted.status } })
           .eq("id", pendingGenerationJobId)
+        if (trackingError) throw trackingError
       }
       image = await waitForOpenAIImage(submitted.responseId, context.user.id)
     } else if (provider === "fal") {
@@ -485,10 +486,11 @@ export async function renderProjectImage(
         aspectRatio: input.aspectRatio,
       })
       if (pendingGenerationJobId) {
-        await context.supabase
+        const { error: trackingError } = await context.supabase
           .from("creator_generation_jobs")
           .update({ provider_job_id: submitted.id, provider_response: { requestId: submitted.id, endpoint: submitted.endpoint } })
           .eq("id", pendingGenerationJobId)
+        if (trackingError) throw trackingError
       }
       const finished = await waitForFalImage(submitted.id, submitted.endpoint)
       const download = await fetch(finished.url)

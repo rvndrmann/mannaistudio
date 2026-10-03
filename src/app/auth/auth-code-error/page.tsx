@@ -54,7 +54,7 @@ function AuthErrorContent() {
 
         <div className="mt-8 flex flex-col gap-3">
           <button
-            onClick={() => signInWithGoogle()}
+            onClick={() => signInWithGoogle(searchParams.get("next") || "/studio")}
             className="flex items-center justify-center gap-2 w-full rounded-xl bg-[#b9f42e] px-4 py-3 text-sm font-bold text-black transition hover:bg-[#b9f42e]/90 active:scale-[0.98]"
           >
             <RotateCcw className="h-4 w-4" />

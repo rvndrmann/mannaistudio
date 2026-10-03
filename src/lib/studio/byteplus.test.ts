@@ -1,6 +1,6 @@
 import { generationRequestSchema } from "./model-routing"
-import { describe, expect, it } from "vitest"
-import { formatBytePlusError, formatBytePlusMediaUrl, bytePlusVideoRatio, bytePlusVideoReferenceLimit, formatBytePlusReferencePrompt, parseBytePlusAssetResponse } from "./byteplus"
+import { describe, expect, it, vi } from "vitest"
+import { formatBytePlusError, formatBytePlusMediaUrl, bytePlusVideoRatio, bytePlusVideoReferenceLimit, formatBytePlusReferencePrompt, parseBytePlusAssetResponse, submitBytePlusVideo } from "./byteplus"
 
 describe("formatBytePlusError", () => {
   it("uses nested BytePlus error messages and redacts provider identifiers", () => {
@@ -189,5 +189,24 @@ describe("a chat video generation defaults to multi image", () => {
   it("still lets a caller ask for keyframe mode outright", () => {
     const parsed = generationRequestSchema.parse({ type: "video", shotNumbers: [1], episodeId: "11111111-1111-4111-8111-111111111111", generationMode: "keyframe" })
     expect(parsed.generationMode).toBe("keyframe")
+  })
+})
+
+
+describe("audio reference provider payload", () => {
+  it("sends audio separately and avoids mixing reference audio with first frames", async () => {
+    vi.stubEnv("ARK_API_KEY", "test-key")
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "task-test" }), { status: 200 }))
+    vi.stubGlobal("fetch", fetchMock)
+    try {
+      await submitBytePlusVideo({ model: "dreamina-seedance-2-0-260128", prompt: "Follow the speech timing.", duration: 5, resolution: "720p", ratio: "16:9", generationMode: "keyframe", referenceUrls: ["https://example.com/frame.png"], audioReferenceUrls: ["https://example.com/voice.wav"], audioEnabled: true })
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+      expect(body.content).toContainEqual({ type: "audio_url", audio_url: { url: "https://example.com/voice.wav" }, role: "reference_audio" })
+      expect(body.content).toContainEqual({ type: "image_url", image_url: { url: "https://example.com/frame.png" }, role: "reference_image" })
+      expect(body.generate_audio).toBe(true)
+    } finally {
+      vi.unstubAllGlobals()
+      vi.unstubAllEnvs()
+    }
   })
 })

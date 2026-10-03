@@ -63,7 +63,7 @@ export async function GET(request: Request) {
     const errorDescription = searchParams.get('error_description')
 
     if (errorParam) {
-        return NextResponse.redirect(`${origin}/auth/auth-code-error?error=${encodeURIComponent(errorDescription || errorParam)}`)
+        return NextResponse.redirect(`${origin}/auth/auth-code-error?next=${encodeURIComponent(next)}&error=${encodeURIComponent(errorDescription || errorParam)}`)
     }
 
     if (code) {
@@ -92,10 +92,10 @@ export async function GET(request: Request) {
         } else {
             console.error('[auth/callback] code exchange failed:', error.message, error)
             const kind = isAuthRetryableFetchError(error) ? 'network' : 'auth'
-            return NextResponse.redirect(`${origin}/auth/auth-code-error?kind=${kind}&error=${encodeURIComponent(error.message)}`)
+            return NextResponse.redirect(`${origin}/auth/auth-code-error?next=${encodeURIComponent(next)}&kind=${kind}&error=${encodeURIComponent(error.message)}`)
         }
     }
 
     // return the user to an error page with instructions
-    return NextResponse.redirect(`${origin}/auth/auth-code-error`)
+    return NextResponse.redirect(`${origin}/auth/auth-code-error?next=${encodeURIComponent(next)}`)
 }

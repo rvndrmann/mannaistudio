@@ -1,3 +1,4 @@
+import { pollVideos } from "@/lib/studio/poll-videos"
 import { createHash, randomUUID } from "node:crypto"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
@@ -41,6 +42,7 @@ const submitSchema = z.object({
   audioEnabled: z.boolean().default(true),
   durationSeconds: z.number().int().min(4).max(30).default(4),
   // Storage paths or URLs of clips the shot should inherit motion and look from.
+  referenceAudios: z.array(z.string().max(2_000)).max(10).default([]),
   referenceVideos: z.array(z.string().max(2_000)).max(10).default([]),
   // Chains this shot to the one before it by passing that shot's finished video
   // as a reference, which is how continuity carries across a sequence.
@@ -77,6 +79,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const shot = await verifyShot(context, projectId, input.shotId)
     if (!shot) return NextResponse.json({ error: "Shot not found" }, { status: 404 })
     const provider = generationProvider(input.model)
+    if (input.referenceAudios.length) {
+      if (provider !== "byteplus" || !/seedance-2-[05]/.test(input.model)) return NextResponse.json({ error: "Audio references require a Seedance 2.0 or 2.5 BytePlus Direct model." }, { status: 400 })
+      const maxAudios = input.model.includes("seedance-2-5") ? 10 : 3
+      if (input.referenceAudios.length > maxAudios) return NextResponse.json({ error: `This model accepts at most ${maxAudios} audio references.` }, { status: 400 })
+      if (!input.audioEnabled) return NextResponse.json({ error: "Turn Audio On to use audio references." }, { status: 400 })
+      if (input.referenceAudios.some((path) => !path.startsWith(`${context.user.id}/${projectId}/`) || !/\.(mp3|wav)$/i.test(path))) return NextResponse.json({ error: "Audio references must be MP3/WAV files uploaded to this project." }, { status: 400 })
+    }
+
     // A storyboard location remains linked for continuity, but a director may
     // deliberately omit its image from this render. Treat that saved choice as
     // authoritative even when an older browser state submits the old tile.
@@ -298,6 +308,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       ...combinedReferencePaths.filter((path) => !/^asset:\/\//i.test(path) && !/^asset-[a-z0-9-]+$/i.test(path)),
     ]))
 
+    const audioReferences = await signedReferenceUrls(context, input.referenceAudios)
     const references = await signedReferenceUrls(context, combinedReferencePaths)
     const faceReferences = await signedReferenceUrls(context, combinedReferencePaths.filter((path) => facePaths.has(path)))
     // A face has to be registered to clear the provider's real-person check.
@@ -376,10 +387,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     const mentionContext = buildEntityMentionContext((resolvedEntities || []) as MentionableEntity[])
     const style = projectVisualStyle(context.project)
-    const resolvedPrompt = [stripIdentityDescriptions(input.prompt), ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
+    const resolvedPrompt = [stripIdentityDescriptions(input.prompt), ...(input.referenceAudios.length ? ["Use the attached audio references for the soundtrack, speech delivery, and timing of this shot."] : []), ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
     const displayRatio = input.aspectRatio || shot.aspect_ratio || "9:16"
     const providerRatio = provider === "byteplus" ? bytePlusVideoRatio(displayRatio, videoReferences.length > 0) : displayRatio
-    const providerRequest = { prompt: resolvedPrompt, originalPrompt: input.prompt, style, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: providerRatio, displayRatio, referenceImages: combinedReferencePaths, characterEntityIds: input.characterEntityIds, mentionedEntityIds: input.mentionedEntityIds, resolvedEntityIds, generationMode: input.generationMode, startFrame: input.startFrame || null, endFrame: input.endFrame || null, audioEnabled: input.audioEnabled, videoReferencePaths, referenceVideos: input.referenceVideos }
+    const providerRequest = { prompt: resolvedPrompt, originalPrompt: input.prompt, style, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: providerRatio, displayRatio, referenceImages: combinedReferencePaths, characterEntityIds: input.characterEntityIds, mentionedEntityIds: input.mentionedEntityIds, resolvedEntityIds, generationMode: input.generationMode, startFrame: input.startFrame || null, endFrame: input.endFrame || null, audioEnabled: input.audioEnabled, videoReferencePaths, referenceVideos: input.referenceVideos, referenceAudios: input.referenceAudios }
 
     const { data: job, error: jobError } = await context.supabase.from("creator_generation_jobs").insert({
       user_id: context.user.id,
@@ -422,14 +433,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const gRes = await submitGoogleVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 4), resolution: input.resolution || shot.resolution || "720p", ratio: input.aspectRatio || shot.aspect_ratio || "9:16", referenceUrls: references })
         task = { id: gRes.id, response: gRes.response }
       } else {
-        const bpRes = await submitBytePlusVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: providerRatio, referenceUrls: references, faceReferenceUrls: faceReferences, videoReferenceUrls: videoReferences, generationMode: input.generationMode, audioEnabled: input.audioEnabled })
+        const bpRes = await submitBytePlusVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: providerRatio, referenceUrls: references, faceReferenceUrls: faceReferences, videoReferenceUrls: videoReferences, audioReferenceUrls: audioReferences, generationMode: input.generationMode, audioEnabled: input.audioEnabled })
         task = { id: bpRes.id, response: bpRes.response }
       }
       return task
       })
       await Promise.all([
         context.supabase.from("creator_generation_jobs").update({ status: "processing", credits_used: creditCost, billing_mode: billing.mode, provider_job_id: task.id, provider_response: task.response }).eq("id", job.id),
-        context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...resolvedEntityIds])), metadata: { ...(shot.metadata || {}), video_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, style, reference_images: viewableReferencePaths, reference_videos: videoReferencePaths, video_reference_paths: videoReferencePaths, character_entity_ids: input.characterEntityIds, mentioned_entity_ids: input.mentionedEntityIds, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
+        context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...resolvedEntityIds])), metadata: { ...(shot.metadata || {}), video_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, style, reference_images: viewableReferencePaths, reference_audios: input.referenceAudios, reference_videos: videoReferencePaths, video_reference_paths: videoReferencePaths, character_entity_ids: input.characterEntityIds, mentioned_entity_ids: input.mentionedEntityIds, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
       ])
       return NextResponse.json({
         jobId: job.id,
@@ -481,14 +492,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             ratio: providerRatio,
             referenceUrls: freshReferences,
             faceReferenceUrls: freshFaceReferences,
-            videoReferenceUrls: videoReferences,
+            videoReferenceUrls: videoReferences, audioReferenceUrls: audioReferences,
             generationMode: input.generationMode,
             audioEnabled: input.audioEnabled,
           })
           const task = { id: bpRes.id, response: bpRes.response }
           await Promise.all([
             context.supabase.from("creator_generation_jobs").update({ status: "processing", credits_used: creditCost, provider_job_id: task.id, provider_response: task.response }).eq("id", job.id),
-            context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...resolvedEntityIds])), metadata: { ...(shot.metadata || {}), video_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, style, reference_images: viewableReferencePaths, reference_videos: videoReferencePaths, video_reference_paths: videoReferencePaths, character_entity_ids: input.characterEntityIds, mentioned_entity_ids: input.mentionedEntityIds, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
+            context.supabase.from("creator_shots").update({ video_status: "generating", duration_seconds: input.durationSeconds || shot.duration_seconds, aspect_ratio: input.aspectRatio || shot.aspect_ratio, resolution: input.resolution || shot.resolution, model: input.model, referenced_entities: Array.from(new Set([...(shot.referenced_entities || []), ...resolvedEntityIds])), metadata: { ...(shot.metadata || {}), video_generation: { provider, model: input.model, prompt: input.prompt, resolved_prompt: resolvedPrompt, style, reference_images: viewableReferencePaths, reference_audios: input.referenceAudios, reference_videos: videoReferencePaths, video_reference_paths: videoReferencePaths, character_entity_ids: input.characterEntityIds, mentioned_entity_ids: input.mentionedEntityIds, generation_mode: input.generationMode, start_frame: input.startFrame || null, end_frame: input.endFrame || null, aspect_ratio: input.aspectRatio, resolution: input.resolution, audio_enabled: input.audioEnabled, duration_seconds: input.durationSeconds, job_id: job.id, provider_job_id: task.id, status: "processing", requested_at: new Date().toISOString() } } }).eq("id", shot.id),
           ])
           return NextResponse.json({
             jobId: job.id,
@@ -539,156 +550,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 }
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
-  try {
-    const { projectId } = await params
-    const context = await requireAuthenticatedProject(projectId)
-    const jobId = request.nextUrl.searchParams.get("jobId")
-    if (!jobId || !z.string().uuid().safeParse(jobId).success) return NextResponse.json({ error: "Valid jobId is required" }, { status: 400 })
-    const { data: job } = await context.supabase.from("creator_generation_jobs").select("*").eq("id", jobId).eq("project_id", projectId).eq("user_id", context.user.id).maybeSingle()
-    if (!job) return NextResponse.json({ error: "Generation job not found" }, { status: 404 })
-    if (["completed", "failed", "cancelled"].includes(job.status)) return NextResponse.json(job)
-    // Recover submissions with no provider handle before considering a refund.
-    if (!job.provider_job_id) {
-      // The executor atomically claims approved or abandoned submissions.
-      // Never pre-mark processing: that used to make the executor skip them.
-      if (canClaimGeneration(job)) {
-        await executeGenerationJobs(context, [job.id as string])
-        const { data: ran, error: reloadError } = await context.supabase
-          .from("creator_generation_jobs")
-          .select("*")
-          .eq("id", job.id)
-          .maybeSingle()
-        if (reloadError) throw reloadError
-        if (ran) return NextResponse.json(ran)
-        return NextResponse.json({ ...job, providerStatus: "submitting" })
-      }
-      if (!isStalledVideoJob(job, null)) {
-        return NextResponse.json({ ...job, status: job.status, providerStatus: "submitting" })
-      }
-      // Says the refund happened, because it does happen four lines below. The
-      // previous wording carried it and this one had dropped it, which leaves a
-      // user who has just watched three attempts fail wondering whether they
-      // have now paid for four.
-      const error = "Video submission timed out: no provider task ID was received, so the server never finished submitting this request. Nothing was rendered and the credits have been returned. Try generating it again."
-      let failure = context.supabase.from("creator_generation_jobs")
-        .update({ status: "failed", error, completed_at: new Date().toISOString() })
-        .eq("id", job.id).eq("status", job.status).is("provider_job_id", null)
-      failure = job.started_at ? failure.eq("started_at", job.started_at) : failure.is("started_at", null)
-      const { data: failed, error: failureError } = await failure.select("id").maybeSingle()
-      if (failureError) throw failureError
-      // Another poll renewed the claim or saved its provider handle. Never
-      // overwrite that work or refund a request which has just been submitted.
-      if (!failed) {
-        const { data: current, error: currentError } = await context.supabase.from("creator_generation_jobs").select("*").eq("id", job.id).single()
-        if (currentError) throw currentError
-        return NextResponse.json(current)
-      }
-      const charged = refundableCredits(job as { billing_mode?: string | null; credits_used?: number | null; estimated_credits?: number | null })
-      const refund = charged > 0
-        ? await refundGenerationCredits(context.user.id, charged, `generation-job:${job.id}`, "Refund: video generation was never submitted", job.id, context.supabase)
-        : { refunded: false, newBalance: 0 }
-      if (job.shot_id) {
-        await context.supabase.from("creator_shots").update({ video_status: "failed" }).eq("id", job.shot_id)
-      }
-      return NextResponse.json({ ...job, status: "failed", error, creditsRefunded: refund.refunded ? charged : 0, creditBalance: refund.newBalance })
-    }
-    if (!isVideoGenerationModel(job.model)) return NextResponse.json({ error: "Generation job is missing provider details" }, { status: 409 })
-
-    const provider = generationProvider(job.model)
-    let task: { status: "queued" | "running" | "succeeded" | "failed" | "cancelled"; content?: { video_url?: string }; error?: { message?: string }; created_at?: number; updated_at?: number }
-
-    if (provider === "fal") {
-      // The endpoint a request was submitted to is what polls it, so it is used
-      // exactly as it was stored. It used to have "fal-ai/" forced back on when
-      // it did not start with it, which was written when every fal model was
-      // owned by fal-ai — Seedance 2.x is owned by `bytedance`, and the prefix
-      // turns a working endpoint into the 404 that broke every one of those
-      // renders. A job old enough to have stored no endpoint is rebuilt from
-      // its model and the references it was given.
-      const storedEndpoint = (job.provider_response as Record<string, unknown>)?.endpoint
-      const endpoint = typeof storedEndpoint === "string" && storedEndpoint.trim()
-        ? storedEndpoint.trim()
-        : falVideoEndpoint(job.model, Array.isArray(job.input_images) ? job.input_images.length : 0)
-      task = await getFalVideoTask(job.provider_job_id, endpoint)
-    } else if (provider === "google") {
-      task = await getGoogleVideoTask(job.provider_job_id)
-    } else {
-      task = await getBytePlusVideoTask(job.provider_job_id)
-    }
-
-    if (task.status === "failed" || task.status === "cancelled") {
-      const rawFailure = task.error?.message || `${provider} task ${task.status}`
-      // The provider's copyright refusal says nothing a user can act on.
-      const error = seedanceCopyrightRefusal(rawFailure) || rawFailure
-      // Reads the recorded billing mode, not whichever number is non-zero. A
-      // BYOK clip charged nothing, so this fallback would refund its estimate —
-      // and a provider that keeps failing would print credits.
-      const charged = refundableCredits(job as { billing_mode?: string | null; credits_used?: number | null; estimated_credits?: number | null })
-      const refund = charged > 0
-        ? await refundGenerationCredits(context.user.id, charged, `generation-job:${job.id}`, `Refund: ${task.status} video generation`, job.id, context.supabase)
-        : { refunded: false, newBalance: 0 }
-      await Promise.all([
-        context.supabase.from("creator_generation_jobs").update({ status: task.status === "cancelled" ? "cancelled" : "failed", provider_response: task, error, completed_at: new Date().toISOString() }).eq("id", job.id),
-        job.shot_id ? context.supabase.from("creator_shots").update({ video_status: task.status === "cancelled" ? "cancelled" : "failed" }).eq("id", job.shot_id) : Promise.resolve(),
-      ])
-      if (job.workflow_run_id) await context.supabase.from("creator_workflow_runs").update({ status: task.status === "cancelled" ? "cancelled" : "failed", error: { message: error }, completed_at: new Date().toISOString() }).eq("id", job.workflow_run_id)
-      return NextResponse.json({ ...job, status: task.status === "cancelled" ? "cancelled" : "failed", error, creditsRefunded: refund.refunded ? charged : 0, creditBalance: refund.newBalance })
-    }
-    // A task the provider queue accepted but never started. BytePlus leaves
-    // updated_at exactly at created_at in that case and holds the task for up to
-    // two days, so without this the shot span its generating animation for the
-    // whole of it and the reserved credits were never returned. Settling it here
-    // is the same contract the failed branch above already honours.
-    if (isStalledVideoJob(job, task)) {
-      const charged = refundableCredits(job as { billing_mode?: string | null; credits_used?: number | null; estimated_credits?: number | null })
-      const refund = charged > 0
-        ? await refundGenerationCredits(context.user.id, charged, `generation-job:${job.id}`, "Refund: video generation was never started by the provider", job.id, context.supabase)
-        : { refunded: false, newBalance: 0 }
-      const error = "The video provider accepted this job but never started it. Nothing was rendered and the credits have been returned. Try generating it again."
-      await Promise.all([
-        context.supabase.from("creator_generation_jobs").update({ status: "failed", provider_response: task, error, completed_at: new Date().toISOString() }).eq("id", job.id),
-        job.shot_id ? context.supabase.from("creator_shots").update({ video_status: "failed" }).eq("id", job.shot_id) : Promise.resolve(),
-      ])
-      if (job.workflow_run_id) await context.supabase.from("creator_workflow_runs").update({ status: "failed", error: { message: error }, completed_at: new Date().toISOString() }).eq("id", job.workflow_run_id)
-      return NextResponse.json({ ...job, status: "failed", error, creditsRefunded: refund.refunded ? charged : 0, creditBalance: refund.newBalance })
-    }
-    if (task.status !== "succeeded" || !task.content?.video_url) return NextResponse.json({ ...job, status: "processing", providerStatus: task.status })
-
-    const output = await fetch(task.content.video_url)
-    if (!output.ok) throw new BytePlusProviderError(`Could not download generated video (${output.status}).`)
-    const storagePath = `${context.user.id}/${projectId}/${provider}-video-${randomUUID()}.mp4`
-    const { error: uploadError } = await context.supabase.storage.from("creator-studio-media").upload(storagePath, Buffer.from(await output.arrayBuffer()), { contentType: "video/mp4", upsert: false })
-    if (uploadError) throw uploadError
-    const completedAt = new Date().toISOString()
-    if (!job.shot_id) throw new Error("Generation completed without a target shot")
-    const { error: attachError } = await context.supabase.from("creator_shots").update({ video_url: storagePath, video_status: "completed" }).eq("id", job.shot_id)
-    if (attachError) throw attachError
-    const { data: verifiedShot, error: verifyError } = await context.supabase.from("creator_shots").select("id,episode_id,video_url,referenced_entities").eq("id", job.shot_id).maybeSingle()
-    if (verifyError) throw verifyError
-    const target = job.target_snapshot && typeof job.target_snapshot === "object" ? job.target_snapshot as Record<string, unknown> : {}
-    const expectedReferences = Array.isArray(target.entityReferenceIds) ? target.entityReferenceIds.filter((id): id is string => typeof id === "string") : []
-    const checks = {
-      shot: verifiedShot?.id === target.shotId || !target.shotId,
-      episode: verifiedShot?.episode_id === target.episodeId || !target.episodeId,
-      prompt: createHash("sha256").update(job.prompt || "").digest("hex") === target.promptHash || !target.promptHash,
-      references: expectedReferences.every((id) => (verifiedShot?.referenced_entities || []).includes(id)),
-      attachment: verifiedShot?.video_url === storagePath,
-    }
-    if (Object.values(checks).some((value) => !value)) throw new Error(`Generation verification failed: ${Object.entries(checks).filter(([, value]) => !value).map(([key]) => key).join(", ")}`)
-    const verification = { status: "verified", checkedAt: new Date().toISOString(), checks, resultPath: storagePath }
-    await context.supabase.from("creator_generation_jobs").update({ status: "completed", provider_response: task, result_url: storagePath, verification, completed_at: completedAt }).eq("id", job.id)
-    if (job.workflow_run_id) await context.supabase.from("creator_workflow_runs").update({ status: "completed", summary: { generationJobs: 1, completed: 1, failed: 0, verified: 1 }, completed_at: completedAt }).eq("id", job.workflow_run_id)
-    // The clip is downloaded, stored, attached and verified. A later poll of the
-    // same job returns early above, so this runs once per finished video.
-    await trackGenerationActivation({
-      supabase: context.supabase,
-      userId: context.user.id,
-      email: context.user.email,
-      sourceUrl: `https://www.aidirectorhub.com/studio/project/${projectId}`,
-    })
-    return NextResponse.json({ ...job, status: "completed", result_url: storagePath, verification, completed_at: completedAt })
-  } catch (error) {
-    return NextResponse.json({ error: studioErrorMessage(error, "Could not check video status") }, { status: error instanceof BytePlusProviderError || error instanceof FalProviderError ? error.status : studioErrorStatus(error) })
-  }
+export async function GET(request: NextRequest, options: { params: Promise<{ projectId: string }> }) {
+  return pollVideos(request, options)
 }

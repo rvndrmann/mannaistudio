@@ -88,21 +88,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             alert('Supabase is not configured. Please add your credentials to .env.local')
             return
         }
-        const { createClient } = await import('@/lib/supabase/client')
-        const supabase = createClient()
-        const callback = new URL('/auth/callback', window.location.origin)
-        // safeNextPath rather than the raw location: this ends up in a URL that
-        // a signed-out visitor can be handed, and the callback redirects to it.
         const target = safeNextPath(next ?? `${window.location.pathname}${window.location.search}`)
-        // Keep the OAuth callback identical to the Supabase redirect allowlist.
-        // A query-bearing callback can be rejected and fall back to Site URL.
-        document.cookie = `aidh_auth_next=${encodeURIComponent(target)}; Path=/; Max-Age=600; SameSite=Lax${window.location.protocol === 'https:' ? '; Secure' : ''}`
-        await supabase.auth.signInWithOAuth({
-            provider: 'google',
-            options: {
-                redirectTo: callback.toString(),
-            },
-        })
+        // Start on this origin. The server writes the verifier cookie on the
+        // redirect response before the browser leaves for Google.
+        window.location.assign(`/auth/google?next=${encodeURIComponent(target)}`)
     }
 
     const signOut = async () => {

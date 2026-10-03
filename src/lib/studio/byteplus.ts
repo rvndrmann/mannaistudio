@@ -217,7 +217,7 @@ export function bytePlusVideoRatio(requestedRatio: string, hasVideoReference: bo
   return bytePlusVideoRatios.includes(requestedRatio as (typeof bytePlusVideoRatios)[number]) ? requestedRatio : "9:16"
 }
 
-export async function submitBytePlusVideo(input: { model: VideoGenerationModelId; prompt: string; duration: number; resolution: string; ratio: string; referenceUrls?: string[]; faceReferenceUrls?: string[]; videoReferenceUrls?: string[]; generationMode?: "keyframe" | "multi_image"; audioEnabled?: boolean; subjects?: SeedanceSubject[]; mentionedNames?: string[]; compositionFrames?: number }) {
+export async function submitBytePlusVideo(input: { model: VideoGenerationModelId; prompt: string; duration: number; resolution: string; ratio: string; referenceUrls?: string[]; faceReferenceUrls?: string[]; videoReferenceUrls?: string[]; audioReferenceUrls?: string[]; generationMode?: "keyframe" | "multi_image"; audioEnabled?: boolean; subjects?: SeedanceSubject[]; mentionedNames?: string[]; compositionFrames?: number }) {
   // Only a character's reference is registered; everything else is sent as-is.
   const faces = new Set(input.faceReferenceUrls || [])
   const resolvedUrls = await Promise.all((input.referenceUrls || []).map((url) => resolveBytePlusReferenceUrl(url, faces.has(url), "Image")))
@@ -242,7 +242,7 @@ export async function submitBytePlusVideo(input: { model: VideoGenerationModelId
         ? Math.max(0, Math.min(2, input.compositionFrames))
         : Math.min(2, resolvedUrls.length))
     : 0
-  const wouldMix = requestedFrames > 0 && resolvedUrls.length > requestedFrames
+  const wouldMix = requestedFrames > 0 && (resolvedUrls.length > requestedFrames || rawVideoUrls.length > 0 || Boolean(input.audioReferenceUrls?.length))
   const frames = wouldMix ? 0 : requestedFrames
   resolvedUrls.forEach((url, index) => content.push({
     type: "image_url",
@@ -255,6 +255,9 @@ export async function submitBytePlusVideo(input: { model: VideoGenerationModelId
   const videoLimit = bytePlusVideoReferenceLimit(input.model)
   for (const url of resolvedVideoUrls.slice(0, videoLimit.maxVideos)) {
     content.push({ type: "video_url", video_url: { url }, role: "reference_video" })
+  }
+  for (const url of input.audioReferenceUrls || []) {
+    content.push({ type: "audio_url", audio_url: { url }, role: "reference_audio" })
   }
   const maxDuration = videoModelMaxDuration(input.model)
   const data = await request("/contents/generations/tasks", {
