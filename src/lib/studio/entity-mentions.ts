@@ -1,3 +1,4 @@
+import { entityMentionPattern } from "./entity-mention-pattern"
 export type MentionableEntity = {
   id: string
   name: string
@@ -59,7 +60,7 @@ export function findMentionedEntityIds(text: string, entities: MentionableEntity
   for (const entity of sorted) {
     const name = entity.name.trim()
     if (!name) continue
-    const expression = new RegExp(`(^|[\\s([{,:;])@${escapeRegExp(name)}(?=$|[\\s)\\]},.!?:;])`, "i")
+    const expression = entityMentionPattern(name)
     const match = expression.exec(text)
     if (match) matches.push({ id: entity.id, index: match.index + match[1].length, length: name.length })
   }

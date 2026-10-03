@@ -85,3 +85,9 @@ describe("spotting a cast member nobody pointed at", () => {
     expect(unboundMentions("A wide establishing shot of the highway.")).toEqual([])
   })
 })
+
+
+it("binds slugged character tags to the canonical reference identity", () => {
+  const bound = bindSeedanceMentions("@the-sommelier looks at @the-sommelier.", [{ name: "The Sommelier", imageIndex: 2 }])
+  expect(bound.prompt).toBe("The Sommelier@Image 2 looks at The Sommelier@Image 2.")
+})

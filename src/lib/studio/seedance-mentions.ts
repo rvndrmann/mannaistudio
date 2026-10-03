@@ -1,3 +1,4 @@
+import { entityMentionPattern } from "./entity-mention-pattern"
 /**
  * Binds the Studio's @mentions to the reference images Seedance actually
  * receives.
@@ -44,7 +45,7 @@ function escapeRegExp(value: string) {
  * and an email address is not a mention.
  */
 function mentionPattern(name: string) {
-  return new RegExp(`(^|[\\s([{,:;])@${escapeRegExp(name)}(?=$|[\\s)\\]},.!?:;])`, "gi")
+  return entityMentionPattern(name, "gi")
 }
 
 export type BoundPrompt = {

@@ -732,13 +732,19 @@ export default function WorkspacePage({
     );
   }, [data]);
   const save = async (body: unknown) => {
-    const r = await fetch(`/api/studio/projects/${projectId}/workspace`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const json = await r.json();
-    if (!r.ok) throw new Error(json.error);
+    let response: Response;
+    try {
+      response = await fetch(`/api/studio/projects/${projectId}/workspace`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      throw new Error("Could not reach the workspace server. Check your connection and that the local app is running, then try saving again.");
+    }
+    const json = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(json?.error || `Workspace save failed (${response.status}). Please try again.`);
+    if (!json) throw new Error("The server returned an unreadable save response. Refresh the workspace to check whether your change was saved.");
     return json;
   };
   if (loading)
@@ -3241,8 +3247,7 @@ function AssetWorkspace({
       .filter((job) => {
         const settings = job.settings && typeof job.settings === "object" ? job.settings : null;
         return job.type === "image"
-          && (settings?.target === "asset" || settings?.target === "entity")
-          && settings?.entityId === asset.id
+          && (job.entity_id === asset.id || settings?.entityId === asset.id)
           && (job.status !== "completed" || !job.result_url);
       })
       .map((job): AssetGenerationAttempt => ({
@@ -3309,7 +3314,7 @@ function AssetWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeImagePath]);
 
-  const activeAttempt = selectedAttemptId ? assetAttempts.find((attempt) => attempt.id === selectedAttemptId) || null : null;
+  const activeAttempt = selectedAttemptId ? assetAttempts.find((attempt) => attempt.id === selectedAttemptId) || null : libraryImages.length === 0 ? assetAttempts[0] || null : null;
   const generatingAttempts = assetAttempts.filter((attempt) => attempt.status === "generating");
   const failedAttempts = assetAttempts.filter((attempt) => attempt.status === "failed");
   const activeImage = activeAttempt ? null : libraryImages[selected] || null;
@@ -3574,20 +3579,23 @@ function AssetWorkspace({
   const uploadImage = async (file: File | undefined, destination: "library" | "reference") => {
     if (!file) return;
     setWorking(true);
+    setGenerationError(null);
     try {
       const userId = (await createClient().auth.getUser()).data.user?.id;
-      if (!userId) return;
+      if (!userId) throw new Error("Please sign in before uploading an image.");
       const path = `${userId}/${projectId}/asset-${destination}-${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
       const { error } = await createClient().storage.from("creator-studio-media").upload(path, file);
       if (error) throw error;
       if (destination === "library") {
         const nextImages = [path, ...libraryImages];
+        await save({ action: "saveAsset", asset: { ...asset, reference_images: nextImages, metadata: asset.metadata } });
         setLibraryImages(nextImages);
         setSelected(0);
-        await save({ action: "saveAsset", asset: { ...asset, reference_images: nextImages, metadata: asset.metadata } });
       } else {
         await saveReferences([...references, path]);
       }
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "Could not upload or save the image. Please try again.");
     } finally {
       setWorking(false);
     }

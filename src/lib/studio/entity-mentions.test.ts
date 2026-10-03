@@ -194,3 +194,19 @@ describe("wardrobe lock", () => {
     expect(buildEntityMentionContext([{ ...maya, reference_images: [] }])).not.toContain("WARDROBE LOCK")
   })
 })
+
+
+describe("slugged storyboard asset tags", () => {
+  const cast: MentionableEntity[] = [
+    { id: "sommelier", name: "The Sommelier", type: "character" },
+    { id: "room", name: "Luxury Tasting Room", type: "scene" },
+    { id: "glass", name: "Crystal Tasting Glass", type: "prop" },
+  ]
+  it("resolves characters, locations and props written as hyphenated tags", () => {
+    expect(findMentionedEntityIds("@the-sommelier holds @crystal-tasting-glass in @luxury-tasting-room.", cast)).toEqual(["sommelier", "glass", "room"])
+  })
+  it("handles underscores while rejecting longer unrelated tags and email addresses", () => {
+    expect(findMentionedEntityIds("@the_sommelier in @luxury_tasting_room", cast)).toEqual(["sommelier", "room"])
+    expect(findMentionedEntityIds("@the-sommelier-assistant x@the-sommelier", cast)).toEqual([])
+  })
+})
