@@ -10,6 +10,8 @@ export const imageGenerationModels = [
   { id: "fal-flux-3", label: "Flux 3 (fal.ai)", provider: "fal" },
   { id: "fal-flux-dev", label: "Flux Dev (fal.ai)", provider: "fal" },
   { id: "fal-flux-realism", label: "Flux Realism (fal.ai)", provider: "fal" },
+  { id: "higgsfield-ai/soul/v2/standard", label: "Soul V2 Standard (Higgsfield)", provider: "higgsfield" },
+  { id: "higgsfield-ai/soul/v2/image-to-image", label: "Soul V2 Image-to-Image (Higgsfield)", provider: "higgsfield" },
 ] as const
 
 export const videoGenerationModels = [
@@ -28,6 +30,9 @@ export const videoGenerationModels = [
   { id: "fal-kling-1-6-pro", label: "Kling 1.6 Pro (fal.ai)", provider: "fal" },
   { id: "fal-minimax-h3", label: "MiniMax H3 (fal.ai)", provider: "fal" },
   { id: "fal-minimax-video-01", label: "MiniMax Video-01 (fal.ai)", provider: "fal" },
+  { id: "higgsfield/genjutsu/motion-transfer/v1.0", label: "Genjutsu Motion Transfer (Higgsfield)", provider: "higgsfield" },
+  { id: "higgsfield/genjutsu/object-swap/v1.0", label: "Genjutsu Object Swap (Higgsfield)", provider: "higgsfield" },
+  { id: "higgsfield/genjutsu/restyle/v1.0", label: "Genjutsu Restyle (Higgsfield)", provider: "higgsfield" },
 ] as const
 
 export type ImageGenerationModelId = (typeof imageGenerationModels)[number]["id"]
@@ -48,10 +53,11 @@ export function isVideoGenerationModel(value: unknown): value is VideoGeneration
  * that has a picture to hand should send it rather than let the render fail.
  */
 export function imageModelRequiresReference(model: string): boolean {
-  return model === "fal-gpt-image-2-5-sunburst-edit"
+  return model === "fal-gpt-image-2-5-sunburst-edit" || model === "higgsfield-ai/soul/v2/image-to-image"
 }
 
 export function generationProvider(model: ImageGenerationModelId | VideoGenerationModelId) {
+  if (model.startsWith("higgsfield/") || model.startsWith("higgsfield-ai/")) return "higgsfield"
   if (model.startsWith("google-")) return "google"
   if (model.startsWith("fal-")) return "fal"
   return model.startsWith("dreamina-") || model.startsWith("dola-") ? "byteplus" : "openai"
@@ -99,7 +105,7 @@ export function getModelLabel(modelId: string) {
  * for seconds they never receive.
  */
 export function videoModelMaxDuration(model: string) {
-  return /seedance-2[-.]5/i.test(model) ? 30 : 15
+  return model.startsWith("higgsfield/genjutsu/") || /seedance-2[-.]5/i.test(model) ? 30 : 15
 }
 
 /** Duration choices to offer for a model, never exceeding what it can render. */

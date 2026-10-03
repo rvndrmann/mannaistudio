@@ -11,7 +11,7 @@ export const generationRequestSchema = z.object({
   shotNumbers: z.array(z.number().int().positive().max(10_000)).max(100).default([]),
   episodeId: z.string().uuid().optional(),
   mentionedEntityIds: z.array(z.string().uuid()).max(20).default([]),
-  source: z.enum(["text", "image"]).default("text"),
+  source: z.enum(["text", "image", "video"]).default("text"),
   referenceImageRequired: z.boolean().default(false),
   characterConsistencyPriority: z.boolean().default(false),
   productAccuracyPriority: z.boolean().default(false),
@@ -42,6 +42,7 @@ export const generationRequestSchema = z.object({
   // Clips referenced for motion and look continuity, kept apart from image
   // references because the provider treats the two differently.
   videoReferencePaths: z.array(z.string().trim().min(1).max(2_000)).max(10).default([]),
+  restylePresetId: z.string().uuid().optional(),
   // Storyboard numbers for clips used as continuity inputs. Keeping these
   // separate from shotNumbers makes the output target unambiguous and lets the
   // approval card label the source clip before the job is submitted.
@@ -72,7 +73,7 @@ export type GenerationModel = {
   provider: string
   model: string
   types: Array<"image" | "video">
-  sources: Array<"text" | "image">
+  sources: Array<"text" | "image" | "video">
   referenceImages: boolean
   dialogue: boolean
   quality: number
@@ -83,7 +84,7 @@ export type GenerationModel = {
 
 export const generationModels: GenerationModel[] = [
   ...imageGenerationModels.map((item, index) => ({ provider: generationProvider(item.id), model: item.id, types: ["image"] as Array<"image" | "video">, sources: ["text", "image"] as Array<"text" | "image">, referenceImages: true, dialogue: false, quality: Math.max(2, 5 - index / 3), speed: 3, costPerSecond: 0, baseCredits: calculateCreditCost(item.id, "image") })),
-  ...videoGenerationModels.map((item, index) => ({ provider: generationProvider(item.id), model: item.id, types: ["video"] as Array<"image" | "video">, sources: ["text", "image"] as Array<"text" | "image">, referenceImages: true, dialogue: true, quality: Math.max(2, 5 - index / 6), speed: 3, costPerSecond: 0, baseCredits: 0 })),
+  ...videoGenerationModels.map((item, index) => ({ provider: generationProvider(item.id), model: item.id, types: ["video"] as Array<"image" | "video">, sources: (item.provider === "higgsfield" ? ["video"] : ["text", "image"]) as Array<"text" | "image" | "video">, referenceImages: true, dialogue: item.provider !== "higgsfield", quality: Math.max(2, 5 - index / 6), speed: 3, costPerSecond: 0, baseCredits: 0 })),
 ]
 
 export function routeGeneration(raw: unknown, models: GenerationModel[] = generationModels) {
@@ -94,8 +95,9 @@ export function routeGeneration(raw: unknown, models: GenerationModel[] = genera
   // — a shot whose script has spoken lines is described as dialogueRequired,
   // and asking for its storyboard frame then failed with "No configured model
   // supports this shot request" for a frame every image model could render.
+  const source = request.model?.startsWith("higgsfield/") ? "video" : request.source
   const needsDialogue = request.dialogueRequired && request.type === "video"
-  const candidates = models.filter((model) => model.types.includes(request.type) && model.sources.includes(request.source) && (!request.referenceImageRequired || model.referenceImages) && (!needsDialogue || model.dialogue))
+  const candidates = models.filter((model) => model.types.includes(request.type) && model.sources.includes(source) && (!request.referenceImageRequired || model.referenceImages) && (!needsDialogue || model.dialogue))
   if (!candidates.length) throw new Error("No configured model supports this shot request")
   const score = (model: GenerationModel) => request.preference === "quality" ? model.quality * 3 - model.costPerSecond : request.preference === "speed" ? model.speed * 3 - model.costPerSecond : request.preference === "cost" ? -(model.baseCredits + model.costPerSecond * request.durationSeconds) : model.quality + model.speed - model.costPerSecond
   // An explicit choice wins over preference scoring, but only among the models

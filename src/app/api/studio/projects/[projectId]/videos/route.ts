@@ -1,3 +1,5 @@
+import { GENJUTSU_OBJECT_SWAP_MODEL, GENJUTSU_RESTYLE_MODEL, isGenjutsuModel, genjutsuInputSchema, genjutsuRestyleInputSchema, getGenjutsuPresets, HiggsfieldProviderError, requireHiggsfieldCredentials, submitGenjutsuVideo } from "@/lib/studio/higgsfield"
+import { readSourceVideoDuration } from "@/lib/studio/source-video-duration"
 import { pollVideos } from "@/lib/studio/poll-videos"
 import { createHash, randomUUID } from "node:crypto"
 import type { SupabaseClient } from "@supabase/supabase-js"
@@ -27,7 +29,7 @@ import { parseSeedanceMissingAssetError, parseSeedanceRejectedReference, purgeSt
 
 const submitSchema = z.object({
   shotId: z.string().uuid(),
-  prompt: z.string().trim().min(1).max(20_000),
+  prompt: z.string().trim().max(20_000).default(""),
   model: z.string().refine(isVideoGenerationModel, "Unsupported video model"),
   referenceImages: z.array(z.string().max(2_000)).max(50).default([]),
   excludedReferenceImages: z.array(z.string().max(2_000)).max(50).optional(),
@@ -44,6 +46,7 @@ const submitSchema = z.object({
   // Storage paths or URLs of clips the shot should inherit motion and look from.
   referenceAudios: z.array(z.string().max(2_000)).max(10).default([]),
   referenceVideos: z.array(z.string().max(2_000)).max(10).default([]),
+  restylePresetId: z.string().uuid().optional(),
   // Chains this shot to the one before it by passing that shot's finished video
   // as a reference, which is how continuity carries across a sequence.
   continueFromPreviousShot: z.boolean().default(false),
@@ -79,6 +82,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const shot = await verifyShot(context, projectId, input.shotId)
     if (!shot) return NextResponse.json({ error: "Shot not found" }, { status: 404 })
     const provider = generationProvider(input.model)
+    if (provider !== "higgsfield" && !input.prompt) return NextResponse.json({ error: "A prompt is required for this model." }, { status: 400 })
+    if (provider === "higgsfield") requireHiggsfieldCredentials()
     if (input.referenceAudios.length) {
       if (provider !== "byteplus" || !/seedance-2-[05]/.test(input.model)) return NextResponse.json({ error: "Audio references require a Seedance 2.0 or 2.5 BytePlus Direct model." }, { status: 400 })
       const maxAudios = input.model.includes("seedance-2-5") ? 10 : 3
@@ -132,30 +137,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       for (const path of (entity.reference_images || []) as string[]) {
         if (typeof path === "string" && path) entityAssetByPath.set(path, assetId)
       }
-    }
-
-    // Validate the full request before reserving credits.
-    const platformCost = calculateCreditCost(input.model, "video", input.durationSeconds, { resolution: input.resolution, aspectRatio: input.aspectRatio, quality: input.quality })
-    // Same rule as every other charge path. This route billed directly and
-    // never asked, so a connected key was ignored and "only my own keys" was
-    // not honoured — the video equivalent of the image bug.
-    const byokProvider = byokProviderFor(provider)
-    const billing = decideBilling({
-      hasCredential: byokProvider ? await hasCredential(context.user.id, byokProvider) : false,
-      platformCredits: platformCost,
-      ownKeysOnly: await ownKeysOnly(context.user.id).catch(() => false),
-      provider: byokProvider || provider,
-    })
-    const creditCost = billing.credits
-    let creditBalanceAfter: number | null = null
-    if (billing.mode !== "byok") {
-      const deduct = await deductUserCredits(context.user.id, creditCost, input.model, `Video Generation (${input.model})`, context.supabase)
-      if (!deduct.success) {
-        return NextResponse.json({ error: deduct.errorMessage || "Insufficient credits" }, { status: 402 })
-      }
-      creditBalanceAfter = deduct.newBalance
-      // Only a charge can be refunded; a BYOK failure is the provider's bill.
-      pendingRefund = { userId: context.user.id, amount: creditCost, key: `video-request:${randomUUID()}`, client: context.supabase }
     }
 
     /** Submits on whichever account is paying for this clip. */
@@ -316,7 +297,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // what filled the account's 50-image library within hours; the registry
     // makes it once and remembers it.
     const facePathList = combinedReferencePaths.filter((path) => facePaths.has(path))
-    for (let index = 0; index < facePathList.length; index += 1) {
+    for (let index = 0; provider === "byteplus" && index < facePathList.length; index += 1) {
       const path = facePathList[index]
       const signed = faceReferences[index]
       if (!signed) continue
@@ -357,7 +338,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (previousShot?.video_url) videoReferencePaths.unshift(previousShot.video_url)
     }
     const videoLimit = bytePlusVideoReferenceLimit(input.model)
-    const distinctVideoPaths = Array.from(new Set(videoReferencePaths)).slice(0, videoLimit.maxVideos)
+    const distinctVideoPaths = Array.from(new Set(videoReferencePaths)).slice(0, provider === "higgsfield" ? 11 : videoLimit.maxVideos)
     const distinctVideoInputs = distinctVideoPaths.map((videoPath) => {
       const registeredAssetUri = provider === "byteplus" ? seedanceReferenceAssetUri(shotReferenceAssets[videoPath]) : null
       return registeredAssetUri || videoPath
@@ -387,10 +368,52 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     const mentionContext = buildEntityMentionContext((resolvedEntities || []) as MentionableEntity[])
     const style = projectVisualStyle(context.project)
-    const resolvedPrompt = [stripIdentityDescriptions(input.prompt), ...(input.referenceAudios.length ? ["Use the attached audio references for the soundtrack, speech delivery, and timing of this shot."] : []), ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
+    const resolvedPrompt = provider === "higgsfield" ? input.prompt : [stripIdentityDescriptions(input.prompt), ...(input.referenceAudios.length ? ["Use the attached audio references for the soundtrack, speech delivery, and timing of this shot."] : []), ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
     const displayRatio = input.aspectRatio || shot.aspect_ratio || "9:16"
     const providerRatio = provider === "byteplus" ? bytePlusVideoRatio(displayRatio, videoReferences.length > 0) : displayRatio
-    const providerRequest = { prompt: resolvedPrompt, originalPrompt: input.prompt, style, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: providerRatio, displayRatio, referenceImages: combinedReferencePaths, characterEntityIds: input.characterEntityIds, mentionedEntityIds: input.mentionedEntityIds, resolvedEntityIds, generationMode: input.generationMode, startFrame: input.startFrame || null, endFrame: input.endFrame || null, audioEnabled: input.audioEnabled, videoReferencePaths, referenceVideos: input.referenceVideos, referenceAudios: input.referenceAudios }
+    let sourceVideoInfo: Awaited<ReturnType<typeof readSourceVideoDuration>> | null = null
+    if (provider === "higgsfield") {
+      if (input.referenceVideos.length !== 1 || pickedVideoPaths.length) throw new HiggsfieldProviderError("Select exactly one source video from this project.", 400)
+      if (videoReferences.length !== 1) throw new HiggsfieldProviderError("Genjutsu requires exactly one source video.", 400)
+      if (input.model === GENJUTSU_RESTYLE_MODEL && resolvedEntities?.some((entity) => entity.type !== "character")) throw new HiggsfieldProviderError("Restyle references are for characters. Remove scene and prop references.", 400)
+      const validation = input.model === GENJUTSU_RESTYLE_MODEL
+        ? genjutsuRestyleInputSchema.safeParse({ prompt: input.prompt, video_url: videoReferences[0], image_urls: references, resolution: input.resolution, preset_id: input.restylePresetId })
+        : genjutsuInputSchema.safeParse({ prompt: input.prompt, video_url: videoReferences[0], image_urls: references, resolution: input.resolution })
+      if (!validation.success) throw new HiggsfieldProviderError("Genjutsu requires 1–8 image references, a prompt up to 10,000 characters, and 480p, 720p or 1080p resolution.", 400)
+      if ((input.referenceAudios.length || input.endFrame) && input.model !== GENJUTSU_RESTYLE_MODEL) throw new HiggsfieldProviderError("Genjutsu uses the source video timing; remove separate audio and end-frame inputs.", 400)
+      if (input.model === GENJUTSU_RESTYLE_MODEL) {
+        const presets = await getGenjutsuPresets()
+        if (!input.restylePresetId || !presets.some((preset) => preset.id === input.restylePresetId)) throw new HiggsfieldProviderError("Choose a currently available Restyle style.", 400)
+      }
+      sourceVideoInfo = await readSourceVideoDuration(videoReferences[0], input.model === GENJUTSU_OBJECT_SWAP_MODEL)
+      if (input.model === GENJUTSU_RESTYLE_MODEL && sourceVideoInfo.totalBytes !== null && sourceVideoInfo.totalBytes > 209_715_200) throw new HiggsfieldProviderError("Restyle source videos must be 200 MiB or smaller.", 400)
+      input.durationSeconds = sourceVideoInfo.billedSeconds
+    }
+    const providerRequest = { sourceVideoInfo, prompt: resolvedPrompt, originalPrompt: input.prompt, style, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: providerRatio, displayRatio, referenceImages: combinedReferencePaths, characterEntityIds: input.characterEntityIds, mentionedEntityIds: input.mentionedEntityIds, resolvedEntityIds, generationMode: input.generationMode, startFrame: input.startFrame || null, endFrame: input.endFrame || null, audioEnabled: input.audioEnabled, videoReferencePaths, referenceVideos: input.referenceVideos, referenceAudios: input.referenceAudios }
+
+    // Validate the full request before reserving credits.
+    const platformCost = calculateCreditCost(input.model, "video", input.durationSeconds, { resolution: input.resolution, aspectRatio: input.aspectRatio, quality: input.quality })
+    // Same rule as every other charge path. This route billed directly and
+    // never asked, so a connected key was ignored and "only my own keys" was
+    // not honoured — the video equivalent of the image bug.
+    const byokProvider = byokProviderFor(provider)
+    const billing = decideBilling({
+      hasCredential: byokProvider ? await hasCredential(context.user.id, byokProvider) : false,
+      platformCredits: platformCost,
+      ownKeysOnly: await ownKeysOnly(context.user.id).catch(() => false),
+      provider: byokProvider || provider,
+    })
+    const creditCost = billing.credits
+    let creditBalanceAfter: number | null = null
+    if (billing.mode !== "byok") {
+      const deduct = await deductUserCredits(context.user.id, creditCost, input.model, `Video Generation (${input.model})`, context.supabase)
+      if (!deduct.success) {
+        return NextResponse.json({ error: deduct.errorMessage || "Insufficient credits" }, { status: 402 })
+      }
+      creditBalanceAfter = deduct.newBalance
+      // Only a charge can be refunded; a BYOK failure is the provider's bill.
+      pendingRefund = { userId: context.user.id, amount: creditCost, key: `video-request:${randomUUID()}`, client: context.supabase }
+    }
 
     const { data: job, error: jobError } = await context.supabase.from("creator_generation_jobs").insert({
       user_id: context.user.id,
@@ -423,7 +446,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     try {
       const task: { id: string; response?: unknown } = await runOnBillingAccount(async () => {
       let task: { id: string; response?: unknown }
-      if (provider === "fal") {
+      if (provider === "higgsfield") {
+        task = await submitGenjutsuVideo(input.model, { prompt: input.prompt, video_url: videoReferences[0], image_urls: references, resolution: input.resolution as "480p" | "720p" | "1080p", ...(input.model === GENJUTSU_RESTYLE_MODEL ? { preset_id: input.restylePresetId } : {}) })
+      } else if (provider === "fal") {
         // Resolution and the audio flag travel with the request now. They were
         // collected, stored on the shot and priced into the credit cost, and
         // then not sent: fal rendered at its own default and always with audio.
@@ -451,6 +476,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         creditsCharged: creditCost,
         creditBalance: creditBalanceAfter,
         videoReferencePaths,
+        sourceVideoInfo,
       }, { status: 202 })
     } catch (error) {
       const errorMessage = studioErrorMessage(error, "Submission failed")
@@ -535,7 +561,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         } : null,
         creditsRefunded: refund.refunded ? creditCost : 0,
         creditBalance: refund.newBalance,
-      }, { status: error instanceof BytePlusProviderError || error instanceof FalProviderError || error instanceof GoogleProviderError ? error.status : studioErrorStatus(error) })
+      }, { status: error instanceof HiggsfieldProviderError || error instanceof BytePlusProviderError || error instanceof FalProviderError || error instanceof GoogleProviderError ? error.status : studioErrorStatus(error) })
     }
   } catch (error) {
     if (pendingRefund) {
@@ -546,7 +572,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid video request", issues: error.flatten() }, { status: 400 })
-    return NextResponse.json({ error: studioErrorMessage(error, "Video generation failed") }, { status: error instanceof BytePlusProviderError || error instanceof FalProviderError || error instanceof GoogleProviderError ? error.status : studioErrorStatus(error) })
+    return NextResponse.json({ error: studioErrorMessage(error, "Video generation failed") }, { status: error instanceof HiggsfieldProviderError || error instanceof BytePlusProviderError || error instanceof FalProviderError || error instanceof GoogleProviderError ? error.status : studioErrorStatus(error) })
   }
 }
 

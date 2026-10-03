@@ -1,3 +1,4 @@
+import { getHiggsfieldVideoTask } from "./higgsfield"
 import { withCredential } from "@/lib/byok/credential-service"
 import { runWithCredential } from "@/lib/byok/active-credential"
 import { byokProviderFor } from "@/lib/byok/providers"
@@ -84,7 +85,9 @@ export async function pollVideos(request: NextRequest, { params }: { params: Pro
     const provider = generationProvider(job.model)
     let task: { status: "queued" | "running" | "succeeded" | "failed" | "cancelled"; content?: { video_url?: string }; error?: { message?: string }; created_at?: number; updated_at?: number }
 
-    if (provider === "fal") {
+    if (provider === "higgsfield") {
+      task = await getHiggsfieldVideoTask(job.provider_job_id)
+    } else if (provider === "fal") {
       // The endpoint a request was submitted to is what polls it, so it is used
       // exactly as it was stored. It used to have "fal-ai/" forced back on when
       // it did not start with it, which was written when every fal model was

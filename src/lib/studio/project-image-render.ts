@@ -21,6 +21,7 @@ import { applyCameraSettings, cameraBlockForEntityType, projectCameraDefaults, r
 import { composeLookDirectives, projectStyleDna, resolveStyleDna, styleBlockForEntityType, styleDnaSchema } from "@/lib/studio/style-dna"
 import { recordExistingAsset } from "@/lib/studio/byteplus-assets"
 import { VERIFIED_ASSET } from "@/lib/studio/asset-verification"
+import { getHiggsfieldImageTask, HiggsfieldProviderError, SOUL_V2_IMAGE_TO_IMAGE_MODEL, submitSoulV2Image } from "@/lib/studio/higgsfield"
 
 /**
  * One image generation, written so it does not care which host is running it.
@@ -142,6 +143,7 @@ export const imageRequestSchema = z.object({
     compositeImage: z.string().max(2_000),
     objects: z.array(z.unknown()).max(500),
   }).optional(),
+  soulSettings: z.object({ seed: z.number().int().min(1).max(1_000_000).optional(), styleId: z.string().optional(), customReferenceId: z.string().uuid().optional(), customReferenceStrength: z.number().min(0).max(1).optional(), enhancePrompt: z.boolean().optional(), resolution: z.enum(["720p", "1080p"]).optional() }).optional(),
 }).strict()
 
 /**
@@ -184,6 +186,7 @@ export async function renderProjectImage(
   let pendingAssetGeneration: { context: AuthenticatedProjectContext; projectId: string; entityId: string } | null = null
   let pendingRefund: { context: AuthenticatedProjectContext; amount: number; key: string; jobId: string | null } | null = null
   let pendingGenerationJobId: string | null = null
+  let providerAccepted = false
   try {
     const provider = generationProvider(input.model)
 
@@ -194,7 +197,7 @@ export async function renderProjectImage(
       if (!data) throw new ImageRequestError("Asset not found", 404)
       assetData = data
     } else {
-      const { data } = await context.supabase.from("creator_shots").select("id, episode_id, aspect_ratio, metadata, referenced_entities").eq("id", input.targetId).maybeSingle()
+      const { data } = await context.supabase.from("creator_shots").select("id, episode_id, aspect_ratio, metadata, referenced_entities, keyframe_image").eq("id", input.targetId).maybeSingle()
       if (!data) throw new ImageRequestError("Shot not found", 404)
       shotData = data
       const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", data.episode_id).eq("project_id", projectId).maybeSingle()
@@ -217,7 +220,7 @@ export async function renderProjectImage(
     // a caller that names one explicitly still wins.
     const quality = input.quality || projectImageQuality(context.project)
     // Validate the full request before reserving credits.
-    const platformCost = calculateCreditCost(input.model, "image", 5, { quality, aspectRatio: input.aspectRatio })
+    const platformCost = calculateCreditCost(input.model, "image", 5, { quality, aspectRatio: input.aspectRatio, resolution: input.soulSettings?.resolution })
     // This route charges directly rather than through submit_generation, so the
     // billing rule has to be read here too. It was not, and that was the whole
     // bug: a user who had chosen "only my own keys" still had credits taken for
@@ -283,7 +286,13 @@ export async function renderProjectImage(
       && !input.referenceImages.length
       ? [entityPrimaryReference(assetData as { reference_images?: string[] | null; primary_reference_image?: string | null })].filter((path): path is string => Boolean(path))
       : []
-    const combinedReferencePaths = Array.from(new Set([...mentionReferencePaths, ...input.referenceImages, ...ownImageFallback])).slice(0, 8)
+    const shotImageFallback = input.target === "shot" && imageModelRequiresReference(input.model) && typeof shotData?.keyframe_image === "string" && shotData.keyframe_image.trim()
+      ? [shotData.keyframe_image]
+      : []
+    const referenceOrder = input.model === SOUL_V2_IMAGE_TO_IMAGE_MODEL
+      ? [...input.referenceImages, ...mentionReferencePaths, ...ownImageFallback, ...shotImageFallback]
+      : [...mentionReferencePaths, ...input.referenceImages, ...ownImageFallback]
+    const combinedReferencePaths = Array.from(new Set(referenceOrder)).slice(0, 8)
     const projectDefaultAspect = typeof context.project.default_aspect === "string" ? context.project.default_aspect : null
     const effectiveAspectRatio = input.aspectRatio || (shotData && typeof shotData.aspect_ratio === "string" ? shotData.aspect_ratio : null) || projectDefaultAspect || "9:16"
     // The camera clause is composed here, at submit time, from the base prompt
@@ -335,6 +344,7 @@ export async function renderProjectImage(
           style,
           aspectRatio: effectiveAspectRatio,
           quality,
+          ...(provider === "higgsfield" ? { soulSettings: input.soulSettings || { resolution: "720p", enhancePrompt: true, batchSize: 1 } } : {}),
           // Snapshotted, not referenced: editing the project package later
           // must leave every image already generated exactly as it was, and
           // "regenerate this exact frame" needs the package it was shot on.
@@ -452,6 +462,41 @@ export async function renderProjectImage(
         aspectRatio: effectiveAspectRatio,
         quality: openAIImageQuality(quality, input.model),
       })
+    } else if (provider === "higgsfield") {
+      if (input.model === SOUL_V2_IMAGE_TO_IMAGE_MODEL && !referenceUrls[0]) throw new ImageRequestError("Soul V2 Image-to-Image needs a reference image. Add one in the reference strip or choose another image model.", 400)
+      const submitted = await submitSoulV2Image({
+        prompt: resolvedPrompt.slice(0, 10_000),
+        aspect_ratio: ["9:16", "16:9", "4:3", "3:4", "1:1", "2:3", "3:2"].includes(effectiveAspectRatio) ? effectiveAspectRatio as "9:16" | "16:9" | "4:3" | "3:4" | "1:1" | "2:3" | "3:2" : "4:3",
+        resolution: input.soulSettings?.resolution || "720p",
+        batch_size: 1,
+        enhance_prompt: input.soulSettings?.enhancePrompt ?? true,
+        ...(input.soulSettings?.seed ? { seed: input.soulSettings.seed } : {}),
+        ...(input.soulSettings?.styleId ? { style_id: input.soulSettings.styleId } : {}),
+        ...(input.soulSettings?.customReferenceId ? { custom_reference_id: input.soulSettings.customReferenceId, custom_reference_strength: input.soulSettings.customReferenceStrength ?? 1 } : {}),
+        ...(input.model === SOUL_V2_IMAGE_TO_IMAGE_MODEL ? { image_url: referenceUrls[0] } : {}),
+      }, input.model)
+      if (pendingGenerationJobId) {
+        const { error: trackingError } = await context.supabase.from("creator_generation_jobs")
+          .update({ provider_job_id: submitted.id, provider_response: { request_id: submitted.id, status_url: submitted.response.status_url || null, status: submitted.response.status || "queued" } })
+          .eq("id", pendingGenerationJobId)
+        if (trackingError) throw trackingError
+        providerAccepted = true
+      }
+      const deadline = Date.now() + 210_000
+      for (;;) {
+        const result = await getHiggsfieldImageTask(submitted.id)
+        if (result.status === "failed") throw new HiggsfieldProviderError(result.error || "Higgsfield image generation failed")
+        if (result.status === "completed") {
+          if (!result.urls[0]) throw new HiggsfieldProviderError("Higgsfield completed the request without returning an image")
+          const download = await fetch(result.urls[0])
+          if (!download.ok) throw new HiggsfieldProviderError(`Could not download Higgsfield output (${download.status})`)
+          image = Buffer.from(await download.arrayBuffer())
+          contentType = download.headers.get("content-type") || "image/png"
+          break
+        }
+        if (Date.now() >= deadline) throw new HiggsfieldProviderError("The image is still rendering at Higgsfield. Its request ID is saved, and the workspace can recover it when it finishes.", 504)
+        await new Promise((resolve) => setTimeout(resolve, 3_000))
+      }
     } else if (provider === "openai") {
       // Submitted as a background response, then waited on here.
       //
@@ -469,6 +514,7 @@ export async function renderProjectImage(
           .update({ provider_job_id: submitted.responseId, provider_response: { responseId: submitted.responseId, status: submitted.status } })
           .eq("id", pendingGenerationJobId)
         if (trackingError) throw trackingError
+        providerAccepted = true
       }
       image = await waitForOpenAIImage(submitted.responseId, context.user.id)
     } else if (provider === "fal") {
@@ -491,6 +537,7 @@ export async function renderProjectImage(
           .update({ provider_job_id: submitted.id, provider_response: { requestId: submitted.id, endpoint: submitted.endpoint } })
           .eq("id", pendingGenerationJobId)
         if (trackingError) throw trackingError
+        providerAccepted = true
       }
       const finished = await waitForFalImage(submitted.id, submitted.endpoint)
       const download = await fetch(finished.url)
@@ -662,14 +709,14 @@ export async function renderProjectImage(
       creditBalance: creditBalanceAfter,
     }
   } catch (error) {
-    if (pendingRefund) {
+    if (pendingRefund && !providerAccepted) {
       try {
         await refundGenerationCredits(pendingRefund.context.user.id, pendingRefund.amount, pendingRefund.key, "Refund: failed image generation", pendingRefund.jobId, pendingRefund.context.supabase)
       } catch (refundError) {
         console.error("Could not refund failed image generation", refundError)
       }
     }
-    if (pendingGenerationJobId && pendingRefund) {
+    if (pendingGenerationJobId && pendingRefund && !providerAccepted) {
       try {
         await pendingRefund.context.supabase
           .from("creator_generation_jobs")
@@ -683,7 +730,7 @@ export async function renderProjectImage(
         console.error("Could not mark image generation failed", historyError)
       }
     }
-    if (pendingAssetGeneration) {
+    if (pendingAssetGeneration && !providerAccepted) {
       try {
         const { data: asset } = await pendingAssetGeneration.context.supabase
           .from("creator_entities")
@@ -709,7 +756,7 @@ export async function renderProjectImage(
     }
     throw new ImageGenerationFailure(
       studioErrorMessage(error, "Image generation failed"),
-      error instanceof OpenAIProviderError || error instanceof BytePlusProviderError ? error.status : studioErrorStatus(error),
+      error instanceof OpenAIProviderError || error instanceof BytePlusProviderError || error instanceof HiggsfieldProviderError ? error.status : studioErrorStatus(error),
       pendingGenerationJobId,
       error,
     )

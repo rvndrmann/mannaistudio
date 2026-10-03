@@ -2509,6 +2509,7 @@ function ModelMenu({
   const families = type === "image"
     ? [
       { label: "Google AI Studio", icon: Sparkles, models: imageGenerationModels.filter((m) => m.provider === "google") },
+      { label: "Higgsfield", icon: Sparkles, models: imageGenerationModels.filter((m) => m.provider === "higgsfield") },
       // Not "Flux Series" any more — the fal group also carries Sunburst Edit,
       // and a picker that files an OpenAI editor under Flux is one the user has
       // to second-guess.
@@ -3934,6 +3935,8 @@ function AssetWorkspace({
                       <option className="bg-[#1c1c1c]" value="9:16">9:16</option>
                       <option className="bg-[#1c1c1c]" value="16:9">16:9</option>
                       <option className="bg-[#1c1c1c]" value="1:1">1:1</option>
+                      <option className="bg-[#1c1c1c]" value="4:3">4:3</option>
+                      <option className="bg-[#1c1c1c]" value="3:4">3:4</option>
                       <option className="bg-[#1c1c1c]" value="2:3">2:3</option>
                       <option className="bg-[#1c1c1c]" value="3:2">3:2</option>
                       <option className="bg-[#1c1c1c]" value="21:9">21:9</option>
@@ -5727,7 +5730,7 @@ function ShotMediaWorkspace({
       resolution: media.type === "video" ? resolution : null,
       durationSeconds: media.type === "video" ? durationSeconds : null,
       aspectRatio,
-      referenceImages: [...videoReferenceImages],
+      referenceImages: [...(isGenjutsu ? Array.from(new Set([...references, ...videoReferenceImages])) : videoReferenceImages)],
       generationMode: media.type === "video" ? videoInputMode : null,
       startFrame,
       endFrame,
@@ -5753,7 +5756,7 @@ function ShotMediaWorkspace({
       const characterEntityIds = Array.from(new Set([...mentionedCharacterIds, ...selectedCharacterIds])).slice(0, 10);
       if (isImage) {
         setGenerationStatus("Submitting image generation job…");
-        const response = await requestProjectImage(projectId, { target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, mentionedEntityIds, aspectRatio, quality, ...(cameraEnabled ? { cameraSettings } : {}), ...(styleOverrideEnabled ? { styleDna: styleOverride } : {}) });
+        const response = await requestProjectImage(projectId, { target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, mentionedEntityIds, aspectRatio, quality, ...(cameraEnabled ? { cameraSettings } : {}), ...(styleOverrideEnabled ? { styleDna: styleOverride } : {}), ...(isSoulV2 ? { soulSettings: { ...(soulSeed.trim() ? { seed: Number(soulSeed) } : {}), ...(soulStyleId.trim() ? { styleId: soulStyleId.trim() } : {}), ...(soulReferenceId.trim() ? { customReferenceId: soulReferenceId.trim(), customReferenceStrength: soulReferenceStrength } : {}), enhancePrompt: soulEnhancePrompt, resolution: soulResolution } } : {}) });
         const body = await readGenerationResponse(response);
         if (!response.ok) throw new Error(body.error || "Image generation failed");
         notifyCreditBalanceChanged(typeof body.creditBalance === "number" ? body.creditBalance : undefined);
@@ -5774,7 +5777,7 @@ function ShotMediaWorkspace({
         await reload(true);
       } else {
         setGenerationStatus("Submitting video generation job…");
-        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, referenceImages: videoReferenceImages, referenceVideos: videoReferencePaths, referenceAudios: audioReferencePaths, excludedReferenceImages: Array.from(referenceExclusions), characterEntityIds, mentionedEntityIds, generationMode: videoInputMode, startFrame: videoInputMode === "keyframe" ? startFrame : null, endFrame: videoInputMode === "keyframe" ? endFrame : null, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
+        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, restylePresetId: isRestyle ? restylePresetId : undefined, referenceImages: isGenjutsu ? Array.from(new Set([...references, ...videoReferenceImages])) : videoReferenceImages, referenceVideos: videoReferencePaths, referenceAudios: isGenjutsu ? [] : audioReferencePaths, excludedReferenceImages: Array.from(referenceExclusions), characterEntityIds, mentionedEntityIds, generationMode: videoInputMode, startFrame: videoInputMode === "keyframe" ? startFrame : null, endFrame: videoInputMode === "keyframe" ? endFrame : null, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
         const body = await readGenerationResponse(response);
         if (!response.ok) {
           const errorMsg = body.error || "Video generation failed";
@@ -6074,10 +6077,39 @@ function ShotMediaWorkspace({
     return "Medium";
   });
 
+  const [restylePresetId, setRestylePresetId] = useState("");
+  const [restylePresets, setRestylePresets] = useState<Array<{id:string;name:string;previewUrl:string|null}>>([]);
+  const isRestyle = model === "higgsfield/genjutsu/restyle/v1.0";
+  const isSoulV2 = model === "higgsfield-ai/soul/v2/standard" || model === "higgsfield-ai/soul/v2/image-to-image";
+  const isSoulV2ImageToImage = model === "higgsfield-ai/soul/v2/image-to-image";
+  const [soulSeed, setSoulSeed] = useState("");
+  const [soulStyleId, setSoulStyleId] = useState("");
+  const [soulReferenceId, setSoulReferenceId] = useState("");
+  const [soulReferenceStrength, setSoulReferenceStrength] = useState(1);
+  const [soulEnhancePrompt, setSoulEnhancePrompt] = useState(true);
+  const [soulResolution, setSoulResolution] = useState<"720p" | "1080p">("720p");
+  const [genjutsuSourceInfo, setGenjutsuSourceInfo] = useState<{ sourceDuration: number; duration: number; billedSeconds: number; width: number; height: number } | null>(null);
+  const isGenjutsu = model.startsWith("higgsfield/genjutsu/");
+  useEffect(() => {
+    if (!isRestyle) return;
+    let live = true;
+    fetch(`/api/studio/projects/${projectId}/videos/presets`).then(async (response) => { const value = await response.json(); if (!response.ok) throw new Error(value.error || "Could not load Restyle styles"); if (live) setRestylePresets(Array.isArray(value.items) ? value.items : []); }).catch((error) => { if (live) setGenerationError(error instanceof Error ? error.message : "Could not load Restyle styles"); });
+    return () => { live = false; };
+  }, [isRestyle, projectId]);
+
+  useEffect(() => {
+    if (!isGenjutsu || videoReferencePaths.length !== 1) { setGenjutsuSourceInfo(null); return; }
+    let live = true;
+    fetch(`/api/studio/projects/${projectId}/videos/source`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: videoReferencePaths[0], model }) })
+      .then(async (response) => { const value = await response.json(); if (!response.ok) throw new Error(value.error || "Could not read source video"); if (live) setGenjutsuSourceInfo(value); })
+      .catch((error) => { if (live) { setGenjutsuSourceInfo(null); setGenerationError(error instanceof Error ? error.message : "Could not read source video"); } });
+    return () => { live = false; };
+  }, [isGenjutsu, projectId, videoReferencePaths]);
+
   const currentActiveChosenSource = isImage ? media.shot.keyframe_image : media.shot.video_url;
   const isCurrentlyChosen = Boolean(previewSource && previewSource === currentActiveChosenSource);
 
-  const currentCreditCost = calculateCreditCost(model, isImage ? "image" : "video", durationSeconds, { quality, aspectRatio, resolution });
+  const currentCreditCost = calculateCreditCost(model, isImage ? "image" : "video", isGenjutsu && genjutsuSourceInfo ? genjutsuSourceInfo.billedSeconds : durationSeconds, { quality, aspectRatio, resolution: isSoulV2 ? soulResolution : resolution });
   const displayGenerations = useMemo(() => {
     return [...genHistory].sort((a, b) => {
       const aChosen = Boolean(a.videoUrl && a.videoUrl === currentActiveChosenSource);
@@ -6637,7 +6669,7 @@ function ShotMediaWorkspace({
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <Film className="h-3.5 w-3.5 shrink-0 text-[#c084fc]" />
-                          <p className="text-[11px] font-bold text-[#c084fc]">Motion reference</p>
+                          <p className="text-[11px] font-bold text-[#c084fc]">{isGenjutsu ? "Source video · required" : "Motion reference"}</p>
                         </div>
                         {/* A video dropped on the composition uploader above was
                             registered as an image and failed generation outright.
@@ -6687,12 +6719,12 @@ function ShotMediaWorkspace({
                             })}
                           </div>
                           <p className="mt-2 text-[11px] text-zinc-400">
-                            The clip{videoReferencePaths.length > 1 ? "s" : ""} this shot continues from. Remove {videoReferencePaths.length > 1 ? "them" : "it"} for a hard cut, then regenerate.
+                            The clip{videoReferencePaths.length > 1 ? "s" : ""} this shot continues from. Remove {videoReferencePaths.length > 1 ? "them" : "it"} for a hard cut, then regenerate. {isGenjutsu && genjutsuSourceInfo ? `Source ${genjutsuSourceInfo.sourceDuration.toFixed(1)}s · using ${genjutsuSourceInfo.duration.toFixed(1)}s (max 30s).` : ""}
                           </p>
                         </>
                       ) : (
                         <div className="mt-2 flex items-center justify-between gap-2">
-                          <p className="text-[11px] text-zinc-400">No motion reference — this shot renders on its own.</p>
+                          <p className="text-[11px] text-zinc-400">{isGenjutsu ? "Add one MP4/MOV source video, at least 4 seconds long." : "No motion reference — this shot renders on its own."}</p>
                           {previousShotClip && (
                             <button
                               type="button"
@@ -6706,7 +6738,7 @@ function ShotMediaWorkspace({
                       )}
                     </div>
                   ) : null}
-                  {media.type === "video" && (
+                  {media.type === "video" && !isGenjutsu && (
                     <div className="mt-2 rounded-2xl border border-white/10 p-3">
                       <p className="text-xs font-bold">Audio references</p>
                       <p className="mt-1 text-[11px] text-zinc-400">Seedance BytePlus Direct supports MP3/WAV, up to 15 MB each. Total audio: 15 seconds on 2.0, 30 seconds on 2.5. Describe how to use it in your prompt.</p>
@@ -6724,6 +6756,7 @@ function ShotMediaWorkspace({
                       ) : <p className="mt-2 text-xs text-amber-300">Select a Seedance BytePlus Direct model to use audio references.</p>}
                     </div>
                   )}
+                  {isGenjutsu && <p className="mt-2 text-[11px] text-zinc-400">{isRestyle ? "Choose a style. Add up to 5 optional character references; source audio is retained. Prompt may be empty." : "Genjutsu uses 1–8 image references and the source clip motion. Object Swap also needs at least 409,600 source pixels per frame; prompt may be empty."}</p>}
                   {entities.some((e) => e.type === "character") && (
                     <div className="mt-2 rounded-2xl bg-white/[0.02] p-3 border border-white/5">
                       <p className="text-[10px] font-bold text-zinc-500">Project Characters</p>
@@ -6807,8 +6840,19 @@ function ShotMediaWorkspace({
               {/* Inline Toolbar */}
               <div className="flex flex-col gap-3 border-t border-white/10 pt-3">
                 <div className="flex flex-wrap items-center gap-4">
-                  <ModelMenu type={isImage ? "image" : "video"} value={model} onChange={setModel} options={{ quality, aspectRatio, resolution, durationSeconds }} inline />
+                  <ModelMenu type={isImage ? "image" : "video"} value={model} onChange={(value) => { setModel(value); if (value.startsWith("higgsfield/genjutsu/") && resolution === "4K") setResolution("720p"); if (value === "higgsfield/genjutsu/restyle/v1.0") { setReferences((items) => items.filter((path) => path !== media.shot.keyframe_image)); setStartFrame(null); setEndFrame(null); } }} options={{ quality, aspectRatio, resolution, durationSeconds }} inline />
+                  {isSoulV2 && <>
+                    <select aria-label="Soul V2 resolution" value={soulResolution} onChange={(event) => setSoulResolution(event.target.value as "720p" | "1080p")} className="rounded-full border border-white/10 bg-[#141414] px-2 py-1 text-xs text-zinc-300"><option value="720p">720p</option><option value="1080p">1080p</option></select>
+                    <input aria-label="Soul V2 style ID" value={soulStyleId} onChange={(event) => setSoulStyleId(event.target.value)} placeholder="Style ID (optional)" className="w-32 rounded-full border border-white/10 bg-[#141414] px-2 py-1 text-xs text-zinc-300" />
+                    <input aria-label="Soul V2 seed" inputMode="numeric" value={soulSeed} onChange={(event) => setSoulSeed(event.target.value.replace(/\D/g, "").slice(0, 7))} placeholder="Seed (optional)" className="w-28 rounded-full border border-white/10 bg-[#141414] px-2 py-1 text-xs text-zinc-300" />
+                    <input aria-label="Soul ID custom reference" value={soulReferenceId} onChange={(event) => setSoulReferenceId(event.target.value.trim())} placeholder="Completed Soul ID (optional)" className="w-48 rounded-full border border-white/10 bg-[#141414] px-2 py-1 text-xs text-zinc-300" />
+                    {soulReferenceId && <input aria-label="Soul ID strength" type="range" min="0" max="1" step="0.05" value={soulReferenceStrength} onChange={(event) => setSoulReferenceStrength(Number(event.target.value))} className="w-20" />}
+                    <label className="flex items-center gap-1.5 text-xs text-zinc-400"><input type="checkbox" checked={soulEnhancePrompt} onChange={(event) => setSoulEnhancePrompt(event.target.checked)} />Enhance prompt</label>
+                    <span className="basis-full text-[11px] text-zinc-500">{isSoulV2ImageToImage ? "Image-to-Image uses the first reference image and can also use a completed Soul ID for identity." : "Soul V2 uses a completed Soul ID for identity; uploaded reference images aren’t sent to the text-to-image model."}</span>
+                  </>}
+                  {isRestyle && <select value={restylePresetId} onChange={(event) => setRestylePresetId(event.target.value)} className="max-w-48 rounded-full border border-white/10 bg-[#141414] px-2 py-1 text-xs text-zinc-300" aria-label="Restyle visual style"><option value="">Choose Restyle style…</option>{restylePresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}</select>}
                   
+                  {!isGenjutsu && <>
                   <div className="relative flex items-center gap-1.5 text-xs font-semibold text-zinc-400 transition hover:text-white group">
                     <Monitor className="h-3.5 w-3.5" />
                     <select
@@ -6819,6 +6863,8 @@ function ShotMediaWorkspace({
                       <option className="bg-[#1c1c1c]" value="9:16">9:16</option>
                       <option className="bg-[#1c1c1c]" value="16:9">16:9</option>
                       <option className="bg-[#1c1c1c]" value="1:1">1:1</option>
+                      <option className="bg-[#1c1c1c]" value="4:3">4:3</option>
+                      <option className="bg-[#1c1c1c]" value="3:4">3:4</option>
                       <option className="bg-[#1c1c1c]" value="2:3">2:3</option>
                       <option className="bg-[#1c1c1c]" value="3:2">3:2</option>
                       <option className="bg-[#1c1c1c]" value="21:9">21:9</option>
@@ -6841,6 +6887,7 @@ function ShotMediaWorkspace({
                     </select>
                     <ChevronDown className="absolute right-0 h-3 w-3 opacity-50 pointer-events-none" />
                   </div>
+                  </>}
                   
                   {!isImage && (
                     <>
@@ -6850,11 +6897,11 @@ function ShotMediaWorkspace({
                           <option className="bg-[#1c1c1c]" value="480p">480p</option>
                           <option className="bg-[#1c1c1c]" value="720p">720p</option>
                           <option className="bg-[#1c1c1c]" value="1080p">1080p</option>
-                          <option className="bg-[#1c1c1c]" value="4K">4K</option>
+                          {!isGenjutsu && <option className="bg-[#1c1c1c]" value="4K">4K</option>}
                         </select>
                         <ChevronDown className="absolute right-0 h-3 w-3 opacity-50 pointer-events-none" />
                       </div>
-                      <div className="relative flex items-center gap-1.5 text-xs font-semibold text-zinc-400 transition hover:text-white group">
+                      {!isGenjutsu && <div className="relative flex items-center gap-1.5 text-xs font-semibold text-zinc-400 transition hover:text-white group">
                         <span className="font-mono text-[10px]">⏱</span>
                         <select value={`${durationSeconds}s`} onChange={(e) => setDurationSeconds(Number(e.target.value.replace(/s$/, "")))} className="appearance-none bg-transparent outline-none cursor-pointer pr-4">
                           {videoDurationOptions(model).map((seconds) => (
@@ -6862,13 +6909,13 @@ function ShotMediaWorkspace({
                           ))}
                         </select>
                         <ChevronDown className="absolute right-0 h-3 w-3 opacity-50 pointer-events-none" />
-                      </div>
-                      <button type="button" onClick={() => setAudioEnabled((current) => !current)} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-bold transition-colors ${audioEnabled ? "bg-[#b9f42e]/20 text-[#b9f42e]" : "bg-white/5 text-zinc-500 hover:text-zinc-300"}`}>
+                      </div>}
+                      {!isGenjutsu && <button type="button" onClick={() => setAudioEnabled((current) => !current)} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-bold transition-colors ${audioEnabled ? "bg-[#b9f42e]/20 text-[#b9f42e]" : "bg-white/5 text-zinc-500 hover:text-zinc-300"}`}>
                         <span className={`grid h-3 w-5 rounded-full p-0.5 ${audioEnabled ? "bg-[#b9f42e]" : "bg-zinc-600"}`}>
                           <span className={`h-2 w-2 rounded-full bg-black transition-transform ${audioEnabled ? "translate-x-2" : "translate-x-0"}`} />
                         </span>
                         {audioEnabled ? "Audio On" : "Audio Off"}
-                      </button>
+                      </button>}
                     </>
                   )}
                 </div>
@@ -6889,7 +6936,7 @@ function ShotMediaWorkspace({
                     <button
                       type="button"
                       onClick={generate}
-                      disabled={busy}
+                      disabled={busy || (isGenjutsu && (!genjutsuSourceInfo || videoReferencePaths.length !== 1 || (!isRestyle && videoReferenceImages.length < 1) || Array.from(new Set([...references, ...videoReferenceImages])).length > (isRestyle ? 5 : 8) || prompt.length > 10_000 || (isRestyle && !restylePresets.some((preset) => preset.id === restylePresetId))))}
                       title={busy ? "Generating..." : `Generate (${currentCreditCost} credits)`}
                       className={`group relative grid h-8 w-8 place-items-center rounded-full transition ${
                         busy

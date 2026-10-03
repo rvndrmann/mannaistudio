@@ -1,3 +1,4 @@
+import { submitGenjutsuVideo, genjutsuInputSchema, genjutsuRestyleInputSchema, GENJUTSU_RESTYLE_MODEL, SOUL_V2_IMAGE_TO_IMAGE_MODEL, submitSoulV2Image } from "./higgsfield"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { generateOpenAIImage, submitOpenAIImage, supportsBackgroundImageResponse, type OpenAIImageModel } from "./openai"
 import { submitBytePlusVideo, generateBytePlusImage, createBytePlusAsset } from "./byteplus"
@@ -268,7 +269,7 @@ export async function executeGenerationJobs(
           const strayClipPaths = orderedReferencePaths.filter(isVideoReferencePath)
           const combinedReferencePaths = orderedReferencePaths
             .filter((path) => !isVideoReferencePath(path))
-            .slice(0, referenceBudget)
+            .slice(0, job.provider === "higgsfield" ? 100 : referenceBudget)
           // Same split as the image route: a job that builds an entity's own art
           // is where an outfit is authored, and every other job reproduces it.
           const mentionContext = buildEntityMentionContext(mentionedEntities as MentionableEntity[], {
@@ -393,6 +394,13 @@ export async function executeGenerationJobs(
             }).eq("id", job.id)
             await settleWorkflowRun(context, job.workflow_run_id)
 
+          } else if (job.type === "image" && job.provider === "higgsfield") {
+            const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n").slice(0, 10_000)
+            if (job.model === SOUL_V2_IMAGE_TO_IMAGE_MODEL && !referenceUrls[0]) throw new Error("Soul V2 Image-to-Image needs a reference image.")
+            const submitted = await submitSoulV2Image({ prompt: resolvedPrompt, aspect_ratio: ["9:16", "16:9", "4:3", "3:4", "1:1", "2:3", "3:2"].includes(effectiveAspectRatio) ? effectiveAspectRatio as "9:16" | "16:9" | "4:3" | "3:4" | "1:1" | "2:3" | "3:2" : "4:3", resolution: settings.resolution === "1080p" ? "1080p" : "720p", batch_size: 1, enhance_prompt: settings.enhancePrompt !== false, ...(typeof settings.seed === "number" ? { seed: settings.seed } : {}), ...(typeof settings.styleId === "string" ? { style_id: settings.styleId } : {}), ...(typeof settings.customReferenceId === "string" ? { custom_reference_id: settings.customReferenceId, custom_reference_strength: typeof settings.customReferenceStrength === "number" ? settings.customReferenceStrength : 1 } : {}), ...(job.model === SOUL_V2_IMAGE_TO_IMAGE_MODEL ? { image_url: referenceUrls[0] } : {}) }, job.model)
+            const { error } = await context.supabase.from("creator_generation_jobs").update({ status: "processing", provider_job_id: submitted.id, provider_response: { request_id: submitted.id, status_url: submitted.response.status_url || null, status: submitted.response.status || "queued" } }).eq("id", job.id)
+            if (error) throw error
+            return
           } else if (job.type === "image" && ["byteplus", "fal", "google"].includes(job.provider)) {
             const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
             if (job.provider === "fal") {
@@ -444,10 +452,13 @@ export async function executeGenerationJobs(
             }).eq("id", job.id)
             await settleWorkflowRun(context, job.workflow_run_id)
 
-          } else if (job.type === "video" && ["byteplus", "fal", "google"].includes(job.provider)) {
+          } else if (job.type === "video" && ["byteplus", "fal", "google", "higgsfield"].includes(job.provider)) {
             let task: { id: string; response?: unknown }
             try {
-              task = job.provider === "google"
+              if (job.provider === "higgsfield" && videoReferenceUrls.length !== 1) throw new Error("Genjutsu requires exactly one source video.")
+              task = job.provider === "higgsfield"
+                ? await submitGenjutsuVideo(job.model, (job.model === GENJUTSU_RESTYLE_MODEL ? genjutsuRestyleInputSchema : genjutsuInputSchema).parse({ prompt: job.prompt || "", video_url: videoReferenceUrls[0], image_urls: referenceUrls, resolution: settings.resolution || "720p", ...(job.model === GENJUTSU_RESTYLE_MODEL ? { preset_id: settings.restylePresetId } : {}) }))
+                : job.provider === "google"
                 ? await submitGoogleVideo({
                     model: job.model as VideoGenerationModelId,
                     prompt: job.prompt || "",

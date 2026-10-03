@@ -1,3 +1,6 @@
+import { entityPrimaryReference } from "./entity-mentions"
+import { GENJUTSU_OBJECT_SWAP_MODEL, GENJUTSU_RESTYLE_MODEL, getGenjutsuPresets, isGenjutsuModel, requireHiggsfieldCredentials } from "./higgsfield"
+import { readSourceVideoDuration } from "./source-video-duration"
 import { z } from "zod"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { creativeBriefSchema } from "./domain"
@@ -457,7 +460,7 @@ export const createStoryboardBatchTool = defineDirectorTool({
     // A shot's cast is what its own prompt names. Models routinely pass the
     // project's whole entity list on every shot, which then reaches generation
     // as references and puts unrelated characters and props in the frame.
-    const { data: batchEntityRows } = await context.supabase.from("creator_entities").select("id,name,type").eq("project_id", context.project.id)
+    const { data: batchEntityRows } = await context.supabase.from("creator_entities").select("id,name,type,reference_images,metadata").eq("project_id", context.project.id)
     const batchEntities = (batchEntityRows || []) as MentionableEntity[]
     // An asset written as words instead of tagged ships with its reference
     // image attached and nothing in the prompt pointing at it, so the model
@@ -591,6 +594,18 @@ export const inspectContinuityTool = defineDirectorTool({
   },
 })
 
+export const listGenjutsuRestylePresetsTool = defineDirectorTool({
+  name: "list_genjutsu_restyle_presets",
+  version: 1,
+  risk: "read",
+  requiresApproval: false,
+  input: z.object({}),
+  async execute() {
+    const items = await getGenjutsuPresets()
+    return { model: GENJUTSU_RESTYLE_MODEL, items }
+  },
+})
+
 export const estimateGenerationCostTool = defineDirectorTool({
   name: "estimate_generation_cost",
   version: 1,
@@ -650,7 +665,7 @@ export const submitGenerationTool = defineDirectorTool({
   version: 1,
   risk: "costly",
   requiresApproval: true,
-  input: z.object({ request: generationRequestSchema, prompts: z.record(z.string(), z.string().trim().min(1).max(20_000)), idempotencyKey: z.string().min(8).max(200), workflowRunId: z.string().uuid().optional() }),
+  input: z.object({ request: generationRequestSchema, prompts: z.record(z.string(), z.string().trim().max(20_000)), idempotencyKey: z.string().min(8).max(200), workflowRunId: z.string().uuid().optional() }),
   async execute(context, input) {
     // Storyboard numbers are resolved here, against the episode, so a model
     // that only knows "shot 2" cannot target the wrong shot. order_index is
@@ -693,6 +708,25 @@ export const submitGenerationTool = defineDirectorTool({
       }
     }
 
+    if (isGenjutsuModel(request.model || "")) {
+      requireHiggsfieldCredentials()
+      if (request.videoReferencePaths.length !== 1) throw new Error("Genjutsu needs exactly one source video. Upload a video or select one saved storyboard clip.")
+      if (request.model === GENJUTSU_RESTYLE_MODEL) {
+        if (!request.restylePresetId) throw new Error("Choose a Restyle style before generating.")
+        const presets = await getGenjutsuPresets()
+        if (!presets.some((preset) => preset.id === request.restylePresetId)) throw new Error("That Restyle style is no longer available. Refresh the style list and choose another.")
+      }
+      const path = request.videoReferencePaths[0]
+      if (!/^https?:\/\//i.test(path) && !path.startsWith(`${context.user.id}/${context.project.id}/`)) throw new Error("Genjutsu source clips must be uploaded to this project.")
+      const url = /^https?:\/\//i.test(path) ? path : (await context.supabase.storage.from("creator-studio-media").createSignedUrl(path, 3600)).data?.signedUrl
+      if (!url) throw new Error("Genjutsu source video is unavailable")
+      const source = await readSourceVideoDuration(url, request.model === GENJUTSU_OBJECT_SWAP_MODEL)
+      if (request.model === GENJUTSU_RESTYLE_MODEL && source.totalBytes !== null && source.totalBytes > 209_715_200) throw new Error("Restyle source videos must be 200 MiB or smaller.")
+      request = { ...request, source: "video", durationSeconds: source.billedSeconds }
+      if (!["480p", "720p", "1080p"].includes(request.resolution)) throw new Error("Genjutsu supports 480p, 720p and 1080p.")
+      if (Object.values(input.prompts).some((prompt) => prompt.length > 10000)) throw new Error("Genjutsu prompts must be at most 10,000 characters.")
+    }
+
     const routing = routeGeneration(request)
     if (routing.selected.provider === "unconfigured") throw new Error("No generation provider is configured for this model")
     const { data: episodes, error: episodeError } = await context.supabase.from("creator_episodes").select("id").eq("project_id", context.project.id)
@@ -701,7 +735,7 @@ export const submitGenerationTool = defineDirectorTool({
     const { data: shots, error: shotError } = episodeIds.length ? await context.supabase.from("creator_shots").select("id").in("episode_id", episodeIds).in("id", request.shotIds) : { data: [], error: null }
     if (shotError) throw shotError
     if ((shots ?? []).length !== request.shotIds.length) throw new Error("One or more shots do not belong to this project")
-    const { data: projectEntityRows } = await context.supabase.from("creator_entities").select("id,name,type").eq("project_id", context.project.id)
+    const { data: projectEntityRows } = await context.supabase.from("creator_entities").select("id,name,type,reference_images,metadata").eq("project_id", context.project.id)
     const entityIndex = (projectEntityRows || []) as MentionableEntity[]
     // Every shot happens somewhere, and a prompt names the location only where
     // it changes — so the interior shots between two exteriors carry no scene
@@ -797,7 +831,7 @@ export const submitGenerationTool = defineDirectorTool({
       // and wrong here. So nothing put it in the list, useExistingFrame merely
       // permitted something that was never there, and the clip was rendered
       // from the cast and the prompt with the approved frame ignored.
-      if (request.type === "video") {
+      if (request.type === "video" && (!isGenjutsuModel(request.model || "") || request.useExistingFrame)) {
         const shot = (generationShots || []).find((item) => item.id === shotId)
         const keyframe = typeof shot?.keyframe_image === "string" ? shot.keyframe_image.trim() : ""
         if (keyframe) return Array.from(new Set([keyframe, ...scoped]))
@@ -826,6 +860,15 @@ export const submitGenerationTool = defineDirectorTool({
         if (id === shotId && byNumber?.trim()) return byNumber.trim()
       }
       return savedPrompts.get(shotId) || ""
+    }
+    if (isGenjutsuModel(request.model || "")) {
+      if (request.videoReferencePaths.length !== 1) throw new Error("Genjutsu requires exactly one source video.")
+      for (const shot of generationShots || []) {
+        const ids = request.entityReferenceIds ?? Array.from(new Set([...(shot.referenced_entities || []), ...request.mentionedEntityIds]))
+        const images = Array.from(new Set([...(inputImagesFor(shot.id) || []), ...(projectEntityRows || []).filter((entity) => ids.includes(entity.id)).map((entity) => entityPrimaryReference(entity as MentionableEntity)).filter(Boolean)]))
+        if ((request.model === GENJUTSU_RESTYLE_MODEL ? images.length > 5 : !images.length || images.length > 8)) throw new Error(request.model === GENJUTSU_RESTYLE_MODEL ? "Restyle accepts up to 5 optional character references." : "Genjutsu requires 1–8 image references per shot. Adjust the shot's reference strip before generating.")
+        if (promptFor(shot.id).length > 10000) throw new Error("Genjutsu prompts must be at most 10,000 characters.")
+      }
     }
     // Who pays for this. A customer who has connected their own key for the
     // provider that will actually serve these shots is billed by that provider
@@ -1561,6 +1604,7 @@ export const directorTools = {
   validate_production: validateProductionTool,
   record_continuity_fact: recordContinuityFactTool,
   inspect_continuity: inspectContinuityTool,
+  list_genjutsu_restyle_presets: listGenjutsuRestylePresetsTool,
   estimate_generation_cost: estimateGenerationCostTool,
   inspect_generation_jobs: inspectGenerationJobsTool,
   submit_generation: submitGenerationTool,
