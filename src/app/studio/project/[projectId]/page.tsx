@@ -2521,6 +2521,7 @@ function ModelMenu({
       { label: "Seedream Series (BytePlus)", icon: WandSparkles, models: imageGenerationModels.filter((m) => m.provider === "byteplus") },
     ]
     : [
+      { label: "Higgsfield", icon: Sparkles, models: videoGenerationModels.filter((m) => m.provider === "higgsfield") },
       { label: "Google AI Studio (Veo 3.1, Omni, Pro)", icon: Sparkles, models: videoGenerationModels.filter((m) => m.provider === "google") },
       { label: "fal.ai Seedance Series", icon: WandSparkles, models: videoGenerationModels.filter((m) => m.id.startsWith("fal-seedance")) },
       { label: "BytePlus Direct Seedance Series", icon: WandSparkles, models: videoGenerationModels.filter((m) => m.id.startsWith("dreamina-")) },
