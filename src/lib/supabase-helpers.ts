@@ -76,14 +76,8 @@ export async function checkEnrollment(courseId: string) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return false
 
-    const { data } = await supabase
-        .from('enrollments')
-        .select('status')
-        .eq('profile_id', user.id)
-        .eq('course_id', courseId)
-        .single()
-
-    return data?.status === 'active'
+    const { data, error } = await supabase.rpc("can_access_course", { p_course_id: courseId })
+    return !error && data === true
 }
 
 // Enroll user in a free course

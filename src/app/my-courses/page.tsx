@@ -47,13 +47,12 @@ export default function MyCoursesPage(){
       if(progressRows.error)throw new Error(progressRows.error.message)
       const {data:catalog,error:catalogError}=await supabase.from("courses").select("*").eq("is_published",true).eq("is_paused",false).order("sort_order",{ascending:true}).order("created_at",{ascending:true})
       if(catalogError)throw new Error(catalogError.message)
-      let courseRows:Course[]=[]
-      if(ids.length){const {data,error:courseError}=await supabase.from("courses").select("*").in("id",ids).eq("is_published",true);if(courseError)throw new Error(courseError.message);courseRows=(data||[]) as Course[]}
-      if(hasPremiumAccess(profile.data,admin)||allCourseAccess){
-        const {data,error:courseError}=await supabase.from("courses").select("*").eq("is_published",true).eq("is_paused",false)
-        if(courseError)throw new Error(courseError.message)
-        const byId=new Map(courseRows.map(course=>[course.id,course]));(data||[]).forEach(course=>byId.set(course.id,course));courseRows=Array.from(byId.values())
-      }
+      const access = await Promise.all((catalog || []).map(async course => {
+        const { data, error } = await supabase.rpc("can_access_course", { p_course_id: course.id })
+        if (error) throw new Error(error.message)
+        return data === true ? course : null
+      }))
+      const courseRows = access.filter(Boolean) as Course[]
       if(!active)return
       setCourses(courseRows.sort(byCourseOrder))
       setAvailableCourses(((catalog||[]) as Course[]).filter(course=>!courseRows.some(owned=>owned.id===course.id)).sort(byCourseOrder))

@@ -174,7 +174,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
 
     const isFree = course?.price === "Free" || course?.price === "$0" || course?.price === 0 || course?.price === "0" || !course?.price
     // Courses are gated behind Pro membership. Trial members (active membership) keep access; everyone else must subscribe.
-    const hasCourseAccess = isFree || isEnrolled || isMember || isAdmin || hasAllCourseEntitlement
+    const hasCourseAccess = isFree || isEnrolled || isAdmin
     const progress = course ? (completedChapters.length / (course.chapters || 1)) * 100 : 0
     const activeLesson = course?.lessons?.find((lesson: any) => lesson.id === activeChapter)
     const activeLessonYouTubeUrl = activeLesson?.videoUrl ? getYouTubeEmbedUrl(activeLesson.videoUrl) : null
@@ -205,7 +205,9 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
             }
             setCheckingEnrollment(false)
         }
-        check()
+        void check()
+        const timer = window.setInterval(() => void check(), 15000)
+        return () => window.clearInterval(timer)
     }, [user, course?.id, isFree])
 
     useEffect(() => {

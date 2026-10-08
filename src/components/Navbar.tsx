@@ -39,7 +39,7 @@ const baseNavLinks = [
     { key: "competitors", name: "Competitors", href: "/competitors", icon: ShieldCheck, adminOnly: true },
     { key: "courses", name: "AI Director Hub Academy", href: "/courses", icon: Play, adminOnly: true },
     { key: "blog", name: "Blog", href: "/blog", icon: BookOpen, adminOnly: true },
-    { key: "billing", name: "Billing", href: "/billing", icon: CreditCard, adminOnly: true },
+    { key: "billing", name: "Billing", href: "/billing", icon: CreditCard, public: true },
     { key: "mcp", name: "MCP & CLI", href: "/studio/external", icon: PlugZap, adminOnly: true },
 ] as Array<{ key: string; name: string; href: string; icon: typeof Clapperboard; adminOnly?: boolean; needsUser?: boolean; public?: boolean }>
 
@@ -137,11 +137,13 @@ export default function Navbar({ academy = false }: { academy?: boolean }) {
             { key: "creator-studio", name: "Creator Studio", href: "/studio", icon: Sparkles },
             { key: "my-projects", name: "My Projects", href: "/hire-us/projects", icon: LayoutDashboard },
             { key: "account", name: "My Account", href: "/account", icon: User },
+            { key: "billing", name: "Billing", href: "/billing", icon: CreditCard, public: true },
             { key: "originals", name: "Originals", href: "/originals", icon: Clapperboard, public: true },
             { key: "hireUs", name: "Hire Our Team", href: "/hire-us", icon: Briefcase, public: true },
           ]
         : [
             { key: "courses", name: "Courses", href: "/my-courses", icon: BookOpen, public: true },
+            { key: "billing", name: "Billing", href: "/billing", icon: CreditCard, public: true },
             { key: "originals", name: "Originals", href: "/originals", icon: Clapperboard, public: true },
             { key: "hireUs", name: "Hire Our Team", href: "/hire-us", icon: Briefcase, public: true },
           ]

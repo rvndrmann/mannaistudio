@@ -414,6 +414,7 @@ function TopBar({ onOpenCreate, creating }: { onOpenCreate: () => void; creating
           <BillingModeToggle />
           {/* Beside the credit badge, because this is the switch that decides
               whether generations spend credits at all. */}
+          <Link href="/billing" className="inline-flex items-center rounded-full border border-white/10 px-3 py-2 text-xs font-semibold text-zinc-300 hover:text-white">Billing</Link>
           {byokEnabled && (
             <Link
               href="/studio/integrations"

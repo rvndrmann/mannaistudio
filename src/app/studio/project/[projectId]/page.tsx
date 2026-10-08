@@ -1354,7 +1354,9 @@ export default function WorkspacePage({
           {/* Your own provider keys. Sits beside Credits because that is the
               choice it changes: connect a key and that provider stops spending
               them. */}
+          <Link href="/billing" className="inline-flex items-center rounded-full border border-white/10 px-3 py-2 text-xs font-semibold text-zinc-300 hover:text-white">Billing</Link>
           {byokEnabled && (
+
           <Link href="/studio/integrations" className="hidden items-center gap-1 rounded-full bg-[#141414] px-2.5 py-1.5 text-[11px] font-semibold text-zinc-300 hover:bg-[#1e1e1e] hover:text-white transition sm:flex" title="Use your own provider API keys instead of studio credits">
             <KeyRound className="h-3 w-3" />
             <span>API keys</span>
