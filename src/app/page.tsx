@@ -36,8 +36,8 @@ export async function generateMetadata(): Promise<Metadata> {
   }
   if (variant === "academy") {
     return {
-      title: "Creative AI Education That Gets You Paid | AI Director Hub",
-      description: "Learn AI creative on-demand, get live feedback on your real work, and build the skills and portfolio to land better-paying creative projects.",
+      title: "AI Courses & Image and Video Generation | AI Director Hub",
+      description: "Learn AI filmmaking and generate images and videos with your own API keys. AI Director Hub Pro includes all published courses and Creator Studio for ₹799/month.",
     }
   }
   if (variant === "originals") {

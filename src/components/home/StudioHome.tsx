@@ -232,7 +232,7 @@ export default function StudioHome() {
                                 Script. Characters. Storyboard. Images. Video. Your AI Director coordinates the whole workflow while you stay in control.
                             </p>
                             <p className="mt-3 max-w-xl text-sm leading-6 text-white/45 md:mt-4 md:text-base">
-                                Subscribers can use their own OpenAI, Google, BytePlus, or fal.ai API keys at provider rates, or generate instantly with studio credits.
+                                Learn AI filmmaking and create with your AI Director Agent: develop scripts, plan storyboards, and generate images and videos with your own OpenAI, Gemini, BytePlus, or fal.ai API keys. Pro includes all courses and Creator Studio for ₹799/month; your provider bills AI usage directly.
                             </p>
 
                             <div className="mt-7 flex flex-col gap-3 sm:mt-10 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
