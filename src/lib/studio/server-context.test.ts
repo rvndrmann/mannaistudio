@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { requireAuthenticatedProject, StudioAccessError } from "./server-context"
 
+vi.mock("./entitlement", () => ({ hasCreatorStudioEntitlement: vi.fn(async () => true) }))
+
 function fakeClient(options: { userId?: string; project?: Record<string, unknown> | null }) {
   const filters: Array<[string, string]> = []
   const query = {

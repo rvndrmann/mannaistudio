@@ -463,7 +463,7 @@ export async function createBytePlusAsset(input: { imageUrl: string; name?: stri
   // start and spent the account's asset allowance on duplicates of itself.
   if (!groupId) {
     groupId = await findBytePlusAssetGroupId()
-    if (groupId) cachedAssetGroupId = groupId
+    if (groupId && !isRunningOnCustomerKey("byteplus")) cachedAssetGroupId = groupId
   }
   if (!groupId) {
     try {
@@ -471,7 +471,7 @@ export async function createBytePlusAsset(input: { imageUrl: string; name?: stri
       // new group per registration and exhausted the account's group quota,
       // which then surfaced as an unrelated "GroupId is missing" error.
       groupId = await createBytePlusAssetGroup(sharedAssetGroupName, "AI Director character references")
-      cachedAssetGroupId = groupId
+      if (!isRunningOnCustomerKey("byteplus")) cachedAssetGroupId = groupId
     } catch (err) {
       const detail = err instanceof Error ? err.message : "unknown error"
       const quotaHit = /quota|limit/i.test(detail)

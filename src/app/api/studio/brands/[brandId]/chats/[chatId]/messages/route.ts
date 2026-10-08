@@ -1,3 +1,5 @@
+import { runUserProvider } from "@/lib/byok/run-user-provider"
+import { chatModelProvider } from "@/lib/byok/chat-source"
 import { NextRequest, NextResponse } from "next/server"
 import { ZodError } from "zod"
 import { activeBrandAgents, brandChatMessageInputSchema, brandChatTitle, buildBrandAgentInstructions, extractScriptDraft } from "@/lib/studio/brand"
@@ -96,11 +98,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
       const instructions = instructionsFor()
-      const turn = isAnthropicProtocolModel(model)
+      const turn = await runUserProvider(context.user.id, chatModelProvider(model), async () => isAnthropicProtocolModel(model)
         ? await createAnthropicDirectorToolTurn({ userId: context.user.id, model, instructions, items, tools })
         : model.startsWith("gemini")
         ? await createGoogleDirectorToolTurn({ userId: context.user.id, model, instructions, items, tools })
-        : await createDirectorToolTurn({ userId: context.user.id, model, instructions, items, tools })
+        : await createDirectorToolTurn({ userId: context.user.id, model, instructions, items, tools }))
       if (turn.content) content = turn.content
       if (!turn.calls.length) break
 

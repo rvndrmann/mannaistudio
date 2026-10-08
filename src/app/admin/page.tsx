@@ -1,4 +1,5 @@
 "use client"
+import CreditAccessControls from "@/components/admin/CreditAccessControls"
 
 import Navbar from "@/components/Navbar"
 import { motion, AnimatePresence } from "framer-motion"
@@ -10,7 +11,7 @@ import {
     Save, X, Download, FileText, Video, Trophy,
     Inbox, Mail, Clock, DollarSign, Loader2, Phone,
     ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Calendar, Pause, PauseCircle, PlayCircle,
-    Image as ImageIcon, RefreshCw, FolderKanban, Clapperboard, BarChart3, Briefcase, Sparkles
+    Image as ImageIcon, RefreshCw, FolderKanban, Clapperboard, BarChart3, Briefcase, MessageSquare, Sparkles
 } from "lucide-react"
 import { courses, adminShowcase, challenges } from "@/lib/data"
 import { useEffect, useState } from "react"
@@ -45,6 +46,7 @@ import OriginalsManager from "@/components/admin/OriginalsManager"
 import ViewerAnalytics from "@/components/admin/ViewerAnalytics"
 import ManagedProduction from "@/components/admin/ManagedProduction"
 import GenerationRecovery from "@/components/admin/GenerationRecovery"
+import CreativeAgentConversations from "@/components/admin/CreativeAgentConversations"
 import AcademyManager from "@/components/admin/AcademyManager"
 import { defaultHomeVariant, fetchHomeVariant, homeVariants, type HomeVariant } from "@/lib/home-variant"
 
@@ -1520,6 +1522,15 @@ function AdminDashboardContent() {
                             </button>
                             <button onClick={() => setActiveTab("generations")} className={`px-4 py-2 rounded-lg text-sm font-bold ${activeTab === "generations" ? "bg-primary text-black" : "text-white/40"}`}>Generations</button>
                             <button
+                                onClick={() => setActiveTab("creative-agent")}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
+                                    activeTab === "creative-agent" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
+                                )}
+                            >
+                                <MessageSquare className="w-4 h-4" /> Creative Agent
+                            </button>
+                            <button
                                 onClick={() => setActiveTab("audience")}
                                 className={cn(
                                     "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
@@ -2251,6 +2262,12 @@ function AdminDashboardContent() {
                                 className="space-y-8"
                             >
                                 <ManagedProduction />
+                            </motion.div>
+                        )}
+
+                        {activeTab === "creative-agent" && (
+                            <motion.div key="creative-agent" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
+                                <CreativeAgentConversations />
                             </motion.div>
                         )}
 
@@ -3300,6 +3317,7 @@ function AdminDashboardContent() {
                                 </header>
 
                                 <div className="glass-card p-6 rounded-2xl border-white/10 space-y-4 max-w-4xl">
+<CreditAccessControls />
                                     <div>
                                         <h2 className="text-lg font-bold">Homepage</h2>
                                         <p className="mt-1 text-xs text-white/40">

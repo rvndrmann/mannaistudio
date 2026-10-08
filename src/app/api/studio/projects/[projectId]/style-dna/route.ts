@@ -1,3 +1,4 @@
+import { runUserProvider } from "@/lib/byok/run-user-provider"
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { analyzeImagesAsJson, OpenAIProviderError } from "@/lib/studio/openai"
@@ -62,12 +63,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       input.notes ? `The user describes what they are after as: ${input.notes}` : "",
     ].filter(Boolean).join("\n\n")
 
-    const raw = await analyzeImagesAsJson({
+    const raw = await runUserProvider(context.user.id, "openai", () => analyzeImagesAsJson({
       userId: context.user.id,
       instructions: STYLE_DNA_INSTRUCTIONS,
       text,
       imageUrls,
-    })
+    }))
 
     const parsed = styleDnaSchema.safeParse(raw)
     if (!parsed.success) {

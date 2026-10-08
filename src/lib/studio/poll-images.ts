@@ -1,3 +1,4 @@
+import { ownKeysOnly } from "@/lib/byok/preferences"
 import { settleWorkflowRun } from "./execute-generation"
 import { withCredential } from "@/lib/byok/credential-service"
 import { runWithCredential } from "@/lib/byok/active-credential"
@@ -72,6 +73,7 @@ export async function pollImages(request: NextRequest, { params }: { params: Pro
       .eq("project_id", projectId)
       .maybeSingle()
     if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 })
+    if (await ownKeysOnly(context.user.id) && job.billing_mode !== "byok") return NextResponse.json({ error: "This subscription requires your own keys. Submit a new BYOK generation." }, { status: 403 })
     if (job.billing_mode === "byok" && !credentialScoped) {
       const provider = byokProviderFor(job.provider)
       if (!provider) return NextResponse.json({ error: "Unknown provider credential" }, { status: 409 })

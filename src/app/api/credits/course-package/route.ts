@@ -1,3 +1,4 @@
+import { hasPlatformCreditAccess } from "@/lib/studio/credit-access"
 import { NextRequest, NextResponse } from "next/server"
 import Razorpay from "razorpay"
 import { createClient } from "@/lib/supabase/server"
@@ -18,6 +19,7 @@ export async function POST(_request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: "Sign in to continue." }, { status: 401 })
 
+    if (!await hasPlatformCreditAccess(user.id)) return NextResponse.json({ error: "Platform credits are not enabled for your account." }, { status: 403 })
     const studioAccess = await getCreatorStudioAccess(supabase, user.id)
     if (!studioAccess.entitled || !studioAccess.purchaseOnly || !studioAccess.purchaseWindowExpiresAt) {
       return NextResponse.json({ error: "An active 24-hour Studio access window is required to buy this package." }, { status: 403 })

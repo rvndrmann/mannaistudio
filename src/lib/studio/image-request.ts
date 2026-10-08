@@ -22,7 +22,8 @@ import { rendersOnEdgeFunction } from "./image-render-host"
  */
 export async function requestProjectImage(projectId: string, body: Record<string, unknown>): Promise<Response> {
   const model = typeof body.model === "string" ? body.model : ""
-  if (!rendersOnEdgeFunction(model)) {
+  const localDevelopment = typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname)
+  if (localDevelopment || !rendersOnEdgeFunction(model)) {
     return fetch(`/api/studio/projects/${projectId}/images`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

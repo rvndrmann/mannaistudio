@@ -1,3 +1,4 @@
+import { runUserProvider } from "@/lib/byok/run-user-provider"
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { BytePlusProviderError, getBytePlusAsset } from "@/lib/studio/byteplus"
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Check if this is a status check or a new asset creation
     if (body.assetId) {
       const input = statusSchema.parse(body)
-      const asset = await getBytePlusAsset(input.assetId)
+      const asset = await runUserProvider(context.user.id, "byteplus", () => getBytePlusAsset(input.assetId))
       return NextResponse.json(asset)
     }
 
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Registered at most once: an id already on the shot or entity is adopted,
     // a path already in the registry is reused, and only a genuinely new image
     // reaches the provider.
-    const result = await registerAssetOnce({
+    const result = await runUserProvider(context.user.id, "byteplus", () => registerAssetOnce({
       supabase: context.supabase,
       sourcePath,
       imageUrl: resolvedUrl,
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       userId: context.user.id,
       knownAssetId,
       assetType: resolvedAssetType,
-    })
+    }))
     const assetUri = result.assetUri
 
     if (targetShotId && input.target === "shot") {

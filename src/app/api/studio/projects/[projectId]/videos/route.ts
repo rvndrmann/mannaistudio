@@ -1,3 +1,4 @@
+import { runUserProvider } from "@/lib/byok/run-user-provider"
 import { GENJUTSU_OBJECT_SWAP_MODEL, GENJUTSU_RESTYLE_MODEL, isGenjutsuModel, genjutsuInputSchema, genjutsuRestyleInputSchema, getGenjutsuPresets, HiggsfieldProviderError, requireHiggsfieldCredentials, submitGenjutsuVideo } from "@/lib/studio/higgsfield"
 import { readSourceVideoDuration } from "@/lib/studio/source-video-duration"
 import { pollVideos } from "@/lib/studio/poll-videos"
@@ -172,7 +173,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     let shotKeyframeAssetId: string | null = null
 
     if (provider === "byteplus" && shotBytePlusAssetId) {
-      const info = await getBytePlusAsset(shotBytePlusAssetId).catch(() => null)
+      const info = await runUserProvider(context.user.id, "byteplus", () => getBytePlusAsset(shotBytePlusAssetId)).catch(() => null)
       if (info && (info.status === "Active" || info.status === "active")) {
         shotKeyframeAssetId = shotBytePlusAssetId
         if (!multiImage) {
@@ -199,14 +200,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
         let isValidAsset = false
         if (provider === "byteplus" && byteplusAssetId) {
-          const info = await getBytePlusAsset(byteplusAssetId).catch(() => null)
+          const info = await runUserProvider(context.user.id, "byteplus", () => getBytePlusAsset(byteplusAssetId)).catch(() => null)
           if (info && (info.status === "Active" || info.status === "active")) {
             isValidAsset = true
             combinedReferencePaths.push(byteplusAssetId)
             const viewable = entityPrimaryReference(entity as MentionableEntity)
             if (viewable) displayReferencePaths.push(viewable)
             if (viewable) {
-              await recordExistingAsset({
+              await runUserProvider(context.user.id, "byteplus", () => recordExistingAsset({
                 supabase: context.supabase,
                 sourcePath: viewable,
                 assetId: byteplusAssetId,
@@ -214,7 +215,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                 projectId,
                 entityId: entity.id,
                 userId: context.user.id,
-              })
+              }))
             }
             if (Array.isArray(entity.reference_images)) {
               for (const img of entity.reference_images) {
@@ -301,14 +302,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const path = facePathList[index]
       const signed = faceReferences[index]
       if (!signed) continue
-      const assetUri = await resolveRegisteredAsset({
+      const assetUri = await runUserProvider(context.user.id, "byteplus", () => resolveRegisteredAsset({
         supabase: context.supabase,
         sourcePath: path,
         imageUrl: signed,
         name: path.split("/").pop() || undefined,
         projectId,
         userId: context.user.id,
-      })
+      }))
       if (!assetUri) continue
       // `references` and `faceReferences` are signed in separate calls, so
       // their URLs carry different tokens even when they represent the same
@@ -354,7 +355,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         if (/^asset:\/\//i.test(inputRef)) continue
         const signed = videoReferences[idx]
         if (!signed) continue
-        const assetUri = await resolveRegisteredAsset({
+        const assetUri = await runUserProvider(context.user.id, "byteplus", () => resolveRegisteredAsset({
           supabase: context.supabase,
           sourcePath: rawPath,
           imageUrl: signed,
@@ -362,7 +363,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           projectId,
           userId: context.user.id,
           assetType: "Video",
-        })
+        }))
         if (assetUri) videoReferences[idx] = assetUri
       }
     }
@@ -400,7 +401,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const billing = decideBilling({
       hasCredential: byokProvider ? await hasCredential(context.user.id, byokProvider) : false,
       platformCredits: platformCost,
-      ownKeysOnly: await ownKeysOnly(context.user.id).catch(() => false),
+      ownKeysOnly: await ownKeysOnly(context.user.id),
       provider: byokProvider || provider,
     })
     const creditCost = billing.credits
@@ -495,14 +496,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           const freshReferences = await Promise.all(freshSignedUrls.map(async (url: string, idx: number) => {
             const path = viewableReferencePaths[idx]
             if (!facePaths.has(path)) return resolveBytePlusReferenceUrl(url, false)
-            const assetUri = await resolveRegisteredAsset({
+            const assetUri = await runUserProvider(context.user.id, "byteplus", () => resolveRegisteredAsset({
               supabase: context.supabase,
               sourcePath: path,
               imageUrl: url,
               name: path.split("/").pop() || undefined,
               projectId,
               userId: context.user.id,
-            })
+            }))
             // Registration unavailable: send the plain URL rather than mint an
             // unrecorded asset. The provider may refuse it, and that refusal is
             // recoverable — a lost library slot is not.

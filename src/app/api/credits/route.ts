@@ -1,3 +1,4 @@
+import { hasPlatformCreditAccess } from "@/lib/studio/credit-access"
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import Razorpay from "razorpay"
@@ -24,6 +25,8 @@ export async function GET() {
     const { data: { user }, error } = await supabase.auth.getUser()
     if (error || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+    if (!await hasPlatformCreditAccess(user.id)) return NextResponse.json({ creditsEnabled: false, canBuyCredits: false, error: "Platform credits are not enabled for your account." }, { status: 403 })
+
     const studioAccess = await getCreatorStudioAccess(supabase, user.id)
     if (!studioAccess.entitled) return NextResponse.json({ error: "Creator Studio access is required." }, { status: 403 })
 
@@ -31,7 +34,6 @@ export async function GET() {
     const { data: profile } = await supabase.from("profiles").select("membership_status, membership_expires_at").eq("id", user.id).maybeSingle()
     const isAdmin = await isAdminUser(supabase, user.id)
     const activeMember = isAdmin || isMembershipActive(profile)
-    const studioSubscriber = await hasActiveStudioSubscription(supabase, user.id)
 
     // Credits already committed to work still running.
     //
@@ -52,7 +54,7 @@ export async function GET() {
       return total + (Number(job.credits_used) || Number(job.estimated_credits) || 0)
     }, 0)
 
-    return NextResponse.json({ credits, pendingCredits, userId: user.id, isMember: activeMember, canBuyCredits: activeMember || studioSubscriber, purchaseOnly: studioAccess.purchaseOnly, purchaseWindowExpiresAt: studioAccess.purchaseWindowExpiresAt })
+    return NextResponse.json({ credits, pendingCredits, userId: user.id, isMember: activeMember, canBuyCredits: true, purchaseOnly: studioAccess.purchaseOnly, purchaseWindowExpiresAt: studioAccess.purchaseWindowExpiresAt })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Internal error" }, { status: 500 })
   }
@@ -70,18 +72,14 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error } = await supabase.auth.getUser()
     if (error || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+    if (!await hasPlatformCreditAccess(user.id)) return NextResponse.json({ creditsEnabled: false, canBuyCredits: false, error: "Platform credits are not enabled for your account." }, { status: 403 })
+
     const studioAccess = await getCreatorStudioAccess(supabase, user.id)
     if (!studioAccess.entitled) return NextResponse.json({ error: "Creator Studio access is required to buy generation credits." }, { status: 403 })
     if (studioAccess.purchaseOnly) return NextResponse.json({ error: "During your 24-hour access window, use the 3,000-credit offer to keep Creator Studio access." }, { status: 403 })
 
-    const [{ data: profile }, isAdmin, studioSubscriber] = await Promise.all([
-      supabase.from("profiles").select("membership_status,membership_expires_at").eq("id", user.id).maybeSingle(),
-      isAdminUser(supabase, user.id),
-      hasActiveStudioSubscription(supabase, user.id),
-    ])
-    if (!isAdmin && !isMembershipActive(profile) && !studioSubscriber) {
-      return NextResponse.json({ error: "An active subscription is required to buy additional credits." }, { status: 403 })
-    }
+
+
 
     // A POST with no body throws inside JSON.parse, and the route reported it
     // as an unhandled SyntaxError rather than a bad request — which is what it

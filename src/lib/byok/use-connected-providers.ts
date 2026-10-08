@@ -2,21 +2,13 @@
 
 import { useEffect, useState } from "react";
 
-/**
- * Which providers this user has connected their own key for.
- *
- * Read once per panel from the integrations endpoint, which returns metadata
- * only — never a key, never ciphertext. The list decides what the generate
- * button says and whether a credit balance may block it, so it has to come from
- * the same source the server bills from rather than from anything the page
- * guesses.
- *
- * An empty list on failure is the safe default: the user is shown the credit
- * price and charged the credit price. Guessing the other way would promise a
- * free generation and then take credits for it.
+/** Provider metadata and effective billing policy. Secrets never reach this hook.
+ * Until the policy loads, generation controls require keys; a network failure
+ * must not promise platform billing to a BYOK-only subscriber.
  */
-export function useConnectedProviders(): string[] {
+export function useProviderBillingPolicy() {
   const [providers, setProviders] = useState<string[]>([]);
+  const [ownKeysOnly, setOwnKeysOnly] = useState(true);
 
   useEffect(() => {
     let active = true;
@@ -28,10 +20,15 @@ export function useConnectedProviders(): string[] {
           .filter((row: { connected?: boolean }) => row.connected)
           .map((row: { provider: string }) => row.provider);
         setProviders(connected);
+        setOwnKeysOnly(Boolean(data.ownKeysOnly));
       })
       .catch(() => {});
     return () => { active = false; };
   }, []);
 
-  return providers;
+  return { providers, ownKeysOnly };
+}
+
+export function useConnectedProviders(): string[] {
+  return useProviderBillingPolicy().providers;
 }

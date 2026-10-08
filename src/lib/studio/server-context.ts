@@ -23,7 +23,7 @@ export async function requireAuthenticatedProject(
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) throw new StudioAccessError("Unauthorized", 401)
   if (!await hasCreatorStudioEntitlement(supabase, user.id)) {
-    throw new StudioAccessError("Creator Studio access is included with eligible courses and coaching.", 403)
+    throw new StudioAccessError("Subscribe to All Courses + Creator Studio to access this feature.", 403)
   }
 
   // RLS already restricts this row to the owner and anyone the project is shared

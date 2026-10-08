@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { runWithCredential } from "@/lib/byok/active-credential"
 import { registerAssetOnce } from "./byteplus-assets"
 
 /**
@@ -17,7 +18,7 @@ vi.mock("./byteplus", () => ({
   getBytePlusAsset: (...args: unknown[]) => getBytePlusAsset(...args),
 }))
 
-type Row = { id: string; source_path: string; asset_id: string; asset_uri: string; use_count: number }
+type Row = { credential_id?: string | null; id: string; source_path: string; asset_id: string; asset_uri: string; use_count: number }
 
 /** Just enough Supabase to exercise the registry's reads and writes. */
 function fakeSupabase(rows: Row[] = []) {
@@ -25,11 +26,13 @@ function fakeSupabase(rows: Row[] = []) {
     rows,
     from() {
       let match = ""
+      let credential: string | null | undefined = undefined
       let assetMatch = ""
       let excludedPath = ""
       let pending: "select" | "update" | "delete" | null = null
       let patch: Record<string, unknown> = {}
       const builder = {
+        filter(_column: string, operator: string, value: string) { credential = operator === "is" ? null : value; return builder },
         select() { pending = "select"; return builder },
         update(values: Record<string, unknown>) { pending = "update"; patch = values; return builder },
         delete() { pending = "delete"; return builder },
@@ -67,7 +70,7 @@ function fakeSupabase(rows: Row[] = []) {
             const claimed = rows.find((row) => row.asset_id === assetMatch && row.source_path !== excludedPath) || null
             return Promise.resolve({ data: claimed, error: null })
           }
-          return Promise.resolve({ data: rows.find((row) => row.source_path === match || row.id === match) || null, error: null })
+          return Promise.resolve({ data: rows.find((row) => (credential === undefined || (row.credential_id || null) === credential) && (row.source_path === match || row.id === match)) || null, error: null })
         },
       }
       return builder
@@ -271,5 +274,19 @@ describe("recording a registration", () => {
       imageUrl: "https://signed.example/lena.png?token=one",
     })
     expect(result.assetId).toBe("asset-new")
+  })
+})
+
+
+describe("BYOK provider asset account separation", () => {
+  it("does not reuse another credential's registration of the same source", async () => {
+    const supabase = fakeSupabase([{ id: "first", source_path: "portrait.png", asset_id: "asset-first", asset_uri: "asset://asset-first", use_count: 1, credential_id: "credential-first" }])
+    createBytePlusAsset.mockResolvedValue({ assetId: "asset-second", groupId: "own-group" })
+    getBytePlusAsset.mockResolvedValue(active("asset-second"))
+    await runWithCredential("byteplus", { arkApiKey: "own", accessKey: "own", secretKey: "own" }, () => registerAssetOnce({ supabase, sourcePath: "portrait.png", imageUrl: "https://example.com/portrait.png" }), "credential-second")
+    expect(createBytePlusAsset).toHaveBeenCalledOnce()
+    expect(supabase.rows).toHaveLength(2)
+    expect(supabase.rows[1].credential_id).toBe("credential-second")
+    expect(supabase.rows[0].asset_id).toBe("asset-first")
   })
 })

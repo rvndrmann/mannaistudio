@@ -18,6 +18,7 @@ const creditsTabs: { id: CreditsTab; label: string }[] = [
 ]
 
 export default function CreditsPage() {
+  const [creditsEnabled, setCreditsEnabled] = useState(false)
   const [credits, setCredits] = useState<number | null>(null)
   const [canBuyCredits, setCanBuyCredits] = useState(false)
   const [customAmount, setCustomAmount] = useState<number>(MIN_TOP_UP_INR)
@@ -31,6 +32,7 @@ export default function CreditsPage() {
       const res = await fetch("/api/credits", { cache: "no-store" })
       if (res.ok) {
         const json = await res.json()
+        setCreditsEnabled(true)
         setCredits(json.credits)
         setCanBuyCredits(Boolean(json.canBuyCredits))
       }
@@ -115,6 +117,8 @@ export default function CreditsPage() {
       setLoading(false)
     }
   }
+
+  if (!creditsEnabled) return <main className="min-h-screen bg-[#080908] text-white p-8"><Link href="/studio">Back to Studio</Link><h1 className="mt-8 text-2xl">Use your own API keys</h1><p className="mt-4">Platform credits are not enabled for your account. An active subscription is required to use your own API keys.</p><Link href="/studio/integrations" className="mt-6 inline-block text-primary">Connect API keys</Link></main>
 
   return (
     <div className="studio-dense min-h-screen bg-black text-[#e8e6df]">

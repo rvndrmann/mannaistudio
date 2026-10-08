@@ -1,3 +1,5 @@
+import { hasPlatformCreditAccess } from "@/lib/studio/credit-access"
+import { getByokSubscriptionPolicy } from "@/lib/byok/subscription-policy"
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { hasByokSubscription, listCredentials } from "@/lib/byok/credential-service"
@@ -19,13 +21,16 @@ export async function GET() {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const policy = await getByokSubscriptionPolicy(user.id)
+    policy.required = policy.required || !await hasPlatformCreditAccess(user.id)
     if (await byokPaused()) {
       return NextResponse.json({
         configured: byokIsConfigured(),
         paused: true,
         pausedMessage: BYOK_PAUSED_MESSAGE,
         vaultReadable: true,
-        ownKeysOnly: false,
+        ownKeysOnly: policy.required,
+        ownKeysOnlyLocked: policy.required,
         providers: [],
       })
     }
@@ -34,7 +39,8 @@ export async function GET() {
         configured: byokIsConfigured(),
         subscriptionRequired: true,
         vaultReadable: true,
-        ownKeysOnly: false,
+        ownKeysOnly: policy.required,
+        ownKeysOnlyLocked: policy.required,
         providers: [],
       })
     }
@@ -56,7 +62,8 @@ export async function GET() {
     return NextResponse.json({
       configured: byokIsConfigured(),
       vaultReadable,
-      ownKeysOnly: await ownKeysOnly(user.id).catch(() => false),
+      ownKeysOnly: await ownKeysOnly(user.id),
+      ownKeysOnlyLocked: policy.required,
       providers: byokProviders.map((provider) => {
         const spec = providerSpecs[provider]
         const credential = byProvider.get(provider)
@@ -96,13 +103,16 @@ export async function PATCH(request: Request) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const policy = await getByokSubscriptionPolicy(user.id)
+    policy.required = policy.required || !await hasPlatformCreditAccess(user.id)
     if (await byokPaused()) {
       return NextResponse.json({
         configured: byokIsConfigured(),
         paused: true,
         pausedMessage: BYOK_PAUSED_MESSAGE,
         vaultReadable: true,
-        ownKeysOnly: false,
+        ownKeysOnly: policy.required,
+        ownKeysOnlyLocked: policy.required,
         providers: [],
       })
     }
@@ -114,6 +124,7 @@ export async function PATCH(request: Request) {
     if (typeof body?.ownKeysOnly !== "boolean") {
       return NextResponse.json({ error: "ownKeysOnly must be true or false" }, { status: 400 })
     }
+    if (!body.ownKeysOnly && policy.required) return NextResponse.json({ error: "Your subscription requires your own API keys." }, { status: 403 })
     await setOwnKeysOnly(user.id, body.ownKeysOnly)
     return NextResponse.json({ ownKeysOnly: body.ownKeysOnly })
   } catch (error) {

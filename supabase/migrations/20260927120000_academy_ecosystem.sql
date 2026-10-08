@@ -193,7 +193,7 @@ begin
   if not exists (select 1 from public.admin_users where id = auth.uid()) then
     raise exception 'Admin access required';
   end if;
-  if p_variant is null or p_variant not in ('studio','originals','hire','academy') then
+  if p_variant is null or p_variant not in ('studio','originals','hire','creative-agent','academy') then
     raise exception 'Unknown homepage variant: %', coalesce(p_variant, 'null');
   end if;
   insert into public.site_settings(key,value,updated_at)

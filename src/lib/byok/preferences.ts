@@ -1,4 +1,6 @@
+import { hasPlatformCreditAccess } from "@/lib/studio/credit-access"
 import "server-only"
+import { getByokSubscriptionPolicy } from "./subscription-policy"
 import { createServiceClient } from "@/lib/supabase/service"
 
 /**
@@ -16,6 +18,8 @@ import { createServiceClient } from "@/lib/supabase/service"
 const OWN_KEYS_ONLY = "byok_own_keys_only"
 
 export async function ownKeysOnly(userId: string): Promise<boolean> {
+  if (!await hasPlatformCreditAccess(userId)) return true
+  if ((await getByokSubscriptionPolicy(userId)).required) return true
   const { data, error } = await createServiceClient()
     .from("creator_user_preferences")
     .select("preferences")
@@ -27,6 +31,9 @@ export async function ownKeysOnly(userId: string): Promise<boolean> {
 }
 
 export async function setOwnKeysOnly(userId: string, value: boolean): Promise<void> {
+  if (!value && (!await hasPlatformCreditAccess(userId) || (await getByokSubscriptionPolicy(userId)).required)) {
+    throw new Error("Your subscription requires your own API keys.")
+  }
   const client = createServiceClient()
   const { data } = await client
     .from("creator_user_preferences")

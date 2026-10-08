@@ -1,4 +1,7 @@
 import "server-only"
+import { runWithCredential } from "./active-credential"
+import { getByokSubscriptionPolicy } from "./subscription-policy"
+import { byokPaused } from "./paused"
 import { isMembershipActive } from "@/lib/membership"
 import { createServiceClient } from "@/lib/supabase/service"
 import { keyLast4, openCredential, sealCredential, type CredentialParts } from "./envelope"
@@ -35,6 +38,8 @@ function vault() {
 
 /** BYOK is a paid subscription entitlement, not a free-account escape hatch. */
 export async function hasByokSubscription(userId: string): Promise<boolean> {
+  const policy = await getByokSubscriptionPolicy(userId)
+  if (policy.required) return policy.active
   const { data, error } = await vault()
     .from("profiles")
     .select("membership_status, membership_expires_at")
@@ -107,6 +112,7 @@ export async function listCredentials(userId: string): Promise<CredentialSummary
 
 /** Whether this user has a usable credential for a provider. No secret involved. */
 export async function hasCredential(userId: string, provider: ByokProvider): Promise<boolean> {
+  if (await byokPaused()) return false
   if (!byokIsConfigured() || !(await hasByokSubscription(userId))) return false
   const { data, error } = await vault().rpc("byok_has_credential", { p_user: userId, p_provider: provider })
   if (error) throw error
@@ -173,6 +179,7 @@ export async function withCredential<T>(
   input: { userId: string; provider: ByokProvider },
   use: (parts: CredentialParts) => Promise<T>,
 ): Promise<T | null> {
+  if (await byokPaused()) return null
   if (!byokIsConfigured() || !(await hasByokSubscription(input.userId))) return null
   const { data: rows, error } = await vault().rpc("byok_read_credential", { p_user: input.userId, p_provider: input.provider })
   if (error) throw error
@@ -188,7 +195,7 @@ export async function withCredential<T>(
   }, kmsKeyWrapper())
 
   try {
-    const result = await use(parts)
+    const result = await runWithCredential(input.provider, parts, () => use(parts), String(data.id))
     await vault().rpc("byok_touch_credential", { p_credential_id: data.id })
     await recordCredentialEvent({ userId: input.userId, provider: input.provider, credentialId: data.id, event: "credential_used" })
     return result

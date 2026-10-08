@@ -1,3 +1,4 @@
+import { ownKeysOnly } from "@/lib/byok/preferences"
 import { getHiggsfieldVideoTask } from "./higgsfield"
 import { withCredential } from "@/lib/byok/credential-service"
 import { runWithCredential } from "@/lib/byok/active-credential"
@@ -27,6 +28,7 @@ export async function pollVideos(request: NextRequest, { params }: { params: Pro
     if (!jobId || !z.string().uuid().safeParse(jobId).success) return NextResponse.json({ error: "Valid jobId is required" }, { status: 400 })
     const { data: job } = await context.supabase.from("creator_generation_jobs").select("*").eq("id", jobId).eq("project_id", projectId).eq("user_id", context.user.id).maybeSingle()
     if (!job) return NextResponse.json({ error: "Generation job not found" }, { status: 404 })
+    if (await ownKeysOnly(context.user.id) && job.billing_mode !== "byok") return NextResponse.json({ error: "This subscription requires your own keys. Submit a new BYOK generation." }, { status: 403 })
     if (job.billing_mode === "byok" && !credentialScoped) {
       const provider = byokProviderFor(job.provider)
       if (!provider) return NextResponse.json({ error: "Unknown provider credential" }, { status: 409 })

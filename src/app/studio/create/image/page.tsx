@@ -13,7 +13,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { imageGenerationModels, type ImageGenerationModelId } from "@/lib/studio/generation-models";
 import { calculateCreditCost } from "@/lib/studio/credits";
 import { blockedByCredits, resolveGenerationSource } from "@/lib/byok/generation-source";
-import { useConnectedProviders } from "@/lib/byok/use-connected-providers";
+import { useProviderBillingPolicy } from "@/lib/byok/use-connected-providers";
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
 import { downloadSignedMedia } from "@/lib/studio/signed-media";
 import type { QuickHistoryItem } from "@/lib/studio/quick-media";
@@ -24,7 +24,7 @@ const BATCH_SIZES = [1, 2, 3, 4] as const;
 
 export default function QuickImagePage() {
   const { user, signInWithGoogle } = useAuth();
-  const connectedProviders = useConnectedProviders();
+  const { providers: connectedProviders, ownKeysOnly } = useProviderBillingPolicy();
   const history = useQuickHistory({ type: "image", limit: 24 });
 
   const [prompt, setPrompt] = useState("");
@@ -48,7 +48,7 @@ export default function QuickImagePage() {
     () => calculateCreditCost(model, "image", 5, { quality, aspectRatio }),
     [model, quality, aspectRatio],
   );
-  const source = resolveGenerationSource({ model, connectedProviders, platformCredits: perImage });
+  const source = resolveGenerationSource({ model, connectedProviders, ownKeysOnly, platformCredits: perImage });
   const totalCredits = source.credits * batch;
   // Priced against the whole batch, not one image: four renders at 12 credits
   // need 48, and checking one at a time would offer a Generate button that
@@ -205,7 +205,7 @@ export default function QuickImagePage() {
                   ? `Runs on your own ${source.provider} key. Billed by them, no studio credits.`
                   : `${totalCredits} credits for ${batch} image${batch > 1 ? "s" : ""}.`}
               >
-                {source.ownKey ? "Your key" : `⚡ ${totalCredits}`}
+                {source.requiresKey ? source.label : source.ownKey ? "Your key" : `⚡ ${totalCredits}`}
               </span>
             </div>
             <button
@@ -215,8 +215,9 @@ export default function QuickImagePage() {
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-3 text-sm font-bold text-black transition hover:bg-[#a5de25] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-              {generating ? "Generating…" : outOfCredits ? "Not enough credits" : "Generate"}
+              {generating ? "Generating…" : source.requiresKey ? "Connect API key to generate" : outOfCredits ? "Not enough credits" : "Generate"}
             </button>
+            {source.requiresKey && <a href="/studio/integrations" className="mt-3 block text-sm text-[#b9f42e] underline">Connect your provider API keys</a>}
           </div>
         </aside>
 

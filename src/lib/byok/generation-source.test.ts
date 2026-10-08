@@ -68,3 +68,17 @@ describe("when a low balance should stop a generation", () => {
     expect(blockedByCredits(source, null)).toBe(false)
   })
 })
+
+
+describe("BYOK-only subscription generation controls", () => {
+  it("asks for a key instead of advertising or spending credits", () => {
+    const source = resolveGenerationSource({ model: GPT_IMAGE, connectedProviders: [], platformCredits: 12, ownKeysOnly: true })
+    expect(source).toMatchObject({ requiresKey: true, credits: 0, label: "Connect API key" })
+    expect(blockedByCredits(source, 100_000)).toBe(true)
+  })
+  it("allows a connected provider even with a zero Studio balance", () => {
+    const source = resolveGenerationSource({ model: GPT_IMAGE, connectedProviders: ["openai"], platformCredits: 12, ownKeysOnly: true })
+    expect(source.requiresKey).toBe(false)
+    expect(blockedByCredits(source, 0)).toBe(false)
+  })
+})

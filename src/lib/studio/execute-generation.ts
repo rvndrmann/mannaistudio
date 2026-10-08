@@ -1,3 +1,4 @@
+import { ownKeysOnly } from "@/lib/byok/preferences"
 import { submitGenjutsuVideo, genjutsuInputSchema, genjutsuRestyleInputSchema, GENJUTSU_RESTYLE_MODEL, SOUL_V2_IMAGE_TO_IMAGE_MODEL, submitSoulV2Image } from "./higgsfield"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { generateOpenAIImage, submitOpenAIImage, supportsBackgroundImageResponse, type OpenAIImageModel } from "./openai"
@@ -584,7 +585,13 @@ export async function executeGenerationJobs(
         }
         }
 
+        if (await ownKeysOnly(context.user.id) && job.billing_mode !== "byok") {
+          await context.supabase.from("creator_generation_jobs").update({ status: "failed", error: "This subscription requires your own keys. Submit a new BYOK generation." }).eq("id", job.id)
+          await settleWorkflowRun(context, job.workflow_run_id)
+          continue
+        }
         const provider = byokProviderFor(typeof job.provider === "string" ? job.provider : "")
+        if (job.billing_mode === "byok" && !provider) throw new Error("Unknown BYOK provider")
         if (job.billing_mode === "byok" && provider) {
           const ran = await withCredential({ userId: context.user.id, provider }, (parts) =>
             runWithCredential(provider, parts, runJob))

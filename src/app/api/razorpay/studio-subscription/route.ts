@@ -7,7 +7,7 @@ import { createServiceClient } from "@/lib/supabase/service"
 
 const STUDIO_MONTHLY_PLAN_ID = process.env.RAZORPAY_STUDIO_MONTHLY_PLAN_ID
 
-export async function POST(request: Request) {
+async function legacyPOST(request: Request) {
   try {
     const keyId = process.env.RAZORPAY_KEY_ID
     const keySecret = process.env.RAZORPAY_KEY_SECRET
@@ -96,4 +96,8 @@ export async function POST(request: Request) {
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not start Studio subscription." }, { status: 500 })
   }
+}
+
+export async function POST() {
+  return NextResponse.json({ error: "This offer is currently unavailable. Subscribe to AI Director Hub Pro for ₹799/month.", billingUrl: "/billing" }, { status: 410 })
 }

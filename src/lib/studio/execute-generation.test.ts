@@ -2,10 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { STALLED_SUBMISSION_MS } from "./stalled-jobs"
 import { canClaimGeneration, claimGeneration, submissionRecoveryExpired } from "./generation-claim"
+import { ownKeysOnly } from "@/lib/byok/preferences"
 import { executeGenerationJobs } from "./execute-generation"
 import { submitOpenAIImage, generateOpenAIImage } from "./openai"
 import { submitFalImage, generateFalImage } from "./fal"
 import { submitBytePlusVideo } from "./byteplus"
+
+vi.mock("@/lib/byok/preferences", () => ({ ownKeysOnly: vi.fn(async () => false) }))
 
 vi.mock("./byteplus", () => ({
   submitBytePlusVideo: vi.fn(async () => ({ id: "provider-task", response: { id: "provider-task" } })),
@@ -70,6 +73,7 @@ function fixture(overrides: Partial<Job> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(ownKeysOnly).mockResolvedValue(false)
   vi.spyOn(Date, "now").mockReturnValue(now)
 })
 afterEach(() => { vi.restoreAllMocks() })
@@ -179,5 +183,25 @@ describe("automated image tracking", () => {
     expect(generateFalImage).not.toHaveBeenCalled()
     expect(row.provider_job_id).toBe("fal-image-1")
     expect(row.provider_response).toEqual({ requestId: "fal-image-1", endpoint: "fal-ai/test" })
+  })
+})
+
+
+describe("mandatory BYOK background execution", () => {
+  it("refuses to submit an old platform-billed job after the subscription changes", async () => {
+    vi.mocked(ownKeysOnly).mockResolvedValue(true)
+    const { row, context } = fixture()
+    await executeGenerationJobs(context, [row.id])
+    expect(submitBytePlusVideo).not.toHaveBeenCalled()
+    expect(row.status).toBe("failed")
+    expect(row.error).toContain("own keys")
+  })
+  it("does not submit when the billing policy cannot be read", async () => {
+    vi.mocked(ownKeysOnly).mockRejectedValue(new Error("Policy unavailable"))
+    const log = vi.spyOn(console, "error").mockImplementation(() => {})
+    const { row, context } = fixture()
+    await executeGenerationJobs(context, [row.id])
+    expect(submitBytePlusVideo).not.toHaveBeenCalled()
+    log.mockRestore()
   })
 })

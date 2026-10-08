@@ -230,7 +230,7 @@ export async function renderProjectImage(
     const billing = decideBilling({
       hasCredential: byokProvider ? await hasCredential(context.user.id, byokProvider) : false,
       platformCredits: platformCost,
-      ownKeysOnly: await ownKeysOnly(context.user.id).catch(() => false),
+      ownKeysOnly: await ownKeysOnly(context.user.id),
       provider: byokProvider || provider,
     })
     const creditCost = billing.credits
@@ -580,14 +580,14 @@ export async function renderProjectImage(
     // Seedream registers its own output as part of generating it, so that slot
     // is already spent — recording it is what lets an admin see and reclaim it.
     if (registeredAsset) {
-      await recordExistingAsset({
+      await runOnBillingAccount(() => recordExistingAsset({
         supabase: context.supabase,
         sourcePath: storagePath,
         assetId: registeredAsset.assetId,
         name: registeredAsset.name,
         projectId,
         userId: context.user.id,
-      })
+      }))
     }
 
     // Every generated image used to be registered with BytePlus here, whether or

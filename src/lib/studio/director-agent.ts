@@ -522,7 +522,8 @@ export async function runDirectorAgent(input: {
           // Control stays here — the asking agent carries on with its own
           // context intact — and read-only is the boundary that makes a
           // consultation safe to run without asking the user anything.
-          const consulted = await createDirectorToolTurn({
+          const consultProvider = isAnthropicProtocolModel(input.model) ? createAnthropicDirectorToolTurn : input.model.startsWith("gemini") ? createGoogleDirectorToolTurn : createDirectorToolTurn
+          const consulted = await consultProvider({
             userId: input.context.user.id,
             model: input.model,
             instructions: [

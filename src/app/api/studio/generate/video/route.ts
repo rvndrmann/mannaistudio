@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
     const billing = decideBilling({
       hasCredential: byokProvider ? await hasCredential(context.user.id, byokProvider) : false,
       platformCredits: platformCost,
-      ownKeysOnly: await ownKeysOnly(context.user.id).catch(() => false),
+      ownKeysOnly: await ownKeysOnly(context.user.id),
       provider: byokProvider || provider,
     })
     const creditCost = billing.credits
@@ -297,11 +297,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Generation job is missing provider details" }, { status: 409 })
     }
 
+    if (await ownKeysOnly(context.user.id) && job.billing_mode !== "byok") return NextResponse.json({ error: "This subscription requires your own keys. Submit a new BYOK generation." }, { status: 403 })
     const provider = generationProvider(job.model)
     /** Polls on the account that submitted, since a BYOK task is not on ours. */
     const byokProvider = byokProviderFor(provider)
     const pollOnBillingAccount = async <T,>(work: () => Promise<T>): Promise<T> => {
-      if (job.billing_mode !== "byok" || !byokProvider) return work()
+      if (job.billing_mode === "byok" && !byokProvider) throw new Error("Unknown BYOK provider")
+      if (job.billing_mode !== "byok") return work()
+      if (!byokProvider) throw new Error("Unknown BYOK provider")
       const ran = await withCredential({ userId: context.user.id, provider: byokProvider }, (parts) =>
         runWithCredential(byokProvider, parts, work))
       if (ran === null) throw new Error("The provider key for this model is no longer connected.")

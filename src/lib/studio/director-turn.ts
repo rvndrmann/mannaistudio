@@ -19,7 +19,7 @@ import { buildEntityMentionContext, type MentionableEntity } from "./entity-ment
 import { activeDirectorModels } from "./ai-models"
 import { defaultOpenAIDirectorModel } from "./openai"
 import { chatModelProvider } from "@/lib/byok/chat-source"
-import { hasCredential, withCredential } from "@/lib/byok/credential-service"
+import { hasByokSubscription, hasCredential, withCredential } from "@/lib/byok/credential-service"
 import { runWithCredential } from "@/lib/byok/active-credential"
 import { ownKeysOnly } from "@/lib/byok/preferences"
 import { OwnKeysOnlyError } from "@/lib/byok/billing"
@@ -67,6 +67,9 @@ export async function resolveDirectorTurn(context: AuthenticatedProjectContext, 
   model?: string
   mentionedEntityIds: string[]
 }) {
+  if (await ownKeysOnly(context.user.id) && !await hasByokSubscription(context.user.id)) {
+    throw new Error("Subscribe to All Access, then connect your own API keys to chat with the AI Director and generate images or videos.")
+  }
   const projectId = context.project.id
 // The episode, the entities the message mentions and the admin's model list
 // are three independent reads that were run one after another, ahead of
@@ -259,8 +262,11 @@ const chatProvider = chatModelProvider(model)
 // below knows not to charge for something we were not billed for.
 let ranOnCustomerKey = false
 const runOnRightAccount = async <T,>(work: () => Promise<T>): Promise<T> => {
-  if (!chatProvider) return work()
-  const connected = await hasCredential(context.user.id, chatProvider).catch(() => false)
+  if (!chatProvider) {
+    if (await ownKeysOnly(context.user.id)) throw new OwnKeysOnlyError("supported chat provider")
+    return work()
+  }
+  const connected = await hasCredential(context.user.id, chatProvider)
   if (connected) {
     ranOnCustomerKey = true
     const result = await withCredential({ userId: context.user.id, provider: chatProvider }, (parts) =>
@@ -271,7 +277,7 @@ const runOnRightAccount = async <T,>(work: () => Promise<T>): Promise<T> => {
     if (result === null) throw new Error("The provider key for this model is no longer connected.")
     return result
   }
-  if (await ownKeysOnly(context.user.id).catch(() => false)) {
+  if (await ownKeysOnly(context.user.id)) {
     throw new OwnKeysOnlyError(chatProvider)
   }
   return work()

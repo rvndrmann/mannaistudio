@@ -10,7 +10,7 @@ import { entityHandle, entityKindSchema, legacyEntityType, seriesBibleSchema } f
 import { generationRequestSchema, routeGeneration } from "./model-routing"
 import { revisionRequestSchema } from "./revisions"
 import { deductUserCredits } from "./credits"
-import { decideBilling } from "@/lib/byok/billing"
+import { decideBilling, OwnKeysOnlyError } from "@/lib/byok/billing"
 import { hasCredential } from "@/lib/byok/credential-service"
 import { ownKeysOnly } from "@/lib/byok/preferences"
 import { byokProviderFor, isByokProvider } from "@/lib/byok/providers"
@@ -709,6 +709,7 @@ export const submitGenerationTool = defineDirectorTool({
     }
 
     if (isGenjutsuModel(request.model || "")) {
+      if (await ownKeysOnly(context.user.id)) throw new OwnKeysOnlyError("a supported BYOK provider (Higgsfield is unavailable on your own keys)")
       requireHiggsfieldCredentials()
       if (request.videoReferencePaths.length !== 1) throw new Error("Genjutsu needs exactly one source video. Upload a video or select one saved storyboard clip.")
       if (request.model === GENJUTSU_RESTYLE_MODEL) {
@@ -882,7 +883,7 @@ export const submitGenerationTool = defineDirectorTool({
         ? await hasCredential(context.user.id, byokProvider)
         : false,
       platformCredits: routing.creditsPerShot,
-      ownKeysOnly: await ownKeysOnly(context.user.id).catch(() => false),
+      ownKeysOnly: await ownKeysOnly(context.user.id),
       provider: servingProvider,
     })
     const shotNumberById = new Map(Array.from(promptsByNumber.entries()).map(([number, id]) => [id, number]))
@@ -983,6 +984,13 @@ export const generateEntityReferenceArtTool = defineDirectorTool({
     })
     if (routing.selected.provider === "unconfigured") throw new Error("No generation provider is configured for this model")
 
+    const referenceProvider = byokProviderFor(routing.selected.provider)
+    const referenceBilling = decideBilling({
+      hasCredential: referenceProvider ? await hasCredential(context.user.id, referenceProvider) : false,
+      platformCredits: routing.creditsPerShot,
+      ownKeysOnly: await ownKeysOnly(context.user.id),
+      provider: referenceProvider || routing.selected.provider,
+    })
     const jobs = found.map((entity, index) => {
       const written = input.prompts[entity.id]?.trim() || input.prompts[entity.name]?.trim()
       const prompt = written || buildEntityReferenceImagePrompt(
@@ -1002,21 +1010,22 @@ export const generateEntityReferenceArtTool = defineDirectorTool({
         provider: routing.selected.provider,
         prompt,
         settings: { type: "image", aspectRatio: routing.request.aspectRatio, target: "asset", entityType: entity.type },
-        estimated_credits: routing.creditsPerShot,
+        estimated_credits: referenceBilling.credits,
+        billing_mode: referenceBilling.mode,
         requires_approval: true,
         approved_at: new Date().toISOString(),
         operation: "generate_entity_reference_art",
         idempotency_key: `${input.idempotencyKey}:${index}`,
         routing_decision: routing,
-        cost_estimate: { credits: routing.creditsPerShot },
+        cost_estimate: { credits: referenceBilling.credits },
       }
     })
 
     const { data, error: insertError } = await context.supabase.from("creator_generation_jobs").insert(jobs).select("*")
     if (insertError) throw insertError
     const jobIds = (data ?? []).map((job) => job.id)
-    const estimatedCredits = routing.creditsPerShot * jobs.length
-    const deduction = await deductUserCredits(
+    const estimatedCredits = referenceBilling.credits * jobs.length
+    const deduction = referenceBilling.mode === "byok" ? { success: true, newBalance: 0, errorMessage: null } : await deductUserCredits(
       context.user.id,
       estimatedCredits,
       routing.selected.model,
@@ -1027,7 +1036,7 @@ export const generateEntityReferenceArtTool = defineDirectorTool({
       await context.supabase.rpc("creator_cancel_unreserved_jobs", { p_job_ids: jobIds })
       throw new Error(deduction.errorMessage || "Insufficient credits")
     }
-    await context.supabase.from("creator_generation_jobs").update({ credits_used: routing.creditsPerShot }).in("id", jobIds)
+    await context.supabase.from("creator_generation_jobs").update({ credits_used: referenceBilling.credits }).in("id", jobIds)
     executeGenerationJobsInBackground(context, jobIds)
 
     return {
@@ -1035,7 +1044,7 @@ export const generateEntityReferenceArtTool = defineDirectorTool({
       assets: found.map((entity) => ({ id: entity.id, name: entity.name, type: entity.type })),
       estimatedCredits,
       creditsCharged: estimatedCredits,
-      creditBalance: deduction.newBalance,
+      ...(referenceBilling.mode === "byok" ? {} : { creditBalance: deduction.newBalance }),
     }
   },
 })

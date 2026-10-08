@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import Razorpay from "razorpay"
 import { createClient } from "@/lib/supabase/server"
 
-export async function POST(request: NextRequest) {
+async function legacyPOST(request: NextRequest) {
   try {
     const keyId=process.env.RAZORPAY_KEY_ID,keySecret=process.env.RAZORPAY_KEY_SECRET
     if(!keyId||!keySecret)return NextResponse.json({error:"Payments are not configured."},{status:503})
@@ -19,4 +19,8 @@ export async function POST(request: NextRequest) {
     const order=await razorpay.orders.create({amount:Math.round(price*100),currency:"INR",receipt:`course_${user.id.slice(0,8)}_${Date.now()}`,notes:{type:"course",profile_id:user.id,course_id:course.id,course_title:course.title}})
     return NextResponse.json({orderId:order.id,amount:order.amount,keyId,email:user.email||"",name:user.user_metadata?.full_name||"Creator",courseTitle:course.title})
   } catch(error) { return NextResponse.json({error:error instanceof Error?error.message:"Could not start checkout."},{status:500}) }
+}
+
+export async function POST() {
+  return NextResponse.json({ error: "This offer is currently unavailable. Subscribe to AI Director Hub Pro for ₹799/month.", billingUrl: "/billing" }, { status: 410 })
 }

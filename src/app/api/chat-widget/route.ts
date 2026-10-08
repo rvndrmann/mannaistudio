@@ -1,3 +1,5 @@
+import { runUserProvider } from "@/lib/byok/run-user-provider"
+import { chatModelProvider } from "@/lib/byok/chat-source"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { ZodError } from "zod"
@@ -47,7 +49,7 @@ const MAX_TOOL_STEPS = 2
 // than answering one question.
 const MEMBER_TOOL_STEPS = 6
 
-type WidgetBrand = BrandRecord & { id: string; widget_enabled: boolean; widget_greeting: string; widget_agent_key: string }
+type WidgetBrand = BrandRecord & { id: string; user_id: string; widget_enabled: boolean; widget_greeting: string; widget_agent_key: string }
 
 /**
  * The brand whose widget is live.
@@ -173,11 +175,11 @@ async function runMemberTurn(request: NextRequest, input: ReturnType<typeof lead
   let openedProject: { id: string; name: string } | null = null
 
   for (let step = 0; step < MEMBER_TOOL_STEPS; step += 1) {
-    const turn = isAnthropicProtocolModel(model)
+    const turn = await runUserProvider(user.id, chatModelProvider(model), async () => isAnthropicProtocolModel(model)
       ? await createAnthropicDirectorToolTurn({ userId: user.id, model, instructions, items, tools })
       : model.startsWith("gemini")
       ? await createGoogleDirectorToolTurn({ userId: user.id, model, instructions, items, tools })
-      : await createDirectorToolTurn({ userId: user.id, model, instructions, items, tools })
+      : await createDirectorToolTurn({ userId: user.id, model, instructions, items, tools }))
     if (turn.content) content = turn.content
     if (!turn.calls.length) break
 
@@ -376,11 +378,11 @@ export async function POST(request: NextRequest) {
     const tools = [leadCaptureToolDefinition()]
 
     for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
-      const turn = isAnthropicProtocolModel(model)
+      const turn = await runUserProvider(brand.user_id, chatModelProvider(model), async () => isAnthropicProtocolModel(model)
         ? await createAnthropicDirectorToolTurn({ userId: key, model, instructions, items, tools })
         : model.startsWith("gemini")
         ? await createGoogleDirectorToolTurn({ userId: key, model, instructions, items, tools })
-        : await createDirectorToolTurn({ userId: key, model, instructions, items, tools })
+        : await createDirectorToolTurn({ userId: key, model, instructions, items, tools }))
       if (turn.content) content = turn.content
       if (!turn.calls.length) break
 

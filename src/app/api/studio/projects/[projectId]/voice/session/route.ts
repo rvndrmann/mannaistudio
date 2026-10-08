@@ -1,3 +1,4 @@
+import { runUserProvider } from "@/lib/byok/run-user-provider"
 import { NextRequest, NextResponse } from "next/server"
 import { ZodError } from "zod"
 import { buildDirectorInstructions } from "@/lib/studio/conversation"
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (request.nextUrl.searchParams.get("dryRun") === "1") {
       return NextResponse.json({ dryRun: true, ...contextSummary, includesHistory: instructions.includes("Recent conversation from the chat panel") })
     }
-    const session = await createOpenAIRealtimeClientSecret({ userId: context.user.id, voice: input.voice, instructions, tools: directorFunctionDefinitions() })
+    const session = await runUserProvider(context.user.id, "openai", () => createOpenAIRealtimeClientSecret({ userId: context.user.id, voice: input.voice, instructions, tools: directorFunctionDefinitions() }))
     return NextResponse.json({ provider: "openai", ...session, realtimeUrl: "https://api.openai.com/v1/realtime/calls", context: contextSummary })
   } catch (error) {
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid voice session request", issues: error.flatten() }, { status: 400 })

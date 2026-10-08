@@ -18,7 +18,7 @@ import {
 } from "@/lib/studio/generation-models";
 import { calculateCreditCost } from "@/lib/studio/credits";
 import { blockedByCredits, resolveGenerationSource } from "@/lib/byok/generation-source";
-import { useConnectedProviders } from "@/lib/byok/use-connected-providers";
+import { useProviderBillingPolicy } from "@/lib/byok/use-connected-providers";
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
 import { downloadSignedMedia } from "@/lib/studio/signed-media";
 import type { QuickHistoryItem } from "@/lib/studio/quick-media";
@@ -35,7 +35,7 @@ const POLL_TIMEOUT_MS = 20 * 60 * 1000;
 
 export default function QuickVideoPage() {
   const { user, signInWithGoogle } = useAuth();
-  const connectedProviders = useConnectedProviders();
+  const { providers: connectedProviders, ownKeysOnly } = useProviderBillingPolicy();
   const history = useQuickHistory({ type: "video", limit: 24 });
 
   const [prompt, setPrompt] = useState("");
@@ -77,7 +77,7 @@ export default function QuickVideoPage() {
     () => calculateCreditCost(model, "video", durationSeconds, { resolution, aspectRatio }),
     [model, durationSeconds, resolution, aspectRatio],
   );
-  const source = resolveGenerationSource({ model, connectedProviders, platformCredits });
+  const source = resolveGenerationSource({ model, connectedProviders, ownKeysOnly, platformCredits });
   const outOfCredits = blockedByCredits(source, creditBalance);
 
   const generating = attempt?.status === "generating";
@@ -269,7 +269,7 @@ export default function QuickVideoPage() {
                   ? `Runs on your own ${source.provider} key. Billed by them, no studio credits.`
                   : `${platformCredits} credits for ${durationSeconds} seconds at ${resolution}.`}
               >
-                {source.ownKey ? "Your key" : `⚡ ${source.credits}`}
+                {source.requiresKey ? source.label : source.ownKey ? "Your key" : `⚡ ${source.credits}`}
               </span>
             </div>
             <button
@@ -279,8 +279,9 @@ export default function QuickVideoPage() {
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-3 text-sm font-bold text-black transition hover:bg-[#a5de25] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-              {generating ? status || "Generating…" : outOfCredits ? "Not enough credits" : "Generate"}
+              {generating ? status || "Generating…" : source.requiresKey ? "Connect API key to generate" : outOfCredits ? "Not enough credits" : "Generate"}
             </button>
+            {source.requiresKey && <a href="/studio/integrations" className="mt-3 block text-sm text-[#b9f42e] underline">Connect your provider API keys</a>}
           </div>
         </aside>
 

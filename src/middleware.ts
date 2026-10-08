@@ -37,7 +37,7 @@ const pausedPaths = ['/feed', '/services', '/challenges', '/messages']
  * forgotten is the one someone finds.
  */
 const adminOnlyPaths = [
-    '/billing', '/portfolio', '/credits',
+    '/portfolio', '/credits',
     '/social', '/marketing', '/analytics', '/ads', '/calendar', '/competitors', '/blog',
 ]
 

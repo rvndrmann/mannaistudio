@@ -3,6 +3,7 @@ import { NextRequest } from "next/server"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { pollImages } from "./poll-images"
 import { retrieveOpenAIImage } from "./openai"
+vi.mock("@/lib/byok/preferences", () => ({ ownKeysOnly: vi.fn(async () => false) }))
 vi.mock("./openai", () => ({ retrieveOpenAIImage: vi.fn(async () => ({ status: "pending" })) }))
 function context(job: Record<string, unknown>) {
   const query = { update: () => query, then: (resolve: (value: unknown) => unknown) => Promise.resolve({ error: null }).then(resolve), select: () => query, eq: () => query, maybeSingle: async () => ({ data: job, error: null }) }

@@ -58,11 +58,9 @@ export async function fetchCourseWithLessons(courseId: string) {
         return courses.find(c => c.id === courseId) || courses[0]
     }
 
-    const { data: lessons } = await supabase
-        .from('lessons')
-        .select('*')
-        .eq('course_id', courseId)
-        .order('order', { ascending: true })
+    const response = await fetch(`/api/courses/${encodeURIComponent(courseId)}/lessons`, { cache: 'no-store' })
+    if (!response.ok) throw new Error('Could not load course lessons')
+    const { lessons } = await response.json()
 
     return {
         ...course,
@@ -106,11 +104,15 @@ export async function enrollFreeCourse(courseId: string) {
     return !error
 }
 
-// Get Supabase Storage public URL for a video
-export function getVideoUrl(path: string) {
+// Authorized temporary URL for a private course video.
+export async function getVideoUrl(path: string) {
     if (!isSupabaseConfigured()) return path
-
-    // We'll use dynamic import only if needed
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
-    return `${url}/storage/v1/object/public/videos/${path}`
+    const prefix = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/videos/`
+    const storagePath = path.startsWith(prefix) ? decodeURIComponent(path.slice(prefix.length).split('?')[0]) : path
+    if (/^https?:\/\//i.test(storagePath)) return storagePath
+    const supabase = await getClient()
+    if (!supabase) throw new Error('Supabase is not configured')
+    const { data, error } = await supabase.storage.from('videos').createSignedUrl(storagePath, 15 * 60)
+    if (error) throw error
+    return data.signedUrl
 }

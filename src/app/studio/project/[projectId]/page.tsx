@@ -58,7 +58,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models";
-import { getModelLabel, imageGenerationModels, supportedVideoModel, videoDurationOptions, videoGenerationModels, videoModelMaxDuration, type ImageGenerationModelId } from "@/lib/studio/generation-models";
+import { getModelLabel, imageGenerationModels, supportedVideoModel, videoDurationOptions, videoGenerationModels, videoModelMaxDuration, type ImageGenerationModelId, type VideoGenerationModelId } from "@/lib/studio/generation-models";
 import { resolveShotSeconds } from "@/lib/studio/shot-duration";
 import { defaultDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows";
 import { isAbandonedRun } from "@/lib/studio/workflow-runs";
@@ -70,7 +70,7 @@ import { readGenerationResponse } from "@/lib/studio/generation-response";
 import { requestProjectImage } from "@/lib/studio/image-request";
 import { projectStoryboardImageModel } from "@/lib/studio/project-image-model";
 import { blockedByCredits, resolveGenerationSource } from "@/lib/byok/generation-source";
-import { useConnectedProviders } from "@/lib/byok/use-connected-providers";
+import { useProviderBillingPolicy } from "@/lib/byok/use-connected-providers";
 import { useAuth } from "@/components/auth/auth-provider";
 import { fbTrack } from "@/lib/fbpixel";
 import { claimOnce } from "@/lib/track-once";
@@ -834,7 +834,11 @@ export default function WorkspacePage({
       // with exactly their permissions — nothing is elevated to make this work.
       const { data: { session } } = await createClient().auth.getSession();
       if (!session?.access_token) throw new Error("Your session has expired. Sign in again to keep going.");
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/director-chat`, {
+      const localDevelopment = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+      const chatUrl = localDevelopment
+        ? `/api/studio/projects/${projectId}/director/chat`
+        : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/director-chat`;
+      const response = await fetch(chatUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ projectId, episodeId: episode.id, sessionId: data.activeSessionId || chatSessionId || undefined, message: outgoing, mentionedEntityIds, model: directorModel, idempotencyKey: crypto.randomUUID(), stream: true, automated }),
@@ -1678,7 +1682,7 @@ export default function WorkspacePage({
               refresh={() => void load(true)}
               onModeChange={changeAutopilotMode}
             />
-            {chatError && <p role="alert" className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-[12px] text-red-200">{chatError}</p>}
+            {chatError && <div role="alert" className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-[12px] text-red-200"><p>{chatError}</p>{/subscri|API key/i.test(chatError) && <div className="mt-3 flex gap-3"><Link href="/billing" className="rounded-lg bg-primary px-3 py-2 font-semibold text-black">Subscribe to All Access</Link><Link href="/studio/integrations" className="rounded-lg border border-white/20 px-3 py-2 text-white">Connect API keys</Link></div>}</div>}
             {voiceState !== "idle" && <p className={`mt-3 rounded-lg border p-2.5 text-[12px] ${voiceState === "connected" ? "border-[#b9f42e]/30 bg-[#b9f42e]/10 text-[#d9ff84]" : "border-white/[0.06] bg-white/[0.03] text-zinc-300"}`}>{voiceState === "connecting" ? "Connecting your AI Voice Director…" : voiceState === "connected" ? "AI Voice Director is listening. You can speak naturally." : voiceError}</p>}
             <div ref={chatEndRef} />
 
@@ -3224,7 +3228,7 @@ function AssetWorkspace({
   const [working, setWorking] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
-  const connectedProviders = useConnectedProviders();
+  const { providers: connectedProviders, ownKeysOnly } = useProviderBillingPolicy();
   useEffect(() => {
     // getUser touches the auth lock, which supabase may steal from a stalled
     // refresh; an unhandled rejection here would crash the workspace.
@@ -3611,7 +3615,7 @@ function AssetWorkspace({
   // own provider key serves it. The card used to price itself from the credit
   // table alone and so disagreed with the server twice: it showed a cost that
   // was never charged, and disabled itself over a balance never to be spent.
-  const generationSource = resolveGenerationSource({ model: model as ImageGenerationModelId, connectedProviders, platformCredits: platformCreditCost });
+  const generationSource = resolveGenerationSource({ model: model as ImageGenerationModelId, connectedProviders, ownKeysOnly, platformCredits: platformCreditCost });
   const currentCreditCost = generationSource.credits;
   const creditsBlocked = blockedByCredits(generationSource, creditBalance);
 
@@ -3976,11 +3980,12 @@ function AssetWorkspace({
                       ? "\u{1F511} Your key"
                       : <><Sparkles className="mb-0.5 inline h-3 w-3" /> {currentCreditCost}</>}
                   </span>
+                  {generationSource.requiresKey && <a href="/studio/integrations" className="text-xs text-[#b9f42e] underline">Connect API key</a>}
                   {creditsBlocked ? (
                     <button
                       disabled
                       className="grid h-8 w-8 place-items-center rounded-full bg-zinc-700 text-zinc-400 opacity-50"
-                      title="Insufficient credits"
+                      title={generationSource.requiresKey ? "Connect your provider API key under Integrations" : "Insufficient credits"}
                     >
                       <Zap className="h-4 w-4" />
                     </button>
@@ -4010,7 +4015,7 @@ function AssetWorkspace({
               </p>
             )}
             
-            {creditsBlocked && (
+            {creditsBlocked && !generationSource.requiresKey && (
               <p className="mt-4 text-center text-xs text-amber-300">
                 Insufficient credits (⚡ {currentCreditCost} needed). <a href="/studio/credits" className="font-bold underline hover:text-[#b9f42e]">Buy more</a>
               </p>
@@ -6113,7 +6118,9 @@ function ShotMediaWorkspace({
   const currentActiveChosenSource = isImage ? media.shot.keyframe_image : media.shot.video_url;
   const isCurrentlyChosen = Boolean(previewSource && previewSource === currentActiveChosenSource);
 
-  const currentCreditCost = calculateCreditCost(model, isImage ? "image" : "video", isGenjutsu && genjutsuSourceInfo ? genjutsuSourceInfo.billedSeconds : durationSeconds, { quality, aspectRatio, resolution: isSoulV2 ? soulResolution : resolution });
+  const { providers: connectedProviders, ownKeysOnly } = useProviderBillingPolicy();
+  const generationSource = resolveGenerationSource({ model: model as ImageGenerationModelId | VideoGenerationModelId, connectedProviders, ownKeysOnly, platformCredits: calculateCreditCost(model, isImage ? "image" : "video", isGenjutsu && genjutsuSourceInfo ? genjutsuSourceInfo.billedSeconds : durationSeconds, { quality, aspectRatio, resolution: isSoulV2 ? soulResolution : resolution }) });
+  const currentCreditCost = generationSource.credits;
   const displayGenerations = useMemo(() => {
     return [...genHistory].sort((a, b) => {
       const aChosen = Boolean(a.videoUrl && a.videoUrl === currentActiveChosenSource);
@@ -6406,7 +6413,7 @@ function ShotMediaWorkspace({
               onClick={generate}
               className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3.5 py-2 text-xs font-bold text-[#b9f42e] hover:bg-white/10 transition shadow-sm hover:scale-[1.02] active:scale-[0.98]"
             >
-              ↻ Regenerate (⚡ {currentCreditCost} Credits)
+              ↻ Regenerate ({generationSource.ownKey || generationSource.requiresKey ? generationSource.label : `${currentCreditCost} Credits`})
             </button>
             <span className="ml-auto text-xs text-zinc-500">
               {genHistory.length > 1 ? `${genHistory.length} generations` : "Private asset"}
@@ -6926,13 +6933,14 @@ function ShotMediaWorkspace({
 
                 <div className="flex items-center justify-between border-t border-white/5 pt-3">
                   <span className="text-xs font-semibold text-zinc-400">
-                    <Sparkles className="mb-0.5 inline h-3 w-3" /> {currentCreditCost}
+                    {generationSource.ownKey || generationSource.requiresKey ? generationSource.label : <><Sparkles className="mb-0.5 inline h-3 w-3" /> {currentCreditCost}</>}
                   </span>
-                  {creditBalance !== null && creditBalance < currentCreditCost ? (
+                  {generationSource.requiresKey && <a href="/studio/integrations" className="text-xs text-[#b9f42e] underline">Connect API key</a>}
+                  {blockedByCredits(generationSource, creditBalance) ? (
                     <button
                       disabled
                       className="grid h-8 w-8 place-items-center rounded-full bg-zinc-700 text-zinc-400 opacity-50"
-                      title="Insufficient credits"
+                      title={generationSource.requiresKey ? "Connect your provider API key under Integrations" : "Insufficient credits"}
                     >
                       <Zap className="h-4 w-4" />
                     </button>

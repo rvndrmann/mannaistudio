@@ -26,6 +26,7 @@ import { byokProviderFor } from "./providers"
 export type GenerationSource = {
   /** True when the customer's own provider account will be billed. */
   ownKey: boolean
+  requiresKey: boolean
   /** The provider that will serve it, whoever pays. */
   provider: string
   /** Credits this will cost. Always zero on the customer's own key. */
@@ -40,6 +41,7 @@ export function resolveGenerationSource(input: {
   connectedProviders: readonly string[]
   /** What it would cost if the studio paid. */
   platformCredits: number
+  ownKeysOnly?: boolean
 }): GenerationSource {
   const provider = generationProvider(input.model)
   // Matched through the name map, not by comparing the two catalogues
@@ -52,9 +54,10 @@ export function resolveGenerationSource(input: {
   const ownKey = byokProvider !== null && input.connectedProviders.includes(byokProvider)
   return {
     ownKey,
+    requiresKey: Boolean(input.ownKeysOnly && !ownKey),
     provider,
-    credits: ownKey ? 0 : input.platformCredits,
-    label: ownKey ? "Your key" : `${input.platformCredits}`,
+    credits: ownKey || input.ownKeysOnly ? 0 : input.platformCredits,
+    label: ownKey ? "Your key" : input.ownKeysOnly ? (byokProvider ? "Connect API key" : "BYOK unavailable") : `${input.platformCredits}`,
   }
 }
 
@@ -65,6 +68,7 @@ export function resolveGenerationSource(input: {
  * is the bug this exists to prevent.
  */
 export function blockedByCredits(source: GenerationSource, creditBalance: number | null): boolean {
+  if (source.requiresKey) return true
   if (source.ownKey) return false
   if (creditBalance === null) return false
   return creditBalance < source.credits

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createServiceClient } from "@/lib/supabase/service"
 import { fetchSiteFeatures } from "@/lib/studio/feature-flags"
 
 /**
@@ -15,7 +15,7 @@ import { fetchSiteFeatures } from "@/lib/studio/feature-flags"
  */
 export async function byokPaused(): Promise<boolean> {
   try {
-    const supabase = await createClient()
+    const supabase = createServiceClient()
     const features = await fetchSiteFeatures(supabase)
     return !features.byok
   } catch {
@@ -24,4 +24,4 @@ export async function byokPaused(): Promise<boolean> {
 }
 
 export const BYOK_PAUSED_MESSAGE =
-  "Bringing your own API keys is paused right now. Your saved keys are untouched — generations run on studio credits until it is switched back on."
+  "Bringing your own API keys is paused right now. Your saved keys are untouched. BYOK-only subscriptions cannot generate until it is switched back on."

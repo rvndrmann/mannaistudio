@@ -19,19 +19,14 @@ export default function IntegrationsPage() {
             <ArrowLeft className="h-4 w-4" />
             <span>Back to Studio</span>
           </Link>
-          <Link
-            href="/studio/credits"
-            className="rounded-lg p-2 text-xs font-semibold text-zinc-400 transition hover:bg-white/[0.06] hover:text-white"
-          >
-            Studio credits
-          </Link>
+
         </div>
       </header>
 
       <main className="mx-auto w-full max-w-3xl px-5 py-10">
         <h1 className="t-display text-zinc-100">Integrations</h1>
         <p className="mt-2 text-sm text-zinc-400">
-          Connect your own model-provider keys, or keep using studio credits.
+          Connect your own API keys to use AI chat, image generation, and video generation. An active subscription is required.
         </p>
         <div className="mt-8">
           <IntegrationsPanel />

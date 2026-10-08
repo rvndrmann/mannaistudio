@@ -12,11 +12,10 @@ import { checkEnrollment, enrollFreeCourse } from "@/lib/supabase-helpers"
 import { createClient } from "@/lib/supabase/client"
 import { fbTrack } from "@/lib/fbpixel"
 import { claimOnce } from "@/lib/track-once"
-import { formatUsd } from "@/lib/currency"
 import { readProgress, writeProgress } from "@/lib/course-progress"
 import CourseDigitalProducts from "@/components/courses/CourseDigitalProducts"
 import StudioCreditOffer from "@/components/studio/StudioCreditOffer"
-import { defaultBillingSettings, fetchBillingSettings, getActivePlanPrice, hasAllCoursesAccess, hasPremiumAccess, isAdminUser } from "@/lib/membership"
+import { defaultBillingSettings, fetchBillingSettings, hasAllCoursesAccess, hasPremiumAccess, isAdminUser } from "@/lib/membership"
 // @ts-ignore
 import confetti from "canvas-confetti"
 
@@ -119,11 +118,9 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                     .eq('is_published', true)
                     .single()
                 if (courseData) {
-                    const { data: lessonData } = await supabase
-                        .from('lessons')
-                        .select('*')
-                        .eq('course_id', id)
-                        .order('order', { ascending: true })
+                    const lessonResponse = await fetch(`/api/courses/${encodeURIComponent(String(id))}/lessons`, { cache: "no-store" })
+                    if (!lessonResponse.ok) throw new Error("Could not load course lessons")
+                    const { lessons: lessonData } = await lessonResponse.json()
                     const lessons = (lessonData || []).map((l: any, i: number) => ({
                         id: i + 1,
                         title: l.title,
@@ -138,16 +135,15 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                     // RLS returns no row for drafts and unknown IDs. Never
                     // substitute mock content for a course the database hid.
                     if (courseError?.code === "PGRST116") setCourse(null)
-                    else setCourse(mockCourses.find(c => c.id === id) || mockCourses[0])
+                    else setCourse(null)
                 }
             } catch {
-                const mock = mockCourses.find(c => c.id === id) || mockCourses[0]
-                setCourse(mock)
+                setCourse(null)
             }
             setCourseLoading(false)
         }
         load()
-    }, [id])
+    }, [id, user?.id, isEnrolled, hasAllCourseEntitlement])
 
     // CourseStart: opening a course is the first thing past the landing page
     // that means anything, so it is worth reporting — but only the first time
@@ -345,33 +341,13 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                 setIsEnrolled(true)
                 confetti({ particleCount: 50, spread: 60 })
             }
-        } else if (Number.isFinite(Number(course.price)) && Number(course.price) > 0) {
-            try {
-                if (!(window as any).Razorpay) {
-                    const script = document.createElement("script")
-                    script.src = "https://checkout.razorpay.com/v1/checkout.js"
-                    await new Promise<void>((resolve,reject)=>{script.onload=()=>resolve();script.onerror=()=>reject(new Error("Could not load payment checkout."));document.body.appendChild(script)})
-                }
-                const response=await fetch("/api/courses/checkout",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({courseId:course.id})})
-                const order=await response.json()
-                if(!response.ok)throw new Error(order.error||"Could not start course checkout.")
-                const checkout=new (window as any).Razorpay({key:order.keyId,order_id:order.orderId,amount:order.amount,currency:"INR",name:"AI Director Hub",description:order.courseTitle,prefill:{email:order.email,name:order.name},theme:{color:"#b9f42e"},handler:async(payment:any)=>{
-                    try{const verified=await fetch("/api/courses/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payment)});const result=await verified.json();if(!verified.ok)throw new Error(result.error||"Payment verification failed.");setIsEnrolled(true);fbTrack("Purchase",{content_type:"course",content_ids:[course.id],content_name:course.title,value:Number(course.price),currency:"INR"})}catch(error){setCheckoutError(error instanceof Error?error.message:"Payment verification failed.")}
-                    setEnrollLoading(false)
-                },modal:{ondismiss:()=>setEnrollLoading(false)}})
-                checkout.open()
-                return
-            } catch(error) {
-                setCheckoutError(error instanceof Error?error.message:"Could not start checkout.")
-            }
         } else {
-            setCheckoutError("This course does not have a purchase price yet. Please contact the team for pricing.")
+            window.location.assign("/billing")
         }
 
         setEnrollLoading(false)
     }
 
-    const activePlanPrice = getActivePlanPrice(billingSettings)
 
     if (courseLoading) {
         return (
@@ -415,8 +391,8 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                         <Lock className="w-12 h-12 text-white/40" />
                                     </div>
                                     <div className="text-center space-y-2">
-                                        <h3 className="text-xl font-bold">Enroll to access this course</h3>
-                                        <p className="text-white/50 text-sm">{Number.isFinite(Number(course.price)) && Number(course.price)>0 ? `${formatUsd(Number(course.price))} · one-time course purchase` : "Contact the team for course pricing."}</p>
+                                        <h3 className="text-xl font-bold">Subscribe to access all courses</h3>
+                                        <p className="text-white/50 text-sm">{"Included in AI Director Hub Pro · ₹799/month"}</p>
                                     </div>
                                     <button
                                         onClick={handleEnroll}
@@ -428,7 +404,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                         ) : (
                                             <ShoppingCart className="w-5 h-5" />
                                         )}
-                                        {enrollLoading ? 'Processing...' : Number.isFinite(Number(course.price)) && Number(course.price)>0 ? `Buy Course · ${formatUsd(Number(course.price))}` : 'Check Course Pricing'}
+                                        {enrollLoading ? 'Processing...' : 'Subscribe · ₹799/month'}
                                     </button>
                                 </div>
                             ) : activeLessonYouTubeUrl ? (
@@ -519,7 +495,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                             <div className="glass-card p-6 rounded-2xl border border-primary/20 bg-primary/5 flex items-center justify-between">
                                 <div className="space-y-1">
                                     <h3 className="font-bold text-lg">Get access to this course</h3>
-                                    <p className="text-sm text-white/50">{Number.isFinite(Number(course.price)) && Number(course.price)>0 ? `${formatUsd(Number(course.price))} · one-time purchase` : "Contact the team for course pricing."}</p>
+                                    <p className="text-sm text-white/50">{"Included in AI Director Hub Pro · ₹799/month"}</p>
                                 </div>
                                 <button
                                     onClick={handleEnroll}
@@ -533,7 +509,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     ) : (
                                         <ShoppingCart className="w-4 h-4" />
                                     )}
-                                    {enrollLoading ? 'Processing...' : Number.isFinite(Number(course.price)) && Number(course.price)>0 ? `Buy Course · ${formatUsd(Number(course.price))}` : 'Check Course Pricing'}
+                                    {enrollLoading ? 'Processing...' : 'Subscribe · ₹799/month'}
                                 </button>
                             </div>
                         )}

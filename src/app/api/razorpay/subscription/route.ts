@@ -5,7 +5,7 @@ import { applyBillingOverrides, isBillingTierId, type BillingTierId } from '@/li
 import { sendCapiEvent } from '@/lib/meta-capi'
 
 // Creates a Razorpay subscription for the logged-in user against the chosen tier.
-export async function POST(request: NextRequest) {
+async function legacyPOST(request: NextRequest) {
     try {
         const keyId = process.env.RAZORPAY_KEY_ID
         const keySecret = process.env.RAZORPAY_KEY_SECRET
@@ -94,4 +94,8 @@ export async function POST(request: NextRequest) {
     } catch (error: any) {
         return NextResponse.json({ error: error?.message || 'Internal Server Error' }, { status: 500 })
     }
+}
+
+export async function POST() {
+  return NextResponse.json({ error: "This offer is currently unavailable. Subscribe to AI Director Hub Pro for ₹799/month.", billingUrl: "/billing" }, { status: 410 })
 }

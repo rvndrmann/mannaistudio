@@ -1,3 +1,4 @@
+import { activeCredentialId, activeCredentialPart, isRunningOnCustomerKey } from "@/lib/byok/active-credential"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { createBytePlusAsset, getBytePlusAsset } from "./byteplus"
 import { createServiceClient } from "@/lib/supabase/service"
@@ -117,6 +118,7 @@ const ASSET_GROUP_SETTING = "byteplus_asset_group_id"
  * something this created earlier.
  */
 export async function sharedAssetGroupId(supabase: SupabaseClient): Promise<string | undefined> {
+  if (isRunningOnCustomerKey("byteplus")) return activeCredentialPart("byteplus", "assetGroupId")
   const fromEnv = process.env.ARK_ASSET_GROUP_ID?.trim()
   if (fromEnv) return fromEnv
   const { data } = await supabase
@@ -130,6 +132,7 @@ export async function sharedAssetGroupId(supabase: SupabaseClient): Promise<stri
 
 /** Remembers a group the provider just made, so the next process reuses it. */
 export async function rememberAssetGroupId(supabase: SupabaseClient, groupId: string) {
+  if (isRunningOnCustomerKey("byteplus")) return
   // This is server-owned provider configuration. The request client correctly
   // cannot write site_settings under RLS, so use the service client after the
   // route has already authenticated project access.
@@ -142,6 +145,7 @@ export async function rememberAssetGroupId(supabase: SupabaseClient, groupId: st
 }
 
 async function forgetAssetGroupId(supabase: SupabaseClient) {
+  if (isRunningOnCustomerKey("byteplus")) return
   let settingsClient = supabase
   try { settingsClient = createServiceClient() } catch { /* tests/local setups without a service key */ }
   const { error } = await settingsClient
@@ -151,6 +155,7 @@ async function forgetAssetGroupId(supabase: SupabaseClient) {
 }
 
 async function rememberRegistration(supabase: SupabaseClient, row: Record<string, unknown>) {
+  row.credential_id = activeCredentialId("byteplus") || null
   const { error } = await supabase.from("creator_byteplus_assets").insert(row)
   if (!error) return
   // 23505 is a unique violation: someone else registered this image between
@@ -161,6 +166,7 @@ async function rememberRegistration(supabase: SupabaseClient, row: Record<string
   const { error: updateError } = await supabase
     .from("creator_byteplus_assets")
     .update(row)
+    .filter("credential_id", activeCredentialId("byteplus") ? "eq" : "is", activeCredentialId("byteplus") || "null")
     .eq("source_path", row.source_path as string)
   if (updateError) {
     throw new Error(`Registered ${row.asset_id} with the provider but could not record it: ${updateError.message}`)
@@ -222,6 +228,7 @@ export async function registerAssetOnce(input: {
   const { data: existing } = await supabase
     .from("creator_byteplus_assets")
     .select("id,asset_id,asset_uri,use_count")
+    .filter("credential_id", activeCredentialId("byteplus") ? "eq" : "is", activeCredentialId("byteplus") || "null")
     .eq("source_path", sourcePath)
     .maybeSingle()
 
@@ -259,7 +266,7 @@ export async function registerAssetOnce(input: {
     // The operator-owned environment setting is deliberate and cannot safely
     // be rewritten here. A database-owned group, however, may have been removed
     // during console cleanup; recover once by replacing that dead shared group.
-    if (!missingStoredGroup || process.env.ARK_ASSET_GROUP_ID?.trim()) throw error
+    if (!missingStoredGroup || (!isRunningOnCustomerKey("byteplus") && process.env.ARK_ASSET_GROUP_ID?.trim())) throw error
     await forgetAssetGroupId(supabase)
     created = await createBytePlusAsset({ imageUrl: input.imageUrl, name: input.name, assetType })
   }
@@ -343,6 +350,7 @@ export async function recordExistingAsset(input: {
     const { data: existing } = await input.supabase
       .from("creator_byteplus_assets")
       .select("id,use_count")
+      .filter("credential_id", activeCredentialId("byteplus") ? "eq" : "is", activeCredentialId("byteplus") || "null")
       .eq("source_path", input.sourcePath)
       .maybeSingle()
     if (existing) {
@@ -354,6 +362,7 @@ export async function recordExistingAsset(input: {
     }
     await input.supabase.from("creator_byteplus_assets").insert({
       source_path: input.sourcePath,
+      credential_id: activeCredentialId("byteplus") || null,
       asset_id: input.assetId,
       asset_uri: `asset://${input.assetId}`,
       name: input.name || null,

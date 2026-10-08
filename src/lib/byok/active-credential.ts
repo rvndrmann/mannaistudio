@@ -21,13 +21,14 @@ import type { ByokProvider } from "./providers"
  * browser or on the edge runtime.
  */
 
-type ActiveCredential = { provider: ByokProvider; parts: CredentialParts }
+type ActiveCredential = { provider: ByokProvider; parts: CredentialParts; credentialId?: string }
 
 const storage = new AsyncLocalStorage<ActiveCredential>()
 
 /** Runs `work` with this credential in force for everything it awaits. */
-export function runWithCredential<T>(provider: ByokProvider, parts: CredentialParts, work: () => Promise<T>): Promise<T> {
-  return storage.run({ provider, parts }, work)
+export function runWithCredential<T>(provider: ByokProvider, parts: CredentialParts, work: () => Promise<T>, credentialId?: string): Promise<T> {
+  const parent = storage.getStore()
+  return storage.run({ provider, parts, credentialId: credentialId || (parent?.provider === provider ? parent.credentialId : undefined) }, work)
 }
 
 /**
@@ -40,13 +41,22 @@ export function runWithCredential<T>(provider: ByokProvider, parts: CredentialPa
  */
 export function activeCredentialPart(provider: ByokProvider, part: string): string | undefined {
   const active = storage.getStore()
-  if (!active || active.provider !== provider) return undefined
+  if (!active) return undefined
+  if (active.provider !== provider) throw new Error(`Connect a ${provider} key for this operation; platform fallback is prohibited during BYOK.`)
   const value = active.parts[part]
-  return value && value.trim() ? value : undefined
+  if (value && value.trim()) return value
+  if (provider === "byteplus" && part === "assetGroupId") return undefined
+  throw new Error(`Your ${provider} credential is missing ${part}; platform fallback is prohibited.`)
 }
 
 /** Whether a customer credential is serving the current work. */
 export function isRunningOnCustomerKey(provider: ByokProvider): boolean {
   const active = storage.getStore()
   return Boolean(active && active.provider === provider)
+}
+
+/** Non-secret vault identity, used to keep provider asset registries separate. */
+export function activeCredentialId(provider: ByokProvider): string | undefined {
+  const active = storage.getStore()
+  return active?.provider === provider ? active.credentialId : undefined
 }

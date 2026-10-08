@@ -1,3 +1,5 @@
+import { ALL_ACCESS_TYPE } from "@/lib/all-access-plan"
+import { reconcileAllAccess } from "@/lib/all-access-server"
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -98,6 +100,18 @@ export async function POST(req: Request) {
 
         if (!profileId) {
             // Nothing we can reconcile against; acknowledge so Razorpay stops retrying.
+            return NextResponse.json({ received: true })
+        }
+
+        if (subscription?.notes?.type === ALL_ACCESS_TYPE) {
+            if (eventType.startsWith('subscription.')) {
+                if (eventType === 'subscription.charged') {
+                    if (!paymentEntity?.id) throw new Error('Missing subscription payment')
+                    await reconcileAllAccess(subscriptionId, paymentEntity, Number(subscription.current_end))
+                } else {
+                    await reconcileAllAccess(subscriptionId)
+                }
+            }
             return NextResponse.json({ received: true })
         }
 

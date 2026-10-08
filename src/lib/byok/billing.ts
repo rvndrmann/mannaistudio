@@ -33,7 +33,7 @@ export class OwnKeysOnlyError extends Error {
   readonly status = 402
 
   constructor(provider: string) {
-    super(`You have chosen to run everything on your own provider keys, and no ${provider} key is connected. Connect one under Integrations, or turn off "only my own keys" to let this run on studio credits.`)
+    super(`Connect your own ${provider} API key under Integrations to continue. An active subscription is required to use your own keys.`)
     this.name = "OwnKeysOnlyError"
   }
 }
@@ -123,5 +123,5 @@ export function isProviderOutOfCredit(status: number | null, message: string): b
 
 /** What to offer when the customer's own provider account has run dry. */
 export function outOfCreditOffer(provider: string): string {
-  return `Your ${provider} account has no credit left, so this generation could not run on your key. Top up with ${provider}, or generate this one with studio credits instead.`
+  return `Your ${provider} account has no credit left, so this generation could not run on your key. Top up with ${provider} and try again.`
 }

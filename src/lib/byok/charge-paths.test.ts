@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { byokProviderFor } from "./providers"
-import { OwnKeysOnlyError } from "./billing"
+import { OwnKeysOnlyError, decideBilling } from "./billing"
 import { studioErrorStatus } from "@/lib/studio/server-context"
 
 /**
@@ -94,7 +94,9 @@ describe("provider names line up across the two catalogues", () => {
     const providers = Array.from(new Set(Array.from(models.matchAll(/provider: "([a-z]+)"/g)).map((m) => m[1])))
     expect(providers.length).toBeGreaterThan(0)
     for (const provider of providers) {
-      expect(byokProviderFor(provider), `${provider} has no BYOK mapping`).not.toBeNull()
+      if (provider === "higgsfield") {
+        expect(() => decideBilling({ hasCredential: false, platformCredits: 1, ownKeysOnly: true, provider })).toThrow(OwnKeysOnlyError)
+      } else expect(byokProviderFor(provider), `${provider} has no BYOK mapping`).not.toBeNull()
     }
   })
 })
@@ -107,7 +109,7 @@ describe("no refund path can hand back credits that were never taken", () => {
     // it prints credits. Every refund site had its own copy of this.
     const refundSites = [
       "src/lib/studio/execute-generation.ts",
-      "src/app/api/studio/projects/[projectId]/images/route.ts",
+      "src/lib/studio/poll-images.ts",
       "src/app/api/studio/projects/[projectId]/videos/route.ts",
       "src/app/api/studio/generate/image/route.ts",
       "src/app/api/studio/generate/video/route.ts",

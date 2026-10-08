@@ -51,7 +51,7 @@ export function IntegrationsPanel() {
   const [subscriptionRequired, setSubscriptionRequired] = useState(false);
   const [paused, setPaused] = useState<string | null>(null);
   const [vaultReadable, setVaultReadable] = useState(true);
-  const [ownKeysOnly, setOwnKeysOnly] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -61,14 +61,16 @@ export function IntegrationsPanel() {
   const load = useCallback(async () => {
     try {
       const response = await fetch("/api/studio/integrations", { cache: "no-store" });
-      if (!response.ok) return;
       const data = await readJson(response);
+      if (!response.ok) throw new Error(String(data.error || "Could not load API key settings. Please try again."));
+      setLoadError(null);
       setRows((data.providers as ProviderRow[]) || []);
       setConfigured(Boolean(data.configured));
       setSubscriptionRequired(Boolean(data.subscriptionRequired));
       setPaused(data.paused ? String(data.pausedMessage || "This is paused right now.") : null);
       setVaultReadable(data.vaultReadable !== false);
-      setOwnKeysOnly(Boolean(data.ownKeysOnly));
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Could not load API key settings.");
     } finally {
       setLoading(false);
     }
@@ -134,6 +136,8 @@ export function IntegrationsPanel() {
 
   if (loading) return <p className="text-sm text-zinc-500">Loading integrations…</p>;
 
+  if (loadError) return <div className="rounded-xl border border-primary/30 bg-primary/[.06] p-5 text-sm text-zinc-300"><h3 className="font-semibold text-white">Subscribe and connect your API keys</h3><p className="mt-2">{loadError}</p><Link href="/billing" className="mt-4 inline-flex rounded-lg bg-primary px-4 py-2 text-black">View subscriptions</Link></div>;
+
   // Checked before everything else: while it is paused, whether this account
   // could otherwise subscribe or connect is not the useful thing to say.
   if (paused) {
@@ -168,43 +172,13 @@ export function IntegrationsPanel() {
       <div className="rounded-xl border border-white/10 bg-[#1d1f1e] p-5">
         <h3 className="t-title text-zinc-100">Use your own provider keys</h3>
         <p className="mt-2 text-sm leading-6 text-zinc-400">
-          Connect a key and generations on that provider are billed to your own account by the
-          provider, and cost no studio credits. Providers you have not connected keep using studio
-          credits as before. Keys are encrypted and can never be read back — only replaced.
+          Connect a key for each provider you use. Chat and generations are billed directly
+          to your provider account. Missing keys block requests. Keys are encrypted and can
+          never be read back — only replaced.
         </p>
         <p className="mt-2 text-xs text-zinc-500">
           Create a key dedicated to this studio, and set a spending limit with your provider.
         </p>
-      </div>
-
-      <div className="rounded-xl border border-white/10 bg-[#1d1f1e] p-5">
-        <label className="flex items-start gap-3">
-          <input
-            type="checkbox"
-            checked={ownKeysOnly}
-            onChange={async (event) => {
-              const next = event.target.checked;
-              setOwnKeysOnly(next);
-              const response = await fetch("/api/studio/integrations", {
-                method: "PATCH",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({ ownKeysOnly: next }),
-              });
-              // Put the switch back if it did not save, rather than showing a
-              // setting that is not in force.
-              if (!response.ok) setOwnKeysOnly(!next);
-            }}
-            className="mt-1 h-4 w-4 accent-[#b9f42e]"
-          />
-          <span>
-            <span className="block font-semibold text-zinc-100">Only ever use my own keys</span>
-            <span className="mt-1 block text-sm leading-6 text-zinc-400">
-              Never spend studio credits on my behalf. A provider I have not connected is
-              refused instead of billed, so nothing runs unless one of my own accounts pays
-              for it.
-            </span>
-          </span>
-        </label>
       </div>
 
       {!vaultReadable && (

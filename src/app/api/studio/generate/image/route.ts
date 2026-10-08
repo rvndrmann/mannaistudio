@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
     const billing = decideBilling({
       hasCredential: byokProvider ? await hasCredential(context.user.id, byokProvider) : false,
       platformCredits: platformCost,
-      ownKeysOnly: await ownKeysOnly(context.user.id).catch(() => false),
+      ownKeysOnly: await ownKeysOnly(context.user.id),
       provider: byokProvider || provider,
     })
     const creditCost = billing.credits
@@ -307,14 +307,15 @@ export async function POST(request: NextRequest) {
       .upload(storagePath, rendered.image, { contentType: rendered.contentType, upsert: false })
     if (uploadError) throw uploadError
 
-    if (rendered.registeredAsset) {
-      await recordExistingAsset({
+    const recordedAsset = rendered.registeredAsset
+    if (recordedAsset) {
+      await runOnBillingAccount(() => recordExistingAsset({
         supabase: context.supabase,
         sourcePath: storagePath,
-        assetId: rendered.registeredAsset.assetId,
-        name: rendered.registeredAsset.name,
+        assetId: recordedAsset.assetId,
+        name: recordedAsset.name,
         userId: context.user.id,
-      })
+      }))
     }
 
     const { error: completeError } = await context.supabase

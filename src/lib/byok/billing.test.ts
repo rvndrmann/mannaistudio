@@ -74,7 +74,8 @@ describe("telling a spent provider account apart from a broken request", () => {
 
   it("names the provider in the offer, because that is where the top-up happens", () => {
     expect(outOfCreditOffer("byteplus")).toMatch(/byteplus/i)
-    expect(outOfCreditOffer("byteplus")).toMatch(/studio credits instead/i)
+    expect(outOfCreditOffer("byteplus")).toMatch(/top up with byteplus/i)
+    expect(outOfCreditOffer("byteplus")).not.toMatch(/studio credits instead/i)
   })
 })
 
@@ -97,7 +98,7 @@ describe("running on your own keys only", () => {
       decideBilling({ hasCredential: false, platformCredits: 12, ownKeysOnly: true, provider: "openai" })
     } catch (error) {
       expect((error as Error).message).toContain("openai")
-      expect((error as Error).message).toMatch(/connect one|turn off/i)
+      expect((error as Error).message).toMatch(/connect your own .* API key/i)
     }
   })
 
@@ -119,6 +120,6 @@ describe("how a refusal is reported over HTTP", () => {
   it("still says which key is missing and how to proceed", () => {
     const error = new OwnKeysOnlyError("byteplus")
     expect(error.message).toContain("byteplus")
-    expect(error.message).toMatch(/connect one|turn off/i)
+    expect(error.message).toMatch(/connect your own .* API key/i)
   })
 })

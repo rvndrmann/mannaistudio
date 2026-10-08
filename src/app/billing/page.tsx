@@ -1,12 +1,10 @@
 "use client"
 
+import AllAccessSubscriptionCard from "@/components/AllAccessSubscriptionCard"
 import Footer from "@/components/Footer"
 import EnterpriseOrderForm from "@/components/enterprise/EnterpriseOrderForm"
 import Navbar from "@/components/Navbar"
 import { useAuth } from "@/components/auth/auth-provider"
-import { orderedBillingTiers, tierFeatures, type BillingTierId } from "@/lib/billing-plans"
-import { useByokEnabled } from "@/lib/byok/use-byok-enabled"
-import { INR_PER_USD, formatInr, formatUsd, formatUsdWithInr } from "@/lib/currency"
 import {
   AlertCircle,
   BadgeCheck,
@@ -15,31 +13,25 @@ import {
   Check,
   ChevronDown,
   Clapperboard,
-  CreditCard,
   History,
   Image as ImageIcon,
   KeyRound,
   Layers3,
   Loader2,
-  Lock,
   Receipt,
   Sparkles,
   Video,
   Wand2,
   XCircle,
-  Zap,
 } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 
-const byokFaq: [string, string] = ["Can I use my own API keys?", "Yes, with an active paid subscription. Bring your own OpenAI, Google, BytePlus, or fal.ai API keys and pay the provider directly at its rates, or use studio credits when you prefer. Free accounts cannot use BYO API keys."]
-
 const faqs = [
-  ["How do credits work?", "Credits are used when generating AI images and videos. Planning, script writing, workflow instructions, and chat guidance are included in your plan."],
-  ["How do Razorpay subscriptions work?", "When you subscribe, Razorpay securely establishes a monthly recurring payment mandate. Your plan automatically renews each month, granting fresh credits to your account upon every successful charge."],
-  ["Can I cancel my subscription anytime?", "Yes. You can cancel your subscription anytime directly from your billing dashboard. Your membership access and remaining credits stay active until the end of your current billing period."],
-  ["Can I buy extra credits anytime?", `Active subscribers can purchase additional credits starting at $5 (${formatUsdWithInr(Math.ceil(5 * INR_PER_USD))}) up to any custom amount whenever their production needs grow. Free accounts cannot buy credits.`],
-  ["Why is my card charged in rupees?", `Prices are shown in US dollars for convenience, but AI Director Hub bills through Razorpay, an Indian payment gateway, so the charge settles in rupees and that is the amount your statement will show. International cards are accepted. Your bank applies its own exchange rate, so the dollar total may differ by a few cents from the figure shown here (currently converted at ₹${INR_PER_USD} to the dollar).`],
+  ["What does All Access include?", "Every published course, including new releases while subscribed, plus Creator Studio with your own supported provider API keys."],
+  ["How is Creator Studio usage billed?", "Your model provider bills your API account directly for chat and generation. All Access includes no Studio credits and never uses platform credits."],
+  ["Can I cancel my subscription anytime?", "Yes. Cancel renewal from your billing dashboard. Paid access continues until the end of your current billing period."],
+  ["Which API keys can I connect?", "OpenAI, Gemini, fal.ai, and BytePlus. A funded provider account is required. Features without support for your own keys cannot run on this plan."],
 ]
 
 const billingHighlights = [
@@ -49,7 +41,7 @@ const billingHighlights = [
   { icon: Clapperboard, label: "Storyboard Workflow" },
   { icon: Layers3, label: "Asset Library" },
   { icon: Wand2, label: "Workflow Skills" },
-  { icon: Zap, label: "Generation Credits" },
+  { icon: KeyRound, label: "Your own API keys" },
   { icon: BadgeCheck, label: "MCP & CLI" },
 ]
 
@@ -72,21 +64,10 @@ type UserSubscriptionInfo = {
 }
 
 export default function BillingPage() {
-  const { user, signInWithGoogle } = useAuth()
+  const { user } = useAuth()
   const [openFaq, setOpenFaq] = useState(0)
-  // Bring-your-own-keys can be paused from the admin panel. When it is, every
-  // place this page sells it has to go quiet too — an offer still advertised on
-  // the pricing page is one support asks about all week. Hidden until the flag
-  // says otherwise, so a paused offer never renders and then vanishes.
-  const byokEnabled = useByokEnabled()
-  const [loadingTier, setLoadingTier] = useState<string | null>(null)
   const [subSuccess, setSubSuccess] = useState<string | null>(null)
   const [subError, setSubError] = useState<string | null>(null)
-
-  // Custom Credit Top-Up state
-  const MIN_TOP_UP_INR = Math.ceil(5 * INR_PER_USD)
-  const [customCreditAmount, setCustomCreditAmount] = useState<number>(MIN_TOP_UP_INR)
-  const [topUpLoading, setTopUpLoading] = useState(false)
 
   // Subscription & Transaction history state
   const [subscription, setSubscription] = useState<UserSubscriptionInfo | null>(null)
@@ -116,71 +97,6 @@ export default function BillingPage() {
   }, [user])
 
 
-  const visibleFaqs = byokEnabled ? [...faqs, byokFaq] : faqs
-  const visibleHighlights = byokEnabled
-    ? [{ icon: KeyRound, label: "BYO API on every plan" }, ...billingHighlights]
-    : billingHighlights
-
-  const loadRazorpayScript = () =>
-    new Promise<boolean>((resolve) => {
-      if (typeof window !== "undefined" && (window as any).Razorpay) return resolve(true)
-      const script = document.createElement("script")
-      script.src = "https://checkout.razorpay.com/v1/checkout.js"
-      script.onload = () => resolve(true)
-      script.onerror = () => resolve(false)
-      document.body.appendChild(script)
-    })
-
-  const handleSubscribe = async (tierId: BillingTierId) => {
-    if (!user) {
-      signInWithGoogle()
-      return
-    }
-
-    setLoadingTier(tierId)
-    setSubSuccess(null)
-    setSubError(null)
-
-    try {
-      const scriptLoaded = await loadRazorpayScript()
-      if (!scriptLoaded) throw new Error("Failed to load Razorpay payment gateway script.")
-
-      const res = await fetch("/api/razorpay/subscription", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier: tierId }),
-      })
-
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Failed to create Razorpay subscription.")
-
-      const rzp = new (window as any).Razorpay({
-        key: data.keyId,
-        subscription_id: data.subscriptionId,
-        name: "AI Director Hub",
-        description: `${data.planName} Membership Subscription`,
-        prefill: {
-          email: data.email || "",
-          name: data.name || "Creator",
-        },
-        theme: { color: "#b9f42e" },
-        handler: (response: { razorpay_payment_id?: string; razorpay_subscription_id?: string; razorpay_signature?: string }) => {
-          setSubSuccess(`Subscribed to ${data.planName} tier! Reference: ${response.razorpay_payment_id || response.razorpay_subscription_id}`)
-          setLoadingTier(null)
-          loadBillingData()
-        },
-        modal: {
-          ondismiss: () => setLoadingTier(null),
-        },
-      })
-
-      rzp.open()
-    } catch (err) {
-      setSubError(err instanceof Error ? err.message : "Subscription checkout failed.")
-      setLoadingTier(null)
-    }
-  }
-
   const handleCancelSubscription = async () => {
     if (!user || !subscription?.subscriptionId) return
     if (!confirm("Are you sure you want to cancel your monthly subscription? Your access will remain active until the end of your current billing cycle.")) {
@@ -208,83 +124,10 @@ export default function BillingPage() {
     }
   }
 
-  const handleBuyCustomCredits = async (amountInr: number) => {
-    if (!user) {
-      signInWithGoogle()
-      return
-    }
-
-    if (!subscription?.active) {
-      setSubError("An active subscription is required to buy generation credits.")
-      return
-    }
-
-    if (amountInr < MIN_TOP_UP_INR) {
-      setSubError(`Minimum purchase is $5 (${formatUsdWithInr(MIN_TOP_UP_INR)}).`)
-      return
-    }
-
-    setTopUpLoading(true)
-    setSubSuccess(null)
-    setSubError(null)
-
-    try {
-      const scriptLoaded = await loadRazorpayScript()
-      if (!scriptLoaded) throw new Error("Failed to load Razorpay payment gateway script.")
-
-      const res = await fetch("/api/credits", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountInr }),
-      })
-
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Failed to create credit order")
-
-      const rzp = new (window as any).Razorpay({
-        key: data.keyId,
-        order_id: data.orderId,
-        amount: data.amount,
-        currency: "INR",
-        name: "AI Director Hub",
-        description: `${data.credits.toLocaleString()} Generation Credits (₹${data.priceInr.toLocaleString()})`,
-        prefill: { email: data.email, name: data.name },
-        theme: { color: "#b9f42e" },
-        handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
-          try {
-            const verifyRes = await fetch("/api/credits/verify", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-              }),
-            })
-            const verifyData = await verifyRes.json()
-            if (!verifyRes.ok) throw new Error(verifyData.error || "Payment verification failed")
-            setSubSuccess(verifyData.message)
-            loadBillingData()
-          } catch (vErr) {
-            setSubError(vErr instanceof Error ? vErr.message : "Payment verification failed")
-          } finally {
-            setTopUpLoading(false)
-          }
-        },
-        modal: {
-          ondismiss: () => setTopUpLoading(false),
-        },
-      })
-      rzp.open()
-    } catch (err) {
-      setSubError(err instanceof Error ? err.message : "Credit purchase failed.")
-      setTopUpLoading(false)
-    }
-  }
-
   return (
     <main className="min-h-screen bg-[#080908] text-white">
       <Navbar />
+      <div className="px-4 pt-24"><AllAccessSubscriptionCard /></div>
 
       <section className="px-4 pt-28 md:px-6">
         <div className="mx-auto max-w-[1540px] overflow-hidden rounded-[28px] border border-pink-500/25 bg-[radial-gradient(circle_at_82%_40%,rgba(255,0,102,.34),transparent_28%),linear-gradient(135deg,#33101f,#171010_58%,#260817)] p-8 md:p-12">
@@ -362,221 +205,12 @@ export default function BillingPage() {
         </section>
       )}
 
-      {/* MONTHLY SUBSCRIPTION PLANS */}
-      <section className="mx-auto max-w-[1200px] px-4 py-16 md:px-6">
-        <div className="mb-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h2 className="text-4xl font-semibold tracking-tight md:text-6xl">Upgrade your plan</h2>
-            <p className="mt-3 text-white/45">Choose the monthly plan that matches your AI production volume.</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="rounded-2xl border border-white/10 bg-white/[.05] px-5 py-3 text-sm font-bold text-white/70">
-              INR Monthly Pricing <span className="ml-2 rounded bg-primary px-2 py-0.5 text-xs text-black">RAZORPAY</span>
-            </span>
-          </div>
+      {(subSuccess || subError) && (
+        <div role="status" className="mx-auto max-w-[1200px] px-4 pt-8 md:px-6">
+          {subSuccess && <p className="rounded-2xl border border-primary/40 bg-primary/10 p-5 text-sm text-primary">{subSuccess}</p>}
+          {subError && <p className="rounded-2xl border border-red-500/40 bg-red-500/10 p-5 text-sm text-red-300"><AlertCircle className="mr-2 inline h-4 w-4" />{subError}</p>}
         </div>
-
-        {subSuccess && (
-          <div className="mb-8 flex items-center gap-3 rounded-2xl border border-primary/40 bg-primary/10 p-5 text-sm font-bold text-primary">
-            <Check className="h-5 w-5 shrink-0" />
-            <span>{subSuccess}</span>
-          </div>
-        )}
-
-        {subError && (
-          <div className="mb-8 flex items-center gap-3 rounded-2xl border border-red-500/40 bg-red-500/10 p-5 text-sm font-bold text-red-300">
-            <AlertCircle className="h-5 w-5 shrink-0 text-red-400" />
-            <span>{subError}</span>
-          </div>
-        )}
-
-        {byokEnabled && (
-          <div className="mb-8 flex flex-col gap-3 rounded-2xl border border-primary/30 bg-primary/[.06] p-5 sm:flex-row sm:items-center">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary text-black">
-              <KeyRound className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="font-semibold text-white">Bring your own API keys — included with every paid subscription.</p>
-              <p className="mt-1 text-sm text-white/55">Use OpenAI, Google, BytePlus, or fal.ai and pay provider rates directly. Free accounts cannot use BYO API keys.</p>
-            </div>
-          </div>
-        )}
-
-        <div className="grid gap-5 lg:grid-cols-3">
-          {orderedBillingTiers.map((tier) => {
-            const isStudio = tier.id === "studio"
-            const isPlus = tier.id === "plus"
-            const cardAccent = isStudio
-              ? "border-pink-500/35 bg-[linear-gradient(160deg,rgba(255,0,102,.24),#191b1b_62%)]"
-              : isPlus
-                ? "border-primary/35 bg-[linear-gradient(160deg,rgba(185,255,24,.16),#191b1b_58%)]"
-                : "border-white/12 bg-[#191b1b]"
-
-            const buttonStyle = isStudio
-              ? "bg-[#ff0a63] text-white hover:bg-[#ff2a77]"
-              : isPlus
-                ? "bg-primary text-black hover:bg-primary/90"
-                : "bg-white text-black hover:bg-white/90"
-
-            const badgeText = isPlus ? "Most Popular" : isStudio ? "Best Value" : null
-
-            return (
-              <article key={tier.id} className={`rounded-[28px] border p-5 ${cardAccent}`}>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-3xl font-semibold">{tier.name}</h3>
-                      {badgeText && (
-                        <span className={`rounded px-2 py-1 text-xs font-semibold  text-white ${isPlus ? "bg-primary text-black" : "bg-[#ff0a63]"}`}>
-                          {badgeText}
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-2 text-sm text-white/45">{tier.subtitle}</p>
-                  </div>
-                </div>
-
-                <div className="mt-6 rounded-3xl bg-white/[.06] p-5">
-                  <div className="flex items-start gap-3">
-                    <Sparkles className="mt-1 h-5 w-5 shrink-0 text-white" />
-                    <div>
-                      <p className="text-xl font-semibold">{tier.credits.toLocaleString()} credits/mo.</p>
-                    </div>
-                  </div>
-                  <div className="mt-5 h-2 rounded-full bg-white/15">
-                    <div className={`h-full rounded-full ${tier.id === "pro" ? "w-1/3 bg-white/60" : tier.id === "plus" ? "w-2/3 bg-primary" : "w-full bg-[#ff0a63]"}`} />
-                  </div>
-                </div>
-
-                <div className="mt-7">
-                  <span className="text-5xl font-semibold">{formatUsd(tier.priceInr)}</span>
-                  <span className="ml-2 text-white/45">/ month</span>
-                  {/* Razorpay charges in rupees, and that is the amount that
-                      reaches the card statement — so it is named here rather
-                      than discovered at checkout. */}
-                  <p className="mt-2 text-xs text-white/40">
-                    Billed as {formatInr(tier.priceInr)} / month by Razorpay
-                  </p>
-                </div>
-
-                <button
-                  disabled={loadingTier !== null}
-                  onClick={() => handleSubscribe(tier.id)}
-                  className={`mt-6 flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-4 text-base font-semibold shadow-lg transition disabled:opacity-50 ${buttonStyle}`}
-                >
-                  {loadingTier === tier.id ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    `Subscribe to ${tier.name}`
-                  )}
-                </button>
-                <p className="mt-3 text-center text-xs text-white/35">🔒 Secure monthly payment via Razorpay Subscriptions</p>
-
-                <div className="mt-6 rounded-3xl border border-white/10 bg-black/20 p-5">
-                  <div className="mb-4 flex items-center gap-2 text-sm font-semibold">
-                    <Lock className="h-4 w-4" />
-                    Included features
-                  </div>
-                  <ul className="space-y-3">
-                    {tierFeatures(tier, byokEnabled).map((feature) => (
-                      <li key={feature} className="flex items-start gap-3 text-sm text-white/75">
-                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </article>
-            )
-          })}
-        </div>
-      </section>
-
-      {/* BUY EXTRA CREDITS TOP-UP SECTION (₹1 PER CREDIT, MIN ₹1,000) */}
-      <section className="mx-auto max-w-[1200px] px-4 py-10 md:px-6">
-        <div className="overflow-hidden rounded-[28px] border border-primary/30 bg-[radial-gradient(circle_at_20%_20%,rgba(185,254,46,0.12),transparent_40%),linear-gradient(135deg,#121a14,#0c0e0d)] p-6 md:p-10">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3.5 py-1.5 t-caption text-primary">
-                <Zap className="h-4 w-4 fill-primary" />
-                Pay-As-You-Go Credits
-              </span>
-              <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-5xl">
-                Buy Extra Generation Credits
-              </h2>
-              <p className="mt-2 max-w-xl text-sm leading-6 text-white/60">
-                Need more credits? Active subscribers can buy top-up credits anytime, starting from <strong className="text-primary font-bold">$5 ({formatUsdWithInr(MIN_TOP_UP_INR)})</strong>.
-                Add as much as you need.
-              </p>
-            </div>
-
-            {/* Quick Preset Buttons */}
-            <div className="flex flex-wrap gap-2.5">
-              {[MIN_TOP_UP_INR, 2500, 5000, 10000].map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => setCustomCreditAmount(preset)}
-                  disabled={!subscription?.active}
-                  className={`rounded-2xl border px-4 py-2.5 text-xs font-bold transition ${
-                    customCreditAmount === preset
-                      ? "border-primary bg-primary text-black"
-                      : "border-white/10 bg-white/[.04] text-white hover:border-white/20"
-                  } disabled:cursor-not-allowed disabled:opacity-40`}
-                >
-                  {formatUsd(preset)} ({preset.toLocaleString()} Cr)
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-8 grid gap-4 rounded-2xl border border-white/10 bg-black/40 p-6 md:grid-cols-[1fr_auto]">
-            <div className="flex flex-col gap-2">
-              <label htmlFor="custom-credits" className="t-caption text-white/70">
-                Enter Amount — 1 credit per ₹1, minimum $5 (Razorpay bills in ₹)
-              </label>
-              <div className="relative flex items-center">
-                <span className="absolute left-4 text-lg font-semibold text-primary">₹</span>
-                <input
-                  id="custom-credits"
-                  type="number"
-                  disabled={!subscription?.active}
-                  min={MIN_TOP_UP_INR}
-                  step={100}
-                  value={customCreditAmount}
-                  onChange={(e) => setCustomCreditAmount(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-full rounded-xl border border-white/15 bg-white/[.06] py-3.5 pl-9 pr-4 text-xl font-semibold text-white outline-none focus:border-primary"
-                  placeholder="1000"
-                />
-              </div>
-              <span className="text-xs text-white/45">
-                Calculated Credits: <strong className="text-primary font-bold">{customCreditAmount.toLocaleString()} Credits</strong>
-                {customCreditAmount > 0 && <> — {formatUsdWithInr(customCreditAmount)}</>}
-              </span>
-            </div>
-
-            <div className="flex items-end">
-              <button
-                disabled={topUpLoading || customCreditAmount < MIN_TOP_UP_INR || !subscription?.active}
-                onClick={() => handleBuyCustomCredits(customCreditAmount)}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-8 py-4 text-base font-semibold text-black transition hover:bg-primary/90 disabled:opacity-40 md:w-auto"
-              >
-                {topUpLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  <>
-                    <CreditCard className="h-5 w-5" />
-                    Buy {customCreditAmount.toLocaleString()} Credits ({formatUsd(customCreditAmount)})
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-          {!subscription?.active && (
-            <p className="mt-4 text-sm text-amber-300">Subscribe to a plan before buying generation credits.</p>
-          )}
-        </div>
-      </section>
+      )}
 
       {/* USER TRANSACTION HISTORY SECTION */}
       {user && (
@@ -682,57 +316,11 @@ export default function BillingPage() {
         </div>
       </section>
 
-      {/* FEATURE COMPARISON */}
-      <section className="mx-auto max-w-[1200px] px-4 py-10 md:px-6">
-        <h2 className="text-4xl font-semibold tracking-tight md:text-5xl">Compare features</h2>
-        <p className="mt-3 text-white/45">See which plan suits your AI video and image workflow.</p>
-
-        <div className="mt-8 overflow-hidden rounded-[28px] border border-white/10 bg-[#101211]">
-          <div className="grid grid-cols-4 gap-4 border-b border-white/10 p-6 text-left">
-            <div className="flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/10 px-4 py-3 font-semibold text-primary">
-              Razorpay Checkout
-            </div>
-            {orderedBillingTiers.map((tier) => (
-              <div key={tier.id}>
-                <h3 className="text-2xl font-semibold">{tier.name}</h3>
-                <p className="mt-3 text-white/70">{formatUsd(tier.priceInr)}/mo.</p>
-                <p className="text-xs text-white/40">Billed as {formatInr(tier.priceInr)}</p>
-                <button
-                  disabled={loadingTier !== null}
-                  onClick={() => handleSubscribe(tier.id)}
-                  className={`mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 font-semibold transition disabled:opacity-50 ${tier.id === "studio" ? "bg-primary text-black" : "bg-white/15 text-white hover:bg-white/25"}`}
-                >
-                  {loadingTier === tier.id ? <Loader2 className="h-4 w-4 animate-spin" /> : `Get ${tier.name}`}
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {[
-            ["Monthly credits", "1,000", "3,500", "12,000"],
-            ...(byokEnabled ? [["Bring your own API keys (paid plans only)", "Yes", "Yes", "Yes"]] : []),
-            ["AI Director chat", "Yes", "Yes", "Yes"],
-            ["AI Director voice", "No", "Yes", "Yes"],
-            ["MCP & CLI access", "No", "Yes", "Yes"],
-            ["Full-auto video workflow", "No", "Limited", "Yes"],
-            ["Marketing Agent", "No", "No", "Yes"],
-            ["Workflow skills", "Basic", "Advanced", "Priority"],
-          ].map((row) => (
-            <div key={row[0]} className="grid grid-cols-4 gap-4 border-b border-white/5 px-6 py-5 text-sm last:border-b-0">
-              <div className="font-bold text-white/75">{row[0]}</div>
-              {row.slice(1).map((cell, index) => (
-                <div key={`${row[0]}-${index}`} className="text-white/55">{cell}</div>
-              ))}
-            </div>
-          ))}
-        </div>
-      </section>
-
       {/* FAQS */}
       <section className="mx-auto max-w-4xl px-4 py-20 md:px-6">
         <h2 className="text-center text-4xl font-semibold tracking-tight md:text-5xl">Frequently Asked Questions</h2>
         <div className="mt-10 space-y-3">
-          {visibleFaqs.map(([question, answer], index) => (
+          {faqs.map(([question, answer], index) => (
             <button
               key={question}
               onClick={() => setOpenFaq(openFaq === index ? -1 : index)}
@@ -750,7 +338,7 @@ export default function BillingPage() {
 
       <section className="mx-auto max-w-[1200px] px-4 pb-20 md:px-6">
         <div className="grid gap-4 rounded-[28px] border border-white/10 bg-white/[.04] p-6 md:grid-cols-4">
-          {visibleHighlights.map((item) => (
+          {billingHighlights.map((item) => (
             <div key={item.label} className="flex items-center gap-3 rounded-2xl bg-black/25 p-4">
               <item.icon className="h-5 w-5 text-primary" />
               <span className="text-sm font-bold text-white/70">{item.label}</span>

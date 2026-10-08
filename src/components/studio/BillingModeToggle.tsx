@@ -33,6 +33,7 @@ export function BillingModeToggle({ compact = false }: { compact?: boolean }) {
       // Paused leaves the position unknown on purpose, which renders nothing:
       // a switch for a feature nobody can use is worse than no switch.
       if (data.paused) return;
+      if (data.ownKeysOnlyLocked) return;
       setOwnKeysOnly(Boolean(data.ownKeysOnly));
     } catch {
       // Left unknown, so nothing is claimed about how the user is billed.

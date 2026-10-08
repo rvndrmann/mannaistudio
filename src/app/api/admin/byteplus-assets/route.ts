@@ -95,8 +95,10 @@ export async function DELETE(request: NextRequest) {
     const { id } = await request.json() as { id?: string }
     if (!id) return NextResponse.json({ error: "Which asset?" }, { status: 400 })
 
-    const { data: asset } = await supabase.from("creator_byteplus_assets").select("id,asset_id").eq("id", id).maybeSingle()
+    const { data: asset } = await supabase.from("creator_byteplus_assets").select("id,asset_id,credential_id").eq("id", id).maybeSingle()
     if (!asset) return NextResponse.json({ error: "That asset is not in the registry" }, { status: 404 })
+
+    if (asset.credential_id) return NextResponse.json({ error: "This asset belongs to a customer provider account. Remove it through that provider account." }, { status: 409 })
 
     // The provider's copy is what counts against the quota, so it goes first.
     // Dropping our row on its own would free nothing and hide that it had not.

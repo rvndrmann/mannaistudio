@@ -4,6 +4,7 @@ import { fetchHomeVariant, isHomeVariant } from "@/lib/home-variant"
 import StudioHome from "@/components/home/StudioHome"
 import OriginalsHome from "@/components/home/OriginalsHome"
 import HireHome from "@/components/home/HireHome"
+import CreativeAgentHome from "@/components/home/CreativeAgentHome"
 import AcademyHome from "@/components/home/AcademyHome"
 
 // The variant is read per request so flipping the switch in Admin takes effect
@@ -27,10 +28,16 @@ export async function generateMetadata(): Promise<Metadata> {
         "AI-powered performance ad creative for brands. Get UGC ads, product videos, direct-response creatives and cinematic campaigns produced through the AI Director Hub creative engine.",
     }
   }
+  if (variant === "creative-agent") {
+    return {
+      title: "AI Director Hub | Tell us what you want to create",
+      description: "Tell the Creative Agent what you want to make, share your references, and place a production order with our creative team.",
+    }
+  }
   if (variant === "academy") {
     return {
-      title: "AI Video Academy | AI Director Hub",
-      description: "Learn to create professional AI films, commercials and cinematic content, then build your own projects inside AI Director Hub.",
+      title: "Creative AI Education That Gets You Paid | AI Director Hub",
+      description: "Learn AI creative on-demand, get live feedback on your real work, and build the skills and portfolio to land better-paying creative projects.",
     }
   }
   if (variant === "originals") {
@@ -56,6 +63,7 @@ export default async function Home({ searchParams }: {
 
   if (variant === "originals") return <OriginalsHome />
   if (variant === "hire") return <HireHome />
+  if (variant === "creative-agent") return <CreativeAgentHome />
   if (variant === "academy") return <AcademyHome />
   return <StudioHome />
 }
