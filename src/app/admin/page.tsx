@@ -283,6 +283,8 @@ function AdminDashboardContent() {
     const [serviceRequestsMessage, setServiceRequestsMessage] = useState("")
     const [isLoadingServiceRequests, setIsLoadingServiceRequests] = useState(false)
     const [adminStats, setAdminStats] = useState<AdminStats>(defaultStats)
+    const [courseAccessLabels, setCourseAccessLabels] = useState<Record<string, string>>({})
+    const [subscriptionPeriods, setSubscriptionPeriods] = useState<Record<string, string>>({})
     const [enrolledStudents, setEnrolledStudents] = useState<EnrolledStudent[]>([])
     const [isLoadingStudents, setIsLoadingStudents] = useState(false)
     const [growthData, setGrowthData] = useState<{ name: string; joins: number }[]>([])
@@ -1195,6 +1197,13 @@ function AdminDashboardContent() {
                 })))
             }
 
+            setCourseAccessLabels({})
+            const accessResponse = await fetch("/api/admin/course-access", { cache: "no-store" })
+            if (accessResponse.ok) {
+                const accessData = await accessResponse.json()
+                setCourseAccessLabels(accessData.access || {})
+                setSubscriptionPeriods(accessData.periods || {})
+            }
             // Fetch all enrollments with profile info
             const { data: enrollments } = await supabase
                 .from('enrollments')
@@ -2693,7 +2702,7 @@ function AdminDashboardContent() {
                                             return Array.from(grouped.entries()).map(([profileId, entries]) => {
                                                 const student = entries[0]
                                                 const enrolledCourseCount = entries.filter((entry) => entry.course_id !== null).length
-                                                const memberActive = student.membership_status === 'active' && (!student.membership_expires_at || new Date(student.membership_expires_at).getTime() > Date.now())
+                                                const memberActive = Boolean(subscriptionPeriods[profileId] && Date.parse(subscriptionPeriods[profileId]) > Date.now())
                                                 const memberLabel = memberActive ? (student.is_trial ? 'Trial' : 'Pro Member') : 'Free'
                                                 return (
                                                     <div key={profileId} className="glass-card p-6 rounded-2xl border-white/10">
@@ -2739,8 +2748,8 @@ function AdminDashboardContent() {
                                                                         <span className="font-medium">{courseName}</span>
                                                                         <span className={cn(
                                                                             "px-1.5 py-0.5 rounded text-[9px] font-bold ",
-                                                                            e.status === 'active' ? "bg-emerald-400/10 text-emerald-400" : "bg-white/5 text-white/40"
-                                                                        )}>{e.status}</span>
+                                                                            /^(Free access|Purchased|Subscription active|Admin access)$/.test(courseAccessLabels[`${profileId}:${e.course_id}`] || '') ? "bg-emerald-400/10 text-emerald-400" : "bg-amber-400/10 text-amber-400"
+                                                                        )}>{courseAccessLabels[`${profileId}:${e.course_id}`] || "Access unverified"}</span>
                                                                         <span className="text-white/20">{new Date(e.created_at).toLocaleDateString()}</span>
                                                                         {(student.course_progress?.[e.course_id] || 0) > 0 && <span className="text-primary">{student.course_progress?.[e.course_id]} chapters complete</span>}
                                                                     </div>
