@@ -22,7 +22,7 @@ export default function CreditAccessControls() {
   }
   return <section className="rounded-2xl border border-white/10 p-6 space-y-4">
     <h3 className="text-xl font-semibold">Platform credits</h3>
-    <p className="text-sm text-white/60">Off by default. Users use their own subscribed API accounts. Enable balances, purchases, and platform credit usage for everyone, or only the users listed below. All Access remains BYOK-only.</p>
+    <p className="text-sm text-white/60">Off by default for regular users. Admins retain platform credit access. Users use their own subscribed API accounts. Enable balances, purchases, and platform credit usage for everyone, or only the users listed below. All Access remains BYOK-only.</p>
     <label className="flex gap-3"><input type="checkbox" checked={enabled} disabled={!ready || busy} onChange={e => setEnabled(e.target.checked)} />Enable platform credits for everyone</label>
     <label className="block">Selected user IDs (one UUID per line)<textarea className="mt-2 w-full rounded-lg bg-black/30 border border-white/20 p-3" value={users} disabled={!ready || busy} onChange={e => setUsers(e.target.value)} rows={4} /></label>
     <p className="text-xs text-white/50">These users retain access while the global switch is off. Remove an ID to revoke access. Existing purchase eligibility still applies.</p>
