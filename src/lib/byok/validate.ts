@@ -38,6 +38,12 @@ function describeStatus(status: number): string {
 export async function validateCredential(provider: ByokProvider, parts: CredentialParts): Promise<ValidationResult> {
   try {
     switch (provider) {
+      case "higgsfield": {
+        const url = "https://api.higgsfield.ai/models/higgsfield/genjutsu/restyle/v1.0/presets"
+        assertAllowedProviderUrl(provider, url)
+        const response = await get(url, { Authorization: `Key ${parts.apiKey}` })
+        return response.ok ? { ok: true } : { ok: false, reason: describeStatus(response.status), status: response.status }
+      }
       case "openai": {
         const url = "https://api.openai.com/v1/models"
         assertAllowedProviderUrl(provider, url)

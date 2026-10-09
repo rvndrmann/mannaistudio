@@ -84,7 +84,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!shot) return NextResponse.json({ error: "Shot not found" }, { status: 404 })
     const provider = generationProvider(input.model)
     if (provider !== "higgsfield" && !input.prompt) return NextResponse.json({ error: "A prompt is required for this model." }, { status: 400 })
-    if (provider === "higgsfield") requireHiggsfieldCredentials()
+    if (provider === "higgsfield") await runUserProvider(context.user.id, "higgsfield", async () => requireHiggsfieldCredentials())
     if (input.referenceAudios.length) {
       if (provider !== "byteplus" || !/seedance-2-[05]/.test(input.model)) return NextResponse.json({ error: "Audio references require a Seedance 2.0 or 2.5 BytePlus Direct model." }, { status: 400 })
       const maxAudios = input.model.includes("seedance-2-5") ? 10 : 3
@@ -383,7 +383,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (!validation.success) throw new HiggsfieldProviderError("Genjutsu requires 1–8 image references, a prompt up to 10,000 characters, and 480p, 720p or 1080p resolution.", 400)
       if ((input.referenceAudios.length || input.endFrame) && input.model !== GENJUTSU_RESTYLE_MODEL) throw new HiggsfieldProviderError("Genjutsu uses the source video timing; remove separate audio and end-frame inputs.", 400)
       if (input.model === GENJUTSU_RESTYLE_MODEL) {
-        const presets = await getGenjutsuPresets()
+        const presets = await runUserProvider(context.user.id, "higgsfield", () => getGenjutsuPresets())
         if (!input.restylePresetId || !presets.some((preset) => preset.id === input.restylePresetId)) throw new HiggsfieldProviderError("Choose a currently available Restyle style.", 400)
       }
       sourceVideoInfo = await readSourceVideoDuration(videoReferences[0], input.model === GENJUTSU_OBJECT_SWAP_MODEL)

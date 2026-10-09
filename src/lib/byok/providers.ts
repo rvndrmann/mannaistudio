@@ -11,7 +11,7 @@ import { z } from "zod"
  * beside the credential it authenticates.
  */
 
-export const byokProviders = ["byteplus", "fal", "openai", "gemini"] as const
+export const byokProviders = ["byteplus", "fal", "openai", "gemini", "higgsfield"] as const
 export type ByokProvider = (typeof byokProviders)[number]
 
 export function isByokProvider(value: string): value is ByokProvider {
@@ -85,6 +85,13 @@ export const providerSpecs: Record<ByokProvider, ProviderSpec> = {
     parts: [{ key: "apiKey", label: "API key", primary: true, secret: true, hint: "Starts with sk-." }],
     helpUrl: "https://platform.openai.com/api-keys",
   },
+  higgsfield: {
+    id: "higgsfield",
+    label: "Higgsfield",
+    allowedHosts: ["api.higgsfield.ai"],
+    parts: [{ key: "apiKey", label: "API key (KEY_ID:KEY_SECRET)", primary: true, secret: true, hint: "Paste the complete key ID and secret joined by a colon." }],
+    helpUrl: "https://open.higgsfield.ai/api-keys",
+  },
   gemini: {
     id: "gemini",
     label: "Google Gemini",
@@ -100,7 +107,8 @@ export function credentialSchemaFor(provider: ByokProvider) {
   const shape: Record<string, z.ZodTypeAny> = {}
   for (const part of spec.parts) {
     const field = z.string().trim().min(8, `${part.label} looks too short`).max(400)
-    shape[part.key] = part.optional ? field.optional() : field
+    const validated = provider === "higgsfield" ? field.regex(/^[^:\s]+:[^:\s]+$/, "Use KEY_ID:KEY_SECRET") : field
+    shape[part.key] = part.optional ? validated.optional() : validated
   }
   return z.object(shape).strict()
 }

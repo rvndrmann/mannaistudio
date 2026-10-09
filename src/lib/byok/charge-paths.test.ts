@@ -94,9 +94,7 @@ describe("provider names line up across the two catalogues", () => {
     const providers = Array.from(new Set(Array.from(models.matchAll(/provider: "([a-z]+)"/g)).map((m) => m[1])))
     expect(providers.length).toBeGreaterThan(0)
     for (const provider of providers) {
-      if (provider === "higgsfield") {
-        expect(() => decideBilling({ hasCredential: false, platformCredits: 1, ownKeysOnly: true, provider })).toThrow(OwnKeysOnlyError)
-      } else expect(byokProviderFor(provider), `${provider} has no BYOK mapping`).not.toBeNull()
+      expect(byokProviderFor(provider), `${provider} has no BYOK mapping`).not.toBeNull()
     }
   })
 })

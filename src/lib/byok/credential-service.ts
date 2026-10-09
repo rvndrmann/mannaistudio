@@ -36,8 +36,12 @@ function vault() {
   return createServiceClient()
 }
 
-/** BYOK is a paid subscription entitlement, not a free-account escape hatch. */
+/** Admins can test their own keys; other users need a paid subscription. */
 export async function hasByokSubscription(userId: string): Promise<boolean> {
+  const { data: admin, error: adminError } = await vault()
+    .from("admin_users").select("id").eq("id", userId).maybeSingle()
+  if (adminError) throw adminError
+  if (admin?.id === userId) return true
   const policy = await getByokSubscriptionPolicy(userId)
   if (policy.required) return policy.active
   const { data, error } = await vault()

@@ -1,3 +1,4 @@
+import { runUserProvider } from "@/lib/byok/run-user-provider"
 import { entityPrimaryReference } from "./entity-mentions"
 import { GENJUTSU_OBJECT_SWAP_MODEL, GENJUTSU_RESTYLE_MODEL, getGenjutsuPresets, isGenjutsuModel, requireHiggsfieldCredentials } from "./higgsfield"
 import { readSourceVideoDuration } from "./source-video-duration"
@@ -600,8 +601,8 @@ export const listGenjutsuRestylePresetsTool = defineDirectorTool({
   risk: "read",
   requiresApproval: false,
   input: z.object({}),
-  async execute() {
-    const items = await getGenjutsuPresets()
+  async execute(context) {
+    const items = await runUserProvider(context.user.id, "higgsfield", () => getGenjutsuPresets())
     return { model: GENJUTSU_RESTYLE_MODEL, items }
   },
 })
@@ -709,12 +710,11 @@ export const submitGenerationTool = defineDirectorTool({
     }
 
     if (isGenjutsuModel(request.model || "")) {
-      if (await ownKeysOnly(context.user.id)) throw new OwnKeysOnlyError("a supported BYOK provider (Higgsfield is unavailable on your own keys)")
-      requireHiggsfieldCredentials()
+      await runUserProvider(context.user.id, "higgsfield", async () => requireHiggsfieldCredentials())
       if (request.videoReferencePaths.length !== 1) throw new Error("Genjutsu needs exactly one source video. Upload a video or select one saved storyboard clip.")
       if (request.model === GENJUTSU_RESTYLE_MODEL) {
         if (!request.restylePresetId) throw new Error("Choose a Restyle style before generating.")
-        const presets = await getGenjutsuPresets()
+        const presets = await runUserProvider(context.user.id, "higgsfield", () => getGenjutsuPresets())
         if (!presets.some((preset) => preset.id === request.restylePresetId)) throw new Error("That Restyle style is no longer available. Refresh the style list and choose another.")
       }
       const path = request.videoReferencePaths[0]

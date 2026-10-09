@@ -1,3 +1,5 @@
+import { activeCredentialPart } from "@/lib/byok/active-credential"
+import { assertAllowedProviderUrl } from "@/lib/byok/providers"
 import { z } from "zod"
 
 export const GENJUTSU_MODEL = "higgsfield/genjutsu/motion-transfer/v1.0"
@@ -29,12 +31,13 @@ export class HiggsfieldProviderError extends Error {
 }
 
 export function requireHiggsfieldCredentials() {
-  const key = (process.env.HF_CREDENTIALS || process.env.HF_KEY || "").trim()
+  const key = (activeCredentialPart("higgsfield", "apiKey") ?? process.env.HF_CREDENTIALS ?? process.env.HF_KEY ?? "").trim()
   if (!/^[^:\s]+:[^:\s]+$/.test(key)) throw new HiggsfieldProviderError("Higgsfield is not configured. Set HF_CREDENTIALS to KEY_ID:KEY_SECRET on the server.", 503)
   return key
 }
 
 async function call(path: string, input?: unknown) {
+  assertAllowedProviderUrl("higgsfield", `${baseUrl}/${path}`)
   const response = await fetch(`${baseUrl}/${path}`, {
     method: input === undefined ? "GET" : "POST",
     headers: { Authorization: `Key ${requireHiggsfieldCredentials()}`, "Content-Type": "application/json" },
