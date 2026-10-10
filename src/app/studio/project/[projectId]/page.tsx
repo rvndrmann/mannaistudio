@@ -1,5 +1,6 @@
 "use client";
 
+import { readProductVideo, PRODUCT_INTERACTIONS } from "@/lib/studio/product-video";
 import { prepareReferenceUpload } from "@/lib/studio/reference-upload";
 import Link from "next/link";
 import GenerationRecovery from "@/components/studio/GenerationRecovery";
@@ -2811,6 +2812,7 @@ function BasicSettingsModal({
   const episodeWorkflowMap = (projectMeta.episode_workflows as Record<string, unknown> | undefined) || {};
   const selectedEpisodeWorkflow = typeof episodeWorkflowMap[data.activeEpisode.id] === "string" ? episodeWorkflowMap[data.activeEpisode.id] as string : "";
 
+  const [productVideo, setProductVideo] = useState(() => readProductVideo(data.project.metadata));
   const [projectName, setProjectName] = useState<string>(data.project.name || "Untitled production");
   const [aspectRatio, setAspectRatio] = useState<string>((metaSettings?.aspectRatio as string) || data.project.default_aspect || "9:16");
   const [resolution, setResolution] = useState<string>((metaSettings?.resolution as string) || "720p");
@@ -2857,6 +2859,7 @@ function BasicSettingsModal({
       await save({
         action: "saveProjectSettings",
         settings: {
+          productVideo,
           projectName: projectName.trim() || "Untitled production",
           aspectRatio,
           resolution,
@@ -2927,6 +2930,15 @@ function BasicSettingsModal({
               placeholder="Name this production"
             />
           </div>
+
+          <section className="rounded-xl border border-white/10 p-4 space-y-3">
+            <label className="flex items-center gap-2 font-bold"><input type="checkbox" checked={productVideo.enabled} onChange={e => setProductVideo({ ...productVideo, enabled: e.target.checked })} />Product video</label>
+            <p className="text-sm text-zinc-400">Add your PNG in Characters &amp; Assets, then select it here. The Director inspects the product before planning characters and storyboard shots.</p>
+            {productVideo.enabled && <>
+              <label className="block text-sm">Product reference<select aria-label="Product reference" className="block w-full bg-[#0b0c0b] p-3 rounded-xl" value={productVideo.entityId} onChange={e => setProductVideo({ ...productVideo, entityId: e.target.value })}><option value="">Select an uploaded product</option>{data.entities.filter(entity => entity.type !== "scene" && entity.type !== "character" && entity.reference_images?.length).map(entity => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></label>
+              <label className="block text-sm">How the person interacts<select aria-label="Product interaction" className="block w-full bg-[#0b0c0b] p-3 rounded-xl" value={productVideo.interaction} onChange={e => setProductVideo({ ...productVideo, interaction: e.target.value as typeof productVideo.interaction })}>{PRODUCT_INTERACTIONS.map(value => <option key={value} value={value}>{value === "automatic" ? "Automatic — choose from the product image" : value === "wear" ? "Wear — clothes, footwear or accessories" : value === "hold" ? "Hold — product in their hand" : "Use — demonstrate the product"}</option>)}</select></label>
+            </>}
+          </section>
 
           {/* Row 1: Aspect Ratio, Resolution, Storyboard Image Model */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

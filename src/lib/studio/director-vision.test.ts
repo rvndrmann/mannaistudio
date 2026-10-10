@@ -202,3 +202,21 @@ describe("look_at_media fetches exactly what was asked for", () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 })
+
+describe("product-video inspection", () => {
+  const product = { id: "product", name: "Training Boots", type: "prop", reference_images: ["boots.png"], metadata: {} }
+  function productDb() {
+    const chain = { select: () => chain, eq: () => chain, single: async () => ({ data: product, error: null }) }
+    return { from: () => chain, storage: { from: () => ({ createSignedUrl: async () => ({ data: { signedUrl: "https://storage.test/boots.png" }, error: null }) }) } } as never
+  }
+  it("sends the product to vision without requiring a mention", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(imageResponse(png(100))))
+    const result = await collectDirectorVisionAttachments({ supabase: productDb(), projectId: "project", productEntityId: "product" })
+    expect(result[0].label).toContain("PRODUCT VIDEO")
+    expect(result[0].url).toContain("data:image/png;base64,")
+  })
+  it("blocks planning when the selected product cannot be read", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }))
+    await expect(collectDirectorVisionAttachments({ supabase: productDb(), projectId: "project", productEntityId: "product" })).rejects.toThrow("Could not read the product image")
+  })
+})

@@ -1,3 +1,4 @@
+import { readProductVideo, productVideoInstructions } from "./product-video"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { buildDirectorInstructions, replayToolResults, selectConversationWindow } from "./conversation"
 import { buildProjectContext } from "./project-context"
@@ -189,6 +190,7 @@ const { data: userMessage, error: userError } = await context.supabase.from("cre
 if (userError) throw userError
 
 const buildAgentInput = async () => {
+  const productVideo = readProductVideo(context.project.metadata)
   // Share one fresh snapshot between routing and context within this turn.
   const snapshot = loadProductionSnapshot(context.supabase, projectId, episode.id, sessionId)
     .catch((error) => { console.warn("Could not read production state:", error); return null })
@@ -206,6 +208,7 @@ const buildAgentInput = async () => {
       sessionId,
       episodeId: episode.id,
       mentionedEntities: (mentionedEntities || []) as MentionableEntity[],
+      productEntityId: productVideo.enabled ? productVideo.entityId || "missing-product" : undefined,
     }),
     buildProjectStateBlock(context, episode.id, sessionId, snapshot.then((value) =>
       value ? buildProjectStateSummaryFrom(value) : "=== LIVE PROJECT PRODUCTION STATE: Unavailable ===")),
@@ -220,6 +223,7 @@ const buildAgentInput = async () => {
     instructions: buildDirectorInstructions(project, globalInstructions, brandContext),
     projectState: [
       projectState,
+      productVideoInstructions(productVideo),
       // Read from the project rather than sent with the message: the mode
       // belongs to the production, and a request that forgot to carry it
       // would silently put an auto run back to manual phrasing.

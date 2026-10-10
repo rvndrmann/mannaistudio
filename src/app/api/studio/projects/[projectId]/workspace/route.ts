@@ -1,3 +1,5 @@
+import { readProductVideo } from "@/lib/studio/product-video"
+import { entityPrimaryReference } from "@/lib/studio/entity-mentions"
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { describeError } from "@/lib/studio/errors"
@@ -171,6 +173,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json(data)
     }
     if (body.action === "saveProjectSettings") {
+      const productVideo = readProductVideo({ basic_settings: body.settings })
+      if (productVideo.enabled) {
+        if (!/^[0-9a-f-]{36}$/i.test(productVideo.entityId)) throw new Error("Select an uploaded product image.")
+        const { data: product, error: productError } = await supabase.from("creator_entities")
+          .select("id,name,type,reference_images,metadata").eq("project_id", projectId).eq("id", productVideo.entityId).single()
+        if (productError || !product || ["character", "scene"].includes(product.type) || !entityPrimaryReference(product)) {
+          throw new Error("Select a product asset with a reference image from this project.")
+        }
+      }
+      body.settings.productVideo = productVideo
       const selectedAspect = body.settings.aspectRatio || body.settings.canvasSpec?.split(" · ")[0] || "9:16"
       const selectedStyle = body.settings.visualStyle || "Realistic - 3D CG"
       const projectName = typeof body.settings.projectName === "string" ? body.settings.projectName.trim().slice(0, 160) : ""

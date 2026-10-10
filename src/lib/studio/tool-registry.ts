@@ -1,3 +1,4 @@
+import { readProductVideo, productVideoInstructions } from "./product-video"
 import { runUserProvider } from "@/lib/byok/run-user-provider"
 import { entityPrimaryReference } from "./entity-mentions"
 import { GENJUTSU_OBJECT_SWAP_MODEL, GENJUTSU_RESTYLE_MODEL, getGenjutsuPresets, isGenjutsuModel, requireHiggsfieldCredentials } from "./higgsfield"
@@ -995,6 +996,17 @@ export const generateEntityReferenceArtTool = defineDirectorTool({
       throw new Error("One or more of those characters or assets do not belong to this project.")
     }
 
+    const productVideo = readProductVideo(context.project.metadata)
+    let productReference: string | null = null
+    let productName = ""
+    if (productVideo.enabled) {
+      const { data: product, error: productError } = await context.supabase.from("creator_entities")
+        .select("id,name,type,reference_images,metadata").eq("project_id", context.project.id).eq("id", productVideo.entityId).single()
+      if (productError || !product) throw new Error("Select an uploaded product before generating product-video assets.")
+      productReference = entityPrimaryReference(product as MentionableEntity)
+      productName = product.name
+      if (!productReference) throw new Error("The selected product needs a reference image.")
+    }
     const style = projectVisualStyle(context.project)
     const styleDna = projectStyleDna(context.project)
     const routing = routeGeneration({
@@ -1017,11 +1029,15 @@ export const generateEntityReferenceArtTool = defineDirectorTool({
     })
     const jobs = found.map((entity, index) => {
       const written = input.prompts[entity.id]?.trim() || input.prompts[entity.name]?.trim()
-      const prompt = written || buildEntityReferenceImagePrompt(
+      const basePrompt = written || buildEntityReferenceImagePrompt(
         entity as MentionableEntity,
         style,
         composeLookDirectives(style, styleDna, styleBlockForEntityType(typeof entity.type === "string" ? entity.type : null)),
       )
+      const pairsProduct = productVideo.enabled && entity.type === "character" && productReference
+      const prompt = pairsProduct ? `${basePrompt}
+${productVideoInstructions(productVideo)}
+For a character described as the product wearer/user, render the specified interaction with @${productName}. Do not outfit background characters or opponents with the product unless the script explicitly requires it. The attached product image is the exact product reference.` : basePrompt
       return {
         user_id: context.user.id,
         project_id: context.project.id,
@@ -1033,6 +1049,7 @@ export const generateEntityReferenceArtTool = defineDirectorTool({
         model: routing.selected.model,
         provider: routing.selected.provider,
         prompt,
+        input_images: pairsProduct ? Array.from(new Set([...(entity.reference_images || []), productReference!])) : entity.reference_images || [],
         settings: { type: "image", aspectRatio: routing.request.aspectRatio, target: "asset", entityType: entity.type },
         estimated_credits: referenceBilling.credits,
         billing_mode: referenceBilling.mode,

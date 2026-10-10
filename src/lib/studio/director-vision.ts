@@ -54,9 +54,19 @@ export async function collectDirectorVisionAttachments(input: {
   episodeId?: string
   mentionedEntities?: MentionableEntity[]
   limit?: number
+  productEntityId?: string
 }): Promise<DirectorVisionAttachment[]> {
   const limit = input.limit ?? 6
   const candidates: Array<{ label: string; path: string }> = []
+
+  if (input.productEntityId) {
+    const { data: product, error } = await input.supabase.from("creator_entities")
+      .select("id,name,type,reference_images,metadata").eq("project_id", input.projectId).eq("id", input.productEntityId).single()
+    if (error || !product) throw new Error("Select a product with a reference image in Product video settings.")
+    const path = entityPrimaryReference(product as MentionableEntity)
+    if (!path) throw new Error("Add a product image before planning this product video.")
+    candidates.push({ label: `PRODUCT VIDEO — inspect this supplied product before authoring: @${product.name}`, path })
+  }
 
   // The user pointed at these entities in this message.
   for (const entity of input.mentionedEntities || []) {
@@ -89,7 +99,11 @@ export async function collectDirectorVisionAttachments(input: {
     }
   }
 
-  return inlineAttachments(input.supabase, candidates, limit)
+  const attachments = await inlineAttachments(input.supabase, candidates, limit)
+  if (input.productEntityId && !attachments.some(item => item.label.startsWith("PRODUCT VIDEO"))) {
+    throw new Error("Could not read the product image. Upload a readable PNG before creating characters or storyboard shots.")
+  }
+  return attachments
 }
 
 /**
