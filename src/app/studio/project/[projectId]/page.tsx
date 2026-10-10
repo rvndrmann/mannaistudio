@@ -2837,6 +2837,9 @@ function BasicSettingsModal({
   // look every image inherits without the user seeing and confirming it first.
   const [styleDna, setStyleDna] = useState<StyleDna | null>(projectStyleDna(data.project));
   const [saving, setSaving] = useState(false);
+  const [uploadingProductImage, setUploadingProductImage] = useState(false);
+  const [productUploadError, setProductUploadError] = useState("");
+  const [uploadedProduct, setUploadedProduct] = useState<Entity | null>(null);
 
   // The header quoted a fixed "⚡ 16/s" whatever was selected below it. Price
   // the selections the dialog is currently showing instead, so changing model,
@@ -2852,6 +2855,46 @@ function BasicSettingsModal({
     [data.shots, storyboardImageModel, videoModel, imageQuality, resolution, aspectRatio],
   );
   const perShotEstimate = liveEstimate.shotCount ? Math.round(liveEstimate.totalCredits / liveEstimate.shotCount) : 0;
+
+  const productAssets = [
+    ...data.entities.filter((entity) => entity.type === "prop" && entity.reference_images?.length),
+    ...(uploadedProduct && !data.entities.some((entity) => entity.id === uploadedProduct.id) ? [uploadedProduct] : []),
+  ];
+  const selectedProduct = productAssets.find((entity) => entity.id === productVideo.entityId);
+
+  const uploadProductImage = async (file?: File) => {
+    if (!file) return;
+    setUploadingProductImage(true);
+    setProductUploadError("");
+    try {
+      const client = createClient();
+      const userId = (await client.auth.getUser()).data.user?.id;
+      if (!userId) throw new Error("Please sign in before uploading a product image.");
+      const preparedFile = await prepareReferenceUpload(file);
+      const path = `${userId}/${data.project.id}/product-reference-${crypto.randomUUID()}-${preparedFile.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+      const { error: uploadError } = await client.storage.from("creator-studio-media").upload(path, preparedFile);
+      if (uploadError) throw uploadError;
+
+      const name = file.name.replace(/\.[^.]+$/, "").trim() || "Product reference";
+      const product = await save({
+        action: "saveAsset",
+        asset: {
+          type: "prop",
+          name,
+          description: "Product reference uploaded from project settings.",
+          reference_images: [path],
+          status: "draft",
+        },
+      }) as Entity;
+      setUploadedProduct(product);
+      setProductVideo((current) => ({ ...current, entityId: product.id }));
+      await reload().catch(() => {});
+    } catch (error) {
+      setProductUploadError(error instanceof Error ? error.message : "Could not upload the product image.");
+    } finally {
+      setUploadingProductImage(false);
+    }
+  };
 
   const confirmSettings = async () => {
     setSaving(true);
@@ -2933,9 +2976,19 @@ function BasicSettingsModal({
 
           <section className="rounded-xl border border-white/10 p-4 space-y-3">
             <label className="flex items-center gap-2 font-bold"><input type="checkbox" checked={productVideo.enabled} onChange={e => setProductVideo({ ...productVideo, enabled: e.target.checked })} />Product video</label>
-            <p className="text-sm text-zinc-400">Add your PNG in Characters &amp; Assets, then select it here. The Director inspects the product before planning characters and storyboard shots.</p>
+            <p className="text-sm text-zinc-400">Upload a product image here or choose an existing product asset. The Director inspects it before planning characters and storyboard shots.</p>
             {productVideo.enabled && <>
-              <label className="block text-sm">Product reference<select aria-label="Product reference" className="block w-full bg-[#0b0c0b] p-3 rounded-xl" value={productVideo.entityId} onChange={e => setProductVideo({ ...productVideo, entityId: e.target.value })}><option value="">Select an uploaded product</option>{data.entities.filter(entity => entity.type !== "scene" && entity.type !== "character" && entity.reference_images?.length).map(entity => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></label>
+              <div className="space-y-2">
+                <label className="block text-sm">Product reference<select aria-label="Product reference" className="mt-1 block w-full rounded-xl bg-[#0b0c0b] p-3" value={productVideo.entityId} onChange={e => setProductVideo({ ...productVideo, entityId: e.target.value })}><option value="">Select an uploaded product</option>{productAssets.map(entity => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></label>
+                <label className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/15 px-3 py-2 text-sm font-semibold text-zinc-200 hover:bg-white/5 ${uploadingProductImage ? "pointer-events-none opacity-50" : ""}`}>
+                  {uploadingProductImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  {uploadingProductImage ? "Uploading product image…" : "Upload product image"}
+                  <input type="file" accept="image/*" className="hidden" disabled={uploadingProductImage} onChange={(event) => { void uploadProductImage(event.target.files?.[0]); event.currentTarget.value = ""; }} />
+                </label>
+                {!productAssets.length && <p className="text-xs text-zinc-500">No product images yet. Upload a product photo to create the first product reference.</p>}
+                {selectedProduct && <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-black/20 p-2"><AssetImage src={entityPrimaryReference(selectedProduct)} className="h-14 w-14 shrink-0 overflow-hidden rounded-md object-cover" /><span className="min-w-0 truncate text-sm text-zinc-300">{selectedProduct.name}</span></div>}
+                {productUploadError && <p role="alert" className="text-sm text-red-300">{productUploadError}</p>}
+              </div>
               <label className="block text-sm">How the person interacts<select aria-label="Product interaction" className="block w-full bg-[#0b0c0b] p-3 rounded-xl" value={productVideo.interaction} onChange={e => setProductVideo({ ...productVideo, interaction: e.target.value as typeof productVideo.interaction })}>{PRODUCT_INTERACTIONS.map(value => <option key={value} value={value}>{value === "automatic" ? "Automatic — choose from the product image" : value === "wear" ? "Wear — clothes, footwear or accessories" : value === "hold" ? "Hold — product in their hand" : "Use — demonstrate the product"}</option>)}</select></label>
             </>}
           </section>
