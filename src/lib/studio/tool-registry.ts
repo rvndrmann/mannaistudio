@@ -517,7 +517,7 @@ export const createStoryboardBatchTool = defineDirectorTool({
     // A prompt names the location only where it changes, so the shots in
     // between were built with none and later rendered nowhere. The scene runs
     // on until the script moves it, exactly as it does on set.
-    const staged = rows.map((row, index) => ({ id: String(index), order_index: row.order_index, referenced_entities: row.referenced_entities }))
+    const staged = rows.map((row, index) => ({ id: String(index), order_index: row.order_index, prompt: row.prompt, referenced_entities: row.referenced_entities }))
     const inherited = inheritedShotLocations(staged, batchEntities)
     for (const [index, locationId] of Array.from(inherited.entries())) {
       const row = rows[Number(index)]
@@ -871,7 +871,9 @@ export const submitGenerationTool = defineDirectorTool({
       const unresolved = unresolvedEntityMentions(prompt, entityIndex)
       if (unresolved.length) throw new Error(`Shot ${shot.id} has unknown or ambiguous asset tags: ${unresolved.map(name => "@" + name).join(", ")}. Use canonical asset names before generating.`)
       const curated = Boolean((shot.metadata as { cast_curated?: boolean } | null)?.cast_curated)
-      const saved: string[] = shot.referenced_entities || []
+      const saved: string[] = /\b(?:end[ -]?card|title[ -]?card)\b/i.test(prompt)
+        ? (shot.referenced_entities || []).filter((id: string) => entityIndex.find(entity => entity.id === id)?.type !== "scene")
+        : shot.referenced_entities || []
       const cast = curated ? saved : shotReferenceIds(prompt, entityIndex, saved, request.mentionedEntityIds)
       const selected = request.entityReferenceIds
         ? (request.shotIds.length === 1 ? request.entityReferenceIds : cast.filter(id => request.entityReferenceIds!.includes(id)))
@@ -879,7 +881,7 @@ export const submitGenerationTool = defineDirectorTool({
       const missingArt = entityIndex.filter(entity => selected.includes(entity.id) && !entityPrimaryReference(entity))
       if (request.type === "image" && missingArt.length) throw new Error(`Generate reference art first for: ${missingArt.map(entity => entity.name).join(", ")}. This shot must reuse their saved identity or product references.`)
       castByShot.set(shot.id, selected)
-      if (!curated && JSON.stringify(cast) !== JSON.stringify(saved)) {
+      if (!curated && JSON.stringify(cast) !== JSON.stringify(shot.referenced_entities || [])) {
         const { error } = await context.supabase.from("creator_shots").update({ referenced_entities: cast }).eq("id", shot.id)
         if (error) throw error
         shot.referenced_entities = cast
