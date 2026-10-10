@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
         estimated_credits: creditCost,
         billing_mode: billing.mode,
         credits_used: creditCost,
-        started_at: new Date().toISOString(),
+        started_at: provider === "openai" ? null : new Date().toISOString(),
       })
       .select("id")
       .single()
@@ -220,6 +220,11 @@ export async function POST(request: NextRequest) {
     pendingJobId = job.id
     if (pendingRefund) pendingRefund = { ...pendingRefund, jobId: job.id }
 
+    if (provider === "openai") {
+      const { data: claimed, error } = await context.supabase.rpc("claim_openai_image_job", { p_job_id: job.id, p_quick: true })
+      if (error) throw error
+      if (!claimed) throw new OpenAIProviderError("Your image queue is full. Wait for an image to finish, then try again. No new image was submitted.", 429)
+    }
     const referenceUrls = await signReferenceUrls(context, references)
 
     /**

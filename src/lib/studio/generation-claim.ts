@@ -4,6 +4,7 @@ import { STALLED_SUBMISSION_MS } from "./stalled-jobs"
 type SubmissionJob = {
   id: string
   type?: string
+  provider?: string
   status: string
   provider_job_id?: string | null
   started_at?: string | null
@@ -21,6 +22,8 @@ export function submissionRecoveryExpired(job: SubmissionJob, now = Date.now()):
 
 export function canClaimGeneration(job: SubmissionJob, now = Date.now()): boolean {
   if (job.provider_job_id) return false
+  // An untouched approved image is queued, not an abandoned submission.
+  if (job.type === "image" && job.status === "approved" && !job.started_at && !job.requested_at) return true
   if (submissionRecoveryExpired(job, now)) return false
   // Direct submissions already own their approved row while the POST runs.
   if (job.status === "approved" && !job.started_at && !job.requested_at) return true
@@ -32,6 +35,11 @@ export function canClaimGeneration(job: SubmissionJob, now = Date.now()): boolea
 /** Both the background worker and poll must win this update before submitting. */
 export async function claimGeneration(supabase: SupabaseClient, job: SubmissionJob, now = Date.now()): Promise<boolean> {
   if (!canClaimGeneration(job, now)) return false
+  if (job.type === "image" && job.provider === "openai") {
+    const { data, error } = await supabase.rpc("claim_openai_image_job", { p_job_id: job.id })
+    if (error) throw error
+    return data === true
+  }
   const timestamp = new Date(now).toISOString()
   let query = supabase.from("creator_generation_jobs")
     .update({ status: "processing", started_at: timestamp })

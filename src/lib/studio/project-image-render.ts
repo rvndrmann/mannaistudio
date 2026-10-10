@@ -1,3 +1,4 @@
+import { claimGeneration } from "./generation-claim"
 import { composeImagePrompt, prepareImageModelPrompt, assertImageReferenceCapacity } from "./image-prompt-composition"
 import { Buffer } from "node:buffer"
 import { randomUUID } from "node:crypto"
@@ -337,6 +338,7 @@ export async function renderProjectImage(
         project_id: projectId,
         episode_id: (input.target === "shot" && typeof shotData?.episode_id === "string" ? shotData.episode_id : null) || input.episodeId || null,
         shot_id: input.target === "shot" ? input.targetId : null,
+        entity_id: input.target === "asset" ? input.targetId : null,
         type: "image",
         status: "approved",
         provider,
@@ -375,9 +377,15 @@ export async function renderProjectImage(
     pendingGenerationJobId = generationJob.id
     if (pendingRefund) pendingRefund = { ...pendingRefund, key: `generation-job:${generationJob.id}`, jobId: generationJob.id }
 
+    if (provider === "openai" && !await claimGeneration(context.supabase, { id: generationJob.id, type: "image", provider, status: "approved" })) {
+      // Direct edits carry camera/draw settings that must stay on this path.
+      // Refuse cleanly (and refund in catch) rather than silently losing them
+      // by routing them through the agent's reference-art executor.
+      throw new ImageRequestError("Your image queue is full. Wait for an image to finish, then try again. No new image was submitted.", 429)
+    }
     const { error: processingError } = await context.supabase
       .from("creator_generation_jobs")
-      .update({ status: "processing", credits_used: creditCost, started_at: new Date().toISOString() })
+      .update({ status: "processing", credits_used: creditCost, ...(provider === "openai" ? {} : { started_at: new Date().toISOString() }) })
       .eq("id", generationJob.id)
     if (processingError) throw processingError
 
@@ -721,9 +729,9 @@ export async function renderProjectImage(
         console.error("Could not refund failed image generation", refundError)
       }
     }
-    if (pendingGenerationJobId && pendingRefund && !providerAccepted) {
+    if (pendingGenerationJobId && !providerAccepted) {
       try {
-        await pendingRefund.context.supabase
+        await context.supabase
           .from("creator_generation_jobs")
           .update({
             status: "failed",

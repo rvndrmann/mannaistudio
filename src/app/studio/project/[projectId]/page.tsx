@@ -546,7 +546,11 @@ export default function WorkspacePage({
   useEffect(() => {
     if (!awaitingGeneration) return;
     let cancelled = false;
+    let polling = false;
     const tick = async () => {
+      if (cancelled || polling) return;
+      polling = true;
+      try {
       await Promise.all(jobsInFlight.map((job) => {
         if (job.type === "video") {
           return fetch(`/api/studio/projects/${projectId}/videos?jobId=${encodeURIComponent(job.id)}`, { cache: "no-store" }).catch(() => null);
@@ -562,6 +566,7 @@ export default function WorkspacePage({
         return Promise.resolve(null);
       }));
       if (!cancelled) await loadRef.current(true);
+      } finally { polling = false; }
     };
     const timer = setInterval(() => { void tick(); }, 5000);
     return () => { cancelled = true; clearInterval(timer); };

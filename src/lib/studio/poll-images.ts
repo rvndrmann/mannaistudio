@@ -1,5 +1,6 @@
 import { ownKeysOnly } from "@/lib/byok/preferences"
-import { settleWorkflowRun } from "./execute-generation"
+import { executeGenerationJobs, settleWorkflowRun } from "./execute-generation"
+import { canClaimGeneration } from "./generation-claim"
 import { withCredential } from "@/lib/byok/credential-service"
 import { runWithCredential } from "@/lib/byok/active-credential"
 import { byokProviderFor } from "@/lib/byok/providers"
@@ -82,6 +83,19 @@ export async function pollImages(request: NextRequest, { params }: { params: Pro
     }
     if (job.status === "completed" || (!recoverTerminal && ["failed", "cancelled"].includes(job.status))) return NextResponse.json(job)
     if (recoverTerminal && !job.provider_job_id) return NextResponse.json({ error: "No provider ID was saved. This synchronous or interrupted submission cannot be re-polled." }, { status: 409 })
+
+    // A detached batch can stop before reaching this approved image. Await
+    // submission here, while this request is alive. The executor's atomic
+    // claim prevents another poll or the original worker submitting it twice.
+    // Already-started images are deliberately not reclaimed: a synchronous
+    // provider may have charged for them without giving us a recovery handle.
+    if (!job.provider_job_id && canClaimGeneration(job)) {
+      await executeGenerationJobs(context, [job.id as string])
+      const { data: current, error } = await context.supabase
+        .from("creator_generation_jobs").select("*").eq("id", job.id).maybeSingle()
+      if (error) throw error
+      return NextResponse.json(current ?? job)
+    }
 
     // Recovery before write-off.
     //

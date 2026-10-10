@@ -41,6 +41,11 @@ function fixture(overrides: Partial<Job> = {}) {
     approved_at: old, billing_mode: "platform", ...overrides,
   }
   const supabase = {
+    async rpc(_name: string, _args: unknown) {
+      if (row.status !== "approved" || row.started_at || row.provider_job_id) return { data: false, error: null }
+      Object.assign(row, { status: "processing", started_at: new Date(now).toISOString() })
+      return { data: true, error: null }
+    },
     from(table: string) {
       const filters: Array<(value: typeof row) => boolean> = []
       let patch: Record<string, unknown> | undefined

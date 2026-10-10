@@ -94,33 +94,49 @@ export function isAbortLikeError(error: unknown): boolean {
 
 async function openAIRequest(path: string, init: RequestInit, userId: string, timeoutMs?: number) {
   let response: Response
-  try {
-    response = await fetch(`https://api.openai.com${path}`, {
-      ...init,
-      // Only when the caller asks. A streaming turn resolves its fetch as soon
-      // as the headers land and then reads the body for as long as the model
-      // talks, so a total-duration signal here would cut the reply off mid
-      // sentence.
-      ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
-      headers: {
-        Authorization: `Bearer ${apiKey()}`,
-        "OpenAI-Safety-Identifier": createHash("sha256").update(userId).digest("hex"),
-        ...init.headers,
-      },
-    })
-  } catch (error) {
-    if (timeoutMs && isAbortLikeError(error)) {
-      // 504, so the caller reports a provider that did not answer rather than a
-      // request the user could fix by changing something.
-      throw new OpenAIProviderError(`OpenAI did not respond within ${Math.round(timeoutMs / 1000)}s. Nothing was generated — try again.`, 504)
+  const deadline = Date.now() + (timeoutMs || 60_000)
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      response = await fetch(`https://api.openai.com${path}`, {
+        ...init,
+        // Only when the caller asks. A streaming turn resolves its fetch as soon
+        // as the headers land and then reads the body for as long as the model
+        // talks, so a total-duration signal here would cut the reply off mid
+        // sentence.
+        ...(timeoutMs ? { signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())) } : {}),
+        headers: {
+          Authorization: `Bearer ${apiKey()}`,
+          "OpenAI-Safety-Identifier": createHash("sha256").update(userId).digest("hex"),
+          ...init.headers,
+        },
+      })
+    } catch (error) {
+      if (timeoutMs && isAbortLikeError(error)) {
+        // 504, so the caller reports a provider that did not answer rather than a
+        // request the user could fix by changing something.
+        throw new OpenAIProviderError(`OpenAI did not respond within ${Math.round(timeoutMs / 1000)}s. Nothing was generated — try again.`, 504)
+      }
+      throw error
     }
-    throw error
+    if (!response.ok) {
+      const detail = await response.text()
+      // Retry only an explicit temporary rate refusal. Never retry an uncertain
+      // submission timeout or billing/quota error, which could duplicate charges.
+      if (response.status === 429 && attempt < 2 && !/insufficient_quota|billing|quota exceeded|exceeded your current quota/i.test(detail)) {
+        const retryAfter = response.headers.get("retry-after")
+        const seconds = retryAfter ? Number(retryAfter) : Number.NaN
+        const dateDelay = retryAfter && !Number.isFinite(seconds) ? Date.parse(retryAfter) - Date.now() : Number.NaN
+        const backoff = 1_000 * 2 ** attempt + Math.floor(Math.random() * 250)
+        const delay = Math.max(backoff, Number.isFinite(seconds) ? seconds * 1_000 : Number.isFinite(dateDelay) ? dateDelay : 0)
+        if (Date.now() + delay + 1_000 < deadline) {
+          await new Promise(resolve => setTimeout(resolve, delay))
+          continue
+        }
+      }
+      throw new OpenAIProviderError(`OpenAI request failed (${response.status}): ${detail.slice(0, 500)}`, response.status)
+    }
+    return response
   }
-  if (!response.ok) {
-    const detail = await response.text()
-    throw new OpenAIProviderError(`OpenAI request failed (${response.status}): ${detail.slice(0, 500)}`, response.status)
-  }
-  return response
 }
 
 /**
