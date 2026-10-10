@@ -1,3 +1,4 @@
+import { prepareImageModelPrompt } from "./image-prompt-composition"
 import { Buffer } from "node:buffer"
 import { createHash } from "node:crypto"
 import { defaultDirectorModelId, defaultDirectorModels } from "@/lib/studio/ai-models"
@@ -390,6 +391,7 @@ export { openAIImageQualityCeiling, clampOpenAIImageQuality, type OpenAIImageQua
 import type { OpenAIImageQuality } from "./image-quality"
 
 export async function generateOpenAIImage(input: { userId: string; model: OpenAIImageModel; prompt: string; referenceUrls?: string[]; aspectRatio?: string; quality?: OpenAIImageQuality }) {
+  input = { ...input, prompt: prepareImageModelPrompt(input.prompt, input.model) }
   const referenceUrls = input.referenceUrls || []
   const size = openAIImageSizeForAspectRatio(input.aspectRatio)
   const quality = input.quality || "medium"
@@ -424,6 +426,7 @@ export async function generateOpenAIImage(input: { userId: string; model: OpenAI
  * instead of paying for it twice.
  */
 export async function submitOpenAIImage(input: { userId: string; model: OpenAIImageModel; prompt: string; referenceUrls?: string[]; aspectRatio?: string; quality?: OpenAIImageQuality }) {
+  input = { ...input, prompt: prepareImageModelPrompt(input.prompt, input.model) }
   // Loud here rather than an opaque 400 from OpenAI: a model that cannot run on
   // /v1/responses has to take the synchronous path, and a caller that forgot
   // should learn that from the message rather than from a provider error that

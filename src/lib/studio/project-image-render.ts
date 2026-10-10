@@ -1,3 +1,4 @@
+import { composeImagePrompt, prepareImageModelPrompt, assertImageReferenceCapacity } from "./image-prompt-composition"
 import { Buffer } from "node:buffer"
 import { randomUUID } from "node:crypto"
 import { z } from "zod"
@@ -15,10 +16,10 @@ import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from 
 import { trackGenerationActivation } from "@/lib/studio/activation"
 import { studioErrorMessage, studioErrorStatus, type AuthenticatedProjectContext } from "@/lib/studio/server-context"
 import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
-import { openAIImageQuality, projectImageQuality, projectVisualStyle, visualStyleDirective } from "@/lib/studio/entity-image-workflow"
+import { openAIImageQuality, projectImageQuality, projectVisualStyle } from "@/lib/studio/entity-image-workflow"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
-import { applyCameraSettings, cameraBlockForEntityType, projectCameraDefaults, resolveCameraSettings } from "@/lib/studio/camera-settings"
-import { composeLookDirectives, projectStyleDna, resolveStyleDna, styleBlockForEntityType, styleDnaSchema } from "@/lib/studio/style-dna"
+import { cameraBlockForEntityType, projectCameraDefaults, resolveCameraSettings } from "@/lib/studio/camera-settings"
+import { projectStyleDna, resolveStyleDna, styleBlockForEntityType, styleDnaSchema } from "@/lib/studio/style-dna"
 import { recordExistingAsset } from "@/lib/studio/byteplus-assets"
 import { VERIFIED_ASSET } from "@/lib/studio/asset-verification"
 import { getHiggsfieldImageTask, HiggsfieldProviderError, SOUL_V2_IMAGE_TO_IMAGE_MODEL, submitSoulV2Image } from "@/lib/studio/higgsfield"
@@ -292,7 +293,10 @@ export async function renderProjectImage(
     const referenceOrder = input.model === SOUL_V2_IMAGE_TO_IMAGE_MODEL
       ? [...input.referenceImages, ...mentionReferencePaths, ...ownImageFallback, ...shotImageFallback]
       : [...mentionReferencePaths, ...input.referenceImages, ...ownImageFallback]
-    const combinedReferencePaths = Array.from(new Set(referenceOrder)).slice(0, 8)
+    const distinctReferences = Array.from(new Set(referenceOrder))
+    assertImageReferenceCapacity(input.model, distinctReferences.length)
+    if (distinctReferences.length > 8) throw new ImageRequestError("Select at most eight image references; none were silently discarded.", 400)
+    const combinedReferencePaths = distinctReferences
     const projectDefaultAspect = typeof context.project.default_aspect === "string" ? context.project.default_aspect : null
     const effectiveAspectRatio = input.aspectRatio || (shotData && typeof shotData.aspect_ratio === "string" ? shotData.aspect_ratio : null) || projectDefaultAspect || "9:16"
     // The camera clause is composed here, at submit time, from the base prompt
@@ -315,15 +319,16 @@ export async function renderProjectImage(
     // package — "shot on a…, professional photography, ultra-detailed, 8K" —
     // reads to an edit model as an instruction to re-render the whole frame,
     // which is the opposite of applying one marked change to it.
-    const framedPrompt = input.drawEdit || !cameraSettings
-      ? stripIdentityDescriptions(input.prompt)
-      : applyCameraSettings(stripIdentityDescriptions(input.prompt), cameraSettings, { opticsOnly: Boolean(styleDna) })
-    const resolvedPrompt = [
-      framedPrompt,
-      `Required composition: ${effectiveAspectRatio}.`,
-      ...(input.drawEdit ? [`Required project style: ${style}.`, visualStyleDirective(style)] : composeLookDirectives(style, styleDna, styleBlock)),
-      mentionContext,
-    ].filter(Boolean).join("\n\n")
+    const resolvedPrompt = prepareImageModelPrompt(composeImagePrompt({
+      prompt: stripIdentityDescriptions(input.prompt),
+      aspectRatio: effectiveAspectRatio,
+      style,
+      styleDna,
+      block: styleBlock,
+      entityContext: mentionContext,
+      camera: cameraSettings,
+      drawEdit: Boolean(input.drawEdit),
+    }), input.model)
 
     const { data: generationJob, error: generationJobError } = await context.supabase
       .from("creator_generation_jobs")
@@ -465,7 +470,7 @@ export async function renderProjectImage(
     } else if (provider === "higgsfield") {
       if (input.model === SOUL_V2_IMAGE_TO_IMAGE_MODEL && !referenceUrls[0]) throw new ImageRequestError("Soul V2 Image-to-Image needs a reference image. Add one in the reference strip or choose another image model.", 400)
       const submitted = await submitSoulV2Image({
-        prompt: resolvedPrompt.slice(0, 10_000),
+        prompt: resolvedPrompt,
         aspect_ratio: ["9:16", "16:9", "4:3", "3:4", "1:1", "2:3", "3:2"].includes(effectiveAspectRatio) ? effectiveAspectRatio as "9:16" | "16:9" | "4:3" | "3:4" | "1:1" | "2:3" | "3:2" : "4:3",
         resolution: input.soulSettings?.resolution || "720p",
         batch_size: 1,

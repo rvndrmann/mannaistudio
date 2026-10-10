@@ -1,3 +1,4 @@
+import { IMAGE_REALISM_AUTHORING_INSTRUCTIONS } from "./image-prompt-composition"
 import { z } from "zod"
 import { createDirectorToolTurn, streamDirectorToolTurn, type OpenAIDirectorFunction } from "./openai"
 import { createGoogleDirectorToolTurn } from "./google"
@@ -307,6 +308,7 @@ export async function runDirectorAgent(input: {
     runtimeInstructions(runtimeSettings),
     "Executable workspace proposals must be created by calling the appropriate tool; never represent an executable proposal only as assistant text. Tool calls that require approval create the UI approval card and do not apply the change until the user approves it.",
     input.instructions,
+    IMAGE_REALISM_AUTHORING_INSTRUCTIONS,
     `Current episode ID: ${input.episodeId || "No episode selected"}`,
     `Current project ID: ${input.context.project.id}`,
     input.projectState || "",

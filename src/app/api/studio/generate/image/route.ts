@@ -1,3 +1,4 @@
+import { assertImageReferenceCapacity, prepareImageModelPrompt } from "@/lib/studio/image-prompt-composition"
 import { randomUUID } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
@@ -17,7 +18,7 @@ import { StudioAccessError, studioErrorMessage, studioErrorStatus } from "@/lib/
 import { openAIImageQuality } from "@/lib/studio/entity-image-workflow"
 import { recordExistingAsset } from "@/lib/studio/byteplus-assets"
 import {
-  composeQuickPrompt,
+  composeQuickImagePrompt,
   extensionForContentType,
   foreignReferences,
   MEDIA_BUCKET,
@@ -189,7 +190,8 @@ export async function POST(request: NextRequest) {
     }
 
     const references = Array.from(new Set(input.referenceImages)).slice(0, 8)
-    const resolvedPrompt = composeQuickPrompt(input.prompt, input.aspectRatio)
+    assertImageReferenceCapacity(input.model, references.length)
+    const resolvedPrompt = prepareImageModelPrompt(composeQuickImagePrompt(input.prompt, input.aspectRatio), input.model)
 
     const { data: job, error: jobError } = await context.supabase
       .from(QUICK_GENERATIONS_TABLE)

@@ -1,3 +1,4 @@
+import { composeImagePrompt, prepareImageModelPrompt, assertImageReferenceCapacity } from "./image-prompt-composition"
 import { ownKeysOnly } from "@/lib/byok/preferences"
 import { submitGenjutsuVideo, genjutsuInputSchema, genjutsuRestyleInputSchema, GENJUTSU_RESTYLE_MODEL, SOUL_V2_IMAGE_TO_IMAGE_MODEL, submitSoulV2Image } from "./higgsfield"
 import type { SupabaseClient } from "@supabase/supabase-js"
@@ -9,7 +10,7 @@ import type { VideoGenerationModelId, ImageGenerationModelId } from "./generatio
 import { buildEntityMentionContext, chosenReferences, entityPrimaryReference, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
 import type { SeedanceSubject } from "./seedance-mentions"
 import { openAIImageQuality, projectImageQuality, projectVisualStyle } from "./entity-image-workflow"
-import { composeLookDirectives, projectStyleDna } from "./style-dna"
+import { projectStyleDna } from "./style-dna"
 import { stripIdentityDescriptions } from "./prompt-sanitizer"
 import { resolveRegisteredAsset } from "./byteplus-assets"
 import type { AuthenticatedProjectContext } from "./server-context"
@@ -237,7 +238,7 @@ export async function executeGenerationJobs(
           // One image per entity — the one the user chose. The rest of an
           // entity's images are rejected attempts, and the model would blend
           // them into the keeper.
-          const mentionReferencePaths = chosenReferences(mentionedEntities as MentionableEntity[], referenceBudget)
+          const mentionReferencePaths = chosenReferences(mentionedEntities as MentionableEntity[], job.type === "image" ? Number.POSITIVE_INFINITY : referenceBudget)
           // Only a character's image needs registering with the provider to
           // clear its real-person check; the Asset Library holds 50 and props
           // and locations would fill it for nothing.
@@ -269,9 +270,10 @@ export async function executeGenerationJobs(
           // as an image and failed the whole job on "Unsupported media format".
           // It is moved to the reference it actually is rather than dropped.
           const strayClipPaths = orderedReferencePaths.filter(isVideoReferencePath)
+          if (job.type === "image") assertImageReferenceCapacity(job.model, orderedReferencePaths.filter(path => !isVideoReferencePath(path)).length)
           const combinedReferencePaths = orderedReferencePaths
             .filter((path) => !isVideoReferencePath(path))
-            .slice(0, job.provider === "higgsfield" ? 100 : referenceBudget)
+            .slice(0, job.type === "image" ? Number.POSITIVE_INFINITY : referenceBudget)
           // Same split as the image route: a job that builds an entity's own art
           // is where an outfit is authored, and every other job reproduces it.
           const mentionContext = buildEntityMentionContext(mentionedEntities as MentionableEntity[], {
@@ -359,8 +361,14 @@ export async function executeGenerationJobs(
             settings: { ...settings, videoReferencePaths, resolvedReferencePaths: combinedReferencePaths, resolvedEntityIds: mentionedEntities.map((entity) => entity.id) },
           }).eq("id", job.id)
 
+          const resolvedImagePrompt = job.type === "image" ? prepareImageModelPrompt(composeImagePrompt({ prompt: stripIdentityDescriptions(job.prompt || ""), aspectRatio: effectiveAspectRatio, style, styleDna: projectStyleDna(context.project), block: typeof job.entity_id === "string" ? (settings.entityType === "character" ? "character" : settings.entityType === "scene" ? "scene" : "asset") : "shot", entityContext: mentionContext }), job.model) : null
+          if (resolvedImagePrompt) {
+            const { error } = await context.supabase.from("creator_generation_jobs").update({ settings: { ...settings, resolvedPrompt: resolvedImagePrompt, imagePromptVersion: 1 } }).eq("id", job.id)
+            if (error) throw error
+          }
+
           if (job.type === "image" && job.provider === "openai") {
-            const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
+            const resolvedPrompt = resolvedImagePrompt!
             if (supportsBackgroundImageResponse(job.model)) {
               const submitted = await submitOpenAIImage({ userId: context.user.id, model: job.model as OpenAIImageModel, prompt: resolvedPrompt, referenceUrls, aspectRatio: effectiveAspectRatio, quality: openAIImageQuality(imageQuality, job.model) })
               const { error } = await context.supabase.from("creator_generation_jobs").update({ status: "processing", provider_job_id: submitted.responseId, provider_response: { responseId: submitted.responseId, status: submitted.status } }).eq("id", job.id)
@@ -397,14 +405,14 @@ export async function executeGenerationJobs(
             await settleWorkflowRun(context, job.workflow_run_id)
 
           } else if (job.type === "image" && job.provider === "higgsfield") {
-            const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n").slice(0, 10_000)
+            const resolvedPrompt = resolvedImagePrompt!
             if (job.model === SOUL_V2_IMAGE_TO_IMAGE_MODEL && !referenceUrls[0]) throw new Error("Soul V2 Image-to-Image needs a reference image.")
             const submitted = await submitSoulV2Image({ prompt: resolvedPrompt, aspect_ratio: ["9:16", "16:9", "4:3", "3:4", "1:1", "2:3", "3:2"].includes(effectiveAspectRatio) ? effectiveAspectRatio as "9:16" | "16:9" | "4:3" | "3:4" | "1:1" | "2:3" | "3:2" : "4:3", resolution: settings.resolution === "1080p" ? "1080p" : "720p", batch_size: 1, enhance_prompt: settings.enhancePrompt !== false, ...(typeof settings.seed === "number" ? { seed: settings.seed } : {}), ...(typeof settings.styleId === "string" ? { style_id: settings.styleId } : {}), ...(typeof settings.customReferenceId === "string" ? { custom_reference_id: settings.customReferenceId, custom_reference_strength: typeof settings.customReferenceStrength === "number" ? settings.customReferenceStrength : 1 } : {}), ...(job.model === SOUL_V2_IMAGE_TO_IMAGE_MODEL ? { image_url: referenceUrls[0] } : {}) }, job.model)
             const { error } = await context.supabase.from("creator_generation_jobs").update({ status: "processing", provider_job_id: submitted.id, provider_response: { request_id: submitted.id, status_url: submitted.response.status_url || null, status: submitted.response.status || "queued" } }).eq("id", job.id)
             if (error) throw error
             return
           } else if (job.type === "image" && ["byteplus", "fal", "google"].includes(job.provider)) {
-            const resolvedPrompt = [stripIdentityDescriptions(job.prompt || ""), `Required composition: ${effectiveAspectRatio}.`, ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
+            const resolvedPrompt = resolvedImagePrompt!
             if (job.provider === "fal") {
               const submitted = await submitFalImage({ model: job.model as ImageGenerationModelId, prompt: resolvedPrompt, referenceUrls, quality: openAIImageQuality(imageQuality, job.model), aspectRatio: effectiveAspectRatio })
               const { error } = await context.supabase.from("creator_generation_jobs").update({ status: "processing", provider_job_id: submitted.id, provider_response: { requestId: submitted.id, endpoint: submitted.endpoint } }).eq("id", job.id)

@@ -1,3 +1,4 @@
+import { IMAGE_REALISM_AUTHORING_INSTRUCTIONS } from "./image-prompt-composition"
 import { z } from "zod"
 import { revisionRoutingInstructions } from "./revision-routing"
 import type { ProjectContext } from "./domain"
@@ -64,6 +65,7 @@ export function buildDirectorInstructions(project: ProjectContext, globalInstruc
     revisionRoutingInstructions(),
     "Global admin instructions:",
     globalInstructions,
+    IMAGE_REALISM_AUTHORING_INSTRUCTIONS,
     `Project: ${project.name}`,
     `Production mode: ${project.productionMode}`,
     `Project type: ${project.projectType}`,

@@ -24,7 +24,8 @@ describe("entity reference art prompts", () => {
     expect(prompt).toContain("SECTION 3 (Bottom)")
     expect(prompt).toContain("eye texture, hair texture, shoe details, fabric stitching, and accessories")
     expect(prompt).toContain("Clean white studio background")
-    expect(prompt).toContain("8K detail")
+    expect(prompt).not.toContain("8K")
+    expect(prompt).not.toContain("CG look, doll-like face, game art, collage, grid")
     expect(prompt).toContain("Lead driver in her late twenties")
   })
 
@@ -47,11 +48,18 @@ describe("entity reference art prompts", () => {
     expect(prompt).not.toContain("reference sheet")
   })
 
-  it("keeps every reference prompt free of rendered text", () => {
-    for (const type of ["character", "scene", "prop"] as const) {
+  it("keeps reference sheets and locations free of unwanted rendered text", () => {
+    for (const type of ["character", "scene"] as const) {
       const prompt = buildEntityReferenceImagePrompt({ id: "4", name: "Subject", type, description: "" }, "Realistic - Photorealistic")
       expect(prompt).toContain("no names, ages, biographies, captions, callouts, borders, panels, watermarks, or any text inside the image")
     }
+  })
+
+  it("preserves approved product lettering without allowing unrelated overlays", () => {
+    const prompt = buildEntityReferenceImagePrompt({ id: "bottle", name: "Bottle", type: "prop", description: 'Label reads "AURORA SPF 50"' }, "Realistic - Photorealistic")
+    expect(prompt).toContain('"AURORA SPF 50"')
+    expect(prompt).toContain("Preserve required lettering")
+    expect(prompt).not.toContain("or any text inside the image")
   })
 
   it("reads the persisted project style used by generation routes", () => {

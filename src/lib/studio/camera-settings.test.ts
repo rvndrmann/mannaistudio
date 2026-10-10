@@ -25,8 +25,7 @@ describe("buildCameraPrompt", () => {
       + "shot on a grand format 70mm film camera, "
       + "using a classic anamorphic lens at 85mm (classic portrait perspective), "
       + "aperture f/1.4, shallow depth of field, creamy bokeh, "
-      + "cinematic lighting, natural color science, high dynamic range, "
-      + "professional photography, ultra-detailed, 8K resolution",
+      + "natural photographic colour, restrained sharpening, realistic optical detail",
     )
   })
 
@@ -59,7 +58,7 @@ describe("buildCameraPrompt", () => {
     const first = applyCameraSettings("A kitchen", settings)
     const second = applyCameraSettings("A kitchen", settings)
     expect(second).toBe(first)
-    expect(second.match(/cinematic lighting/g)).toHaveLength(1)
+    expect(second.match(/natural photographic colour/g)).toHaveLength(1)
   })
 })
 

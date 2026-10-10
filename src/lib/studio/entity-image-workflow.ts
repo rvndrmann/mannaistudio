@@ -99,17 +99,19 @@ export function buildEntityReferenceImagePrompt(entity: MentionableEntity, style
   // is only a usable backdrop when nobody is standing in it; a prop is only a
   // usable cutout when nothing else shares the frame.
   const subject = entity.type === "character"
-    ? `Create a comprehensive photorealistic character reference sheet of “${entity.name}”, organized in a clean cohesive grid layout. The image consists of three distinct sections. SECTION 1 (Left): three full-body standing poses showing the same character in front view, side profile view, and back view. SECTION 2 (Top Right): a horizontal row of headshot portraits displaying five facial expressions: neutral, happy, angry, sad, and surprised. SECTION 3 (Bottom): a row of extreme macro close-up inserts showing eye texture, hair texture, shoe details, fabric stitching, and accessories. Keep the face, hair, body, wardrobe, shoes, and accessories identical across every view. Clean white studio background, soft even commercial lighting, 8K detail, ultra-realistic photography style. No environment, no scene, no other characters, and no props beyond what the character wears or carries.`
+    ? `Create a comprehensive character reference sheet of “${entity.name}”, organized in a clean cohesive grid layout. The image consists of three distinct sections. SECTION 1 (Left): three full-body standing poses showing the same character in front view, side profile view, and back view. SECTION 2 (Top Right): a horizontal row of headshot portraits displaying five facial expressions: neutral, happy, angry, sad, and surprised. SECTION 3 (Bottom): a row of extreme macro close-up inserts showing eye texture, hair texture, shoe details, fabric stitching, and accessories. Keep the face, hair, body, wardrobe, shoes, and accessories identical across every view. Clean white studio background, soft even commercial lighting, coherent material detail in the requested project style. No environment, no scene, no other characters, and no props beyond what the character wears or carries.`
     : entity.type === "scene"
     ? `Create one empty establishing plate for the location “${entity.name}”. Render the place itself with nobody in it: no named characters and no background people, crowds, or silhouettes of any kind. Eye-level, neutral perspective. Keep foreground, mid-ground, and background clearly layered with real architectural structure and furniture detail, honest wall and fabric materials, and natural shadows, so characters can be staged anywhere in the depth later. Show the room as it normally is, not mid-scene: no story action and no props that belong to a single moment — those are added per shot.`
     : `Create one production design reference for the ${entity.type === "prop" ? "prop" : "asset"} “${entity.name}” on a plain, uncluttered neutral background. Show exactly one coherent object with a clear silhouette, even lighting, and useful production detail. No scene, no environment, no people, and no hands holding it.`
   return [
     subject,
     entity.description?.trim() ? `Canonical description: ${entity.description.trim()}` : "Preserve the canonical identity implied by the entity name.",
-    ...(lookDirectives?.length ? lookDirectives : [`Required project style: ${style || "cinematic"}.`, visualStyleDirective(style)]),
+    ...(lookDirectives?.length ? lookDirectives : [`Required project style: ${style || "cinematic"}.`, visualStyleDirective(style)]).map(line => entity.type === "character" ? line.replace("collage, grid, ", "") : entity.type !== "scene" ? line.replace("typography, labels, captions, or UI", "unrelated captions, overlays, or UI; preserve required product lettering") : line),
     // The multi-view layout is wanted; rendered text is not. Image models set
     // labels and captions badly, and they contaminate the reference when it is
     // fed back in as a visual input.
-    "This is a reusable production reference, so keep it free of written matter: no names, ages, biographies, captions, callouts, borders, panels, watermarks, or any text inside the image.",
+    entity.type === "character" || entity.type === "scene"
+      ? "This is a reusable production reference, so keep it free of written matter: no names, ages, biographies, captions, callouts, borders, panels, watermarks, or any text inside the image."
+      : "Preserve required lettering on the referenced object, including approved packaging and wordmarks. No invented text, unrelated captions, callouts, borders, watermarks, or UI.",
   ].join("\n")
 }

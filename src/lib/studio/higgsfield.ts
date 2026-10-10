@@ -1,3 +1,4 @@
+import { prepareImageModelPrompt } from "./image-prompt-composition"
 import { activeCredentialPart } from "@/lib/byok/active-credential"
 import { assertAllowedProviderUrl } from "@/lib/byok/providers"
 import { z } from "zod"
@@ -85,6 +86,7 @@ export async function getHiggsfieldVideoTask(id: string) {
 
 export async function submitSoulV2Image(input: z.input<typeof soulV2InputSchema> | (z.input<typeof soulV2ImageToImageInputSchema>), model = SOUL_V2_MODEL) {
   if (model !== SOUL_V2_MODEL && model !== SOUL_V2_IMAGE_TO_IMAGE_MODEL) throw new HiggsfieldProviderError("Unsupported Soul V2 image model", 400)
+  input = { ...input, prompt: prepareImageModelPrompt(input.prompt, model) }
   const parsed = model === SOUL_V2_IMAGE_TO_IMAGE_MODEL ? soulV2ImageToImageInputSchema.parse(input) : soulV2InputSchema.parse(input)
   const response = await call(model, parsed)
   if (typeof response.request_id !== "string" || !response.request_id) throw new HiggsfieldProviderError("Higgsfield did not return an image request ID")

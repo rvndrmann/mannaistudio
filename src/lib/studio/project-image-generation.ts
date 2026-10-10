@@ -1,3 +1,4 @@
+import { composeImagePrompt, prepareImageModelPrompt } from "./image-prompt-composition"
 import "server-only"
 import { generateGoogleImage } from "./google"
 import { generateOpenAIImage, openAIImageModels, type OpenAIImageModel, type OpenAIImageQuality } from "./openai"
@@ -26,6 +27,7 @@ export async function generateProjectImage(input: {
   aspectRatio?: string
   quality?: OpenAIImageQuality
 }): Promise<GeneratedImage> {
+  input = { ...input, prompt: prepareImageModelPrompt(composeImagePrompt({ prompt: input.prompt, aspectRatio: input.aspectRatio }), input.model) }
   const provider = generationProvider(input.model)
 
   if (provider === "google") {

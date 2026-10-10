@@ -1,3 +1,4 @@
+import { prepareImageModelPrompt, assertImageReferenceCapacity, ImagePromptValidationError } from "./image-prompt-composition"
 import { fal } from "@fal-ai/client"
 import { videoModelMaxDuration, type ImageGenerationModelId, type VideoGenerationModelId } from "@/lib/studio/generation-models"
 import type { OpenAIImageQuality } from "@/lib/studio/image-quality"
@@ -52,7 +53,7 @@ function getFalKey() {
   return key
 }
 
-/** Sunburst Edit takes up to sixteen reference images; the Flux models take one. */
+/** Sunburst Edit takes sixteen references; these Flux endpoints are text-only. */
 const SUNBURST_EDIT_ENDPOINT = "openai/gpt-image-2.5/sunburst/edit"
 const SUNBURST_TEXT_TO_IMAGE_ENDPOINT = "openai/gpt-image-2.5/sunburst/text-to-image"
 const SUNBURST_EDIT_MAX_REFERENCES = 16
@@ -72,6 +73,14 @@ export function falImageEndpoint(model: ImageGenerationModelId): string {
  * has nothing to read, so an unmapped ratio would render every vertical drama
  * as a square and charge full price for it.
  */
+function fluxImageSize(aspectRatio?: string): string | { width: number; height: number } {
+  if (["1:1", "9:16", "3:4", "16:9", "4:3", ""].includes(aspectRatio || "")) return falImageSize(aspectRatio)
+  const [w, h] = (aspectRatio || "").split(":").map(Number)
+  if (!w || !h || w / h < 0.25 || w / h > 4) throw new ImagePromptValidationError("Unsupported Flux image aspect ratio")
+  // Documented custom canvas, rounded to supported pixel blocks rather than a square fallback.
+  return { width: Math.round(1024 * Math.sqrt(w / h) / 32) * 32, height: Math.round(1024 * Math.sqrt(h / w) / 32) * 32 }
+}
+
 function falImageSize(aspectRatio?: string): string {
   switch ((aspectRatio || "").trim()) {
     case "9:16": return "portrait_16_9"
@@ -96,7 +105,9 @@ function falImagePayload(
   input: { prompt: string; referenceUrls?: string[]; quality?: OpenAIImageQuality; aspectRatio?: string },
   endpoint: string,
 ): Record<string, unknown> {
+  input = { ...input, prompt: prepareImageModelPrompt(input.prompt, endpoint) }
   if (endpoint === SUNBURST_TEXT_TO_IMAGE_ENDPOINT) {
+    if (input.aspectRatio && !["1:1", "9:16", "3:4", "16:9", "4:3"].includes(input.aspectRatio)) throw new ImagePromptValidationError("This Sunburst text adapter cannot represent the requested ratio exactly. Choose a supported ratio; no square fallback was used.")
     // The same model and the same tiers as the edit twin, drawing from nothing
     // but the prompt. References are ignored rather than refused: this endpoint
     // has no input to edit, and silently sending them would change nothing.
@@ -111,8 +122,7 @@ function falImagePayload(
   if (endpoint !== SUNBURST_EDIT_ENDPOINT) {
     return {
       prompt: input.prompt,
-      image_size: "square_hd",
-      ...(input.referenceUrls?.length ? { image_url: input.referenceUrls[0] } : {}),
+      image_size: fluxImageSize(input.aspectRatio),
     }
   }
   // An edit model with nothing to edit is a 422 from the provider and a charged
@@ -144,6 +154,7 @@ export async function generateFalImage(input: {
   fal.config({ credentials: falKey })
 
   const endpoint = falImageEndpoint(input.model)
+  assertImageReferenceCapacity(input.model, input.referenceUrls?.length || 0)
   const payload = falImagePayload(input, endpoint)
 
   try {
@@ -184,6 +195,7 @@ export async function submitFalImage(input: {
   getFalKey()
   fal.config({ credentials: getFalKey() })
   const endpoint = falImageEndpoint(input.model)
+  assertImageReferenceCapacity(input.model, input.referenceUrls?.length || 0)
   const payload = falImagePayload(input, endpoint)
 
   try {

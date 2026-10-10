@@ -1,3 +1,4 @@
+import { prepareImageModelPrompt } from "./image-prompt-composition"
 import { videoModelMaxDuration, type ImageGenerationModelId, type VideoGenerationModelId } from "@/lib/studio/generation-models"
 
 import { activeCredentialPart, isRunningOnCustomerKey } from "@/lib/byok/active-credential"
@@ -86,6 +87,7 @@ async function request(path: string, init: RequestInit) {
 }
 
 export async function generateBytePlusImage(input: { model: ImageGenerationModelId; prompt: string; referenceUrls?: string[] }) {
+  input = { ...input, prompt: prepareImageModelPrompt(input.prompt, input.model) }
   const data = await request("/images/generations", {
     method: "POST",
     body: JSON.stringify({

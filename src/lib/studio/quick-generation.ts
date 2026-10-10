@@ -1,3 +1,4 @@
+import { composeImagePrompt } from "./image-prompt-composition"
 import "server-only"
 import { randomUUID } from "node:crypto"
 import type { SupabaseClient, User } from "@supabase/supabase-js"
@@ -18,10 +19,9 @@ import { MEDIA_BUCKET, QUICK_GENERATIONS_TABLE, QUICK_MEDIA_FOLDER, type QuickHi
  * what the user actually typed.
  *
  * What is deliberately *not* here: style DNA, entity mentions, camera packages.
- * A standalone prompt reaches the model close to as written. Quietly appending
- * a look block would make these pages produce different pictures from the same
- * prompt than the provider's own site does, which is the one thing someone
- * reaching for a bare generator will notice.
+ * Video composition remains close to the user's words. Photographic image
+ * requests receive the shared physical-treatment layer, without project-only
+ * references, camera packages, or Style DNA.
  */
 
 export { MEDIA_BUCKET, QUICK_MEDIA_FOLDER, QUICK_GENERATIONS_TABLE } from "@/lib/studio/quick-media"
@@ -212,4 +212,9 @@ export function generationJobRejection(error: { message?: string; code?: string 
     || /does not exist|row-level security|violates row-level|schema cache/i.test(message)
   if (!isSetupFailure) return null
   return "Quick Create is not finished setting up on this server: its database table is missing. Apply the pending migration (supabase db push) and try again. Nothing was charged."
+}
+
+/** Image-only version: video prompts retain their existing composition. */
+export function composeQuickImagePrompt(prompt: string, aspectRatio: string): string {
+  return composeImagePrompt({ prompt, aspectRatio })
 }

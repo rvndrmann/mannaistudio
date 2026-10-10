@@ -75,9 +75,9 @@ export const apertureOptions = Object.keys(APERTURE_EFFECT)
 export type CameraBlock = "character" | "asset" | "shot"
 
 export const BLOCK_CAMERA_DEFAULTS: Record<CameraBlock, CameraSettings> = {
-  character: { camera: "Full-Frame Cine Digital", lens: "Premium Modern Prime", focalLength: 85, aperture: "f/1.4" },
+  character: { camera: "Full-Frame Cine Digital", lens: "Premium Modern Prime", focalLength: 85, aperture: "f/4" },
   asset: { camera: "Full-Frame Cine Digital", lens: "Clinical Sharp Prime", focalLength: 50, aperture: "f/4" },
-  shot: { camera: "Full-Frame Cine Digital", lens: "Premium Modern Prime", focalLength: 35, aperture: "f/1.4" },
+  shot: { camera: "Full-Frame Cine Digital", lens: "Premium Modern Prime", focalLength: 35, aperture: "f/4" },
 }
 
 /** What a project starts on before anyone opens Basic Settings. */
@@ -173,7 +173,7 @@ export function buildCameraPrompt(
   // back toward a neutral house look and quietly undo a specific reference.
   const tail = options?.opticsOnly
     ? []
-    : ["cinematic lighting", "natural color science", "high dynamic range", "professional photography, ultra-detailed, 8K resolution"]
+    : ["natural photographic colour", "restrained sharpening", "realistic optical detail"]
 
   const parts = [
     basePrompt,

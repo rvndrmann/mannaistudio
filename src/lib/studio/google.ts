@@ -1,3 +1,4 @@
+import { prepareImageModelPrompt, assertImageReferenceCapacity } from "./image-prompt-composition"
 import { GoogleGenAI } from "@google/genai"
 import type { ImageGenerationModelId, VideoGenerationModelId } from "@/lib/studio/generation-models"
 import { activeCredentialPart } from "@/lib/byok/active-credential"
@@ -23,6 +24,8 @@ export async function generateGoogleImage(input: {
   prompt: string
   referenceUrls?: string[]
 }) {
+  assertImageReferenceCapacity(input.model, input.referenceUrls?.length || 0)
+  input = { ...input, prompt: prepareImageModelPrompt(input.prompt, input.model) }
   const apiKey = getGoogleApiKey()
   const ai = new GoogleGenAI({ apiKey })
 
