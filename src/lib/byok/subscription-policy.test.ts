@@ -1,15 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-const mocks = vi.hoisted(() => ({ rows: [] as { paid_until: string | null }[], error: null as unknown, preferences: {} as Record<string, unknown>, creditsEnabled: true }))
+const mocks = vi.hoisted(() => ({ rows: [] as { paid_until: string | null }[], error: null as unknown, preferences: {} as Record<string, unknown>, creditsEnabled: true, testUserIds: [] as string[] }))
 vi.mock("@/lib/supabase/service", () => ({ createServiceClient: () => ({ from: (table: string) => {
-  const query = { select: () => query, eq: () => query, not: async () => ({ data: mocks.rows, error: mocks.error }),
-    maybeSingle: async () => ({ data: table === "site_settings" ? { value: { enabled: mocks.creditsEnabled } } : { preferences: mocks.preferences }, error: mocks.error }), upsert: vi.fn() }
+  let key = ""
+  const query = { select: () => query, eq: (_column: string, value: string) => { key = value; return query }, not: async () => ({ data: mocks.rows, error: mocks.error }),
+    maybeSingle: async () => ({ data: table === "site_settings" ? { value: key === "byok_test_access" ? { userIds: mocks.testUserIds } : { enabled: mocks.creditsEnabled } } : { preferences: mocks.preferences }, error: mocks.error }), upsert: vi.fn() }
   return query
 } }) }))
 import { getByokSubscriptionPolicy } from "./subscription-policy"
 import { ownKeysOnly, setOwnKeysOnly } from "./preferences"
 
 describe("mandatory subscription billing policy", () => {
-  beforeEach(() => { mocks.rows = []; mocks.error = null; mocks.preferences = {}; mocks.creditsEnabled = true })
+  beforeEach(() => { mocks.rows = []; mocks.error = null; mocks.preferences = {}; mocks.creditsEnabled = true; mocks.testUserIds = [] })
   it("requires own keys even if the user preference is false", async () => {
     mocks.rows = [{ paid_until: new Date(Date.now() + 60_000).toISOString() }]
     mocks.preferences = { byok_own_keys_only: false }
@@ -31,6 +32,14 @@ describe("mandatory subscription billing policy", () => {
     mocks.creditsEnabled = false
     expect(await ownKeysOnly("user")).toBe(true)
     await expect(setOwnKeysOnly("user", false)).rejects.toThrow("requires your own")
+  })
+  it("allows an explicitly granted BYOK tester and locks them to their own keys", async () => {
+    mocks.testUserIds = ["user"]
+    mocks.preferences = { byok_own_keys_only: false }
+    expect(await getByokSubscriptionPolicy("user")).toEqual({ required: true, active: true })
+    expect(await ownKeysOnly("user")).toBe(true)
+    await expect(setOwnKeysOnly("user", false)).rejects.toThrow("requires your own")
+    expect(await getByokSubscriptionPolicy("other")).toEqual({ required: false, active: false })
   })
   it("database failures cannot authorize spending platform credits", async () => {
     mocks.error = new Error("Database unavailable")

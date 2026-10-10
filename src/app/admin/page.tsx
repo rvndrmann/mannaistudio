@@ -1,5 +1,6 @@
 "use client"
 import CreditAccessControls from "@/components/admin/CreditAccessControls"
+import ByokTestAccessControls from "@/components/admin/ByokTestAccessControls"
 
 import Navbar from "@/components/Navbar"
 import { motion, AnimatePresence } from "framer-motion"
@@ -3327,6 +3328,7 @@ function AdminDashboardContent() {
 
                                 <div className="glass-card p-6 rounded-2xl border-white/10 space-y-4 max-w-4xl">
 <CreditAccessControls />
+<ByokTestAccessControls />
                                     <div>
                                         <h2 className="text-lg font-bold">Homepage</h2>
                                         <p className="mt-1 text-xs text-white/40">
