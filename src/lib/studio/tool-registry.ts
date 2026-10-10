@@ -941,7 +941,7 @@ export const submitGenerationTool = defineDirectorTool({
       await context.supabase.from("creator_generation_jobs").update({ credits_used: routing.creditsPerShot }).in("id", jobIds)
     }
     // Trigger background generation for the approved jobs
-    executeGenerationJobsInBackground(context, jobIds)
+    await executeGenerationJobsInBackground(context, jobIds)
 
     return {
       jobs: data,
@@ -1059,7 +1059,7 @@ export const generateEntityReferenceArtTool = defineDirectorTool({
       throw new Error(deduction.errorMessage || "Insufficient credits")
     }
     await context.supabase.from("creator_generation_jobs").update({ credits_used: referenceBilling.credits }).in("id", jobIds)
-    executeGenerationJobsInBackground(context, jobIds)
+    await executeGenerationJobsInBackground(context, jobIds)
 
     return {
       jobs: data,

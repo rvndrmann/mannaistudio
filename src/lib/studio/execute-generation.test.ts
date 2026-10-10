@@ -3,7 +3,7 @@ import type { AuthenticatedProjectContext } from "./server-context"
 import { STALLED_SUBMISSION_MS } from "./stalled-jobs"
 import { canClaimGeneration, claimGeneration, submissionRecoveryExpired } from "./generation-claim"
 import { ownKeysOnly } from "@/lib/byok/preferences"
-import { executeGenerationJobs } from "./execute-generation"
+import { executeGenerationJobs, dispatchImageGenerationJob } from "./execute-generation"
 import { submitOpenAIImage, generateOpenAIImage } from "./openai"
 import { submitFalImage, generateFalImage } from "./fal"
 import { submitBytePlusVideo } from "./byteplus"
@@ -208,5 +208,28 @@ describe("mandatory BYOK background execution", () => {
     await executeGenerationJobs(context, [row.id])
     expect(submitBytePlusVideo).not.toHaveBeenCalled()
     log.mockRestore()
+  })
+})
+
+
+describe("synchronous image worker dispatch", () => {
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals() })
+  it("waits for the worker acknowledgement using the caller token", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co")
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ accepted: true }), { status: 202 }))
+    vi.stubGlobal("fetch", fetcher)
+    const { context } = fixture()
+    context.generationAccessToken = "test-user-token"
+    expect(await dispatchImageGenerationJob(context, "image-job")).toBe(true)
+    expect(fetcher).toHaveBeenCalledWith("https://example.supabase.co/functions/v1/render-image", expect.objectContaining({ headers: { Authorization: "Bearer test-user-token", "Content-Type": "application/json" }, body: JSON.stringify({ projectId: context.project.id, jobId: "image-job" }) }))
+    expect(generateOpenAIImage).not.toHaveBeenCalled()
+  })
+  it("does not resubmit locally when the worker refuses the job", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co")
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Denied", { status: 403 })))
+    const { context } = fixture()
+    context.generationAccessToken = "test-user-token"
+    await expect(dispatchImageGenerationJob(context, "image-job")).rejects.toThrow("did not accept")
+    expect(generateOpenAIImage).not.toHaveBeenCalled()
   })
 })

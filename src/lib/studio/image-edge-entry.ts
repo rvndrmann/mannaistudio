@@ -9,3 +9,5 @@
  */
 export { renderProjectImage, imageRequestSchema, imageGenerationErrorResponse } from "./project-image-render"
 export { requireAuthenticatedProject } from "./server-context"
+
+export { executeGenerationJobs } from "./execute-generation"

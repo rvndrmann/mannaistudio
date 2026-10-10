@@ -5,6 +5,7 @@ if (typeof (globalThis as { Buffer?: unknown }).Buffer === "undefined") {
 
 import { createClient } from "@supabase/supabase-js"
 import {
+  executeGenerationJobs,
   imageGenerationErrorResponse,
   imageRequestSchema,
   renderProjectImage,
@@ -60,7 +61,6 @@ Deno.serve(async (request: Request) => {
     if (typeof projectId !== "string" || !projectId) {
       return Response.json({ error: "Which project?" }, { status: 400, headers: cors })
     }
-    const input = imageRequestSchema.parse(rest)
 
     // The caller's own token, never the service role. Every read and write this
     // generation makes is bounded by what that user may see.
@@ -74,6 +74,18 @@ Deno.serve(async (request: Request) => {
     )
 
     const context = await requireAuthenticatedProject(projectId, supabase)
+    if ("jobId" in rest) {
+      const jobId = (rest as { jobId?: unknown }).jobId
+      if (typeof jobId !== "string" || !/^[0-9a-f-]{36}$/i.test(jobId)) return Response.json({ error: "Invalid image job" }, { status: 400, headers: cors })
+      const { data: job, error } = await supabase.from("creator_generation_jobs").select("id,type,user_id").eq("id", jobId).eq("project_id", projectId).maybeSingle()
+      if (error) throw error
+      if (!job || job.type !== "image" || job.user_id !== context.user.id) return Response.json({ error: "Image job not found" }, { status: 404, headers: cors })
+      // The caller receives an acknowledgement; this one render survives that
+      // response and stays inside the caller's RLS and credential scope.
+      EdgeRuntime.waitUntil(executeGenerationJobs(context, [job.id]))
+      return Response.json({ accepted: true, jobId }, { status: 202, headers: cors })
+    }
+    const input = imageRequestSchema.parse(rest)
     const result = await renderProjectImage(context, projectId, input)
     return Response.json(result, { headers: cors })
   } catch (error) {

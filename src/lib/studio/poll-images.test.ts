@@ -3,8 +3,8 @@ import { NextRequest } from "next/server"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { pollImages } from "./poll-images"
 import { retrieveOpenAIImage } from "./openai"
-import { executeGenerationJobs } from "./execute-generation"
-vi.mock("./execute-generation", () => ({ executeGenerationJobs: vi.fn(async () => {}), settleWorkflowRun: vi.fn(async () => {}) }))
+import { executeGenerationJobs, dispatchImageGenerationJob } from "./execute-generation"
+vi.mock("./execute-generation", () => ({ executeGenerationJobs: vi.fn(async () => {}), dispatchImageGenerationJob: vi.fn(async () => false), settleWorkflowRun: vi.fn(async () => {}) }))
 vi.mock("@/lib/byok/preferences", () => ({ ownKeysOnly: vi.fn(async () => false) }))
 vi.mock("./openai", () => ({ retrieveOpenAIImage: vi.fn(async () => ({ status: "pending" })) }))
 function context(job: Record<string, unknown>) {
@@ -46,4 +46,15 @@ describe("admin image re-poll", () => {
     await pollImages(request(), params(), context({ id: "job", status: "completed", provider_job_id: "resp-saved" }), true)
     expect(retrieveOpenAIImage).not.toHaveBeenCalled()
   })
+})
+
+
+it("hands queued Sunburst renders to the long-lived image worker", async () => {
+  vi.clearAllMocks()
+  vi.mocked(dispatchImageGenerationJob).mockResolvedValueOnce(true)
+  const job = { id: "job", type: "image", model: "gpt-image-2.5-sunburst", status: "approved", provider_job_id: null, started_at: null }
+  const ctx = context(job)
+  await pollImages(request(), params(), ctx)
+  expect(dispatchImageGenerationJob).toHaveBeenCalledWith(ctx, "job")
+  expect(executeGenerationJobs).not.toHaveBeenCalled()
 })

@@ -1,5 +1,5 @@
 import { ownKeysOnly } from "@/lib/byok/preferences"
-import { executeGenerationJobs, settleWorkflowRun } from "./execute-generation"
+import { executeGenerationJobs, dispatchImageGenerationJob, settleWorkflowRun } from "./execute-generation"
 import { canClaimGeneration } from "./generation-claim"
 import { withCredential } from "@/lib/byok/credential-service"
 import { runWithCredential } from "@/lib/byok/active-credential"
@@ -90,7 +90,7 @@ export async function pollImages(request: NextRequest, { params }: { params: Pro
     // Already-started images are deliberately not reclaimed: a synchronous
     // provider may have charged for them without giving us a recovery handle.
     if (!job.provider_job_id && canClaimGeneration(job)) {
-      await executeGenerationJobs(context, [job.id as string])
+      if (job.model !== "gpt-image-2.5-sunburst" || !await dispatchImageGenerationJob(context, job.id as string)) await executeGenerationJobs(context, [job.id as string])
       const { data: current, error } = await context.supabase
         .from("creator_generation_jobs").select("*").eq("id", job.id).maybeSingle()
       if (error) throw error

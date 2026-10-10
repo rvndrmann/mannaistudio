@@ -220,17 +220,20 @@ export function buildEntityMentionContext(entities: MentionableEntity[], options
     // Named one by one and placed last. A shot prompt states a character's hair
     // and face outright, and a single generic sentence loses to that; the
     // override has to be as specific as the thing it is overriding.
-    ...(entities.length > withoutArt.length
+    ...(dressed.length
       ? [
         "LIKENESS LOCK — highest priority, overrides everything above:",
-        ...entities
-          .filter((entity) => (entity.reference_images || []).length)
+        ...dressed
           .map((entity) => `- @${entity.name}: the supplied reference image of @${entity.name} defines their face, hair colour, hair style, skin tone, build, and age. Reproduce that person exactly. Any words above describing @${entity.name}'s appearance are outdated and must be ignored where they differ from the image.`),
         wardrobe === "locked"
           ? "Do not restyle, recolour, age, or idealise a referenced person. Expression, pose, and lighting follow the shot; the person does not change."
           : "Do not restyle, recolour, age, or idealise a referenced person. Wardrobe, expression, pose, and lighting follow the shot; the person does not change.",
       ]
       : []),
+    ...entities.filter(entity => entity.type !== "character" && (entity.reference_images || []).length).map(entity =>
+      entity.type === "scene"
+        ? `LOCATION LOCK — @${entity.name}: preserve the reference location's architecture, layout, surfaces and recognizable features. Camera position, time of day and lighting follow the shot. Do not copy incidental people into the cast.`
+        : `ASSET LOCK — @${entity.name}: preserve the supplied reference's exact shape, proportions, materials, colourway and branding. Position and interaction follow the shot; do not replace it with a generic product or invent markings.`),
     // Wardrobe is locked separately from likeness, and after it, because it is
     // the lock that gets argued with: a shot prompt describes an outfit far
     // more readily than it describes a face, and the model dresses the

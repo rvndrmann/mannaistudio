@@ -11,6 +11,7 @@ export class StudioAccessError extends Error {
 
 export type AuthenticatedProjectContext = {
   supabase: SupabaseClient
+  generationAccessToken?: string
   user: User
   project: Record<string, unknown> & { id: string; user_id: string }
 }

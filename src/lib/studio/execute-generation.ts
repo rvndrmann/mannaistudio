@@ -623,11 +623,34 @@ export async function executeGenerationJobs(
   }
 }
 
-export function executeGenerationJobsInBackground(
-  context: AuthenticatedProjectContext,
-  jobIds: string[]
-) {
-  // Deliberately not awaited: the caller is answering a user and cannot wait
-  // for a render. Anything this loses is recovered by the poll route.
-  void executeGenerationJobs(context, jobIds)
+/** Hand a synchronous image to a worker before the short-lived caller exits. */
+export async function dispatchImageGenerationJob(context: AuthenticatedProjectContext, jobId: string): Promise<boolean> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+  const session = context.generationAccessToken ? null : await context.supabase.auth?.getSession?.()
+  const token = context.generationAccessToken || session?.data?.session?.access_token
+  if (!url || !token) return false
+  const response = await fetch(`${url}/functions/v1/render-image`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ projectId: context.project.id, jobId }),
+    signal: AbortSignal.timeout(20000),
+  })
+  if (!response.ok) throw new Error(`Image worker did not accept the job (${response.status}). No duplicate render was submitted.`)
+  return true
+}
+
+export async function executeGenerationJobsInBackground(context: AuthenticatedProjectContext, jobIds: string[]) {
+  const { data: jobs, error } = await context.supabase.from("creator_generation_jobs").select("id,type,model").eq("project_id", context.project.id).in("id", jobIds)
+  if (error) throw error
+  const local: string[] = []
+  for (const job of jobs || []) {
+    if (job.type === "image" && job.model === "gpt-image-2.5-sunburst" && await dispatchImageGenerationJob(context, job.id)) continue
+    local.push(job.id)
+  }
+  if (local.length) {
+    const work = executeGenerationJobs(context, local)
+    const edge = (globalThis as unknown as { EdgeRuntime?: { waitUntil(promise: Promise<unknown>): void } }).EdgeRuntime
+    if (edge) edge.waitUntil(work)
+    else void work
+  }
 }

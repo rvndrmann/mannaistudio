@@ -232,3 +232,15 @@ describe("explicit alias bindings and per-shot references", () => {
     expect(shotReferenceIds("Black end card with @Nike Swoosh", cast, [], ["lead", "pitch", "logo"])).toEqual(["logo"])
   })
 })
+
+
+it("locks product geometry and locations without describing them as people", () => {
+  const context = buildEntityMentionContext([
+    { id: "boot", name: "Boots", type: "prop", reference_images: ["boot.png"] },
+    { id: "stadium", name: "Stadium", type: "scene", reference_images: ["stadium.png"] },
+  ])
+  expect(context).toContain("ASSET LOCK — @Boots")
+  expect(context).toContain("LOCATION LOCK — @Stadium")
+  expect(context).not.toContain("defines their face")
+  expect(context).not.toContain("Reproduce that person exactly")
+})

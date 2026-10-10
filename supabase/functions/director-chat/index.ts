@@ -81,6 +81,7 @@ Deno.serve(async (request: Request) => {
     )
 
     const context = await requireAuthenticatedProject(body.projectId, supabase)
+    context.generationAccessToken = authorization.slice(7)
 
     // The same preconditions the Next.js route applies, from the same function,
     // so the two callers cannot come to different answers about whether an
