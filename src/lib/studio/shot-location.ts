@@ -17,6 +17,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 
 export type LocatableShot = {
   id: string
+  prompt?: string | null
   order_index: number
   referenced_entities?: string[] | null
   metadata?: unknown
@@ -46,6 +47,7 @@ export function inheritedShotLocations(shots: LocatableShot[], entities: Locatab
   const awaitingFirst: LocatableShot[] = []
 
   for (const shot of ordered) {
+    if (/\b(?:end[ -]?card|title[ -]?card)\b/i.test(shot.prompt || "")) continue
     const own = locationOf(shot)
     if (own) {
       carried = own
@@ -141,7 +143,7 @@ export async function ensureProjectShotLocations(
   if (!episodeIds.length) return 0
   const { data: shots } = await supabase
     .from("creator_shots")
-    .select("id,order_index,referenced_entities,metadata,episode_id")
+    .select("id,order_index,prompt,referenced_entities,metadata,episode_id")
     .in("episode_id", episodeIds)
     .order("order_index")
   if (!shots?.length) return 0

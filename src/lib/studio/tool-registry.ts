@@ -16,7 +16,7 @@ import { hasCredential } from "@/lib/byok/credential-service"
 import { ownKeysOnly } from "@/lib/byok/preferences"
 import { byokProviderFor, isByokProvider } from "@/lib/byok/providers"
 import { executeGenerationJobsInBackground } from "./execute-generation"
-import { findMentionedEntityIds, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
+import { findMentionedEntityIds, findShotCastEntityIds, shotReferenceIds, unresolvedEntityMentions, type MentionableEntity } from "./entity-mentions"
 import { describeUntaggedEntities, findUntaggedEntities } from "./untagged-entities"
 import { sceneNotFrameReason, stripIdentityDescriptions } from "./prompt-sanitizer"
 import { ensureProjectShotLocations, ensureShotLocations, inheritedShotLocations } from "./shot-location"
@@ -477,8 +477,11 @@ export const createStoryboardBatchTool = defineDirectorTool({
       return unique.length ? [describeUntaggedEntities(unique, `Shot "${shot.title}"`)] : []
     })
     if (untagged.length) throw new Error(untagged.slice(0, 4).join(" "))
+    const unresolved = input.shots.flatMap(shot => unresolvedEntityMentions(shot.prompt + "\n" + shot.videoPrompt, batchEntities))
+    if (unresolved.length) throw new Error(`Unknown or ambiguous asset tags: ${Array.from(new Set(unresolved)).map(name => "@" + name).join(", ")}. Use the exact names returned by list_entities or save explicit metadata.aliases first.`)
+
     const rows = input.shots.map((shot, index) => {
-      const text = `${shot.prompt}\n${shot.description}\n${shot.scriptText}`
+      const text = `${shot.prompt}\n${shot.videoPrompt}\n${shot.description}\n${shot.scriptText}`
       const cast = findShotCastEntityIds(text, batchEntities, shot.referencedEntityIds)
       // The cast is read from the prompt as written, then the written identity
       // is dropped before the prompt is stored. A saved "CHARACTER / ASSET LOCK"
@@ -751,7 +754,7 @@ export const submitGenerationTool = defineDirectorTool({
     // the repair is saved, so the assets column agrees with what was rendered.
     const repairEpisodeId = request.episodeId || (await context.supabase.from("creator_shots").select("episode_id").in("id", request.shotIds).limit(1).maybeSingle()).data?.episode_id
     if (repairEpisodeId) {
-      const { data: episodeShots } = await context.supabase.from("creator_shots").select("id,order_index,referenced_entities,metadata").eq("episode_id", repairEpisodeId).order("order_index")
+      const { data: episodeShots } = await context.supabase.from("creator_shots").select("id,order_index,prompt,referenced_entities,metadata").eq("episode_id", repairEpisodeId).order("order_index")
       if (episodeShots?.length) {
         await ensureShotLocations(context.supabase, { shots: episodeShots, entities: (projectEntityRows || []) as { id: string; type: string }[] })
       }
@@ -862,10 +865,30 @@ export const submitGenerationTool = defineDirectorTool({
       }
       return savedPrompts.get(shotId) || ""
     }
+    const castByShot = new Map<string, string[]>()
+    for (const shot of generationShots || []) {
+      const prompt = promptFor(shot.id)
+      const unresolved = unresolvedEntityMentions(prompt, entityIndex)
+      if (unresolved.length) throw new Error(`Shot ${shot.id} has unknown or ambiguous asset tags: ${unresolved.map(name => "@" + name).join(", ")}. Use canonical asset names before generating.`)
+      const curated = Boolean((shot.metadata as { cast_curated?: boolean } | null)?.cast_curated)
+      const saved: string[] = shot.referenced_entities || []
+      const cast = curated ? saved : shotReferenceIds(prompt, entityIndex, saved, request.mentionedEntityIds)
+      const selected = request.entityReferenceIds
+        ? (request.shotIds.length === 1 ? request.entityReferenceIds : cast.filter(id => request.entityReferenceIds!.includes(id)))
+        : cast
+      const missingArt = entityIndex.filter(entity => selected.includes(entity.id) && !entityPrimaryReference(entity))
+      if (request.type === "image" && missingArt.length) throw new Error(`Generate reference art first for: ${missingArt.map(entity => entity.name).join(", ")}. This shot must reuse their saved identity or product references.`)
+      castByShot.set(shot.id, selected)
+      if (!curated && JSON.stringify(cast) !== JSON.stringify(saved)) {
+        const { error } = await context.supabase.from("creator_shots").update({ referenced_entities: cast }).eq("id", shot.id)
+        if (error) throw error
+        shot.referenced_entities = cast
+      }
+    }
     if (isGenjutsuModel(request.model || "")) {
       if (request.videoReferencePaths.length !== 1) throw new Error("Genjutsu requires exactly one source video.")
       for (const shot of generationShots || []) {
-        const ids = request.entityReferenceIds ?? Array.from(new Set([...(shot.referenced_entities || []), ...request.mentionedEntityIds]))
+        const ids = castByShot.get(shot.id) || []
         const images = Array.from(new Set([...(inputImagesFor(shot.id) || []), ...(projectEntityRows || []).filter((entity) => ids.includes(entity.id)).map((entity) => entityPrimaryReference(entity as MentionableEntity)).filter(Boolean)]))
         if ((request.model === GENJUTSU_RESTYLE_MODEL ? images.length > 5 : !images.length || images.length > 8)) throw new Error(request.model === GENJUTSU_RESTYLE_MODEL ? "Restyle accepts up to 5 optional character references." : "Genjutsu requires 1–8 image references per shot. Adjust the shot's reference strip before generating.")
         if (promptFor(shot.id).length > 10000) throw new Error("Genjutsu prompts must be at most 10,000 characters.")
@@ -889,10 +912,9 @@ export const submitGenerationTool = defineDirectorTool({
     const shotNumberById = new Map(Array.from(promptsByNumber.entries()).map(([number, id]) => [id, number]))
     const jobs = request.shotIds.map((shotId, index) => {
       const prompt = promptFor(shotId)
-      const shot = (generationShots || []).find((item) => item.id === shotId)
-      const entityReferenceIds = Array.from(new Set([...(shot?.referenced_entities || []), ...request.mentionedEntityIds]))
+      const entityReferenceIds = castByShot.get(shotId) || []
       const targetSnapshot = buildGenerationTargetSnapshot({ projectId: context.project.id, episodeId: request.episodeId || null, shotId, shotNumber: shotNumberById.get(shotId) || null, type: request.type, prompt, entityReferenceIds })
-      return { user_id: context.user.id, project_id: context.project.id, workflow_run_id: input.workflowRunId || null, shot_id: shotId, type: request.type, status: "approved", model: routing.selected.model, provider: routing.selected.provider, prompt, settings: request, target_snapshot: targetSnapshot, ...((): Record<string, unknown> => { const images = inputImagesFor(shotId); return images ? { input_images: images } : {} })(), estimated_credits: billing.credits, billing_mode: billing.mode, requires_approval: true, approved_at: new Date().toISOString(), operation: request.type === "video" ? "submit_video_generation" : "submit_image_generation", idempotency_key: `${input.idempotencyKey}:${index}`, routing_decision: routing, cost_estimate: { credits: billing.credits, billingMode: billing.mode } }
+      return { user_id: context.user.id, project_id: context.project.id, workflow_run_id: input.workflowRunId || null, shot_id: shotId, type: request.type, status: "approved", model: routing.selected.model, provider: routing.selected.provider, prompt, settings: { ...request, mentionedEntityIds: entityReferenceIds, entityReferenceIds }, target_snapshot: targetSnapshot, ...((): Record<string, unknown> => { const images = inputImagesFor(shotId); return images ? { input_images: images } : {} })(), estimated_credits: billing.credits, billing_mode: billing.mode, requires_approval: true, approved_at: new Date().toISOString(), operation: request.type === "video" ? "submit_video_generation" : "submit_image_generation", idempotency_key: `${input.idempotencyKey}:${index}`, routing_decision: routing, cost_estimate: { credits: billing.credits, billingMode: billing.mode } }
     })
     const unprompted = jobs.filter((job) => !job.prompt).map((job) => job.shot_id)
     if (unprompted.length) throw new Error(`No prompt available for ${unprompted.length} shot(s). Add a prompt to the storyboard shot, or pass one in prompts.`)

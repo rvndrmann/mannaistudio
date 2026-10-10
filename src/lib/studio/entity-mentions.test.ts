@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildEntityMentionContext, findActiveEntityMention, findMentionedEntityIds, insertEntityMention, type MentionableEntity, entityPrimaryReference, findShotCastEntityIds , chosenReferences } from "./entity-mentions"
+import { buildEntityMentionContext, findActiveEntityMention, findMentionedEntityIds, insertEntityMention, type MentionableEntity, entityPrimaryReference, findShotCastEntityIds , chosenReferences, canonicalizeEntityMentions, shotReferenceIds, unresolvedEntityMentions } from "./entity-mentions"
 
 const entities: MentionableEntity[] = [
   { id: "11111111-1111-4111-8111-111111111111", name: "Maya", type: "character", description: "Lead detective" },
@@ -208,5 +208,27 @@ describe("slugged storyboard asset tags", () => {
   it("handles underscores while rejecting longer unrelated tags and email addresses", () => {
     expect(findMentionedEntityIds("@the_sommelier in @luxury_tasting_room", cast)).toEqual(["sommelier", "room"])
     expect(findMentionedEntityIds("@the-sommelier-assistant x@the-sommelier", cast)).toEqual([])
+  })
+})
+
+
+describe("explicit alias bindings and per-shot references", () => {
+  const cast: MentionableEntity[] = [
+    { id: "lead", name: "Young Footballer", type: "character", metadata: { aliases: ["player"] } },
+    { id: "boots", name: "Nike Mercurial", type: "prop", metadata: { aliases: ["boots", "boot"] } },
+    { id: "pitch", name: "Football Pitch", type: "scene" },
+    { id: "logo", name: "Nike Swoosh", type: "prop" },
+  ]
+  it("binds declared aliases including possessives and rewrites canonical tags", () => {
+    expect(findMentionedEntityIds("@player’s hand beside @boots.", cast)).toEqual(["lead", "boots"])
+    expect(canonicalizeEntityMentions("@player’s hand beside @boot.", cast)).toBe("@Young Footballer’s hand beside @Nike Mercurial.")
+  })
+  it("rejects unknown or ambiguous aliases instead of silently dropping the player", () => {
+    expect(unresolvedEntityMentions("@player beside @ball", cast)).toEqual(["ball"])
+    expect(unresolvedEntityMentions("@player", [...cast, { id: "other", name: "Other Player", type: "character", metadata: { aliases: ["player"] } }])).toEqual(["player"])
+  })
+  it("attaches the lead and boots to their shot without leaking a batch's logo", () => {
+    expect(shotReferenceIds("@player carries @boots", cast, ["pitch"], ["pitch", "logo"])).toEqual(["pitch", "lead", "boots"])
+    expect(shotReferenceIds("Black end card with @Nike Swoosh", cast, [], ["lead", "pitch", "logo"])).toEqual(["logo"])
   })
 })

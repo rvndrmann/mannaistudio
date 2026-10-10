@@ -123,3 +123,9 @@ describe("an episode where no shot names its location", () => {
     expect(repairs.has("a")).toBe(false)
   })
 })
+
+
+it("does not inherit a stadium into a graphic end card", () => {
+  const repairs = inheritedShotLocations([shot(1, ["hallway"]), { ...shot(2, []), prompt: "Pure-black end card with a logo" }], entities)
+  expect(repairs.has("shot-2")).toBe(false)
+})

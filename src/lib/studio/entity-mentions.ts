@@ -1,8 +1,8 @@
-import { entityMentionPattern } from "./entity-mention-pattern"
 export type MentionableEntity = {
   id: string
   name: string
   type: "character" | "scene" | "prop"
+  metadata?: Record<string, unknown> | null
   description?: string | null
   reference_images?: string[]
   primary_reference_image?: string | null
@@ -53,22 +53,77 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
-export function findMentionedEntityIds(text: string, entities: MentionableEntity[]) {
-  const matches: Array<{ id: string; index: number; length: number }> = []
-  const sorted = [...entities].sort((a, b) => b.name.length - a.name.length)
+/** Explicit aliases only: never guess which character a generic @player means. */
+export function entityMentionNames(entity: MentionableEntity): string[] {
+  const aliases = Array.isArray(entity.metadata?.aliases) ? entity.metadata.aliases : []
+  return Array.from(new Set([entity.name, ...aliases.filter((value): value is string => typeof value === "string")]
+    .flatMap(value => {
+      const name = value.trim().replace(/^@/, "")
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+      return [name, slug, slug.replace(/-/g, "_")]
+    }).filter(Boolean)))
+}
 
-  for (const entity of sorted) {
-    const name = entity.name.trim()
-    if (!name) continue
-    const expression = entityMentionPattern(name)
-    const match = expression.exec(text)
-    if (match) matches.push({ id: entity.id, index: match.index + match[1].length, length: name.length })
+function mentionBindings(entities: MentionableEntity[]) {
+  const candidates = new Map<string, Set<string>>()
+  for (const entity of entities) for (const name of entityMentionNames(entity)) {
+    const key = name.toLowerCase()
+    const ids = candidates.get(key) || new Set<string>()
+    ids.add(entity.id)
+    candidates.set(key, ids)
   }
+  // Ambiguous aliases resolve to nothing; the caller gets a pre-charge error.
+  return Array.from(candidates.entries()).filter(([, ids]) => ids.size === 1)
+    .map(([name, ids]) => ({ name, id: Array.from(ids)[0] }))
+    .sort((a, b) => b.name.length - a.name.length)
+}
 
+export function unresolvedEntityMentions(text: string, entities: MentionableEntity[]): string[] {
+  const bindings = mentionBindings(entities)
+  const missing: string[] = []
+  for (let index = text.indexOf("@"); index !== -1; index = text.indexOf("@", index + 1)) {
+    if (index && !/[\s([{,:;]/.test(text[index - 1])) continue
+    const rest = text.slice(index + 1)
+    const match = bindings.find(({ name }) => rest.toLowerCase().startsWith(name) && !/[\w-]/.test(rest.charAt(name.length)))
+    if (match) { index += match.name.length; continue }
+    const token = rest.match(/^[A-Za-z0-9_-]{2,}/)?.[0]
+    if (token && !["previous", "storyboard"].includes(token.toLowerCase()) && !missing.includes(token)) missing.push(token)
+  }
+  return missing
+}
+
+function resolvedMentions(text: string, entities: MentionableEntity[]) {
+  const bindings = mentionBindings(entities)
+  const matches: Array<{ id: string; start: number; end: number }> = []
+  for (let index = text.indexOf("@"); index !== -1; index = text.indexOf("@", index + 1)) {
+    if (index && !/[\s([{,:;]/.test(text[index - 1])) continue
+    const rest = text.slice(index + 1)
+    const match = bindings.find(({ name }) => rest.toLowerCase().startsWith(name) && !/[\w-]/.test(rest.charAt(name.length)))
+    if (!match) continue
+    matches.push({ id: match.id, start: index, end: index + 1 + match.name.length })
+    index += match.name.length
+  }
   return matches
-    .sort((a, b) => a.index - b.index || b.length - a.length)
-    .map((match) => match.id)
-    .filter((id, index, ids) => ids.indexOf(id) === index)
+}
+
+export function findMentionedEntityIds(text: string, entities: MentionableEntity[]) {
+  return Array.from(new Set(resolvedMentions(text, entities).map(match => match.id)))
+}
+
+/** Canonical tags bind provider prompts to the same names as the attached art. */
+export function canonicalizeEntityMentions(text: string, entities: MentionableEntity[]): string {
+  let result = text
+  for (const match of resolvedMentions(text, entities).reverse()) {
+    result = result.slice(0, match.start) + "@" + entities.find(entity => entity.id === match.id)!.name + result.slice(match.end)
+  }
+  return result
+}
+
+/** A batch's declared subjects are candidates, never every shot's cast. */
+export function shotReferenceIds(prompt: string, entities: MentionableEntity[], savedIds: string[], batchIds: string[] = []) {
+  const tagged = findMentionedEntityIds(prompt, entities)
+  const confirmedBatch = findShotCastEntityIds(prompt, entities, batchIds).filter(id => tagged.includes(id) || entities.find(entity => entity.id === id)?.type !== "scene")
+  return Array.from(new Set([...savedIds, ...tagged, ...confirmedBatch]))
 }
 
 /**
@@ -191,3 +246,6 @@ export function buildEntityMentionContext(entities: MentionableEntity[], options
       : []),
   ].filter(Boolean).join("\n")
 }
+
+
+export const ENTITY_REFERENCE_AUTHORING_INSTRUCTIONS = `Asset binding: Before authoring a storyboard, read the project's existing entities. Use their exact canonical @names and IDs for every visible character, product, prop, and location in each shot. Generic shorthand such as @player or @boots is valid only when metadata.aliases explicitly binds it to one unique saved entity. Do not invent unresolved aliases. Each shot must declare its own cast; a batch's union of assets is not the cast of every shot. Reuse the saved primary reference art for character identity, wardrobe and product geometry. A graphic end card has no inherited physical location. Never generate a shot with unresolved character or product tags; resolve the binding first.`

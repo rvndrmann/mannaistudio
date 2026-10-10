@@ -16,7 +16,7 @@ import { ownKeysOnly } from "@/lib/byok/preferences"
 import { calculateCreditCost, deductUserCredits, refundGenerationCredits } from "@/lib/studio/credits"
 import { trackGenerationActivation } from "@/lib/studio/activation"
 import { studioErrorMessage, studioErrorStatus, type AuthenticatedProjectContext } from "@/lib/studio/server-context"
-import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
+import { buildEntityMentionContext, canonicalizeEntityMentions, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { openAIImageQuality, projectImageQuality, projectVisualStyle } from "@/lib/studio/entity-image-workflow"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 import { cameraBlockForEntityType, projectCameraDefaults, resolveCameraSettings } from "@/lib/studio/camera-settings"
@@ -321,7 +321,7 @@ export async function renderProjectImage(
     // reads to an edit model as an instruction to re-render the whole frame,
     // which is the opposite of applying one marked change to it.
     const resolvedPrompt = prepareImageModelPrompt(composeImagePrompt({
-      prompt: stripIdentityDescriptions(input.prompt),
+      prompt: stripIdentityDescriptions(canonicalizeEntityMentions(input.prompt, (mentionedEntities || []) as MentionableEntity[])),
       aspectRatio: effectiveAspectRatio,
       style,
       styleDna,

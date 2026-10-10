@@ -7,7 +7,7 @@ import { submitBytePlusVideo, generateBytePlusImage, createBytePlusAsset } from 
 import { generateFalImage, submitFalImage, submitFalVideo } from "./fal"
 import { generateGoogleImage, submitGoogleVideo } from "./google"
 import type { VideoGenerationModelId, ImageGenerationModelId } from "./generation-models"
-import { buildEntityMentionContext, chosenReferences, entityPrimaryReference, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
+import { buildEntityMentionContext, canonicalizeEntityMentions, chosenReferences, entityPrimaryReference, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
 import type { SeedanceSubject } from "./seedance-mentions"
 import { openAIImageQuality, projectImageQuality, projectVisualStyle } from "./entity-image-workflow"
 import { projectStyleDna } from "./style-dna"
@@ -361,7 +361,7 @@ export async function executeGenerationJobs(
             settings: { ...settings, videoReferencePaths, resolvedReferencePaths: combinedReferencePaths, resolvedEntityIds: mentionedEntities.map((entity) => entity.id) },
           }).eq("id", job.id)
 
-          const resolvedImagePrompt = job.type === "image" ? prepareImageModelPrompt(composeImagePrompt({ prompt: stripIdentityDescriptions(job.prompt || ""), aspectRatio: effectiveAspectRatio, style, styleDna: projectStyleDna(context.project), block: typeof job.entity_id === "string" ? (settings.entityType === "character" ? "character" : settings.entityType === "scene" ? "scene" : "asset") : "shot", entityContext: mentionContext }), job.model) : null
+          const resolvedImagePrompt = job.type === "image" ? prepareImageModelPrompt(composeImagePrompt({ prompt: stripIdentityDescriptions(canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[])), aspectRatio: effectiveAspectRatio, style, styleDna: projectStyleDna(context.project), block: typeof job.entity_id === "string" ? (settings.entityType === "character" ? "character" : settings.entityType === "scene" ? "scene" : "asset") : "shot", entityContext: mentionContext }), job.model) : null
           if (resolvedImagePrompt) {
             const { error } = await context.supabase.from("creator_generation_jobs").update({ settings: { ...settings, resolvedPrompt: resolvedImagePrompt, imagePromptVersion: 1 } }).eq("id", job.id)
             if (error) throw error
@@ -467,11 +467,11 @@ export async function executeGenerationJobs(
             try {
               if (job.provider === "higgsfield" && videoReferenceUrls.length !== 1) throw new Error("Genjutsu requires exactly one source video.")
               task = job.provider === "higgsfield"
-                ? await submitGenjutsuVideo(job.model, (job.model === GENJUTSU_RESTYLE_MODEL ? genjutsuRestyleInputSchema : genjutsuInputSchema).parse({ prompt: job.prompt || "", video_url: videoReferenceUrls[0], image_urls: referenceUrls, resolution: settings.resolution || "720p", ...(job.model === GENJUTSU_RESTYLE_MODEL ? { preset_id: settings.restylePresetId } : {}) }))
+                ? await submitGenjutsuVideo(job.model, (job.model === GENJUTSU_RESTYLE_MODEL ? genjutsuRestyleInputSchema : genjutsuInputSchema).parse({ prompt: canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[]), video_url: videoReferenceUrls[0], image_urls: referenceUrls, resolution: settings.resolution || "720p", ...(job.model === GENJUTSU_RESTYLE_MODEL ? { preset_id: settings.restylePresetId } : {}) }))
                 : job.provider === "google"
                 ? await submitGoogleVideo({
                     model: job.model as VideoGenerationModelId,
-                    prompt: job.prompt || "",
+                    prompt: canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[]),
                     duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 4,
                     resolution: typeof settings.resolution === "string" ? settings.resolution : "720p",
                     ratio: effectiveAspectRatio,
@@ -480,7 +480,7 @@ export async function executeGenerationJobs(
                 : job.provider === "fal"
                   ? await submitFalVideo({
                       model: job.model as VideoGenerationModelId,
-                      prompt: job.prompt || "",
+                      prompt: canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[]),
                       duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 4,
                       resolution: typeof settings.resolution === "string" ? settings.resolution : "720p",
                       ratio: effectiveAspectRatio,
@@ -489,7 +489,7 @@ export async function executeGenerationJobs(
                     })
                   : await submitBytePlusVideo({
                 model: job.model as VideoGenerationModelId,
-                prompt: job.prompt || "",
+                prompt: canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[]),
                 duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 4,
                 resolution: typeof settings.resolution === "string" ? settings.resolution : "720p",
                 ratio: effectiveAspectRatio,
@@ -535,7 +535,7 @@ export async function executeGenerationJobs(
                 }
                 task = await submitBytePlusVideo({
                   model: job.model as VideoGenerationModelId,
-                  prompt: job.prompt || "",
+                  prompt: canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[]),
                   duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 4,
                   resolution: typeof settings.resolution === "string" ? settings.resolution : "720p",
                   ratio: effectiveAspectRatio,

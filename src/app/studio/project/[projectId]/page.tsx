@@ -1,5 +1,6 @@
 "use client";
 
+import { prepareReferenceUpload } from "@/lib/studio/reference-upload";
 import Link from "next/link";
 import GenerationRecovery from "@/components/studio/GenerationRecovery";
 import { useRouter } from "next/navigation";
@@ -104,7 +105,7 @@ import ShareProjectDialog from "@/components/studio/ShareProjectDialog";
 import ConvertToEnterpriseDialog from "@/components/enterprise/ConvertToEnterpriseDialog";
 import ProjectActivityDialog from "@/components/studio/ProjectActivityDialog";
 import DrawToEditModal from "@/components/studio/DrawToEditModal";
-import { entityPrimaryReference, findMentionedEntityIds, findShotCastEntityIds } from "@/lib/studio/entity-mentions";
+import { entityPrimaryReference, findMentionedEntityIds, findShotCastEntityIds, unresolvedEntityMentions } from "@/lib/studio/entity-mentions";
 import { characterSheetPrompt, CHARACTER_SHEET_ASPECT_RATIO } from "@/lib/studio/character-sheet";
 import { inheritedShotLocations } from "@/lib/studio/shot-location";
 import { isSeedanceRejectedVideo, parseSeedanceRejectedReference } from "@/lib/studio/seedance-reference-error";
@@ -3599,6 +3600,7 @@ function AssetWorkspace({
     try {
       const userId = (await createClient().auth.getUser()).data.user?.id;
       if (!userId) throw new Error("Please sign in before uploading an image.");
+      file = await prepareReferenceUpload(file);
       const path = `${userId}/${projectId}/asset-${destination}-${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
       const { error } = await createClient().storage.from("creator-studio-media").upload(path, file);
       if (error) throw error;
@@ -4119,16 +4121,21 @@ function AssetModal({
   const upload = async (file?: File) => {
     if (!file) return;
     setBusy(true);
+    setGenerationError(null);
+    try {
+    file = await prepareReferenceUpload(file);
     const path = `${(await createClient().auth.getUser()).data.user?.id}/${projectId}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
     const { error } = await createClient()
       .storage.from("creator-studio-media")
       .upload(path, file);
-    if (!error)
+    if (error) throw error;
       setAsset((a) => ({
         ...a,
         reference_images: [...(a.reference_images || []), path],
       }));
-    setBusy(false);
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "Could not upload reference image.");
+    } finally { setBusy(false); }
   };
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -6063,6 +6070,7 @@ function ShotMediaWorkspace({
       }
       const userId = (await createClient().auth.getUser()).data.user?.id;
       if (!userId) throw new Error("Please sign in before uploading a reference.");
+      file = await prepareReferenceUpload(file);
       const path = `${userId}/${projectId}/shot-reference-${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
       const { error } = await createClient()
         .storage.from("creator-studio-media")
@@ -7759,44 +7767,7 @@ function generationProposalPrompts(proposal: ChatProposal): Record<string, strin
 // entity is ignored by the provider, so the card warns before credits are spent
 // rather than after the shot comes back without the character.
 function unresolvedMentions(prompt: string, entities: Entity[]) {
-  // Continuation prompts use these two media aliases to explain which inputs
-  // control motion and composition. They are not project entities and should
-  // not produce a false missing-character warning.
-  const mediaAliases = new Set(["previous", "storyboard"]);
-  // Longest first, so "@Luxury Car" is tested before "@Luxury" could match it.
-  const known = entities
-    .map((entity) => entity.name.trim())
-    .filter(Boolean)
-    .sort((a, b) => b.length - a.length);
-
-  const missing: string[] = [];
-  // Walked one @ at a time rather than matched with a single pattern.
-  //
-  // The pattern here was `@([A-Za-z0-9_-]{2,})`, which stops at a space — so
-  // "@Luxury Car" was read as "@Luxury" and "@Modern Roadway Day" as "@Modern",
-  // neither of which matches an entity called "Luxury Car" or "Modern Roadway
-  // Day". The card then warned that references it was about to send correctly
-  // would be ignored, and offered to create assets that already existed.
-  // Generation itself never had this problem: it resolves the cast by matching
-  // entity names, which is what this does now.
-  for (let index = prompt.indexOf("@"); index !== -1; index = prompt.indexOf("@", index + 1)) {
-    // Only a real mention start: preceded by nothing, whitespace, or an opener.
-    const before = index === 0 ? "" : prompt[index - 1];
-    if (before && !/[\s([{,:;]/.test(before)) continue;
-    const rest = prompt.slice(index + 1);
-    const resolved = known.find((name) => rest.toLowerCase().startsWith(name.toLowerCase())
-      // The character after the name must end it, or "@Sara" would match inside
-      // "@Sarah" and hide a genuinely missing asset.
-      && !/[\w-]/.test(rest.charAt(name.length)));
-    if (resolved) {
-      index += resolved.length;
-      continue;
-    }
-    const token = (rest.match(/^[A-Za-z0-9_-]{2,}/) || [])[0];
-    if (!token || mediaAliases.has(token.toLowerCase())) continue;
-    if (!missing.includes(token)) missing.push(token);
-  }
-  return missing.slice(0, 6);
+  return unresolvedEntityMentions(prompt, entities).slice(0, 6);
 }
 
 function VideoGenerationProposalBlock({
@@ -7928,15 +7899,17 @@ function VideoGenerationProposalBlock({
     // cast exactly as generation does. A prompt that describes its characters
     // in prose rather than with @mentions still references them, and showing
     // nothing made the card look like it would generate with no likeness lock.
-    const targetShots = shots.filter((shot) =>
+    const requestedShots = shots.filter((shot) =>
       (request.shotIds || []).includes(shot.id)
       || (request.shotNumbers || []).includes(shot.order_index + 1));
+    const displayedShot = requestedShots.find(shot => activeKey === shot.id || activeKey === String(shot.order_index + 1));
+    const targetShots = displayedShot ? [displayedShot] : requestedShots;
     // A shot that never named its location inherits the scene it is in, the
     // same repair generation performs before it renders. Without it the card
     // would promise two references and send three — the card has to show what
     // will actually be used, before the user pays for it.
     const inheritedLocations = inheritedShotLocations(
-      shots.map((shot) => ({ id: shot.id, order_index: shot.order_index, referenced_entities: shot.referenced_entities || [], metadata: shot.metadata })),
+      shots.map((shot) => ({ id: shot.id, order_index: shot.order_index, referenced_entities: shot.referenced_entities || [], metadata: shot.metadata, prompt: shot.prompt })),
       entities.map((entity) => ({ id: entity.id, type: entity.type })),
     );
     const shotCast = Array.from(new Set(targetShots.flatMap((shot) => [
@@ -7957,7 +7930,7 @@ function VideoGenerationProposalBlock({
       .filter((entity) => !removedEntityIds.includes(entity.id))
       .map((entity) => ({ entity, image: entityPrimaryReference(entity) }))
       .filter((item): item is { entity: Entity; image: string } => Boolean(item.image));
-  }, [prompt, entities, shots, removedEntityIds, request.mentionedEntityIds, request.shotIds, request.shotNumbers]);
+  }, [prompt, activeKey, entities, shots, removedEntityIds, request.mentionedEntityIds, request.shotIds, request.shotNumbers]);
 
   const referenceShotNumberByVideo = useMemo(() => {
     const entries = (request.videoReferenceShotNumbers || []).map((number) => {
@@ -7981,6 +7954,7 @@ function VideoGenerationProposalBlock({
     try {
       const userId = (await createClient().auth.getUser()).data.user?.id;
       if (!userId) throw new Error("Please sign in before uploading a reference.");
+      file = await prepareReferenceUpload(file);
       const path = `${userId}/${projectId}/shot-reference-${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
       const { error } = await createClient().storage.from("creator-studio-media").upload(path, file);
       if (error) throw error;
@@ -8014,7 +7988,7 @@ function VideoGenerationProposalBlock({
         referencePaths: references.filter((path) => !entityReferences.some((item) => item.image === path)),
         // Sent whenever the strip was edited, so a removal is honoured instead
         // of being derived back from the prompt that still names the entity.
-        ...(removedEntityIds.length ? { entityReferenceIds: entityReferences.map((item) => item.entity.id) } : {}),
+        ...(removedEntityIds.length ? { entityReferenceIds: entities.filter(entity => !removedEntityIds.includes(entity.id)).map(entity => entity.id) } : {}),
         videoReferencePaths: videoReferences,
       },
       // Each shot keeps its own prompt, under the key the proposal used. Sending
