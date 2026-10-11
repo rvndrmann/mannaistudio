@@ -333,7 +333,7 @@ export default function AcademyManager() {
         },
         { onConflict: "profile_id,entitlement_key,source_type,source_id" },
       );
-    setMessage(error?.message || `24-hour Creator Studio access granted to ${email}. They can buy 3,000 credits for $30 before it expires.`);
+    setMessage(error?.message || `24-hour Creator Studio access granted to ${email}. They can connect their own API keys and test AI chat, image and video generation until it expires.`);
     if (!error) setGrantEmail("");
     setGrantBusy(false);
   };
@@ -903,8 +903,8 @@ export default function AcademyManager() {
                 Creator Studio entitlements
               </h2>
               <p className="text-xs text-white/40">
-                Manual grants open Creator Studio for 24 hours. The user can
-                buy 3,000 credits for $30 during that window to keep access.
+                Manual grants allow 24 hours of BYOK testing. The user must connect
+                their own API keys; platform credits are not included.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
