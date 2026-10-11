@@ -75,6 +75,7 @@ async function signedReferenceUrls(context: Awaited<ReturnType<typeof requireAut
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
+  let savedAttempt: { id: string; client: SupabaseClient } | null = null
   let pendingRefund: { userId: string; amount: number; key: string; client: SupabaseClient } | null = null
   try {
     const { projectId } = await params
@@ -116,6 +117,30 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if ((resolvedEntities || []).length !== resolvedEntityIds.length) {
       return NextResponse.json({ error: "One or more referenced entities do not belong to this project." }, { status: 400 })
     }
+
+    // Validate the full request before reserving credits.
+    const platformCost = calculateCreditCost(input.model, "video", input.durationSeconds, { resolution: input.resolution, aspectRatio: input.aspectRatio, quality: input.quality })
+    // Same rule as every other charge path. This route billed directly and
+    // never asked, so a connected key was ignored and "only my own keys" was
+    // not honoured — the video equivalent of the image bug.
+    const byokProvider = byokProviderFor(provider)
+    const billing = decideBilling({
+      hasCredential: byokProvider ? await hasCredential(context.user.id, byokProvider) : false,
+      platformCredits: platformCost,
+      ownKeysOnly: await ownKeysOnly(context.user.id),
+      provider: byokProvider || provider,
+    })
+    // Persist acceptance before signing references or contacting providers so a
+    // refresh can recover this attempt even while submission is still pending.
+    const { data: accepted, error: acceptError } = await context.supabase.from("creator_generation_jobs").insert({
+      user_id: context.user.id, project_id: projectId, episode_id: shot.episode_id,
+      shot_id: shot.id, type: "video", status: "processing", provider, model: input.model,
+      prompt: input.prompt, settings: input, input_images: submittedReferenceImages,
+      billing_mode: billing.mode, estimated_credits: billing.credits, credits_used: 0,
+      started_at: new Date().toISOString(), operation: "submit_video_generation", idempotency_key: randomUUID(),
+    }).select("id").single()
+    if (acceptError) throw acceptError
+    savedAttempt = { id: accepted.id, client: context.supabase }
 
     // Every picture in this project that already has a registered asset, keyed
     // by the path it was registered from.
@@ -392,31 +417,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     const providerRequest = { sourceVideoInfo, prompt: resolvedPrompt, originalPrompt: input.prompt, style, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", ratio: providerRatio, displayRatio, referenceImages: combinedReferencePaths, characterEntityIds: input.characterEntityIds, mentionedEntityIds: input.mentionedEntityIds, resolvedEntityIds, generationMode: input.generationMode, startFrame: input.startFrame || null, endFrame: input.endFrame || null, audioEnabled: input.audioEnabled, videoReferencePaths, referenceVideos: input.referenceVideos, referenceAudios: input.referenceAudios }
 
-    // Validate the full request before reserving credits.
-    const platformCost = calculateCreditCost(input.model, "video", input.durationSeconds, { resolution: input.resolution, aspectRatio: input.aspectRatio, quality: input.quality })
-    // Same rule as every other charge path. This route billed directly and
-    // never asked, so a connected key was ignored and "only my own keys" was
-    // not honoured — the video equivalent of the image bug.
-    const byokProvider = byokProviderFor(provider)
-    const billing = decideBilling({
-      hasCredential: byokProvider ? await hasCredential(context.user.id, byokProvider) : false,
-      platformCredits: platformCost,
-      ownKeysOnly: await ownKeysOnly(context.user.id),
-      provider: byokProvider || provider,
-    })
     const creditCost = billing.credits
     let creditBalanceAfter: number | null = null
     if (billing.mode !== "byok") {
       const deduct = await deductUserCredits(context.user.id, creditCost, input.model, `Video Generation (${input.model})`, context.supabase)
       if (!deduct.success) {
-        return NextResponse.json({ error: deduct.errorMessage || "Insufficient credits" }, { status: 402 })
+        await context.supabase.from("creator_generation_jobs").update({ status: "failed", error: deduct.errorMessage || "Insufficient credits", completed_at: new Date().toISOString() }).eq("id", accepted.id)
+        return NextResponse.json({ jobId: accepted.id, error: deduct.errorMessage || "Insufficient credits" }, { status: 402 })
       }
       creditBalanceAfter = deduct.newBalance
       // Only a charge can be refunded; a BYOK failure is the provider's bill.
       pendingRefund = { userId: context.user.id, amount: creditCost, key: `video-request:${randomUUID()}`, client: context.supabase }
     }
 
-    const { data: job, error: jobError } = await context.supabase.from("creator_generation_jobs").insert({
+    const { data: job, error: jobError } = await context.supabase.from("creator_generation_jobs").update({
       user_id: context.user.id,
       project_id: projectId,
       // Which episode this render belongs to. Left unset, every video job in
@@ -439,7 +453,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       operation: "submit_video_generation",
       estimated_credits: creditCost,
       credits_used: 0,
-    }).select("*").single()
+    }).eq("id", accepted.id).select("*").single()
     if (jobError) throw jobError
     // Only set when a charge happened; a BYOK clip has nothing to refund.
     if (pendingRefund) pendingRefund.key = `generation-job:${job.id}`
@@ -551,6 +565,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       pendingRefund = null
       const rejected = parseSeedanceRejectedReference(errorMessage)
       return NextResponse.json({
+        jobId: job.id,
         error: missingAsset
           ? `Stale reference asset (${missingAsset.assetId}) was missing from BytePlus. Stale asset cache has been cleaned up. Please try generating again.`
           : errorMessage,
@@ -565,6 +580,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }, { status: error instanceof HiggsfieldProviderError || error instanceof BytePlusProviderError || error instanceof FalProviderError || error instanceof GoogleProviderError ? error.status : studioErrorStatus(error) })
     }
   } catch (error) {
+    if (savedAttempt) {
+      await savedAttempt.client.from("creator_generation_jobs").update({ status: "failed", error: studioErrorMessage(error, "Video submission failed"), completed_at: new Date().toISOString() }).eq("id", savedAttempt.id)
+    }
     if (pendingRefund) {
       try {
         await refundGenerationCredits(pendingRefund.userId, pendingRefund.amount, pendingRefund.key, "Refund: video generation could not start", null, pendingRefund.client)
@@ -573,7 +591,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid video request", issues: error.flatten() }, { status: 400 })
-    return NextResponse.json({ error: studioErrorMessage(error, "Video generation failed") }, { status: error instanceof HiggsfieldProviderError || error instanceof BytePlusProviderError || error instanceof FalProviderError || error instanceof GoogleProviderError ? error.status : studioErrorStatus(error) })
+    return NextResponse.json({ jobId: savedAttempt?.id, error: studioErrorMessage(error, "Video generation failed") }, { status: error instanceof HiggsfieldProviderError || error instanceof BytePlusProviderError || error instanceof FalProviderError || error instanceof GoogleProviderError ? error.status : studioErrorStatus(error) })
   }
 }
 

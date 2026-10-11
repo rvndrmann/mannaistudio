@@ -5869,10 +5869,12 @@ function ShotMediaWorkspace({
         const body = await readGenerationResponse(response);
         if (!response.ok) {
           const errorMsg = body.error || "Video generation failed";
+          if (typeof body.jobId === "string") setActiveGenId(body.jobId);
           const returnedVideoRefs = Array.isArray(body.videoReferencePaths) ? body.videoReferencePaths : null;
           setGenHistory((prev) => prev.map((g) => g.id === genId ? {
             ...g,
             status: "failed" as const,
+            id: typeof body.jobId === "string" ? body.jobId : g.id,
             error: errorMsg,
             referenceImages: Array.isArray(body.inputImages) ? body.inputImages : g.referenceImages,
             rawReferenceImages: Array.isArray(body.inputImages) ? body.inputImages : g.rawReferenceImages,
