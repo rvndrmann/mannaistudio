@@ -1,3 +1,4 @@
+import { findMentionedEntityIds, unresolvedEntityMentions, type MentionableEntity } from "./entity-mentions"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { computePipelineStage, emptySnapshot, pipelineInstructionBlock, type ProductionSnapshot } from "./pipeline"
 
@@ -62,6 +63,19 @@ export function keyframeIsStale(prompt: unknown, metadata: unknown): boolean {
   return used !== current
 }
 
+/** The prompt text is authoritative even when the writer omitted entity_names. */
+export function requiredPromptEntityNames(rows: Array<{ prompt?: unknown; entity_names?: unknown }>, entities: MentionableEntity[]): string[] {
+  return Array.from(new Set(rows.flatMap(row => {
+    const text = typeof row.prompt === "string" ? row.prompt : ""
+    const ids = findMentionedEntityIds(text, entities)
+    return [
+      ...(Array.isArray(row.entity_names) ? row.entity_names.filter((name): name is string => typeof name === "string" && Boolean(name.trim())) : []),
+      ...entities.filter(entity => ids.includes(entity.id)).map(entity => entity.name),
+      ...unresolvedEntityMentions(text, entities),
+    ]
+  })))
+}
+
 export async function loadProductionSnapshot(
   supabase: SupabaseClient,
   projectId: string,
@@ -107,7 +121,7 @@ export async function loadProductionSnapshot(
     episodeId
       ? supabase
           .from("creator_script_prompts")
-          .select("order_index, entity_names, updated_at")
+          .select("order_index, prompt, entity_names, updated_at")
           .eq("project_id", projectId)
           .eq("episode_id", episodeId)
           .order("order_index", { ascending: true })
@@ -135,6 +149,9 @@ export async function loadProductionSnapshot(
       .eq("status", "pending"),
   ])
 
+  for (const result of [episodesRes, entitiesRes, shotsRes, promptsRes, jobsRes, proposalsRes]) {
+    if ("error" in result && result.error) throw result.error
+  }
   const episodes = episodesRes.data || []
   const activeEpisode = episodes.find((episode) => episode.id === episodeId) || episodes[0]
   const scriptText = activeEpisode?.script_content ? JSON.stringify(activeEpisode.script_content) : ""
@@ -162,7 +179,7 @@ export async function loadProductionSnapshot(
     // The most recent revision anywhere in the sheet: one entry changing means
     // the plan moved, and the shots written before it are behind.
     promptSheetRevisedAt: promptRows.reduce((latest, row) => Math.max(latest, timestamp((row as { updated_at?: string }).updated_at)), 0),
-    promptSheetEntityNames: promptRows.flatMap((row) => Array.isArray(row.entity_names) ? row.entity_names.filter((name: unknown): name is string => typeof name === "string" && Boolean(name.trim())) : []),
+    promptSheetEntityNames: requiredPromptEntityNames(promptRows, (entitiesRes.data || []) as MentionableEntity[]),
     entities: (entitiesRes.data || []).map((entity) => ({
       name: entity.name,
       type: entity.type,

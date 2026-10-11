@@ -223,6 +223,7 @@ const buildAgentInput = async () => {
     instructions: buildDirectorInstructions(project, globalInstructions, brandContext),
     projectState: [
       projectState,
+      "The live project state above overrides older chat replies. An executed proposal has already been applied; verify it with the workspace tools and never describe it as awaiting approval. Before storyboard creation, inventory all characters, environments, products and props needed by every saved prompt, create only missing entities, and generate only missing reference images. Do not mark Characters & Assets complete until all required references exist.",
       productVideoInstructions(productVideo),
       // Read from the project rather than sent with the message: the mode
       // belongs to the production, and a request that forgot to carry it

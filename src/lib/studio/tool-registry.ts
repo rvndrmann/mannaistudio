@@ -1,3 +1,5 @@
+import { loadProductionSnapshot } from "./project-state-summary"
+import { missingEntityNames, entitiesWithoutArt } from "./pipeline"
 import { readProductVideo, productVideoInstructions } from "./product-video"
 import { runUserProvider } from "@/lib/byok/run-user-provider"
 import { entityPrimaryReference } from "./entity-mentions"
@@ -400,6 +402,12 @@ export const createStoryboardBatchTool = defineDirectorTool({
   async execute(context, input) {
     const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", input.episodeId).eq("project_id", context.project.id).maybeSingle()
     if (!episode) throw new Error("Episode does not belong to this project")
+    const snapshot = await loadProductionSnapshot(context.supabase, context.project.id, input.episodeId)
+    const missing = missingEntityNames(snapshot)
+    const withoutArt = entitiesWithoutArt(snapshot)
+    if (missing.length || withoutArt.length) {
+      throw new Error(`Complete Characters & Assets before building the storyboard. ${missing.length ? `Create missing assets: ${missing.join(", ")}. ` : ""}${withoutArt.length ? `Generate missing reference images: ${withoutArt.join(", ")}.` : ""} Preserve every existing asset and reference image.`)
+    }
     // A shot's image prompt is one frame; the master prompt it may have been
     // extracted from is a whole scene in named sections. The two are easy to
     // conflate when writing many shots at once, and the result is not a messy
