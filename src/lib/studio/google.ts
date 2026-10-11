@@ -29,9 +29,15 @@ export async function generateGoogleImage(input: {
   const apiKey = getGoogleApiKey()
   const ai = new GoogleGenAI({ apiKey })
 
-  const modelId = input.model === "google-nano-banana-2-pro"
-    ? "gemini-3-pro-image-preview"
-    : "gemini-2.5-flash-image"
+  const modelId = input.model === "google-nano-banana-2-1"
+    ? "gemini-3.1-flash-image"
+    : input.model === "google-nano-banana-2-lite"
+      ? "gemini-3.1-flash-lite-image"
+    : input.model === "google-nano-banana-2-pro"
+      ? "gemini-3-pro-image"
+      : input.model === "google-nano-banana-2"
+        ? "gemini-3.1-flash-image"
+        : "gemini-2.5-flash-image"
 
   const referenceParts = await Promise.all((input.referenceUrls || []).slice(0, 3).map(async (url) => {
     const response = await fetch(url)
@@ -77,13 +83,14 @@ export async function submitGoogleVideo(input: {
   referenceUrls?: string[]
 }) {
   const apiKey = getGoogleApiKey()
-  if (input.model === "google-omni-flash") {
+  if (input.model === "google-omni-flash" || input.model === "google-omni-1-1-flash") {
+    const model = input.model === "google-omni-1-1-flash" ? "gemini-omni-1.1-flash" : "gemini-omni-flash-preview"
     try {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/interactions?key=${apiKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "gemini-omni-flash-preview",
+          model,
           input: input.prompt,
           ...(input.referenceUrls?.length ? { context: input.referenceUrls.slice(0, 3) } : {}),
         }),
@@ -98,7 +105,11 @@ export async function submitGoogleVideo(input: {
   }
   const ai = new GoogleGenAI({ apiKey })
 
-  const modelId = "veo-3.1-generate-preview"
+  const modelId = input.model === "google-veo-3-1-fast"
+    ? "veo-3.1-fast-generate-preview"
+    : input.model === "google-veo-3-1-lite"
+      ? "veo-3.1-lite-generate-preview"
+      : "veo-3.1-generate-preview"
 
   try {
     const response = await ai.models.generateVideos({

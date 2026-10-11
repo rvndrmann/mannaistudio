@@ -117,6 +117,18 @@ export const MODEL_CREDIT_RATES: Record<string, ModelCreditRate> = {
     description: "Nano Banana 2",
     byResolution: { "480p": 15, "720p": 15, "1080p": 22, "4K": 32 },
   },
+  "google-nano-banana-2-1": {
+    unit: "per image",
+    base: 15,
+    description: "Gemini Nano Banana 2.1",
+    byResolution: { "480p": 15, "720p": 15, "1080p": 22, "4K": 32 },
+  },
+  "google-nano-banana-2-lite": {
+    unit: "per image",
+    base: 8,
+    description: "Gemini 3.1 Flash Lite Image (Nano Banana 2 Lite), 1K",
+    byResolution: { "480p": 8, "720p": 8, "1080p": 8, "4K": 8 },
+  },
   "google-nano-banana-2-pro": {
     unit: "per image",
     base: 29,
@@ -147,7 +159,10 @@ export const MODEL_CREDIT_RATES: Record<string, ModelCreditRate> = {
   // Veo 3.1 runs against veo-3.1-generate-preview, the standard tier, priced at
   // 674 credits for 8 seconds at 720p and 1080p alike.
   "google-veo-3-1": { unit: "per second", base: 674 / 8, description: "Veo 3.1 Standard" },
+  "google-veo-3-1-fast": { unit: "per second", base: 674 / 8, description: "Veo 3.1 Fast (standard rate)" },
+  "google-veo-3-1-lite": { unit: "per second", base: 674 / 8, description: "Veo 3.1 Lite (standard rate)" },
   "google-omni-flash": { unit: "per second", base: 169 / 8, description: "Omni Flash" },
+  "google-omni-1-1-flash": { unit: "per second", base: 169 / 8, description: "Omni 1.1 Flash" },
   "google-gemini-2-5-pro": { unit: "per second", base: 169 / 8, description: "Gemini 2.5 Pro (Omni Flash rate)", estimated: true },
   "fal-minimax-h3": {
     unit: "per second",

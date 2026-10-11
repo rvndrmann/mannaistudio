@@ -83,7 +83,7 @@ Costly tools must declare `requiresApproval: true`. Approved Director generation
 
 The asset and storyboard image workspaces support `gpt-image-2`, `gpt-image-2.5-sunburst`, and `gpt-image-1.5` through an authenticated server route. Sunburst is served only by `/v1/images/generations` and `/v1/images/edits`, so it renders synchronously rather than through the recoverable background-response path the other two use. Results are uploaded to the existing private `creator-studio-media` bucket and written back to the selected asset or shot. A missing `OPENAI_API_KEY` produces an explicit configuration error; no fake output is generated. Failed image attempts remain visible as failed generation blocks instead of disappearing from the gallery.
 
-The image workspaces also support BytePlus Seedream 5.0 Pro (`dola-seedream-5-0-pro-260628`), fal.ai Flux 3 (`fal-flux-3`), Flux Dev (`fal-flux-dev`), Flux Realism (`fal-flux-realism`), and Google AI Studio Nano Banana 2 (`google-nano-banana-2`).
+The image workspaces also support BytePlus Seedream 5.0 Pro (`dola-seedream-5-0-pro-260628`), fal.ai Flux 3 (`fal-flux-3`), Flux Dev (`fal-flux-dev`), Flux Realism (`fal-flux-realism`), and Google AI Studio Nano Banana 2 (`google-nano-banana-2`), Gemini 3.1 Flash Image / Nano Banana 2.1 (`google-nano-banana-2-1`), Gemini 3.1 Flash Lite Image / Nano Banana 2 Lite (`google-nano-banana-2-lite`), and Gemini 3 Pro Image / Nano Banana Pro (`google-nano-banana-2-pro`). Lite outputs 1K only and is charged at 8 credits per image.
 
 Every completed debit response includes `creditBalance`. The Studio broadcasts it to mounted credit badges immediately; failed generation requests refund charged credits and force a fresh balance read so the UI stays correct even when a provider fails after charging.
 
@@ -106,7 +106,7 @@ Every completed debit response includes `creditBalance`. The Studio broadcasts i
 The public home page uses the global primary navigation only; the duplicate Image/Video/AI Director quick-tool bar was removed to prevent header overlap. Authenticated users see **MCP & CLI** directly after **Billing** in that primary navigation. It opens the active `/studio/external` page, where users can create/revoke scoped external tokens and copy either an MCP server configuration or CLI setup instructions for supported clients.
 
 Storyboard video generation supports:
-- **Google AI Studio**: Veo 3.1 (`google-veo-3-1`), Gemini 2.5 Pro (`google-gemini-2-5-pro`), Omni Flash (`google-omni-flash`).
+- **Google AI Studio**: Veo 3.1 (`google-veo-3-1`), Veo 3.1 Fast (`google-veo-3-1-fast`), Veo 3.1 Lite (`google-veo-3-1-lite`), Gemini 2.5 Pro (`google-gemini-2-5-pro`), Omni Flash (`google-omni-flash`), and Omni 1.1 Flash (`google-omni-1-1-flash`).
 - **fal.ai Provider**: Seedance 2.5 (`fal-seedance-2-5`), Seedance 2.0 (`fal-seedance-2-0`), Seedance 2.0 Fast (`fal-seedance-2-0-fast`), Seedance 2.0 Mini (`fal-seedance-2-0-mini`), Kling 3 (`fal-kling-3`), Kling O3 (`fal-kling-o3`), Kling 1.6 Pro (`fal-kling-1-6-pro`), MiniMax H3 (`fal-minimax-h3`), MiniMax Video-01 (`fal-minimax-video-01`), Hunyuan Video (`fal-hunyuan-video`), Luma Dream Machine (`fal-luma-dream-machine`).
 - **BytePlus Direct**: Seedance 2.5 (`dreamina-seedance-2-5-260628`), Seedance 2.0 (`dreamina-seedance-2-0-260128`), Fast (`dreamina-seedance-2-0-fast-260128`), and Mini (`dreamina-seedance-2-0-mini-260615`).
 
