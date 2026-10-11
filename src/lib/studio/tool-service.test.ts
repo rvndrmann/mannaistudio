@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { toolRequestSchema, withRunEpisode } from "./tool-service"
+import { toolRequestSchema, withRunEpisode, withTrustedWorkflowRun } from "./tool-service"
 import { generationRequestSchema } from "./model-routing"
 import { directorTools } from "./tool-registry"
 import { directorFunctionDefinitions } from "./director-agent"
@@ -75,5 +75,17 @@ describe("the run's episode overrides the model", () => {
   it("does nothing without a run episode", () => {
     const fromModel = { request: { type: "image", shotIds: [] } }
     expect(withRunEpisode(fromModel, undefined)).toEqual(fromModel)
+  })
+})
+
+
+describe("server-owned generation run attribution", () => {
+  it.each(["submit_generation", "generate_entity_reference_art", "read_tool_output"])("overrides invented ids for %s", tool => {
+    expect(withTrustedWorkflowRun(tool, { workflowRunId: "invented", workflow_run_id: "other", entityIds: ["asset"] }, "real-run"))
+      .toEqual({ workflowRunId: "real-run", entityIds: ["asset"] })
+  })
+  it("removes a fabricated id when there is no server run", () => {
+    expect(withTrustedWorkflowRun("generate_entity_reference_art", { workflowRunId: "invented", entityIds: ["asset"] }))
+      .toEqual({ entityIds: ["asset"] })
   })
 })

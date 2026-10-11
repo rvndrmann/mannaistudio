@@ -50,6 +50,17 @@ export function withRunEpisode(input: unknown, episodeId: string | null | undefi
   return { ...rec, request: { ...(rec.request as Record<string, unknown>), episodeId } }
 }
 
+/** Run attribution is server-owned, including when an old approval is executed. */
+export function withTrustedWorkflowRun(tool: string, input: unknown, runId?: string | null): unknown {
+  if (!["submit_generation", "generate_entity_reference_art", "read_tool_output"].includes(tool)
+    || !input || typeof input !== "object" || Array.isArray(input)) return input
+  const record = { ...(input as Record<string, unknown>) }
+  delete record.workflow_run_id
+  delete record.workflowRunId
+  if (runId) record.workflowRunId = runId
+  return record
+}
+
 function normalizeToolInput(input: unknown): unknown {
   if (!input || typeof input !== "object" || Array.isArray(input)) return input
   const rec = { ...(input as Record<string, unknown>) }
@@ -106,10 +117,7 @@ export async function requestDirectorTool(context: AuthenticatedProjectContext, 
   // Both of these take the run id from the live run rather than from the model:
   // submit_generation so a job is attributed to the workflow that proposed it,
   // read_tool_output so it can only ever read back this run's own results.
-  const runScopedTools = ["submit_generation", "read_tool_output"]
-  const preparedInput = runScopedTools.includes(request.tool) && request.workflowRunId && request.input && typeof request.input === "object"
-    ? { ...(request.input as Record<string, unknown>), workflowRunId: request.workflowRunId }
-    : request.input
+  const preparedInput = withTrustedWorkflowRun(request.tool, request.input, request.workflowRunId)
   // The run owns the episode; the model does not have to get its uuid right.
   const scopedInput = request.tool === "submit_generation"
     ? withRunEpisode(preparedInput, request.episodeId)
@@ -416,7 +424,7 @@ export async function decideDirectorProposal(context: AuthenticatedProjectContex
   const tool = directorTools[proposal.action_type as DirectorToolName]
   if (!tool) throw new Error("Unknown proposal action")
   try {
-    const payload = mergeProposalPayload(proposal.payload, overrides)
+    const payload = withTrustedWorkflowRun(proposal.action_type, mergeProposalPayload(proposal.payload, overrides), proposal.workflow_run_id)
     const input = tool.input.parse(normalizeToolInput(payload))
     if (overrides && Object.keys(overrides).length) {
       // Bookkeeping only: execution already uses the merged payload above. A
