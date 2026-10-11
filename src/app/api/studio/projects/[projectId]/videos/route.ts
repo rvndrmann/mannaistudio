@@ -134,7 +134,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // refresh can recover this attempt even while submission is still pending.
     const { data: accepted, error: acceptError } = await context.supabase.from("creator_generation_jobs").insert({
       user_id: context.user.id, project_id: projectId, episode_id: shot.episode_id,
-      shot_id: shot.id, type: "video", status: "processing", provider, model: input.model,
+      // The insert policy accepts approved requests; processing begins only
+      // after the provider accepts the submission below.
+      shot_id: shot.id, type: "video", status: "approved", provider, model: input.model,
       prompt: input.prompt, settings: input, input_images: submittedReferenceImages,
       billing_mode: billing.mode, estimated_credits: billing.credits, credits_used: 0,
       started_at: new Date().toISOString(), operation: "submit_video_generation", idempotency_key: randomUUID(),

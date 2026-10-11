@@ -5,7 +5,17 @@ vi.mock("@/lib/studio/server-context", () => ({
   requireAuthenticatedProject: async () => ({ user: { id: "owner" }, project: { id: "project" }, supabase: { from(table: string) {
     const query = { select: () => query, eq: () => query,
       maybeSingle: async () => ({ data: table === "creator_shots" ? { id: "11111111-1111-4111-8111-111111111111", episode_id: "episode", metadata: {}, referenced_entities: [] } : { id: "episode" }, error: null }),
-      insert: (row: Record<string, unknown>) => { fixtures.writes.push(row); return query },
+      insert: (row: Record<string, unknown>) => {
+        // Match the request-insert RLS policy so an invalid initial state
+        // cannot silently pass through the mocked database.
+        if (table === "creator_generation_jobs" && (
+          row.user_id !== "owner" || row.project_id !== "project"
+          || !["approved", "awaiting_approval"].includes(String(row.status))
+          || row.provider_job_id != null || row.credits_used !== 0
+        )) throw new Error('new row violates row-level security policy for table "creator_generation_jobs"')
+        fixtures.writes.push(row)
+        return query
+      },
       update: (row: Record<string, unknown>) => { fixtures.writes.push(row); return query },
       single: async () => ({ data: { id: "accepted-job" }, error: null }),
       then(resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) {
@@ -22,6 +32,6 @@ import { POST } from "./route"
 it("saves and exposes a failed attempt when reference preparation fails before provider submission", async () => {
   const response = await POST(new NextRequest("http://localhost/api/video", { method: "POST", body: JSON.stringify({ shotId: "11111111-1111-4111-8111-111111111111", model: "dreamina-seedance-2-5-260628", prompt: "Footballer walks onto a pitch" }) }), { params: Promise.resolve({ projectId: "project" }) })
   expect(await response.json()).toMatchObject({ jobId: "accepted-job", error: "Reference preparation unavailable" })
-  expect(fixtures.writes[0]).toMatchObject({ shot_id: "11111111-1111-4111-8111-111111111111", status: "processing", type: "video", billing_mode: "byok", credits_used: 0 })
+  expect(fixtures.writes[0]).toMatchObject({ shot_id: "11111111-1111-4111-8111-111111111111", status: "approved", type: "video", billing_mode: "byok", credits_used: 0 })
   expect(fixtures.writes[1]).toMatchObject({ status: "failed", error: "Reference preparation unavailable" })
 })
