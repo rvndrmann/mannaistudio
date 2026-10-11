@@ -467,8 +467,8 @@ export async function nextStepBlock(
       type: "suggested_actions",
       actions: [{
         id: "pipeline-unknown",
-        label: "What should we do next?",
-        intent: "Tell me where this production currently stands and what the single next step is.",
+        label: "Retry reading production state",
+        intent: "Read the live production state again, then carry out the single next actionable step. Create a real approval proposal for missing reference art when needed; preserve all existing media. If the state cannot be read, report the failure and stop.",
         risk: "read" as const,
         recommended: true,
         payload: {},

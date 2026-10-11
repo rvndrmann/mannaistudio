@@ -138,7 +138,7 @@ export async function loadProductionSnapshot(
       .from("creator_generation_jobs")
       .select("shot_id, type, status")
       .eq("project_id", projectId)
-      .in("status", ["queued", "approved", "generating", "processing"])
+      .in("status", ["queued", "approved", "processing"])
       .gte("created_at", new Date(Date.now() - STALE_JOB_AFTER_MS).toISOString()),
     // Changes the Director prepared and the user has not answered. Until these
     // are decided nothing downstream can move, so the pipeline has to see them.

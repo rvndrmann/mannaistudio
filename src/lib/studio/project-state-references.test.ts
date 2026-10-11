@@ -11,3 +11,24 @@ it("waits for the existing footballer's art instead of recreating the entity", (
   const snapshot = { ...emptySnapshot, hasScript: true, promptSheetCount: 8, promptSheetEntityNames: ["Footballer"], entities: [{ name: "Footballer", type: "character", hasReferenceImage: false }] }
   expect(computePipelineStage(snapshot).key).toBe("entity_images")
 })
+
+it("reads the snapshot using only valid database job statuses", async () => {
+  const { loadProductionSnapshot } = await import("./project-state-summary")
+  const tables: Record<string, unknown[]> = {
+    creator_episodes: [{ id: "episode", name: "Episode 1", script_content: "A footballer trains before a match with a featured product." }],
+    creator_entities: [{ id: "player", name: "Footballer", type: "character", reference_images: [] }],
+    creator_script_prompts: [{ prompt: "@Footballer trains alone", entity_names: [] }],
+  }
+  const client = { from(table: string) {
+    const query = { select: () => query, eq: () => query, order: () => query, gte: () => query,
+      in(_column: string, values: string[]) {
+        if (table === "creator_generation_jobs" && values.includes("generating")) throw new Error("invalid enum creator_job_status")
+        return query
+      },
+      then(resolve: (result: unknown) => unknown) { return Promise.resolve({ data: tables[table] || [], error: null }).then(resolve) },
+    }
+    return query
+  } }
+  const snapshot = await loadProductionSnapshot(client as never, "project", "episode")
+  expect(computePipelineStage(snapshot).key).toBe("entity_images")
+})
