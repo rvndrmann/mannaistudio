@@ -1,4 +1,5 @@
-import { readProductVideo, productVideoInstructions } from "./product-video"
+import { readProductVideo, productVideoInstructions, propPlacementInstructions } from "./product-video"
+import { ensurePropReadings } from "./product-profile"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { buildDirectorInstructions, replayToolResults, selectConversationWindow } from "./conversation"
 import { buildProjectContext } from "./project-context"
@@ -197,7 +198,7 @@ const buildAgentInput = async () => {
   // Independent reads, so they go together. Run one after another these
   // were most of the delay between sending a message and the first token,
   // and none of them needs anything the others return.
-  const [project, instructionSettings, brandContext, runtimeSettings, visionAttachments, projectState, stageKey] = await Promise.all([
+  const [project, instructionSettings, brandContext, runtimeSettings, visionAttachments, projectState, stageKey, propReadings] = await Promise.all([
     buildProjectContext(context.supabase, context.project),
     context.supabase.from("site_settings").select("value").eq("key", "ai_director_global_instructions").maybeSingle(),
     loadProjectBrandContext(context.supabase, context.project),
@@ -215,7 +216,12 @@ const buildAgentInput = async () => {
     // Which specialist opens the turn, read from what the workspace holds
     // rather than from the words in the message.
     snapshot.then((value) => value ? computePipelineStage(value).key : ""),
+    // What each pictured prop is and where it sits on a person, read from its
+    // image once and stored, so every stage is told the placement instead of
+    // each one guessing it.
+    ensurePropReadings({ supabase: context.supabase, userId: context.user.id, projectId }),
   ])
+  const productReading = productVideo.enabled ? propReadings.find((reading) => reading.id === productVideo.entityId) || null : null
   const globalInstructions = normalizeDirectorGlobalInstructions(instructionSettings.data?.value)
   return {
     context,
@@ -224,7 +230,8 @@ const buildAgentInput = async () => {
     projectState: [
       projectState,
       "The live project state above overrides older chat replies. An executed proposal has already been applied; verify it with the workspace tools and never describe it as awaiting approval. Before storyboard creation, inventory all characters, environments, products and props needed by every saved prompt, create only missing entities, and generate only missing reference images. Do not mark Characters & Assets complete until all required references exist.",
-      productVideoInstructions(productVideo),
+      productVideoInstructions(productVideo, productReading),
+      propPlacementInstructions(propReadings.filter((reading) => reading !== productReading)),
       // Read from the project rather than sent with the message: the mode
       // belongs to the production, and a request that forgot to carry it
       // would silently put an auto run back to manual phrasing.

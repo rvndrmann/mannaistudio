@@ -1,4 +1,5 @@
 import { readProductVideo } from "@/lib/studio/product-video"
+import { ensureProductProfile } from "@/lib/studio/product-profile"
 import { entityPrimaryReference } from "@/lib/studio/entity-mentions"
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
@@ -181,6 +182,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         if (productError || !product || ["character", "scene"].includes(product.type) || !entityPrimaryReference(product)) {
           throw new Error("Select a product asset with a reference image from this project.")
         }
+        // Read the product now, so the first Director turn already knows
+        // whether it is worn, held or used. Never fails the save.
+        await ensureProductProfile({ supabase, userId: user.id, projectId, entityId: productVideo.entityId })
       }
       body.settings.productVideo = productVideo
       const selectedAspect = body.settings.aspectRatio || body.settings.canvasSpec?.split(" · ")[0] || "9:16"

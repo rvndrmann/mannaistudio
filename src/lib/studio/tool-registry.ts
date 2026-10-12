@@ -1,6 +1,6 @@
 import { loadProductionSnapshot } from "./project-state-summary"
 import { missingEntityNames, entitiesWithoutArt } from "./pipeline"
-import { readProductVideo, productVideoInstructions } from "./product-video"
+import { readProductVideo, readProductProfile, productArtDirective, type ProductReading } from "./product-video"
 import { runUserProvider } from "@/lib/byok/run-user-provider"
 import { entityPrimaryReference } from "./entity-mentions"
 import { GENJUTSU_OBJECT_SWAP_MODEL, GENJUTSU_RESTYLE_MODEL, getGenjutsuPresets, isGenjutsuModel, requireHiggsfieldCredentials } from "./higgsfield"
@@ -1007,12 +1007,14 @@ export const generateEntityReferenceArtTool = defineDirectorTool({
     const productVideo = readProductVideo(context.project.metadata)
     let productReference: string | null = null
     let productName = ""
+    let productReading: ProductReading | null = null
     if (productVideo.enabled) {
       const { data: product, error: productError } = await context.supabase.from("creator_entities")
         .select("id,name,type,reference_images,metadata").eq("project_id", context.project.id).eq("id", productVideo.entityId).single()
       if (productError || !product) throw new Error("Select an uploaded product before generating product-video assets.")
       productReference = entityPrimaryReference(product as MentionableEntity)
       productName = product.name
+      productReading = { name: product.name, profile: readProductProfile(product.metadata) }
       if (!productReference) throw new Error("The selected product needs a reference image.")
     }
     const style = projectVisualStyle(context.project)
@@ -1044,8 +1046,8 @@ export const generateEntityReferenceArtTool = defineDirectorTool({
       )
       const pairsProduct = productVideo.enabled && entity.type === "character" && productReference
       const prompt = pairsProduct ? `${basePrompt}
-${productVideoInstructions(productVideo)}
-For a character described as the product wearer/user, render the specified interaction with @${productName}. Do not outfit background characters or opponents with the product unless the script explicitly requires it. The attached product image is the exact product reference.` : basePrompt
+${productArtDirective(productVideo, productReading)}
+This applies to the character described as the product wearer/user of @${productName}. Do not outfit background characters or opponents with the product unless the script explicitly requires it. The attached product image is the exact product reference.` : basePrompt
       return {
         user_id: context.user.id,
         project_id: context.project.id,
