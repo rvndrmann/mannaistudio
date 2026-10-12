@@ -2,7 +2,6 @@
 
 import AllAccessSubscriptionCard from "@/components/AllAccessSubscriptionCard"
 import Footer from "@/components/Footer"
-import EnterpriseOrderForm from "@/components/enterprise/EnterpriseOrderForm"
 import Navbar from "@/components/Navbar"
 import { useAuth } from "@/components/auth/auth-provider"
 import {
@@ -289,32 +288,6 @@ export default function BillingPage() {
           </div>
         </section>
       )}
-
-      {/* ENTERPRISE FORM */}
-      <section id="enterprise" className="mx-auto max-w-[1200px] px-4 py-10 md:px-6">
-        <div className="grid gap-8 rounded-[28px] border border-primary/25 bg-[linear-gradient(160deg,rgba(185,255,24,.10),#101211_60%)] p-6 md:grid-cols-[1fr_1.1fr] md:p-10">
-          <div>
-            <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 t-caption text-primary">
-              Enterprise
-            </span>
-            <h2 className="mt-4 text-4xl font-semibold tracking-tight md:text-5xl">Don&apos;t make it yourself</h2>
-            <p className="mt-3 max-w-md text-white/50">
-              Hire the AI Director Hub team to produce the whole video for you — script, characters,
-              storyboard, generation, and final edit. Billed per finished minute, so you pay for the
-              delivered film rather than the credits it took to get there.
-            </p>
-            <ul className="mt-6 space-y-2.5 text-sm text-white/60">
-              <li className="flex gap-2.5"><Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" /> A named director and production team on your brief</li>
-              <li className="flex gap-2.5"><Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" /> Start from an existing Studio project or a blank page</li>
-              <li className="flex gap-2.5"><Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" /> Revisions handled by the team, not your credit balance</li>
-              <li className="flex gap-2.5"><Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" /> Quote confirmed before any work or payment</li>
-            </ul>
-          </div>
-          <div className="rounded-3xl border border-white/10 bg-black/40 p-6">
-            <EnterpriseOrderForm compact />
-          </div>
-        </div>
-      </section>
 
       {/* FAQS */}
       <section className="mx-auto max-w-4xl px-4 py-20 md:px-6">

@@ -392,7 +392,7 @@ function TopBar({ onOpenCreate, creating }: { onOpenCreate: () => void; creating
             title="Connect an AI assistant to your own Studio account"
             className="flex h-9 items-center whitespace-nowrap rounded-md border border-white/10 px-3 text-xs font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
           >
-            Connect AI
+            MCP
           </Link>
           <Link
             href="/studio/create"
