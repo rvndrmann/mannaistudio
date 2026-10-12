@@ -13,7 +13,6 @@ import {
     LogIn,
     LogOut,
     Mail,
-    MapPin,
     Play,
     Smartphone,
     Sparkles,
@@ -505,11 +504,6 @@ export default function OriginalsHome() {
                         <div className="space-y-3 text-sm text-white/40">
                             <p className="font-bold text-white/60">AIDIRECTORHUB</p>
                             <p>Proprietor: Ravinder Deep Singh</p>
-                            <div className="flex items-start gap-2">
-                                <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/30" />
-                                <p className="leading-relaxed">VPO Barwala, Panchkula, Haryana – 134118, India</p>
-                            </div>
-                            <p className="text-xs text-white/30">Udyam Reg: UDYAM-HR-13-0038483</p>
                             <div className="flex items-center gap-2">
                                 <Mail className="h-3.5 w-3.5 text-white/30" />
                                 <a href="mailto:rvndr.mann@gmail.com" className="hover:text-white">

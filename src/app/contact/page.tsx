@@ -2,7 +2,7 @@
 
 import Navbar from "@/components/Navbar"
 import Footer from "@/components/Footer"
-import { Mail, MapPin, MessageSquare, Clock } from "lucide-react"
+import { Mail, MessageSquare, Clock } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
 
@@ -120,13 +120,6 @@ export default function ContactPage() {
                         <div className="space-y-3 text-sm text-white/50">
                             <p className="font-bold text-white/70">AIDIRECTORHUB</p>
                             <p>Proprietor: Ravinder Deep Singh</p>
-                            <div className="flex items-start gap-2">
-                                <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-white/30" />
-                                <p className="leading-relaxed text-xs">
-                                    VPO Barwala, Panchkula, Haryana – 134118, India
-                                </p>
-                            </div>
-                            <p className="text-xs text-white/30">Udyam Reg: UDYAM-HR-13-0038483</p>
                             <div className="flex items-center gap-2">
                                 <Mail className="w-3.5 h-3.5 text-white/30" />
                                 <a href="mailto:rvndr.mann@gmail.com" className="text-xs hover:text-white transition-colors">rvndr.mann@gmail.com</a>
@@ -156,12 +149,6 @@ export default function ContactPage() {
                         <div className="flex items-center gap-2">
                             <Mail className="w-3.5 h-3.5 text-white/30" />
                             <a href="mailto:rvndr.mann@gmail.com" className="hover:text-white transition-colors">rvndr.mann@gmail.com</a>
-                        </div>
-                        <div className="flex items-start gap-2 sm:col-span-2">
-                            <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-white/30" />
-                            <span className="text-white/60 text-xs leading-relaxed">
-                                VPO Barwala, Panchkula, Haryana – 134118, India
-                            </span>
                         </div>
                         <div className="flex items-center gap-2 sm:col-span-2">
                             <Clock className="w-3.5 h-3.5 text-white/30" />

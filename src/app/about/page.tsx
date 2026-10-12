@@ -1,6 +1,6 @@
 import Footer from "@/components/Footer"
 import Navbar from "@/components/Navbar"
-import { BadgeCheck, Bot, Clapperboard, Image as ImageIcon, Layers3, Mail, MapPin, Mic2, PlugZap, ShieldCheck, Sparkles, Video, Wand2, Zap } from "lucide-react"
+import { BadgeCheck, Bot, Clapperboard, Image as ImageIcon, Layers3, Mail, Mic2, PlugZap, ShieldCheck, Sparkles, Video, Wand2, Zap } from "lucide-react"
 import Link from "next/link"
 
 export const metadata = {
@@ -162,14 +162,9 @@ export default function AboutPage() {
                     <div className="mt-6 grid gap-4 text-sm text-white/60 md:grid-cols-2">
                         <p><strong className="text-white">Legal Name:</strong> AIDIRECTORHUB</p>
                         <p><strong className="text-white">Proprietor:</strong> Ravinder Deep Singh</p>
-                        <p><strong className="text-white">Udyam Registration No.:</strong> UDYAM-HR-13-0038483</p>
                         <div className="flex items-center gap-2">
                             <Mail className="h-4 w-4 text-white/30" />
                             <a href="mailto:rvndr.mann@gmail.com" className="text-primary hover:underline">rvndr.mann@gmail.com</a>
-                        </div>
-                        <div className="flex items-start gap-2 md:col-span-2">
-                            <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-white/30" />
-                            <p>VPO Barwala, Panchkula, Haryana - 134118, India</p>
                         </div>
                     </div>
                 </div>
