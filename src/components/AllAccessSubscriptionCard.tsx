@@ -4,6 +4,8 @@ import { ALL_ACCESS_NAME } from "@/lib/all-access-plan"
 import Link from "next/link"
 import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
+import { fetchProofPageSettings } from "@/lib/proof"
+import { createClient } from "@/lib/supabase/client"
 
 type Subscription = { id: string; status: string; paid_until: string | null; cancel_at_cycle_end: boolean }
 type Offer = { configured: boolean; priceInr: number | null; active: boolean; paidUntil: string | null; subscription: Subscription | null }
@@ -30,6 +32,7 @@ export default function AllAccessSubscriptionCard() {
   const [offer, setOffer] = useState<Offer | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState("")
+  const [costExample, setCostExample] = useState("")
   const load = useCallback(async () => {
     const response = await fetch("/api/razorpay/all-access", { cache: "no-store" })
     const data = await response.json()
@@ -37,6 +40,8 @@ export default function AllAccessSubscriptionCard() {
     setOffer(data)
   }, [])
   useEffect(() => { load().catch(error => setMessage(error.message)) }, [load, user])
+  // The same admin-set example the homepage shows; empty means hidden.
+  useEffect(() => { fetchProofPageSettings(createClient()).then(settings => setCostExample(settings.costExample)) }, [])
 
   async function subscribe() {
     if (!user) { signInWithGoogle("/billing"); return }
@@ -92,6 +97,12 @@ export default function AllAccessSubscriptionCard() {
       <p className="text-sm font-semibold text-primary">Learn and create with your own API keys</p>
       <h2 id="all-access-title" className="mt-2 text-3xl font-semibold">{ALL_ACCESS_NAME}</h2>
       <p className="mt-3 max-w-3xl text-white/65">Access every published course, including new releases while subscribed, and use Creator Studio with your own OpenAI, Gemini, fal.ai, or BytePlus keys. Your provider bills you directly for chat and generation. No Studio credits are included or used.</p>
+      {costExample && (
+        <div className="mt-4 max-w-3xl rounded-lg border border-primary/25 bg-primary/[.06] px-4 py-3">
+          <p className="text-sm font-semibold text-primary">Why use your own API key? You pay the real price.</p>
+          <p className="mt-1.5 text-sm text-white/80">{costExample}</p>
+        </div>
+      )}
       <p className="mt-4 text-2xl font-semibold">{offer?.priceInr ? `₹${offer.priceInr.toLocaleString("en-IN")} / month` : "Price available when checkout is configured"}</p>
       {offer?.active && <p className="mt-3 text-primary">Access active until {new Date(offer.paidUntil!).toLocaleDateString("en-IN")}{subscription?.cancel_at_cycle_end || subscription?.status === "cancelled" ? " · Renewal cancelled" : ""}</p>}
       {subscription && !abandoned && !offer?.active && <p className="mt-3 text-white/60">Subscription status: {subscription.status}. Access starts after a confirmed charge.</p>}
