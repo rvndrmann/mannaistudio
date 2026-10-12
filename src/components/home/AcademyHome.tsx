@@ -200,6 +200,7 @@ export default async function AcademyHome() {
               <ProCta placement="hero" className="w-full sm:w-auto" />
               <FreeCourseCta placement="hero" />
             </div>
+            {settings.costExample && <p className="mt-6 max-w-xl rounded-lg border border-primary/25 bg-primary/[.06] px-4 py-3 text-sm text-white/80">{settings.costExample}</p>}
             <p className="mt-6 text-xs text-white/50">Cancel anytime · Your own API keys · No markup on generation</p>
           </div>
           {heroClips.length > 0 && <HeroReel clips={heroClips} />}
