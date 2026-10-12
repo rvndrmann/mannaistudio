@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 /**
- * Connect, test, replace and disconnect provider keys.
+ * Connect, test, replace and delete provider keys.
  *
  * The form submits a secret exactly once. Nothing here keeps it afterwards —
  * no local state that outlives the request, no localStorage, no query string —
@@ -57,6 +57,9 @@ export function IntegrationsPanel() {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ provider: string; text: string; ok: boolean } | null>(null);
+  // Deleting a key stops that provider working at once, so it takes a second
+  // press on the same card rather than one stray click.
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -122,12 +125,16 @@ export function IntegrationsPanel() {
     }
   };
 
-  const disconnect = async (row: ProviderRow) => {
+  const deleteKey = async (row: ProviderRow) => {
     setBusy(row.provider);
     setMessage(null);
     try {
-      await fetch(`/api/studio/integrations/${row.provider}`, { method: "DELETE" });
-      setMessage({ provider: row.provider, text: "Disconnected. Generations go back to studio credits.", ok: true });
+      const response = await fetch(`/api/studio/integrations/${row.provider}`, { method: "DELETE" });
+      const data = await readJson(response);
+      setMessage(response.ok
+        ? { provider: row.provider, text: `Key deleted from this studio. ${row.label} requests are blocked until you add a new one.`, ok: true }
+        : { provider: row.provider, text: String(data.error || "That key could not be deleted. Please try again."), ok: false });
+      setConfirmingDelete(null);
       await load();
     } finally {
       setBusy(null);
@@ -199,8 +206,11 @@ export function IntegrationsPanel() {
                   {row.status && row.status !== "active" ? ` · ${row.status}` : ""}
                 </p>
               ) : (
-                <p className="mt-1 text-sm text-zinc-500">Not connected — using studio credits.</p>
+                <p className="mt-1 text-sm text-zinc-500">Not connected — add a key to use {row.label}.</p>
               )}
+              <a href={row.helpUrl} target="_blank" rel="noreferrer noopener" className="mt-1 inline-block text-xs text-zinc-400 underline underline-offset-2 hover:text-zinc-200">
+                Where to find your {row.label} key ↗
+              </a>
             </div>
             <div className="flex flex-wrap gap-2">
               {row.connected && (
@@ -216,7 +226,7 @@ export function IntegrationsPanel() {
               <button
                 type="button"
                 disabled={busy === row.provider}
-                onClick={() => { setEditing(editing === row.provider ? null : row.provider); setDraft({}); }}
+                onClick={() => { setEditing(editing === row.provider ? null : row.provider); setDraft({}); setConfirmingDelete(null); }}
                 className="rounded-lg border border-white/15 px-3 py-2 text-sm text-zinc-200 disabled:opacity-50"
               >
                 {row.connected ? "Replace key" : "Connect"}
@@ -225,14 +235,38 @@ export function IntegrationsPanel() {
                 <button
                   type="button"
                   disabled={busy === row.provider}
-                  onClick={() => void disconnect(row)}
+                  onClick={() => { setConfirmingDelete(confirmingDelete === row.provider ? null : row.provider); setEditing(null); setMessage(null); }}
                   className="rounded-lg border border-red-400/30 px-3 py-2 text-sm text-red-200 disabled:opacity-50"
                 >
-                  Disconnect
+                  Delete key
                 </button>
               )}
             </div>
           </div>
+
+          {confirmingDelete === row.provider && (
+            <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-red-400/30 bg-red-500/5 px-3 py-2.5">
+              <p className="min-w-0 flex-1 text-sm text-red-100">
+                Delete your {row.label} key{row.last4 ? ` ••••${row.last4}` : ""} from this studio? It cannot be recovered here, and {row.label} requests stop until you add a new one.
+              </p>
+              <button
+                type="button"
+                disabled={busy === row.provider}
+                onClick={() => void deleteKey(row)}
+                className="rounded-lg bg-red-500/90 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {busy === row.provider ? "Deleting…" : "Yes, delete it"}
+              </button>
+              <button
+                type="button"
+                disabled={busy === row.provider}
+                onClick={() => setConfirmingDelete(null)}
+                className="rounded-lg border border-white/15 px-3 py-2 text-sm text-zinc-200 disabled:opacity-50"
+              >
+                Keep it
+              </button>
+            </div>
+          )}
 
           {message?.provider === row.provider && (
             <p className={`mt-3 text-sm ${message.ok ? "text-[#b9f42e]" : "text-red-300"}`}>{message.text}</p>
@@ -259,18 +293,13 @@ export function IntegrationsPanel() {
                   {part.hint && <span className="mt-1 block text-xs text-zinc-500">{part.hint}</span>}
                 </label>
               ))}
-              <div className="flex items-center gap-3">
-                <button
-                  type="submit"
-                  disabled={busy === row.provider}
-                  className="rounded-lg bg-[#b9f42e] px-3 py-2 text-sm font-bold text-black disabled:opacity-50"
-                >
-                  {busy === row.provider ? "Checking…" : "Save key"}
-                </button>
-                <a href={row.helpUrl} target="_blank" rel="noreferrer noopener" className="text-xs text-zinc-500 underline">
-                  Where to find this
-                </a>
-              </div>
+              <button
+                type="submit"
+                disabled={busy === row.provider}
+                className="rounded-lg bg-[#b9f42e] px-3 py-2 text-sm font-bold text-black disabled:opacity-50"
+              >
+                {busy === row.provider ? "Checking…" : "Save key"}
+              </button>
               <p className="text-xs text-zinc-500">
                 The key is checked against {row.label} before it is saved, and encrypted once it is.
               </p>
