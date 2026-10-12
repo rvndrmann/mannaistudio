@@ -4,7 +4,7 @@ import type { AuthenticatedProjectContext } from "./server-context"
 import { directorTools, type DirectorToolName } from "./tool-registry"
 import { getUserCredits } from "./credits"
 import { stripIdentityDescriptionsFromPrompts } from "./prompt-sanitizer"
-import { projectDirectorVideoModel } from "./generation-models"
+import { isImageGenerationModel, projectDirectorVideoModel } from "./generation-models"
 import { projectStoryboardImageModel } from "./project-image-model"
 import { resolveShotSeconds } from "./shot-duration"
 
@@ -148,7 +148,9 @@ export async function requestDirectorTool(context: AuthenticatedProjectContext, 
     && parsedInput.request.type === "image"
     ? {
         ...parsedInput,
-        request: { ...parsedInput.request, model: projectStoryboardImageModel(context.project) },
+        // The agent does not choose the image model: the project does. A
+        // person asking for a render in their own words may name one.
+        request: { ...parsedInput.request, model: options?.userAuthored && typeof parsedInput.request.model === "string" && isImageGenerationModel(parsedInput.request.model) ? parsedInput.request.model : projectStoryboardImageModel(context.project) },
       }
     : request.tool === "submit_generation"
     && parsedInput

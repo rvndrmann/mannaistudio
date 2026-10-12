@@ -53,7 +53,9 @@ describe("proposeOwnGeneration", () => {
   it("asks for a storyboard image from the user's prompt, keyed to the shot's id, and never bypasses approval", async () => {
     await proposeOwnGeneration(context(), EPISODE, { kind: "storyboard_image", shotNumbers: [3, 1], prompts: { "3": "A wide of the stadium." } })
     const [, call, options] = mocks.request.mock.calls[0]
-    expect(options).toBeUndefined()
+    // The user's own request, so a named image model stands. Approval is
+    // decided by the tool being costly, which this flag cannot change.
+    expect(options).toEqual({ userAuthored: true })
     expect(call.tool).toBe("submit_generation")
     expect(call.input.request).toEqual({ type: "image", shotIds: ["shot-c", "shot-a"], episodeId: EPISODE, aspectRatio: "16:9" })
     // Shot 1 has no prompt here, so it is left to the one already saved.
@@ -77,6 +79,15 @@ describe("proposeOwnGeneration", () => {
     const call = mocks.request.mock.calls[0][1]
     expect(call.tool).toBe("generate_entity_reference_art")
     expect(call.input).toMatchObject({ entityIds: [ENTITY], prompts: { [ENTITY]: "Studio portrait, soft key." } })
+  })
+
+  it("keeps a named image model and refuses one that is not offered, or is the wrong kind", async () => {
+    await proposeOwnGeneration(context(), EPISODE, { kind: "storyboard_image", shotNumbers: [1], model: "fal-flux-3" })
+    expect(mocks.request.mock.calls[0][1].input.request.model).toBe("fal-flux-3")
+    await expect(proposeOwnGeneration(context(), EPISODE, { kind: "storyboard_image", shotNumbers: [1], model: "made-up-model" })).rejects.toThrow("studio_list_models")
+    await expect(proposeOwnGeneration(context(), EPISODE, { kind: "storyboard_video", shotNumbers: [1], model: "fal-flux-3" })).rejects.toThrow("not a video model")
+    await expect(proposeOwnGeneration(context(), EPISODE, { kind: "character_or_asset_image", entityIds: [ENTITY], model: "fal-kling-3" })).rejects.toThrow("not an image model")
+    expect(mocks.request).toHaveBeenCalledTimes(1)
   })
 
   it("says what is missing rather than guessing a target", async () => {

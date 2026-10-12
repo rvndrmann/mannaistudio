@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { z } from "zod"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { requestDirectorTool } from "./tool-service"
+import { isImageGenerationModel, isVideoGenerationModel } from "./generation-models"
 
 /**
  * Working without the agent.
@@ -88,6 +89,11 @@ export async function proposeOwnGeneration(context: AuthenticatedProjectContext,
   const input = ownGenerationSchema.parse(raw)
   const idempotencyKey = input.idempotencyKey || `own-generation-${randomUUID()}`
 
+  // Refused here, by name, rather than three layers down as a routing error.
+  if (input.model && !(input.kind === "storyboard_video" ? isVideoGenerationModel(input.model) : isImageGenerationModel(input.model))) {
+    throw new Error(`"${input.model}" is not ${input.kind === "storyboard_video" ? "a video" : "an image"} model this studio offers. Call studio_list_models for the ids.`)
+  }
+
   if (input.kind === "character_or_asset_image") {
     if (!input.entityIds.length) throw new Error("Name the characters or assets to draw in entityIds.")
     const prompts = Object.fromEntries(Object.entries(input.prompts).filter(([key]) => input.entityIds.includes(key)))
@@ -127,5 +133,7 @@ export async function proposeOwnGeneration(context: AuthenticatedProjectContext,
     },
     idempotencyKey,
     episodeId,
-  })
+  // Marks the request as the user's own, which is what lets a named image
+  // model stand. It is still a costly tool, so it still needs approval.
+  }, { userAuthored: true })
 }

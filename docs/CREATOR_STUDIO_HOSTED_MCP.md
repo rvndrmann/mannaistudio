@@ -71,6 +71,7 @@ A job already running is not cancelled by disconnecting.
 | `studio_storyboard` | `projects:read` |
 | `studio_pending_work` | `projects:read` |
 | `studio_view_media` | `projects:read` |
+| `studio_list_models` | `projects:read` |
 | `studio_chat` | `director:chat` |
 | `studio_set_prompts` | `director:chat` |
 | `studio_generate` | `director:chat` |
