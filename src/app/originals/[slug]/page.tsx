@@ -583,7 +583,7 @@ export default function OriginalsSeriesPage({ params }: { params: Promise<{ slug
                       setCurrentTime(next)
                     }}
                     aria-label="Seek"
-                    className="mb-2 h-1 w-full cursor-pointer appearance-none rounded-full bg-white/25 accent-[#b9f42e] [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary"
+                    className="mb-2 h-1 w-full cursor-pointer appearance-none rounded-full bg-white/25 accent-primary [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary"
                   />
 
                   <div className="flex items-center gap-3 text-white">

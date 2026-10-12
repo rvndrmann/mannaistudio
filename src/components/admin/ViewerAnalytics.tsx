@@ -529,8 +529,8 @@ export default function ViewerAnalytics() {
             <AreaChart data={chartData}>
               <defs>
                 <linearGradient id="visitorsFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#b9f42e" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="#b9f42e" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#f5f5f5" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#f5f5f5" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="watchFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#60a5fa" stopOpacity={0.3} />
@@ -548,7 +548,7 @@ export default function ViewerAnalytics() {
                   fontSize: 12,
                 }}
               />
-              <Area type="monotone" dataKey="visitors" name="Visitors" stroke="#b9f42e" fill="url(#visitorsFill)" strokeWidth={2} />
+              <Area type="monotone" dataKey="visitors" name="Visitors" stroke="#f5f5f5" fill="url(#visitorsFill)" strokeWidth={2} />
               <Area type="monotone" dataKey="episode_views" name="Episode views" stroke="#60a5fa" fill="url(#watchFill)" strokeWidth={2} />
             </AreaChart>
           </ResponsiveContainer>

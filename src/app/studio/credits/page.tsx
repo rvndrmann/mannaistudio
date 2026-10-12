@@ -132,8 +132,8 @@ export default function CreditsPage() {
             <ArrowLeft className="h-4 w-4" />
             <span>Back to Studio</span>
           </Link>
-          <div className="flex items-center gap-2 rounded-full border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-3 py-1.5 text-xs font-bold text-[#b9f42e]">
-            <Zap className="h-4 w-4 fill-[#b9f42e]" />
+          <div className="flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary">
+            <Zap className="h-4 w-4 fill-primary" />
             <span>{credits !== null ? `${credits.toLocaleString()} Credits` : "Loading..."}</span>
           </div>
         </div>
@@ -142,8 +142,8 @@ export default function CreditsPage() {
       {/* Main Content */}
       <main className="mx-auto max-w-4xl px-6 py-12">
         <div className="mb-10 text-center">
-          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-[#b9f42e]/30 bg-[#b9f42e]/10 text-[#b9f42e] mb-4">
-            <Zap className="h-7 w-7 fill-[#b9f42e]" />
+          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/30 bg-primary/10 text-primary mb-4">
+            <Zap className="h-7 w-7 fill-primary" />
           </div>
           <h1 className="text-3xl font-semibold text-white">AI Generation Credits</h1>
           <p className="mt-2 text-sm text-zinc-400">
@@ -164,7 +164,7 @@ export default function CreditsPage() {
               type="button"
               onClick={() => setTab(item.id)}
               className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
-                tab === item.id ? "border-[#b9f42e] text-[#b9f42e]" : "border-transparent text-zinc-400 hover:text-zinc-200"
+                tab === item.id ? "border-primary text-primary" : "border-transparent text-zinc-400 hover:text-zinc-200"
               }`}
             >
               {item.label}
@@ -178,7 +178,7 @@ export default function CreditsPage() {
         {tab === "topup" && (
           <>
             {topUpSuccess && (
-              <div className="mb-8 flex items-center gap-3 rounded-xl border border-[#b9f42e]/40 bg-[#b9f42e]/10 p-4 text-sm font-semibold text-[#b9f42e]">
+              <div className="mb-8 flex items-center gap-3 rounded-xl border border-primary/40 bg-primary/10 p-4 text-sm font-semibold text-primary">
                 <Check className="h-5 w-5 shrink-0" />
                 <span>{topUpSuccess}</span>
               </div>
@@ -192,10 +192,10 @@ export default function CreditsPage() {
             )}
 
             {/* Custom Amount Selector Box */}
-            <div className="mb-8 rounded-2xl border border-[#b9f42e]/30 bg-[#b9f42e]/[0.03] p-6">
+            <div className="mb-8 rounded-2xl border border-primary/30 bg-primary/[0.03] p-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <span className="t-caption text-[#b9f42e]">Flexible Top-Up</span>
+                  <span className="t-caption text-primary">Flexible Top-Up</span>
                   <h3 className="text-xl font-bold text-white mt-1">Buy Custom Credit Amount</h3>
                   <p className="text-xs text-zinc-400 mt-1">1 credit per ₹1, minimum $5 — {formatUsdWithInr(MIN_TOP_UP_INR)}</p>
                 </div>
@@ -209,7 +209,7 @@ export default function CreditsPage() {
                       disabled={!canBuyCredits}
                       className={`rounded-xl border px-3 py-1.5 text-xs font-bold transition ${
                         customAmount === preset
-                          ? "border-[#b9f42e] bg-[#b9f42e] text-black"
+                          ? "border-primary bg-primary text-black"
                           : "border-white/10 bg-white/[0.04] text-white hover:border-white/20"
                       } disabled:cursor-not-allowed disabled:opacity-40`}
                     >
@@ -221,14 +221,14 @@ export default function CreditsPage() {
 
               <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center">
                 <div className="relative flex-1">
-                  <span className="absolute left-4 top-3 text-lg font-bold text-[#b9f42e]">₹</span>
+                  <span className="absolute left-4 top-3 text-lg font-bold text-primary">₹</span>
                   <input
                     type="number"
                     min={MIN_TOP_UP_INR}
                     step={100}
                     value={customAmount}
                     onChange={(e) => setCustomAmount(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full rounded-xl border border-white/15 bg-black/60 py-2.5 pl-9 pr-4 text-lg font-bold text-white outline-none focus:border-[#b9f42e]"
+                    className="w-full rounded-xl border border-white/15 bg-black/60 py-2.5 pl-9 pr-4 text-lg font-bold text-white outline-none focus:border-primary"
                     placeholder="1000"
                   />
                 </div>
@@ -236,7 +236,7 @@ export default function CreditsPage() {
                 <button
                   disabled={loading || customAmount < MIN_TOP_UP_INR || !canBuyCredits}
                   onClick={() => handleTopUp(customAmount)}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-8 py-3 text-sm font-semibold text-black hover:bg-[#a6de25] transition disabled:opacity-40"
+                  className="flex items-center justify-center gap-2 rounded-xl bg-primary px-8 py-3 text-sm font-semibold text-black hover:bg-white transition disabled:opacity-40"
                 >
                   {loading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -261,17 +261,17 @@ export default function CreditsPage() {
                 <div
                   key={pkg.id}
                   className={`relative flex flex-col justify-between rounded-2xl border p-6 transition ${
-                    pkg.popular ? "border-[#b9f42e] bg-[#b9f42e]/[0.05]" : "border-white/[0.08] bg-[#0e0e0e] hover:border-white/20"
+                    pkg.popular ? "border-primary bg-primary/[0.05]" : "border-white/[0.08] bg-[#0e0e0e] hover:border-white/20"
                   }`}
                 >
                   {pkg.popular && (
-                    <span className="absolute -top-3 right-6 rounded-full bg-[#b9f42e] px-3 py-0.5 t-caption text-black">
+                    <span className="absolute -top-3 right-6 rounded-full bg-primary px-3 py-0.5 t-caption text-black">
                       Most Popular
                     </span>
                   )}
                   <div>
                     <div className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-[#b9f42e]" />
+                      <Sparkles className="h-4 w-4 text-primary" />
                       <span className="text-xl font-bold text-white">{pkg.credits.toLocaleString()} Credits</span>
                     </div>
                   </div>
@@ -281,7 +281,7 @@ export default function CreditsPage() {
                     <button
                     disabled={loading || !canBuyCredits}
                       onClick={() => handleTopUp(pkg.credits)}
-                      className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-5 py-2.5 text-xs font-semibold text-black hover:bg-[#a6de25] transition disabled:opacity-50"
+                      className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-xs font-semibold text-black hover:bg-white transition disabled:opacity-50"
                     >
                       {loading ? (
                         <Loader2 className="h-4 w-4 animate-spin" />

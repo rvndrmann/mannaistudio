@@ -104,7 +104,7 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">Competitive Market Radar</p>
+            <p className="text-xs font-bold tracking-[.18em] text-primary">Competitive Market Radar</p>
             <ComingSoonBadge />
             <DemoDataBadge />
           </div>
@@ -114,7 +114,7 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
         <button
           type="button"
           onClick={() => setAddCompetitorOpen(true)}
-          className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition shadow-lg"
+          className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition shadow-lg"
         >
           <Plus className="h-4 w-4" /> Add Competitor
         </button>
@@ -130,7 +130,7 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
           <button
             key={id}
             onClick={() => setActiveTab(id as any)}
-            className={`border-b-2 px-4 py-3 text-sm font-bold transition ${activeTab === id ? "border-[#b9f42e] text-[#b9f42e]" : "border-transparent text-zinc-400 hover:text-white"}`}
+            className={`border-b-2 px-4 py-3 text-sm font-bold transition ${activeTab === id ? "border-primary text-primary" : "border-transparent text-zinc-400 hover:text-white"}`}
           >
             {label}
           </button>
@@ -148,7 +148,7 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
                     <h3 className="text-xl font-bold text-white">{comp.name}</h3>
                     <p className="text-xs font-semibold text-zinc-400">{comp.industry}</p>
                   </div>
-                  <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-[#b9f42e]">{comp.activeAds} Active Ads</span>
+                  <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-primary">{comp.activeAds} Active Ads</span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-xs border-y border-white/5 py-3">
@@ -175,14 +175,14 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
             <div key={creative.id} className="rounded-2xl border border-white/10 bg-[#161817] overflow-hidden shadow-xl hover:border-white/20 transition">
               <div className="relative aspect-video w-full bg-black/60">
                 <img src={creative.thumbnail} alt={creative.title} className="h-full w-full object-cover" />
-                <span className="absolute top-2 left-2 rounded-md bg-black/80 px-2 py-0.5 text-[10px] font-bold text-[#b9f42e]">{creative.platform}</span>
+                <span className="absolute top-2 left-2 rounded-md bg-black/80 px-2 py-0.5 text-[10px] font-bold text-primary">{creative.platform}</span>
                 <span className="absolute bottom-2 right-2 rounded-md bg-black/80 px-2 py-0.5 text-[10px] font-bold text-white">{creative.duration}</span>
               </div>
 
               <div className="p-5 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-zinc-400">{creative.competitorName}</span>
-                  <span className="rounded-full bg-[#b9f42e]/10 px-2.5 py-0.5 text-xs font-bold text-[#b9f42e]">Score: {creative.score}/100</span>
+                  <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary">Score: {creative.score}/100</span>
                 </div>
                 <h4 className="text-base font-bold text-white">{creative.title}</h4>
                 <p className="text-xs text-zinc-400 line-clamp-2">"{creative.hook}"</p>
@@ -191,7 +191,7 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
                   <span className="text-xs font-bold text-zinc-500">{creative.visualStyle}</span>
                   <button
                     onClick={() => setSelectedCreative(creative)}
-                    className="rounded-lg bg-[#b9f42e] px-3 py-1.5 text-xs font-bold text-black hover:bg-[#a6de26]"
+                    className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-black hover:bg-[#a6de26]"
                   >
                     Inspect Breakdown
                   </button>
@@ -225,9 +225,9 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
             </div>
           </div>
 
-          <div className="rounded-xl border border-[#b9f42e]/30 bg-[#b9f42e]/5 p-5 space-y-3">
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-5 space-y-3">
             <div className="flex items-center gap-2">
-              <Wand2 className="h-5 w-5 text-[#b9f42e]" />
+              <Wand2 className="h-5 w-5 text-primary" />
               <h3 className="text-sm font-bold text-white">Productive Action: Send Abstracted Pattern to AI Director</h3>
             </div>
             <p className="text-xs text-zinc-300">
@@ -249,7 +249,7 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
                     })
                   }
                 }}
-                className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-5 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition shadow-lg"
+                className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition shadow-lg"
               >
                 <Wand2 className="h-4 w-4" /> Send Pattern to AI Director Studio
               </button>
@@ -270,21 +270,21 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
             <div className="space-y-3 text-xs">
               <div>
                 <label className="font-bold text-zinc-400">Competitor Brand Name</label>
-                <input type="text" placeholder="e.g. VideoScale AI" className="mt-1 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-[#b9f42e]" />
+                <input type="text" placeholder="e.g. VideoScale AI" className="mt-1 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-primary" />
               </div>
               <div>
                 <label className="font-bold text-zinc-400">Website URL</label>
-                <input type="text" placeholder="https://..." className="mt-1 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-[#b9f42e]" />
+                <input type="text" placeholder="https://..." className="mt-1 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-primary" />
               </div>
               <div>
                 <label className="font-bold text-zinc-400">Meta Ad Library URL (Compliant Public Data)</label>
-                <input type="text" placeholder="https://facebook.com/ads/library/..." className="mt-1 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-[#b9f42e]" />
+                <input type="text" placeholder="https://facebook.com/ads/library/..." className="mt-1 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-primary" />
               </div>
             </div>
 
             <div className="flex justify-end gap-3 pt-3 border-t border-white/10">
               <button onClick={() => setAddCompetitorOpen(false)} className="rounded-xl px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/5">Cancel</button>
-              <button onClick={() => { setAddCompetitorOpen(false); setModalOpen(true); }} className="rounded-xl bg-[#b9f42e] px-4 py-2 text-xs font-bold text-black hover:bg-[#a6de26]">Save & Monitor</button>
+              <button onClick={() => { setAddCompetitorOpen(false); setModalOpen(true); }} className="rounded-xl bg-primary px-4 py-2 text-xs font-bold text-black hover:bg-[#a6de26]">Save & Monitor</button>
             </div>
           </div>
         </div>
@@ -296,7 +296,7 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
           <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-white/10 bg-[#161817] p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div>
-                <span className="text-xs font-bold text-[#b9f42e]">{selectedCreative.competitorName}</span>
+                <span className="text-xs font-bold text-primary">{selectedCreative.competitorName}</span>
                 <h3 className="text-xl font-bold text-white">{selectedCreative.title}</h3>
               </div>
               <button onClick={() => setSelectedCreative(null)} className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/10"><X className="h-5 w-5" /></button>
@@ -320,7 +320,7 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
               <div className="space-y-2">
                 {selectedCreative.structure.map((s) => (
                   <div key={s.time} className="flex items-center justify-between rounded-xl border border-white/5 bg-black/40 p-3 text-xs">
-                    <span className="font-bold text-[#b9f42e] w-20">{s.time}</span>
+                    <span className="font-bold text-primary w-20">{s.time}</span>
                     <span className="font-semibold text-zinc-200 flex-1">{s.text}</span>
                   </div>
                 ))}
@@ -340,7 +340,7 @@ export function CompetitorIntelligence({ onSendToStudio }: { onSendToStudio?: (i
                   setSelectedCreative(null)
                   if (onSendToStudio) onSendToStudio(insight)
                 }}
-                className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-5 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26]"
+                className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26]"
               >
                 <Wand2 className="h-4 w-4" /> Generate Original Concept in AI Director
               </button>

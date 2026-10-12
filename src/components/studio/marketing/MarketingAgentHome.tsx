@@ -29,15 +29,15 @@ export function MarketingAgentHome({ onNavigateTab }: { onNavigateTab?: (tab: st
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="rounded-3xl border border-[#b9f42e]/30 bg-gradient-to-r from-[#b9f42e]/10 via-[#161817] to-[#161817] p-8 shadow-2xl space-y-4">
+      <div className="rounded-3xl border border-primary/30 bg-gradient-to-r from-primary/10 via-[#161817] to-[#161817] p-8 shadow-2xl space-y-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#b9f42e] text-black shadow-lg">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary text-black shadow-lg">
               <Bot className="h-6 w-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="t-caption text-[#b9f42e]">AI Marketing Director Agent</span>
+                <span className="t-caption text-primary">AI Marketing Director Agent</span>
                 <DemoDataBadge />
               </div>
               <h1 className="text-2xl font-semibold text-white">Autonomous Marketing Operations</h1>
@@ -47,7 +47,7 @@ export function MarketingAgentHome({ onNavigateTab }: { onNavigateTab?: (tab: st
           <button
             type="button"
             onClick={() => { if (onNavigateTab) onNavigateTab("analytics") }}
-            className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-5 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition shadow-lg"
+            className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition shadow-lg"
           >
             <Sparkles className="h-4 w-4" /> Review Recommendations
           </button>
@@ -66,7 +66,7 @@ export function MarketingAgentHome({ onNavigateTab }: { onNavigateTab?: (tab: st
         <div className="rounded-2xl border border-white/10 bg-[#161817] p-5 shadow-xl space-y-2">
           <div className="flex items-center justify-between text-xs font-semibold text-zinc-400">
             <span>CONTENT</span>
-            <Calendar className="h-4 w-4 text-[#b9f42e]" />
+            <Calendar className="h-4 w-4 text-primary" />
           </div>
           <p className="text-2xl font-semibold text-white">12 Posts</p>
           <div className="flex justify-between text-xs text-zinc-400 pt-1 border-t border-white/5">
@@ -78,36 +78,36 @@ export function MarketingAgentHome({ onNavigateTab }: { onNavigateTab?: (tab: st
         <div className="rounded-2xl border border-white/10 bg-[#161817] p-5 shadow-xl space-y-2">
           <div className="flex items-center justify-between text-xs font-semibold text-zinc-400">
             <span>PERFORMANCE</span>
-            <TrendingUp className="h-4 w-4 text-[#b9f42e]" />
+            <TrendingUp className="h-4 w-4 text-primary" />
           </div>
           <p className="text-2xl font-semibold text-white">142.5K Reach</p>
           <div className="flex justify-between text-xs text-zinc-400 pt-1 border-t border-white/5">
             <span>Views: <strong className="text-white">98.2K</strong></span>
-            <span>Leads: <strong className="text-[#b9f42e]">384</strong></span>
+            <span>Leads: <strong className="text-primary">384</strong></span>
           </div>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-[#161817] p-5 shadow-xl space-y-2">
           <div className="flex items-center justify-between text-xs font-semibold text-zinc-400">
             <span>ADS MANAGER</span>
-            <Target className="h-4 w-4 text-[#b9f42e]" />
+            <Target className="h-4 w-4 text-primary" />
           </div>
           <p className="text-2xl font-semibold text-white">$1.27K Spend</p>
           <div className="flex justify-between text-xs text-zinc-400 pt-1 border-t border-white/5">
             <span>Leads: <strong className="text-white">82</strong></span>
-            <span>ROAS: <strong className="text-[#b9f42e]">3.1x</strong></span>
+            <span>ROAS: <strong className="text-primary">3.1x</strong></span>
           </div>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-[#161817] p-5 shadow-xl space-y-2">
           <div className="flex items-center justify-between text-xs font-semibold text-zinc-400">
             <span>COMPETITORS</span>
-            <Layers className="h-4 w-4 text-[#b9f42e]" />
+            <Layers className="h-4 w-4 text-primary" />
           </div>
           <p className="text-2xl font-semibold text-white">137 Analyzed</p>
           <div className="flex justify-between text-xs text-zinc-400 pt-1 border-t border-white/5">
             <span>Tracked: <strong className="text-white">4</strong></span>
-            <span>Patterns: <strong className="text-[#b9f42e]">12</strong></span>
+            <span>Patterns: <strong className="text-primary">12</strong></span>
           </div>
         </div>
       </div>
@@ -116,7 +116,7 @@ export function MarketingAgentHome({ onNavigateTab }: { onNavigateTab?: (tab: st
       <div className="rounded-2xl border border-white/10 bg-[#161817] p-6 shadow-2xl space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Activity className="h-5 w-5 text-[#b9f42e]" />
+            <Activity className="h-5 w-5 text-primary" />
             <h2 className="text-lg font-bold text-white">Agent Audit Activity Feed</h2>
           </div>
           <span className="text-xs font-bold text-zinc-500">Real-Time Audit Trail</span>
@@ -126,7 +126,7 @@ export function MarketingAgentHome({ onNavigateTab }: { onNavigateTab?: (tab: st
           {mockAuditLogs.map((log) => (
             <div key={log.id} className="flex flex-col gap-2 rounded-xl border border-white/5 bg-black/40 p-3.5 text-xs sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
-                <span className={`rounded-md px-2 py-0.5 font-bold  text-[10px] ${log.actor === "ai_agent" ? "bg-[#b9f42e]/20 text-[#b9f42e]" : log.actor === "user" ? "bg-blue-500/20 text-blue-400" : "bg-yellow-500/20 text-yellow-400"}`}>
+                <span className={`rounded-md px-2 py-0.5 font-bold  text-[10px] ${log.actor === "ai_agent" ? "bg-primary/20 text-primary" : log.actor === "user" ? "bg-blue-500/20 text-blue-400" : "bg-yellow-500/20 text-yellow-400"}`}>
                   {log.actor.replace("_", " ")}
                 </span>
                 <span className="font-semibold text-zinc-200">{log.action}</span>

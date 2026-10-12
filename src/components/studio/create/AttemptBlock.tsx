@@ -50,7 +50,7 @@ export function AttemptBlock({
   if (attempt.status === "generating") {
     return (
       <div className={`${frame} flex aspect-square flex-col items-center justify-center gap-3 rounded-2xl border border-white/10 bg-[#101110] p-6 text-center`}>
-        <Loader2 className="h-7 w-7 animate-spin text-[#b9f42e]" />
+        <Loader2 className="h-7 w-7 animate-spin text-primary" />
         <p className="text-sm text-zinc-400">{statusText || "Rendering…"}</p>
         <p className="line-clamp-2 max-w-xs text-xs text-zinc-600">{attempt.prompt}</p>
         {kind === "video" && (

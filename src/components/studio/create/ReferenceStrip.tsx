@@ -93,7 +93,7 @@ export function ReferenceStrip({
             type="button"
             disabled={disabled}
             onClick={() => inputRef.current?.click()}
-            className="grid h-16 w-16 place-items-center rounded-lg border border-dashed border-white/20 text-zinc-500 transition hover:border-[#b9f42e]/60 hover:text-[#b9f42e] disabled:opacity-40"
+            className="grid h-16 w-16 place-items-center rounded-lg border border-dashed border-white/20 text-zinc-500 transition hover:border-primary/60 hover:text-primary disabled:opacity-40"
             title={`Add ${kind}`}
           >
             <Plus className="h-4 w-4" />

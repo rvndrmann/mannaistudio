@@ -84,7 +84,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
       {/* Top Bar */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">AI Content Autopilot</p>
+          <p className="text-xs font-bold tracking-[.18em] text-primary">AI Content Autopilot</p>
           <h1 className="mt-1 text-3xl font-semibold text-white">Content Calendar</h1>
         </div>
 
@@ -92,19 +92,19 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
           <div className="flex rounded-xl border border-white/10 bg-[#161817] p-1">
             <button
               onClick={() => setView("month")}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${view === "month" ? "bg-[#b9f42e] text-black" : "text-zinc-400 hover:text-white"}`}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${view === "month" ? "bg-primary text-black" : "text-zinc-400 hover:text-white"}`}
             >
               <CalendarIcon className="h-3.5 w-3.5" /> Month
             </button>
             <button
               onClick={() => setView("week")}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${view === "week" ? "bg-[#b9f42e] text-black" : "text-zinc-400 hover:text-white"}`}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${view === "week" ? "bg-primary text-black" : "text-zinc-400 hover:text-white"}`}
             >
               <CalendarIcon className="h-3.5 w-3.5" /> Week
             </button>
             <button
               onClick={() => setView("list")}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${view === "list" ? "bg-[#b9f42e] text-black" : "text-zinc-400 hover:text-white"}`}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${view === "list" ? "bg-primary text-black" : "text-zinc-400 hover:text-white"}`}
             >
               <List className="h-3.5 w-3.5" /> List
             </button>
@@ -113,7 +113,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
           <button
             type="button"
             onClick={() => setComposerOpen(true)}
-            className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition shadow-lg"
+            className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition shadow-lg"
           >
             <Plus className="h-4 w-4" /> Create Content
           </button>
@@ -141,7 +141,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
             <button
               key={status}
               onClick={() => setSelectedStatus(status)}
-              className={`rounded-lg px-3 py-1 text-xs font-bold capitalize transition ${selectedStatus === status ? "bg-[#b9f42e]/20 text-[#b9f42e] border border-[#b9f42e]/40" : "bg-black/30 text-zinc-400 hover:bg-white/5"}`}
+              className={`rounded-lg px-3 py-1 text-xs font-bold capitalize transition ${selectedStatus === status ? "bg-primary/20 text-primary border border-primary/40" : "bg-black/30 text-zinc-400 hover:bg-white/5"}`}
             >
               {status.replace("_", " ")}
             </button>
@@ -165,7 +165,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="rounded-md bg-white/10 px-2 py-0.5 text-[10px] font-bold text-zinc-300">{post.contentType}</span>
-                    <span className="rounded-md bg-[#b9f42e]/10 px-2 py-0.5 text-[10px] font-bold text-[#b9f42e] capitalize">{post.status.replace("_", " ")}</span>
+                    <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary capitalize">{post.status.replace("_", " ")}</span>
                   </div>
                   <h3 className="mt-1 text-base font-bold text-white">{post.title}</h3>
                   <p className="mt-0.5 text-xs text-zinc-400 line-clamp-1">{post.caption}</p>
@@ -210,7 +210,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
                 <div key={day} className="min-h-[100px] rounded-xl border border-white/5 bg-black/30 p-2 text-left hover:border-white/20 transition">
                   <span className="text-xs font-bold text-zinc-400">{day}</span>
                   {dayPosts.map((post) => (
-                    <div key={post.id} className="mt-1.5 rounded-lg border border-[#b9f42e]/30 bg-[#b9f42e]/10 p-1.5 text-[10px] font-bold text-[#b9f42e] truncate">
+                    <div key={post.id} className="mt-1.5 rounded-lg border border-primary/30 bg-primary/10 p-1.5 text-[10px] font-bold text-primary truncate">
                       🎬 {post.title}
                     </div>
                   ))}
@@ -239,7 +239,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
                       key={shot.id}
                       type="button"
                       onClick={() => setSelectedMedia(shot.video_url || shot.keyframe_image || "")}
-                      className={`h-20 w-20 shrink-0 overflow-hidden rounded-xl border-2 ${selectedMedia === (shot.video_url || shot.keyframe_image) ? "border-[#b9f42e]" : "border-white/10"}`}
+                      className={`h-20 w-20 shrink-0 overflow-hidden rounded-xl border-2 ${selectedMedia === (shot.video_url || shot.keyframe_image) ? "border-primary" : "border-white/10"}`}
                     >
                       <img src={shot.keyframe_image || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=300"} alt={shot.title} className="h-full w-full object-cover" />
                     </button>
@@ -255,7 +255,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
                   value={caption}
                   onChange={(e) => setCaption(e.target.value)}
                   placeholder="Write an engaging caption for your AI video post..."
-                  className="mt-1 h-28 w-full resize-none rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-[#b9f42e]"
+                  className="mt-1 h-28 w-full resize-none rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-primary"
                 />
               </div>
 
@@ -266,7 +266,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
                     type="text"
                     value={hashtags}
                     onChange={(e) => setHashtags(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-[#b9f42e]"
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-primary"
                   />
                 </div>
                 <div>
@@ -276,7 +276,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
                     value={cta}
                     onChange={(e) => setCta(e.target.value)}
                     placeholder="e.g. Try Free Trial"
-                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-[#b9f42e]"
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-primary"
                   />
                 </div>
               </div>
@@ -286,7 +286,7 @@ export function ContentCalendar({ shots = [] }: { shots?: Array<{ id: string; ti
               <button onClick={() => setComposerOpen(false)} className="rounded-xl px-4 py-2.5 text-sm font-bold text-zinc-400 hover:bg-white/5">Cancel</button>
               <button
                 onClick={() => { setComposerOpen(false); setUnavailableOpen(true); }}
-                className="rounded-xl bg-[#b9f42e] px-5 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26]"
+                className="rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26]"
               >
                 Schedule & Publish
               </button>

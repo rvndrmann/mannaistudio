@@ -192,7 +192,7 @@ export function RevisionNotes({
           <button
             type="button"
             onClick={onHireTeam}
-            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-[#b9f42e]/30 bg-[#b9f42e]/[0.07] px-3 py-1.5 text-[11px] font-bold text-[#b9f42e] transition hover:bg-[#b9f42e]/15"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/[0.07] px-3 py-1.5 text-[11px] font-bold text-primary transition hover:bg-primary/15"
           >
             <BadgeCheck className="h-3.5 w-3.5" />
             Hire our team
@@ -247,7 +247,7 @@ export function RevisionNotes({
                       onClick={() => setResolved(thread.id, !thread.resolved_at)}
                       disabled={busy}
                       className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-bold transition disabled:opacity-50 ${
-                        thread.resolved_at ? "border-white/15 text-zinc-400 hover:text-white" : "border-[#b9f42e]/30 text-[#b9f42e] hover:bg-[#b9f42e]/10"
+                        thread.resolved_at ? "border-white/15 text-zinc-400 hover:text-white" : "border-primary/30 text-primary hover:bg-primary/10"
                       }`}
                     >
                       <Check className="h-3 w-3" />
@@ -279,13 +279,13 @@ export function RevisionNotes({
                         onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void post(replyDraft, thread.id); } }}
                         placeholder="Reply…"
                         maxLength={5000}
-                        className="flex-1 rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[#b9f42e]"
+                        className="flex-1 rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-primary"
                       />
                       <button
                         type="button"
                         onClick={() => void post(replyDraft, thread.id)}
                         disabled={busy || !replyDraft.trim()}
-                        className="rounded-lg bg-[#b9f42e] px-3 py-1.5 text-[11px] font-bold text-black disabled:opacity-40"
+                        className="rounded-lg bg-primary px-3 py-1.5 text-[11px] font-bold text-black disabled:opacity-40"
                       >
                         {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : "Send"}
                       </button>
@@ -311,13 +311,13 @@ export function RevisionNotes({
               onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void post(draft); } }}
               placeholder={placeholderFor(target)}
               maxLength={5000}
-              className="flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-[12px] text-zinc-200 outline-none focus:border-[#b9f42e]"
+              className="flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-[12px] text-zinc-200 outline-none focus:border-primary"
             />
             <button
               type="button"
               onClick={() => void post(draft)}
               disabled={busy || !draft.trim()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-3 py-2 text-[11px] font-bold text-black transition hover:bg-[#a8e024] disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-[11px] font-bold text-black transition hover:bg-white disabled:opacity-40"
             >
               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
               Send

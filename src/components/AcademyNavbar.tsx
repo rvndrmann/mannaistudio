@@ -83,24 +83,24 @@ export default function AcademyNavbar({ offerText = "", signedInHint = false }: 
   const trackPro = () => fbTrack("InitiateCheckout", { content_name: "AI Director Hub Pro", content_category: "subscription", value: 799, currency: "INR", placement: "nav" })
 
   return (
-    <nav className="fixed left-0 right-0 top-0 z-50 flex justify-center p-3 sm:p-4">
-      {offerText && <div className="absolute left-0 right-0 top-0 bg-primary px-4 py-1 text-center text-xs font-medium text-black">{offerText}</div>}
-      <div className={cn("material-chrome flex w-full max-w-6xl items-center gap-3 rounded-lg px-3 py-2.5 sm:px-5", offerText && "mt-6")}>
+    <nav className="material-chrome fixed left-0 right-0 top-0 z-50">
+      {offerText && <div className="border-b border-white/[.08] bg-white/[.04] px-4 py-1.5 text-center text-xs text-white/75">{offerText}</div>}
+      <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-5 sm:px-8">
         <Link href="/" className="flex min-h-[44px] shrink-0 items-center gap-2.5">
-          <img src="/logo.png" alt="AI Director Hub" width={40} height={40} className="h-10 w-10 shrink-0 rounded-full" />
-          <span className="hidden whitespace-nowrap text-lg font-semibold tracking-[-0.02em] text-white min-[400px]:inline lg:text-xl">AI Director <span className="text-primary">Hub</span></span>
+          <img src="/logo.png" alt="AI Director Hub" width={40} height={40} className="h-7 w-7 shrink-0 rounded-full" />
+          <span className="hidden whitespace-nowrap text-base font-medium tracking-[-0.03em] text-white min-[400px]:inline">AI Director Hub</span>
         </Link>
 
-        <div className="ml-auto hidden min-w-0 items-center gap-6 md:flex">
+        <div className="ml-auto hidden min-w-0 items-center gap-7 md:flex">
           {links.map((link) => (
-            <Link key={link.href} href={link.href} className="whitespace-nowrap text-sm font-medium text-white/70 transition-colors hover:text-white">{link.name}</Link>
+            <Link key={link.href} href={link.href} className="whitespace-nowrap text-[13px] text-white/55 transition-colors hover:text-white">{link.name}</Link>
           ))}
-          {!signedIn && <Link href="/login" className="whitespace-nowrap text-sm font-medium text-white/70 transition-colors hover:text-white">Log in</Link>}
+          {!signedIn && <Link href="/login" className="whitespace-nowrap text-[13px] text-white/55 transition-colors hover:text-white">Log in</Link>}
         </div>
 
         <div ref={menuRef} className="relative ml-auto flex shrink-0 items-center gap-2 md:ml-0">
           {!signedIn && (
-            <Link href={PRO_PATH} onClick={trackPro} className="flex h-10 items-center whitespace-nowrap rounded-md bg-primary px-4 text-sm font-semibold text-black transition hover:brightness-110 active:scale-[0.97]">Get Pro</Link>
+            <Link href={PRO_PATH} onClick={trackPro} className="flex h-9 items-center whitespace-nowrap rounded-md bg-primary px-3.5 text-xs font-medium text-primary-foreground transition hover:bg-white active:scale-[0.97]">Get Pro</Link>
           )}
 
           <button
@@ -110,7 +110,7 @@ export default function AcademyNavbar({ offerText = "", signedInHint = false }: 
             aria-haspopup="menu"
             aria-label={signedIn ? "Account menu" : "Menu"}
             className={cn(
-              "h-10 items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.06] px-2.5 text-sm font-medium text-white/85 transition hover:bg-white/10",
+              "h-9 items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.04] px-2.5 text-[13px] text-white/85 transition hover:bg-white/10",
               // A visitor's links are all in the bar from md up, so the button
               // is only their hamburger; a member's is the account menu at
               // every width.
@@ -130,7 +130,7 @@ export default function AcademyNavbar({ offerText = "", signedInHint = false }: 
           </button>
 
           {open && (
-            <div role="menu" className="material-sheet absolute right-0 top-full z-50 mt-2 w-64 rounded-lg bg-[#0d0f0e] p-2">
+            <div role="menu" className="material-sheet absolute right-0 top-full z-50 mt-2 w-64 rounded-lg bg-[#111] p-2">
               <div className="md:hidden">
                 {links.map((link) => <Link key={link.href} href={link.href} role="menuitem" onClick={() => setOpen(false)} className={menuRow}>{link.name}</Link>)}
                 {!signedIn && (

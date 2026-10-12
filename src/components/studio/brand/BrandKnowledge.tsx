@@ -72,14 +72,14 @@ export default function BrandKnowledge({
       {canEdit && !adding && (
         <button
           onClick={() => setAdding(true)}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-[12px] font-bold text-zinc-200 hover:border-[#b9f42e]/40"
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-[12px] font-bold text-zinc-200 hover:border-primary/40"
         >
           <Plus className="h-4 w-4" /> Add to knowledge base
         </button>
       )}
 
       {adding && (
-        <div className="space-y-2 rounded-xl border border-[#b9f42e]/30 bg-[#b9f42e]/[0.04] p-3">
+        <div className="space-y-2 rounded-xl border border-primary/30 bg-primary/[0.04] p-3">
           <div className="flex gap-2">
             <select
               value={draft.kind}
@@ -116,7 +116,7 @@ export default function BrandKnowledge({
             <button
               onClick={add}
               disabled={saving}
-              className="flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-3 py-2 text-[12px] font-bold text-black disabled:opacity-60"
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-[12px] font-bold text-black disabled:opacity-60"
             >
               {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Save entry
             </button>
@@ -151,7 +151,7 @@ export default function BrandKnowledge({
                     <button
                       onClick={() => togglePin(entry)}
                       title={entry.pinned ? "Unpin" : "Pin so agents always see it"}
-                      className={`shrink-0 rounded p-1 ${entry.pinned ? "text-[#b9f42e]" : "text-zinc-600 hover:text-zinc-300"}`}
+                      className={`shrink-0 rounded p-1 ${entry.pinned ? "text-primary" : "text-zinc-600 hover:text-zinc-300"}`}
                     >
                       <Pin className="h-3.5 w-3.5" />
                     </button>
@@ -167,7 +167,7 @@ export default function BrandKnowledge({
                   href={entry.url}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="mt-2 flex items-center gap-1.5 truncate text-[11px] text-[#b9f42e] hover:underline"
+                  className="mt-2 flex items-center gap-1.5 truncate text-[11px] text-primary hover:underline"
                 >
                   <ExternalLink className="h-3 w-3 shrink-0" />
                   {entry.url}

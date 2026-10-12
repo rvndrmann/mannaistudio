@@ -23,7 +23,7 @@ export default function GenerationRecovery({ jobs, projectId, reload }: { jobs: 
     {pending.map(job => <div key={job.id} className="space-y-2 border-t border-white/10 pt-2">
       <p className="text-xs text-zinc-300">{job.model || job.type || "Generation"} · {job.status}</p>
       {(job.status === "failed" || job.status === "cancelled" || job.error) && <p className="break-words text-xs text-red-200">{job.error || "No detailed failure reason was recorded. Re-poll to check the provider when available."}</p>}
-      <button type="button" disabled={Boolean(busy) || !job.provider_job_id} onClick={() => void repoll(job)} className="rounded-lg border border-[#b9f42e]/40 px-3 py-1.5 text-xs font-bold text-[#b9f42e] disabled:opacity-40">{busy === job.id ? "Checking provider…" : "Re-poll generation"}</button>
+      <button type="button" disabled={Boolean(busy) || !job.provider_job_id} onClick={() => void repoll(job)} className="rounded-lg border border-primary/40 px-3 py-1.5 text-xs font-bold text-primary disabled:opacity-40">{busy === job.id ? "Checking provider…" : "Re-poll generation"}</button>
       {!job.provider_job_id && <p className="text-[11px] text-zinc-500">Re-poll unavailable: no retrievable provider ID was saved.</p>}
     </div>)}
     <p className="text-[11px] text-zinc-500">Re-poll checks your existing request. It does not start or charge for another generation.</p>

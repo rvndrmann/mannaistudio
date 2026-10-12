@@ -68,9 +68,9 @@ export default function ProofWall({ students, sales }: { students: WallItem[]; s
         </div>
       )}
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {current.items.slice(0, shown).map((item) => (
-          <article key={item.id} className="flex flex-col rounded-2xl border border-white/10 bg-white/[.03] p-5">
+          <article key={item.id} className="flex min-w-0 flex-col rounded-2xl border border-white/10 bg-white/[.03] p-5">
             <div className="flex items-center gap-3">
               {item.avatar
                 ? <img src={item.avatar} alt="" loading="lazy" decoding="async" className="h-11 w-11 shrink-0 rounded-full object-cover" />
@@ -86,7 +86,7 @@ export default function ProofWall({ students, sales }: { students: WallItem[]; s
             {item.quote && (
               <blockquote className="mt-3 flex gap-2 text-sm leading-relaxed text-white/70">
                 <Quote className="mt-0.5 h-4 w-4 shrink-0 text-primary/70" aria-hidden />
-                <p className="whitespace-pre-line">{item.quote}</p>
+                <p className="min-w-0 whitespace-pre-line break-words">{item.quote}</p>
               </blockquote>
             )}
 

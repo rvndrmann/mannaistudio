@@ -571,7 +571,7 @@ export default function DrawToEditModal({
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-[#080908] text-white">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-4 sm:px-6">
-        <p className="t-caption text-[#b9f42e]">Draw to Edit</p>
+        <p className="t-caption text-primary">Draw to Edit</p>
         <p className="truncate text-sm font-semibold text-zinc-300">{title}</p>
         {naturalSize && (
           <span className="hidden rounded-md border border-white/10 px-2 py-0.5 text-[11px] font-semibold text-zinc-500 sm:inline">
@@ -604,7 +604,7 @@ export default function DrawToEditModal({
                 if (entry.tool === "image") insertInputRef.current?.click();
               }}
               className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl transition ${
-                tool === entry.tool ? "bg-[#b9f42e] text-black" : "text-zinc-400 hover:bg-white/[0.06] hover:text-white"
+                tool === entry.tool ? "bg-primary text-black" : "text-zinc-400 hover:bg-white/[0.06] hover:text-white"
               }`}
             >
               <entry.icon className="h-4.5 w-4.5" />
@@ -649,7 +649,7 @@ export default function DrawToEditModal({
             <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{loadError}</p>
           ) : !naturalSize ? (
             <div className="flex flex-col items-center gap-3 text-zinc-500">
-              <Loader2 className="h-7 w-7 animate-spin text-[#b9f42e]" />
+              <Loader2 className="h-7 w-7 animate-spin text-primary" />
               <p className="text-sm">Loading the image…</p>
             </div>
           ) : (
@@ -712,7 +712,7 @@ export default function DrawToEditModal({
               max={40}
               value={brushSize}
               onChange={(event) => setBrushSize(Number(event.target.value))}
-              className="mt-2 w-full accent-[#b9f42e]"
+              className="mt-2 w-full accent-primary"
             />
           </label>
 
@@ -733,7 +733,7 @@ export default function DrawToEditModal({
               rows={5}
               aria-label="Edit instruction"
               placeholder="Say what the marks mean…"
-              className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-[#1c1c1c] p-3 text-[13px] leading-relaxed text-zinc-200 outline-none focus:border-[#b9f42e]/50 placeholder:text-zinc-600"
+              className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-[#1c1c1c] p-3 text-[13px] leading-relaxed text-zinc-200 outline-none focus:border-primary/50 placeholder:text-zinc-600"
             />
           </label>
 
@@ -742,7 +742,7 @@ export default function DrawToEditModal({
               type="checkbox"
               checked={cleanUpMarks}
               onChange={(event) => setCleanUpMarks(event.target.checked)}
-              className="mt-0.5 accent-[#b9f42e]"
+              className="mt-0.5 accent-primary"
             />
             <span>Ask the model to remove the drawn marks from the result.</span>
           </label>
@@ -759,7 +759,7 @@ export default function DrawToEditModal({
               type="button"
               onClick={generate}
               disabled={Boolean(busy) || !naturalSize}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-5 py-3 text-sm font-semibold text-black transition hover:bg-[#a6de25] disabled:opacity-40"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-black transition hover:bg-white disabled:opacity-40"
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {busyLabel || "Apply edit"}

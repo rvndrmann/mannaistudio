@@ -110,7 +110,7 @@ export default function BrandAssets({
                 key={option}
                 onClick={() => setKind(option)}
                 className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
-                  kind === option ? "bg-[#b9f42e] text-black" : "bg-[#1a1a1a] text-zinc-400 hover:text-zinc-200"
+                  kind === option ? "bg-primary text-black" : "bg-[#1a1a1a] text-zinc-400 hover:text-zinc-200"
                 }`}
               >
                 {option}
@@ -121,14 +121,14 @@ export default function BrandAssets({
             <button
               onClick={() => fileInput.current?.click()}
               disabled={busy}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#b9f42e] px-3 py-2 text-[12px] font-bold text-black disabled:opacity-60"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-[12px] font-bold text-black disabled:opacity-60"
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
               Upload {kind}
             </button>
             <button
               onClick={() => setLinkOpen((open) => !open)}
-              className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-[12px] font-bold text-zinc-300 hover:border-[#b9f42e]/40"
+              className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-[12px] font-bold text-zinc-300 hover:border-primary/40"
             >
               <Link2 className="h-4 w-4" /> Link
             </button>
@@ -158,7 +158,7 @@ export default function BrandAssets({
               <button
                 onClick={addLink}
                 disabled={busy}
-                className="rounded-lg bg-[#b9f42e] px-3 py-2 text-[12px] font-bold text-black disabled:opacity-60"
+                className="rounded-lg bg-primary px-3 py-2 text-[12px] font-bold text-black disabled:opacity-60"
               >
                 Save link
               </button>

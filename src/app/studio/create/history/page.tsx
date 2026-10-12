@@ -56,7 +56,7 @@ export default function QuickHistoryPage() {
                 onClick={() => setFilter(entry.id)}
                 className={`rounded-lg px-3.5 py-2 text-xs font-semibold transition ${
                   filter === entry.id
-                    ? "bg-[#b9f42e] text-black"
+                    ? "bg-primary text-black"
                     : "border border-white/10 text-zinc-400 hover:border-white/25 hover:text-white"
                 }`}
               >
@@ -75,7 +75,7 @@ export default function QuickHistoryPage() {
 
         {history.loading ? (
           <div className="flex h-64 items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-[#b9f42e]" />
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
         ) : !history.items.length ? (
           <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-white/10 py-20 text-center text-zinc-600">
@@ -83,7 +83,7 @@ export default function QuickHistoryPage() {
             <p className="max-w-sm text-sm">Nothing here yet. Anything you make on the Image or Video tab lands here.</p>
             <Link
               href="/studio/create/image"
-              className="mt-1 rounded-lg bg-[#b9f42e] px-4 py-2 text-xs font-bold text-black transition hover:bg-[#a5de25]"
+              className="mt-1 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-black transition hover:bg-[#a5de25]"
             >
               Make something
             </Link>
@@ -97,7 +97,7 @@ export default function QuickHistoryPage() {
               {history.items.map((item) => (
                 <article
                   key={item.id}
-                  className="group overflow-hidden rounded-2xl border border-white/10 bg-[#131413] transition hover:border-[#b9f42e]/45"
+                  className="group overflow-hidden rounded-2xl border border-white/10 bg-[#131413] transition hover:border-primary/45"
                 >
                   <button
                     type="button"
@@ -113,7 +113,7 @@ export default function QuickHistoryPage() {
                         {item.status === "processing" ? "Still rendering…" : item.error || "No output"}
                       </span>
                     )}
-                    <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#d9ff84] backdrop-blur">
+                    <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur">
                       {item.type}
                     </span>
                   </button>

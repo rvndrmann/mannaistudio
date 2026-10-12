@@ -71,7 +71,7 @@ export function FeatureUnavailableModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl bg-[#b9f42e] px-4 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26]"
+            className="rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26]"
           >
             Close
           </button>

@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Zap, Mail } from "lucide-react"
+import { Mail } from "lucide-react"
 
 const legalLinks = [
     { href: "/terms", label: "Terms & Conditions" },
@@ -21,19 +21,21 @@ const siteLinks = [
     { href: "/about", label: "About Us" },
 ]
 
-export default function Footer() {
+/** `flush` drops the top margin, for a page whose last section already ends on a rule. */
+export default function Footer({ flush = false }: { flush?: boolean }) {
     return (
-        <footer className="border-t border-white/10 mt-20">
-            <div className="max-w-6xl mx-auto px-6 py-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
+        <footer className={`border-t border-white/[.08] ${flush ? "" : "mt-20"}`}>
+            <div className="max-w-6xl mx-auto border-x border-white/[.08] px-5 sm:px-8 py-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
                 <div className="sm:col-span-2 lg:col-span-1">
-                    <Link href="/" className="flex min-h-[44px] items-center gap-2.5 font-semibold text-lg mb-3">
-                        <img src="/logo.png" alt="AI Director Hub" className="w-9 h-9 rounded-full" />
-                        <span>AI Director <span className="text-primary">Hub</span></span>
+                    <Link href="/" className="flex min-h-[44px] items-center gap-2.5 font-medium tracking-[-0.03em] text-base mb-2">
+                        <img src="/logo.png" alt="AI Director Hub" className="w-7 h-7 rounded-full" />
+                        <span>AI Director Hub</span>
                     </Link>
+                    <p className="max-w-[15rem] text-sm leading-relaxed text-white/45">Learn AI filmmaking, then direct it in one studio.</p>
                 </div>
 
                 <div>
-                    <h3 className="font-bold text-sm text-white/60 mb-4">Explore</h3>
+                    <h3 className="text-[13px] font-normal text-white/85 mb-4">Explore</h3>
                     <ul className="sm:space-y-2">
                         {siteLinks.map((link) => (
                             <li key={link.href}>
@@ -46,7 +48,7 @@ export default function Footer() {
                 </div>
 
                 <div>
-                    <h3 className="font-bold text-sm text-white/60 mb-4">Legal</h3>
+                    <h3 className="text-[13px] font-normal text-white/85 mb-4">Legal</h3>
                     <ul className="sm:space-y-2">
                         {legalLinks.map((link) => (
                             <li key={link.href}>
@@ -59,9 +61,9 @@ export default function Footer() {
                 </div>
 
                 <div>
-                    <h3 className="font-bold text-sm text-white/60 mb-4">Business Info</h3>
+                    <h3 className="text-[13px] font-normal text-white/85 mb-4">Business Info</h3>
                     <div className="space-y-3 text-sm text-white/40">
-                        <p className="font-bold text-white/60">AIDIRECTORHUB</p>
+                        <p className="text-white/60">AIDIRECTORHUB</p>
                         <p>Proprietor: Ravinder Deep Singh</p>
                         <div className="flex items-center gap-2">
                             <Mail className="w-3.5 h-3.5 text-white/30" />
@@ -71,7 +73,7 @@ export default function Footer() {
                 </div>
             </div>
 
-            <div className="border-t border-white/5 py-6 text-center text-xs text-white/25">
+            <div className="max-w-6xl mx-auto border-x border-t border-white/[.08] px-5 sm:px-8 py-6 text-xs text-white/35">
                 © {new Date().getFullYear()} AIDIRECTORHUB. All rights reserved. | Proprietor: Ravinder Deep Singh
             </div>
         </footer>

@@ -201,7 +201,7 @@ export function IntegrationsPanel() {
             <div>
               <p className="font-semibold text-zinc-100">{row.label}</p>
               {row.connected ? (
-                <p className="mt-1 text-sm text-[#b9f42e]">
+                <p className="mt-1 text-sm text-primary">
                   Connected{row.last4 ? ` · key ••••${row.last4}` : ""}
                   {row.status && row.status !== "active" ? ` · ${row.status}` : ""}
                 </p>
@@ -269,7 +269,7 @@ export function IntegrationsPanel() {
           )}
 
           {message?.provider === row.provider && (
-            <p className={`mt-3 text-sm ${message.ok ? "text-[#b9f42e]" : "text-red-300"}`}>{message.text}</p>
+            <p className={`mt-3 text-sm ${message.ok ? "text-primary" : "text-red-300"}`}>{message.text}</p>
           )}
 
           {editing === row.provider && (
@@ -296,7 +296,7 @@ export function IntegrationsPanel() {
               <button
                 type="submit"
                 disabled={busy === row.provider}
-                className="rounded-lg bg-[#b9f42e] px-3 py-2 text-sm font-bold text-black disabled:opacity-50"
+                className="rounded-lg bg-primary px-3 py-2 text-sm font-bold text-black disabled:opacity-50"
               >
                 {busy === row.provider ? "Checking…" : "Save key"}
               </button>

@@ -175,7 +175,7 @@ function ShowcaseReelFields({ value, onChange }: {
                     type="checkbox"
                     checked={value.isFeatured === true}
                     onChange={(e) => onChange({ isFeatured: e.target.checked })}
-                    className="h-4 w-4 accent-[#b9f42e]"
+                    className="h-4 w-4 accent-primary"
                 />
                 Feature this one — the reel leads with it
             </label>
@@ -1783,8 +1783,8 @@ function AdminDashboardContent() {
                                                         <AreaChart data={analyticsChartData}>
                                                             <defs>
                                                                 <linearGradient id="colorEnroll" x1="0" y1="0" x2="0" y2="1">
-                                                                    <stop offset="5%" stopColor="#C4F52B" stopOpacity={0.3} />
-                                                                    <stop offset="95%" stopColor="#C4F52B" stopOpacity={0} />
+                                                                    <stop offset="5%" stopColor="#f5f5f5" stopOpacity={0.3} />
+                                                                    <stop offset="95%" stopColor="#f5f5f5" stopOpacity={0} />
                                                                 </linearGradient>
                                                             </defs>
                                                             <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
@@ -1794,7 +1794,7 @@ function AdminDashboardContent() {
                                                                 contentStyle={{ backgroundColor: '#1a1a24', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
                                                                 itemStyle={{ color: '#fff' }}
                                                             />
-                                                            <Area type="monotone" dataKey="enrollments" stroke="#C4F52B" fillOpacity={1} fill="url(#colorEnroll)" strokeWidth={3} />
+                                                            <Area type="monotone" dataKey="enrollments" stroke="#f5f5f5" fillOpacity={1} fill="url(#colorEnroll)" strokeWidth={3} />
                                                         </AreaChart>
                                                     </ResponsiveContainer>
                                                 ) : (
@@ -3125,7 +3125,7 @@ function AdminDashboardContent() {
                                                             type="checkbox"
                                                             checked={agent.enabled}
                                                             onChange={(event) => setDirectorTeam((team) => ({ ...team, [key]: { ...(team[key] ?? defaultDirectorTeam[key]), enabled: event.target.checked } }))}
-                                                            className="h-4 w-4 accent-[#b9f42e]"
+                                                            className="h-4 w-4 accent-primary"
                                                         />
                                                         Enabled
                                                     </label>

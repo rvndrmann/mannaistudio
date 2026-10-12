@@ -142,7 +142,7 @@ export default function LeadChatWidget() {
             className="flex shrink-0 items-center gap-2 border-b border-white/[0.06] bg-[#0a0a0a] px-4 py-3 sm:px-3 sm:py-2.5"
             style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
           >
-            <span className="h-2 w-2 rounded-full bg-[#b9f42e]" />
+            <span className="h-2 w-2 rounded-full bg-primary" />
             <p className="text-[13px] font-bold text-zinc-100 sm:text-[12px]">Chat with us</p>
             <button
               onClick={() => setOpen(false)}
@@ -161,7 +161,7 @@ export default function LeadChatWidget() {
               <div key={index}>
                 <div
                   className={`mb-2.5 max-w-[88%] whitespace-pre-wrap rounded-xl p-3 text-[14px] leading-6 sm:max-w-[90%] sm:p-2.5 sm:text-[13px] ${
-                    bubble.role === "visitor" ? "ml-auto bg-[#b9f42e] text-black" : "bg-[#181918] text-zinc-200"
+                    bubble.role === "visitor" ? "ml-auto bg-primary text-black" : "bg-[#181918] text-zinc-200"
                   }`}
                 >
                   {bubble.content}
@@ -174,7 +174,7 @@ export default function LeadChatWidget() {
                 {bubble.project && !bubble.proposal && (
                   <Link
                     href={`/studio/project/${bubble.project.id}`}
-                    className="mb-2.5 flex w-fit items-center gap-1.5 rounded-lg border border-[#b9f42e]/30 bg-[#b9f42e]/[0.06] px-3 py-2 text-[12px] font-bold text-[#b9f42e]"
+                    className="mb-2.5 flex w-fit items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/[0.06] px-3 py-2 text-[12px] font-bold text-primary"
                   >
                     <Clapperboard className="h-3.5 w-3.5" />
                     Open {bubble.project.name}
@@ -185,9 +185,9 @@ export default function LeadChatWidget() {
                     it, and the total beside their balance is what they are
                     agreeing to. */}
                 {bubble.proposal && (
-                  <div className="mb-2.5 overflow-hidden rounded-xl border border-[#b9f42e]/30 bg-[#b9f42e]/[0.05]">
-                    <div className="border-b border-[#b9f42e]/20 px-3 py-2">
-                      <p className="text-[10px] font-bold tracking-[.16em] text-[#b9f42e]">PRODUCTION COST</p>
+                  <div className="mb-2.5 overflow-hidden rounded-xl border border-primary/30 bg-primary/[0.05]">
+                    <div className="border-b border-primary/20 px-3 py-2">
+                      <p className="text-[10px] font-bold tracking-[.16em] text-primary">PRODUCTION COST</p>
                       {bubble.proposal.summary && <p className="mt-0.5 text-[12px] font-bold text-zinc-100">{bubble.proposal.summary}</p>}
                     </div>
                     <ul className="space-y-1 px-3 py-2.5">
@@ -196,7 +196,7 @@ export default function LeadChatWidget() {
                           key={position}
                           className={`text-[12px] leading-5 ${
                             position === bubble.proposal!.lines.length - 2
-                              ? "font-bold text-[#b9f42e]"
+                              ? "font-bold text-primary"
                               : position === bubble.proposal!.lines.length - 1
                                 ? bubble.proposal!.shortfall > 0
                                   ? "text-amber-400"
@@ -208,11 +208,11 @@ export default function LeadChatWidget() {
                         </li>
                       ))}
                     </ul>
-                    <div className="flex flex-col gap-2 border-t border-[#b9f42e]/20 p-2.5 sm:flex-row sm:flex-wrap">
+                    <div className="flex flex-col gap-2 border-t border-primary/20 p-2.5 sm:flex-row sm:flex-wrap">
                       {bubble.proposal.shortfall > 0 ? (
                         <Link
                           href="/studio/credits"
-                          className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg bg-[#b9f42e] px-3 text-[13px] font-bold text-black sm:min-h-0 sm:py-2 sm:text-[12px]"
+                          className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-[13px] font-bold text-black sm:min-h-0 sm:py-2 sm:text-[12px]"
                         >
                           <Wallet className="h-3.5 w-3.5" />
                           Add {bubble.proposal.shortfall} credits
@@ -222,7 +222,7 @@ export default function LeadChatWidget() {
                           type="button"
                           disabled={approving}
                           onClick={() => approveProduction(bubble.proposal!)}
-                          className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg bg-[#b9f42e] px-3 text-[13px] font-bold text-black sm:min-h-0 sm:py-2 sm:text-[12px]"
+                          className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-[13px] font-bold text-black sm:min-h-0 sm:py-2 sm:text-[12px]"
                         >
                           {approving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Clapperboard className="h-3.5 w-3.5" />}
                           {approving ? "Checking…" : "Approve & start"}
@@ -230,7 +230,7 @@ export default function LeadChatWidget() {
                       )}
                       <Link
                         href={`/studio/project/${bubble.proposal.projectId}`}
-                        className="flex min-h-[44px] items-center justify-center rounded-lg border border-white/[0.08] px-3 text-[13px] font-semibold text-zinc-300 hover:border-[#b9f42e]/40 sm:min-h-0 sm:py-2 sm:text-[12px]"
+                        className="flex min-h-[44px] items-center justify-center rounded-lg border border-white/[0.08] px-3 text-[13px] font-semibold text-zinc-300 hover:border-primary/40 sm:min-h-0 sm:py-2 sm:text-[12px]"
                       >
                         Open the production
                       </Link>
@@ -252,7 +252,7 @@ export default function LeadChatWidget() {
             {!member && messages.length > 0 && (
               <Link
                 href="/login"
-                className="mt-1 flex w-fit items-center gap-1.5 rounded-lg border border-[#b9f42e]/30 bg-[#b9f42e]/[0.06] px-2.5 py-1.5 text-[11px] font-bold text-[#b9f42e]"
+                className="mt-1 flex w-fit items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/[0.06] px-2.5 py-1.5 text-[11px] font-bold text-primary"
               >
                 <Zap className="h-3.5 w-3.5" />
                 Sign in and I&apos;ll build it with you
@@ -280,13 +280,13 @@ export default function LeadChatWidget() {
               placeholder="Ask us anything…"
               // 16px on phones: anything smaller makes iOS Safari zoom the page
               // on focus, and it never zooms back out.
-              className="min-h-[44px] w-full resize-none rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2.5 text-[16px] text-white outline-none placeholder:text-zinc-600 focus:border-[#b9f42e]/40 sm:min-h-[40px] sm:text-[13px]"
+              className="min-h-[44px] w-full resize-none rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2.5 text-[16px] text-white outline-none placeholder:text-zinc-600 focus:border-primary/40 sm:min-h-[40px] sm:text-[13px]"
             />
             <button
               type="submit"
               disabled={sending || !draft.trim()}
               aria-label="Send message"
-              className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-[#b9f42e] text-black disabled:opacity-40 sm:h-10 sm:w-10"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-primary text-black disabled:opacity-40 sm:h-10 sm:w-10"
             >
               <Send className="h-4 w-4" />
             </button>
@@ -297,7 +297,7 @@ export default function LeadChatWidget() {
       <button
         onClick={() => setOpen((current) => !current)}
         aria-label={open ? "Close chat" : "Chat with us"}
-        className={`fixed bottom-5 right-4 z-[90] h-14 w-14 items-center justify-center rounded-full bg-[#b9f42e] text-black shadow-[0_10px_30px_-6px_rgba(185,244,46,0.5)] transition-transform active:scale-95 ${open ? "hidden sm:flex" : "flex"}`}
+        className={`fixed bottom-5 right-4 z-[90] h-14 w-14 items-center justify-center rounded-full bg-primary text-black shadow-[0_10px_30px_-6px_rgba(255,255,255,0.5)] transition-transform active:scale-95 ${open ? "hidden sm:flex" : "flex"}`}
         style={{ bottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
       >
         {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}

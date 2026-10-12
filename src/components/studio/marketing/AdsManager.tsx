@@ -75,7 +75,7 @@ export function AdsManager() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">AI Paid Acquisition</p>
+            <p className="text-xs font-bold tracking-[.18em] text-primary">AI Paid Acquisition</p>
             <DemoDataBadge />
           </div>
           <h1 className="mt-1 text-3xl font-semibold text-white">Ads Manager</h1>
@@ -84,7 +84,7 @@ export function AdsManager() {
         <button
           type="button"
           onClick={() => setModalOpen(true)}
-          className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition shadow-lg"
+          className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition shadow-lg"
         >
           <Plus className="h-4 w-4" /> Create Ad Campaign
         </button>
@@ -102,7 +102,7 @@ export function AdsManager() {
           <button
             key={id}
             onClick={() => setActiveTab(id as any)}
-            className={`border-b-2 px-4 py-3 text-sm font-bold transition ${activeTab === id ? "border-[#b9f42e] text-[#b9f42e]" : "border-transparent text-zinc-400 hover:text-white"}`}
+            className={`border-b-2 px-4 py-3 text-sm font-bold transition ${activeTab === id ? "border-primary text-primary" : "border-transparent text-zinc-400 hover:text-white"}`}
           >
             {label}
           </button>
@@ -119,7 +119,7 @@ export function AdsManager() {
             </div>
             <div className="rounded-2xl border border-white/10 bg-[#161817] p-5 shadow-xl">
               <span className="text-xs font-semibold text-zinc-400">Total Leads Generated</span>
-              <p className="mt-2 text-2xl font-semibold text-[#b9f42e]">82 Leads</p>
+              <p className="mt-2 text-2xl font-semibold text-primary">82 Leads</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-[#161817] p-5 shadow-xl">
               <span className="text-xs font-semibold text-zinc-400">Average Cost Per Lead (CPL)</span>
@@ -158,7 +158,7 @@ export function AdsManager() {
                     </td>
                     <td className="py-3.5 px-4 font-bold text-white">${c.dailyBudget}/day</td>
                     <td className="py-3.5 px-4">${c.spend}</td>
-                    <td className="py-3.5 px-4 font-bold text-[#b9f42e]">{c.leads}</td>
+                    <td className="py-3.5 px-4 font-bold text-primary">{c.leads}</td>
                     <td className="py-3.5 px-4 font-semibold">${c.cpl}</td>
                     <td className="py-3.5 px-4 font-bold text-white">{c.roas}x</td>
                   </tr>
@@ -174,7 +174,7 @@ export function AdsManager() {
         <div className="rounded-2xl border border-white/10 bg-[#161817] p-6 shadow-2xl space-y-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-[#b9f42e]" />
+              <Sparkles className="h-5 w-5 text-primary" />
               <h2 className="text-xl font-bold text-white">AI Ads Strategy Agent</h2>
             </div>
             <ComingSoonBadge />
@@ -185,12 +185,12 @@ export function AdsManager() {
             <textarea
               value={promptText}
               onChange={(e) => setPromptText(e.target.value)}
-              className="h-28 w-full resize-none rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-white outline-none focus:border-[#b9f42e]"
+              className="h-28 w-full resize-none rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-white outline-none focus:border-primary"
             />
           </div>
 
-          <div className="rounded-xl border border-[#b9f42e]/30 bg-[#b9f42e]/5 p-5 space-y-3">
-            <h3 className="text-sm font-bold text-[#b9f42e]">AI Proposed Campaign Strategy</h3>
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-5 space-y-3">
+            <h3 className="text-sm font-bold text-primary">AI Proposed Campaign Strategy</h3>
             <div className="grid gap-3 text-xs sm:grid-cols-3">
               <div><span className="text-zinc-500 font-bold block">Objective:</span><span className="text-white font-semibold">Lead Generation</span></div>
               <div><span className="text-zinc-500 font-bold block">Platform:</span><span className="text-white font-semibold">Meta (Facebook + Instagram)</span></div>
@@ -226,14 +226,14 @@ export function AdsManager() {
           <div className="grid gap-4 md:grid-cols-3">
             <button
               onClick={() => setAutomationMode("copilot")}
-              className={`rounded-2xl border p-5 text-left transition ${automationMode === "copilot" ? "border-[#b9f42e] bg-[#b9f42e]/10" : "border-white/10 bg-black/40"}`}
+              className={`rounded-2xl border p-5 text-left transition ${automationMode === "copilot" ? "border-primary bg-primary/10" : "border-white/10 bg-black/40"}`}
             >
               <h4 className="font-bold text-white">COPILOT</h4>
               <p className="mt-1 text-xs text-zinc-400">AI only makes recommendations. User manually approves every action.</p>
             </button>
             <button
               onClick={() => setAutomationMode("assisted")}
-              className={`rounded-2xl border p-5 text-left transition ${automationMode === "assisted" ? "border-[#b9f42e] bg-[#b9f42e]/10" : "border-white/10 bg-black/40"}`}
+              className={`rounded-2xl border p-5 text-left transition ${automationMode === "assisted" ? "border-primary bg-primary/10" : "border-white/10 bg-black/40"}`}
             >
               <h4 className="font-bold text-white">ASSISTED AUTOPILOT</h4>
               <p className="mt-1 text-xs text-zinc-400">AI may perform pre-approved actions within strict limits (e.g. pause high CPL ads).</p>
@@ -254,7 +254,7 @@ export function AdsManager() {
                 type="number"
                 value={maxBudget}
                 onChange={(e) => setMaxBudget(Number(e.target.value))}
-                className="mt-2 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-[#b9f42e]"
+                className="mt-2 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-primary"
               />
             </div>
             <div>
@@ -263,7 +263,7 @@ export function AdsManager() {
                 type="number"
                 value={maxCpl}
                 onChange={(e) => setMaxCpl(Number(e.target.value))}
-                className="mt-2 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-[#b9f42e]"
+                className="mt-2 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-primary"
               />
             </div>
             <div>
@@ -273,7 +273,7 @@ export function AdsManager() {
                 step="0.1"
                 value={minRoas}
                 onChange={(e) => setMinRoas(Number(e.target.value))}
-                className="mt-2 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-[#b9f42e]"
+                className="mt-2 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-primary"
               />
             </div>
           </div>
@@ -299,7 +299,7 @@ export function AdsManager() {
                 onClick={() => setModalOpen(true)}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-white/10 py-3 text-sm font-bold text-white hover:bg-white/20"
               >
-                <ExternalLink className="h-4 w-4 text-[#b9f42e]" />
+                <ExternalLink className="h-4 w-4 text-primary" />
                 Connect Ad Account
               </button>
             </div>

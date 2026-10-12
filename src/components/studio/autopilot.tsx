@@ -316,8 +316,8 @@ export function AutopilotModeControl({ mode, onChange, disabled }: {
         aria-label={`Run mode: ${autopilotModeLabels[mode]}. Change how much the Director runs on its own.`}
         className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium outline-none transition disabled:opacity-50 ${
           mode === "manual"
-            ? "border-white/[0.06] bg-[#141414] text-zinc-300 hover:border-[#b9f42e]/40"
-            : "border-[#b9f42e]/50 bg-[#b9f42e]/10 text-[#d9ff84]"
+            ? "border-white/[0.06] bg-[#141414] text-zinc-300 hover:border-primary/40"
+            : "border-primary/50 bg-primary/10 text-white"
         }`}
       >
         <Icon className="h-3 w-3" />
@@ -338,11 +338,11 @@ export function AutopilotModeControl({ mode, onChange, disabled }: {
                   role="menuitemradio"
                   aria-checked={selected}
                   onClick={() => { onChange(option); setOpen(false); }}
-                  className={`flex w-full gap-2.5 rounded-lg p-2.5 text-left transition ${selected ? "bg-[#b9f42e]/10" : "hover:bg-white/[0.06]"}`}
+                  className={`flex w-full gap-2.5 rounded-lg p-2.5 text-left transition ${selected ? "bg-primary/10" : "hover:bg-white/[0.06]"}`}
                 >
-                  <OptionIcon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${selected ? "text-[#b9f42e]" : "text-zinc-500"}`} />
+                  <OptionIcon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${selected ? "text-primary" : "text-zinc-500"}`} />
                   <span>
-                    <span className={`block text-[12px] font-bold ${selected ? "text-[#b9f42e]" : "text-zinc-200"}`}>
+                    <span className={`block text-[12px] font-bold ${selected ? "text-primary" : "text-zinc-200"}`}>
                       {autopilotModeLabels[option]}
                     </span>
                     <span className="mt-0.5 block text-[11px] leading-4 text-zinc-500">{autopilotModeDescriptions[option]}</span>
@@ -378,10 +378,10 @@ export function AutopilotBanner({ mode, state }: { mode: AutopilotMode; state: A
   }
   if (mode === "manual" || !state.active) return null;
   return (
-    <div className="mt-3 flex items-center gap-2.5 rounded-xl border border-[#b9f42e]/25 bg-[#b9f42e]/[0.06] p-3">
-      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[#b9f42e]" />
+    <div className="mt-3 flex items-center gap-2.5 rounded-xl border border-primary/25 bg-primary/[0.06] p-3">
+      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
       <div className="min-w-0 flex-1">
-        <p className="text-[12px] font-bold text-[#b9f42e]">
+        <p className="text-[12px] font-bold text-primary">
           {autopilotModeLabels[mode]} · {state.status || "Working…"}
         </p>
         <p className="mt-0.5 text-[11px] text-zinc-500">

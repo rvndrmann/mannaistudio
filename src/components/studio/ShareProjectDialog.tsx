@@ -74,7 +74,7 @@ export default function ShareProjectDialog({ projectId, onClose }: { projectId: 
         {error && <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-[11px] text-red-200">{error}</p>}
 
         {!shares ? (
-          <div className="grid place-items-center py-10"><Loader2 className="h-5 w-5 animate-spin text-[#b9f42e]" /></div>
+          <div className="grid place-items-center py-10"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
         ) : (
           <>
             {isOwner && (
@@ -82,7 +82,7 @@ export default function ShareProjectDialog({ projectId, onClose }: { projectId: 
                 <select
                   value={selected}
                   onChange={(event) => setSelected(event.target.value)}
-                  className="flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-[#b9f42e]/50"
+                  className="flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-primary/50"
                 >
                   <option value="">{shareable.length ? "Choose a team member…" : "No team members available"}</option>
                   {shareable.map((member) => (
@@ -95,7 +95,7 @@ export default function ShareProjectDialog({ projectId, onClose }: { projectId: 
                   type="button"
                   disabled={busy || !selected}
                   onClick={() => act(() => fetch(`/api/studio/projects/${projectId}/share`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profileId: selected }) }))}
-                  className="flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-4 py-2 text-xs font-bold text-black disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-black disabled:opacity-50"
                 >
                   {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><UserPlus className="h-3.5 w-3.5" /> Share</>}
                 </button>

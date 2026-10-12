@@ -102,7 +102,7 @@ export default function BrandWorkspacePage({ params }: { params: Promise<{ brand
       <div className="grid min-h-screen place-items-center bg-[#070807] px-6 text-center text-white">
         <div>
           <h1 className="text-xl font-bold">Sign in to open this brand room</h1>
-          <button onClick={() => signInWithGoogle()} className="mt-5 rounded-lg bg-[#b9f42e] px-5 py-2.5 text-sm font-bold text-black">
+          <button onClick={() => signInWithGoogle()} className="mt-5 rounded-lg bg-primary px-5 py-2.5 text-sm font-bold text-black">
             Sign in
           </button>
         </div>
@@ -123,7 +123,7 @@ export default function BrandWorkspacePage({ params }: { params: Promise<{ brand
       <div className="grid min-h-screen place-items-center bg-[#070807] px-6 text-center text-white">
         <div>
           <p className="text-sm font-bold text-red-400">{error || "Brand not found."}</p>
-          <Link href="/studio/brand" className="mt-4 inline-block rounded-lg bg-[#b9f42e] px-4 py-2 text-[13px] font-bold text-black">
+          <Link href="/studio/brand" className="mt-4 inline-block rounded-lg bg-primary px-4 py-2 text-[13px] font-bold text-black">
             Back to brand rooms
           </Link>
         </div>
@@ -146,7 +146,7 @@ export default function BrandWorkspacePage({ params }: { params: Promise<{ brand
             href={data.brand.website_url}
             target="_blank"
             rel="noreferrer noopener"
-            className="hidden items-center gap-1 rounded-full border border-white/[0.06] bg-[#141414] px-2.5 py-1 text-[11px] text-zinc-400 hover:text-[#b9f42e] sm:flex"
+            className="hidden items-center gap-1 rounded-full border border-white/[0.06] bg-[#141414] px-2.5 py-1 text-[11px] text-zinc-400 hover:text-primary sm:flex"
           >
             <Globe className="h-3 w-3" />
             {data.brand.website_url.replace(/^https?:\/\//, "").slice(0, 32)}
@@ -168,7 +168,7 @@ export default function BrandWorkspacePage({ params }: { params: Promise<{ brand
         <button
           onClick={() => setMobileView("chat")}
           className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold ${
-            mobileView === "chat" ? "bg-[#b9f42e] text-black" : "bg-[#141414] text-zinc-300"
+            mobileView === "chat" ? "bg-primary text-black" : "bg-[#141414] text-zinc-300"
           }`}
         >
           <MessageSquare className="h-3.5 w-3.5" /> Chat
@@ -181,7 +181,7 @@ export default function BrandWorkspacePage({ params }: { params: Promise<{ brand
               setMobileView("panel");
             }}
             className={`rounded-full px-3 py-1.5 text-[11px] font-bold ${
-              mobileView === "panel" && panel === item.id ? "bg-[#b9f42e] text-black" : "bg-[#141414] text-zinc-300"
+              mobileView === "panel" && panel === item.id ? "bg-primary text-black" : "bg-[#141414] text-zinc-300"
             }`}
           >
             {item.label}
@@ -215,7 +215,7 @@ export default function BrandWorkspacePage({ params }: { params: Promise<{ brand
                         setEditingAgent(agent);
                         setAgentEditorOpen(true);
                       }}
-                      className="rounded p-1 text-zinc-600 opacity-0 transition group-hover:opacity-100 hover:text-[#b9f42e]"
+                      className="rounded p-1 text-zinc-600 opacity-0 transition group-hover:opacity-100 hover:text-primary"
                       title="Edit this agent's brief"
                     >
                       <Pencil className="h-3.5 w-3.5" />
@@ -230,7 +230,7 @@ export default function BrandWorkspacePage({ params }: { params: Promise<{ brand
                   setEditingAgent(null);
                   setAgentEditorOpen(true);
                 }}
-                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#141414] px-2 py-2 text-[11px] font-bold text-zinc-300 hover:border-[#b9f42e]/40"
+                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#141414] px-2 py-2 text-[11px] font-bold text-zinc-300 hover:border-primary/40"
               >
                 <UserPlus className="h-3.5 w-3.5" /> Add your own agent
               </button>
@@ -243,7 +243,7 @@ export default function BrandWorkspacePage({ params }: { params: Promise<{ brand
               <button
                 onClick={() => startChat(data.agents[0]?.agent_key || "content_strategist")}
                 disabled={startingChat}
-                className="ml-auto rounded p-1 text-zinc-500 hover:text-[#b9f42e]"
+                className="ml-auto rounded p-1 text-zinc-500 hover:text-primary"
                 title="New chat"
               >
                 <Plus className="h-4 w-4" />
@@ -255,11 +255,11 @@ export default function BrandWorkspacePage({ params }: { params: Promise<{ brand
                 <div
                   key={chat.id}
                   className={`group flex items-center gap-1 rounded-lg px-2 ${
-                    chat.id === activeChatId ? "bg-[#b9f42e]/10" : "hover:bg-white/[0.03]"
+                    chat.id === activeChatId ? "bg-primary/10" : "hover:bg-white/[0.03]"
                   }`}
                 >
                   <button onClick={() => setActiveChatId(chat.id)} className="min-w-0 flex-1 py-2 text-left">
-                    <span className={`block truncate text-[12px] ${chat.id === activeChatId ? "font-bold text-[#b9f42e]" : "text-zinc-300"}`}>
+                    <span className={`block truncate text-[12px] ${chat.id === activeChatId ? "font-bold text-primary" : "text-zinc-300"}`}>
                       {chat.title}
                     </span>
                     <span className="block truncate text-[10px] text-zinc-500">
@@ -340,7 +340,7 @@ export default function BrandWorkspacePage({ params }: { params: Promise<{ brand
                 key={item.id}
                 onClick={() => setPanel(item.id)}
                 className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
-                  panel === item.id ? "bg-[#b9f42e] text-black" : "bg-[#141414] text-zinc-300 hover:bg-[#1e1e1e]"
+                  panel === item.id ? "bg-primary text-black" : "bg-[#141414] text-zinc-300 hover:bg-[#1e1e1e]"
                 }`}
               >
                 <item.icon className="h-3.5 w-3.5" />

@@ -115,7 +115,7 @@ export default function AgentEditor({
             disabled={draft.builtin}
             onChange={(event) => setDraft({ ...draft, name: event.target.value })}
             placeholder="Hook Doctor"
-            className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm outline-none focus:border-[#b9f42e]/40 disabled:opacity-60"
+            className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm outline-none focus:border-primary/40 disabled:opacity-60"
           />
         </label>
 
@@ -125,7 +125,7 @@ export default function AgentEditor({
             value={draft.role_summary}
             onChange={(event) => setDraft({ ...draft, role_summary: event.target.value })}
             placeholder="Rewrites the first three seconds until they stop the scroll."
-            className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm outline-none placeholder:text-zinc-600 focus:border-[#b9f42e]/40"
+            className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm outline-none placeholder:text-zinc-600 focus:border-primary/40"
           />
         </label>
 
@@ -136,7 +136,7 @@ export default function AgentEditor({
             rows={12}
             onChange={(event) => setDraft({ ...draft, instructions: event.target.value })}
             placeholder="Write the brief the way you would brief a freelancer: what it owns, how it works, what it must never do."
-            className="mt-1.5 w-full resize-y rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-[13px] leading-6 outline-none placeholder:text-zinc-600 focus:border-[#b9f42e]/40"
+            className="mt-1.5 w-full resize-y rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-[13px] leading-6 outline-none placeholder:text-zinc-600 focus:border-primary/40"
           />
         </label>
 
@@ -145,7 +145,7 @@ export default function AgentEditor({
             type="checkbox"
             checked={draft.writes_script}
             onChange={(event) => setDraft({ ...draft, writes_script: event.target.checked })}
-            className="h-4 w-4 accent-[#b9f42e]"
+            className="h-4 w-4 accent-primary"
           />
           <span className="text-[12px] text-zinc-300">
             This agent writes scripts — its scripts can be saved and sent to production.
@@ -157,7 +157,7 @@ export default function AgentEditor({
             type="checkbox"
             checked={draft.enabled}
             onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
-            className="h-4 w-4 accent-[#b9f42e]"
+            className="h-4 w-4 accent-primary"
           />
           <span className="text-[12px] text-zinc-300">Available in the chat</span>
         </label>
@@ -168,7 +168,7 @@ export default function AgentEditor({
           <button
             onClick={save}
             disabled={saving}
-            className="flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-4 py-2.5 text-[13px] font-bold text-black disabled:opacity-60"
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-[13px] font-bold text-black disabled:opacity-60"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />} Save agent
           </button>

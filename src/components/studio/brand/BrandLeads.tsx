@@ -55,13 +55,13 @@ export default function BrandLeads({ brandId }: { brandId: string }) {
         {lead.company && <p className="mt-0.5 truncate text-[11px] text-zinc-500">{lead.company}</p>}
         <div className="mt-1.5 flex flex-wrap gap-2">
           {lead.email && (
-            <span className="flex items-center gap-1 text-[11px] text-[#b9f42e]">
+            <span className="flex items-center gap-1 text-[11px] text-primary">
               <Mail className="h-3 w-3" />
               {lead.email}
             </span>
           )}
           {lead.phone && (
-            <span className="flex items-center gap-1 text-[11px] text-[#b9f42e]">
+            <span className="flex items-center gap-1 text-[11px] text-primary">
               <Phone className="h-3 w-3" />
               {lead.phone}
             </span>
@@ -81,7 +81,7 @@ export default function BrandLeads({ brandId }: { brandId: string }) {
               <p
                 key={index}
                 className={`whitespace-pre-wrap rounded-lg p-2 text-[12px] leading-5 ${
-                  entry.role === "visitor" ? "bg-[#b9f42e]/10 text-zinc-200" : "bg-[#1a1a1a] text-zinc-400"
+                  entry.role === "visitor" ? "bg-primary/10 text-zinc-200" : "bg-[#1a1a1a] text-zinc-400"
                 }`}
               >
                 {entry.content}
@@ -109,7 +109,7 @@ export default function BrandLeads({ brandId }: { brandId: string }) {
 
       {captured.length > 0 && (
         <>
-          <p className="text-[11px] font-bold tracking-[.16em] text-[#b9f42e]">LEADS ({captured.length})</p>
+          <p className="text-[11px] font-bold tracking-[.16em] text-primary">LEADS ({captured.length})</p>
           <div className="space-y-2">{captured.map(card)}</div>
         </>
       )}

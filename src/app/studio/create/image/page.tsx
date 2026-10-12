@@ -129,11 +129,11 @@ export default function QuickImagePage() {
       <div className="flex flex-col lg:h-[calc(100vh-6.5rem)] lg:flex-row">
         <aside className="w-full shrink-0 space-y-5 overflow-y-auto border-b border-white/10 bg-[#0b0c0b] p-5 lg:w-[380px] lg:border-b-0 lg:border-r">
           {!user && (
-            <div className="rounded-xl border border-[#b9f42e]/30 bg-[#b9f42e]/[0.05] p-4 text-center">
+            <div className="rounded-xl border border-primary/30 bg-primary/[0.05] p-4 text-center">
               <p className="text-sm text-zinc-300">Sign in to generate images.</p>
               <button
                 onClick={() => signInWithGoogle()}
-                className="mt-3 w-full rounded-lg bg-[#b9f42e] px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-[#a5de25]"
+                className="mt-3 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-[#a5de25]"
               >
                 Sign in with Google
               </button>
@@ -159,7 +159,7 @@ export default function QuickImagePage() {
               onChange={(event) => setPrompt(event.target.value)}
               rows={7}
               placeholder="Describe the image — the subject, the light, the lens, the mood."
-              className="w-full resize-y rounded-xl border border-white/10 bg-[#131413] p-3 text-sm text-white placeholder:text-zinc-600 focus:border-[#b9f42e]/60 focus:outline-none"
+              className="w-full resize-y rounded-xl border border-white/10 bg-[#131413] p-3 text-sm text-white placeholder:text-zinc-600 focus:border-primary/60 focus:outline-none"
             />
           </div>
 
@@ -171,7 +171,7 @@ export default function QuickImagePage() {
               id="quick-image-model"
               value={model}
               onChange={(event) => setModel(event.target.value as ImageGenerationModelId)}
-              className="w-full rounded-xl border border-white/10 bg-[#131413] px-3 py-2.5 text-sm text-white focus:border-[#b9f42e]/60 focus:outline-none"
+              className="w-full rounded-xl border border-white/10 bg-[#131413] px-3 py-2.5 text-sm text-white focus:border-primary/60 focus:outline-none"
             >
               {imageGenerationModels.map((entry) => (
                 <option key={entry.id} value={entry.id}>{entry.label}</option>
@@ -200,7 +200,7 @@ export default function QuickImagePage() {
                 {source.ownKey ? "Billed by your provider" : "Cost"}
               </span>
               <span
-                className={source.ownKey ? "font-semibold text-[#b9f42e]" : "font-semibold text-zinc-300"}
+                className={source.ownKey ? "font-semibold text-primary" : "font-semibold text-zinc-300"}
                 title={source.ownKey
                   ? `Runs on your own ${source.provider} key. Billed by them, no studio credits.`
                   : `${totalCredits} credits for ${batch} image${batch > 1 ? "s" : ""}.`}
@@ -212,12 +212,12 @@ export default function QuickImagePage() {
               type="button"
               onClick={() => void generate()}
               disabled={generating || !prompt.trim() || outOfCredits}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] px-4 py-3 text-sm font-bold text-black transition hover:bg-[#a5de25] disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-black transition hover:bg-[#a5de25] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
               {generating ? "Generating…" : source.requiresKey ? "Connect API key to generate" : outOfCredits ? "Not enough credits" : "Generate"}
             </button>
-            {source.requiresKey && <a href="/studio/integrations" className="mt-3 block text-sm text-[#b9f42e] underline">Connect your provider API keys</a>}
+            {source.requiresKey && <a href="/studio/integrations" className="mt-3 block text-sm text-primary underline">Connect your provider API keys</a>}
           </div>
         </aside>
 

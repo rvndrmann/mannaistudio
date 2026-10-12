@@ -88,7 +88,7 @@ const adFormats = [
         niche: "Consumer Tech & Apps",
         tag: "9:16 Vertical",
         aspect: "aspect-[9/16]",
-        gradient: "bg-[radial-gradient(circle_at_50%_30%,rgba(185,244,46,0.25),transparent_60%),linear-gradient(135deg,#0d1f14,#08090a)]",
+        gradient: "bg-[radial-gradient(circle_at_50%_30%,rgba(255,255,255,0.25),transparent_60%),linear-gradient(135deg,#0d1f14,#08090a)]",
     },
     {
         id: "ugc-2",
@@ -326,7 +326,7 @@ export default function StudioHome() {
                                     <img src={heroFeatured.thumbnail} alt="Hero showcase" className="h-full w-full object-cover transition-transform duration-700" />
                                 ) : (
                                     /* Reserved Video Slot Visual Placeholder */
-                                    <div className="relative flex h-full w-full flex-col items-center justify-center bg-[radial-gradient(circle_at_50%_40%,rgba(185,244,46,0.2),transparent_70%),linear-gradient(135deg,#121a14,#0a0c0b)] p-8 text-center">
+                                    <div className="relative flex h-full w-full flex-col items-center justify-center bg-[radial-gradient(circle_at_50%_40%,rgba(255,255,255,0.2),transparent_70%),linear-gradient(135deg,#121a14,#0a0c0b)] p-8 text-center">
                                         <div className="mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-primary/20 border border-primary/30 text-primary">
                                             <Play className="h-8 w-8 fill-primary" />
                                         </div>
@@ -425,7 +425,7 @@ export default function StudioHome() {
                 <div className="grid gap-4 md:grid-cols-2">
                     {/* PILLAR 1: EVERY AI MODEL UNDER ONE PROMPT */}
                     <div className="group relative flex flex-col justify-between overflow-hidden rounded-lg border border-white/10 bg-[#111312] p-6 transition hover:border-primary/40">
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,rgba(185,244,46,0.05),transparent_50%)]" />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,rgba(255,255,255,0.05),transparent_50%)]" />
                         <div className="relative z-10">
                             <span className="inline-flex rounded-full border border-white/10 bg-white/[.04] px-3 py-1 t-caption text-white/60">
                                 Models
@@ -470,7 +470,7 @@ export default function StudioHome() {
 
                     {/* PILLAR 2: AUTONOMOUS AI DIRECTOR EMPLOYEE */}
                     <div className="group relative flex flex-col justify-between overflow-hidden rounded-lg border border-white/10 bg-[#111312] p-6 transition hover:border-primary/40">
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,rgba(185,244,46,0.08),transparent_50%)]" />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,rgba(255,255,255,0.08),transparent_50%)]" />
                         <div className="relative z-10">
                             <span className="inline-flex rounded-full border border-primary/30 bg-primary/10 px-3 py-1 t-caption text-primary">
                                 Agent
@@ -537,7 +537,7 @@ export default function StudioHome() {
                                 className={cn(
                                     "relative flex flex-col justify-between rounded-2xl border p-4 text-left transition duration-300",
                                     activePipelineStep === idx
-                                        ? "border-primary bg-primary/[.08] shadow-[0_0_30px_rgba(185,244,46,0.15)]"
+                                        ? "border-primary bg-primary/[.08] shadow-[0_0_30px_rgba(255,255,255,0.15)]"
                                         : "border-white/10 bg-white/[.03] hover:border-white/20 hover:bg-white/[.05]"
                                 )}
                             >

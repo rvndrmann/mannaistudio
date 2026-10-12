@@ -26,7 +26,7 @@ export function AnalyticsDashboard({ onGenerateVariations }: { onGenerateVariati
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">Organic Marketing Intelligence</p>
+            <p className="text-xs font-bold tracking-[.18em] text-primary">Organic Marketing Intelligence</p>
             <DemoDataBadge />
           </div>
           <h1 className="mt-1 text-3xl font-semibold text-white">Marketing Analytics</h1>
@@ -39,7 +39,7 @@ export function AnalyticsDashboard({ onGenerateVariations }: { onGenerateVariati
               <button
                 key={t}
                 onClick={() => setTimeFilter(t)}
-                className={`rounded-lg px-3 py-1.5 font-bold  transition ${timeFilter === t ? "bg-[#b9f42e] text-black" : "text-zinc-400 hover:text-white"}`}
+                className={`rounded-lg px-3 py-1.5 font-bold  transition ${timeFilter === t ? "bg-primary text-black" : "text-zinc-400 hover:text-white"}`}
               >
                 {t}
               </button>
@@ -49,7 +49,7 @@ export function AnalyticsDashboard({ onGenerateVariations }: { onGenerateVariati
           <select
             value={platformFilter}
             onChange={(e) => setPlatformFilter(e.target.value)}
-            className="rounded-xl border border-white/10 bg-[#161817] px-3 py-2 text-xs font-bold text-white outline-none focus:border-[#b9f42e]"
+            className="rounded-xl border border-white/10 bg-[#161817] px-3 py-2 text-xs font-bold text-white outline-none focus:border-primary"
           >
             <option value="all">All Platforms</option>
             <option value="instagram">Instagram</option>
@@ -68,11 +68,11 @@ export function AnalyticsDashboard({ onGenerateVariations }: { onGenerateVariati
             <div key={kpi.label} className="rounded-2xl border border-white/10 bg-[#161817] p-5 shadow-xl">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-zinc-400">{kpi.label}</span>
-                <span className="rounded-lg bg-white/5 p-2 text-[#b9f42e]"><Icon className="h-4 w-4" /></span>
+                <span className="rounded-lg bg-white/5 p-2 text-primary"><Icon className="h-4 w-4" /></span>
               </div>
               <div className="mt-3 flex items-baseline justify-between">
                 <span className="text-2xl font-semibold text-white">{kpi.value}</span>
-                <span className="text-xs font-bold text-[#b9f42e]">{kpi.change}</span>
+                <span className="text-xs font-bold text-primary">{kpi.change}</span>
               </div>
             </div>
           )
@@ -80,10 +80,10 @@ export function AnalyticsDashboard({ onGenerateVariations }: { onGenerateVariati
       </div>
 
       {/* AI Performance Agent Section */}
-      <div className="rounded-2xl border border-[#b9f42e]/30 bg-gradient-to-br from-[#b9f42e]/10 to-transparent p-6 shadow-2xl space-y-4">
+      <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 to-transparent p-6 shadow-2xl space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-[#b9f42e]" />
+            <Sparkles className="h-5 w-5 text-primary" />
             <h2 className="text-lg font-bold text-white">AI Performance Agent</h2>
           </div>
           <DemoDataBadge />
@@ -93,7 +93,7 @@ export function AnalyticsDashboard({ onGenerateVariations }: { onGenerateVariati
           <div className="rounded-xl border border-white/10 bg-black/40 p-4">
             <p className="t-caption text-zinc-500">Performance Insight</p>
             <p className="mt-1 text-sm font-semibold text-zinc-200">
-              "Presenter-led video demonstrations generated <span className="text-[#b9f42e] font-bold">3.2x more engagement</span> and 4.1x more leads than static slideshow posts."
+              "Presenter-led video demonstrations generated <span className="text-primary font-bold">3.2x more engagement</span> and 4.1x more leads than static slideshow posts."
             </p>
           </div>
 
@@ -109,7 +109,7 @@ export function AnalyticsDashboard({ onGenerateVariations }: { onGenerateVariati
           <button
             type="button"
             onClick={onGenerateVariations}
-            className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-5 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition shadow-lg"
+            className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-black hover:bg-[#a6de26] transition shadow-lg"
           >
             <Wand2 className="h-4 w-4" />
             Generate Variations in Studio

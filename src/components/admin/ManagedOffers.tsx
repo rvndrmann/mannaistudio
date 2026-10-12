@@ -404,7 +404,7 @@ function ServiceEditor({
           type="checkbox"
           checked={form.quoteOnly}
           onChange={(event) => set("quoteOnly", event.target.checked)}
-          className="mt-0.5 h-4 w-4 accent-[#b9f42e]"
+          className="mt-0.5 h-4 w-4 accent-primary"
         />
         <span>
           <span className="block text-xs font-bold text-white/70">Quote only — no checkout</span>

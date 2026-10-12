@@ -23,11 +23,11 @@ export function ProCta({ className, placement, children }: { className?: string;
       href={PRO_PATH}
       onClick={() => fbTrack("InitiateCheckout", { ...proEvent, placement })}
       className={cn(
-        "inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-primary px-6 font-semibold text-black transition hover:brightness-110 active:scale-[0.98]",
+        "inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-primary px-5 text-[13px] font-medium tracking-[-0.01em] text-primary-foreground transition hover:bg-white active:scale-[0.98]",
         className,
       )}
     >
-      {children ?? <>{PRO_CTA_LABEL} <ArrowRight className="h-4 w-4" /></>}
+      {children ?? <>{PRO_CTA_LABEL} <ArrowRight className="h-3.5 w-3.5" /></>}
     </Link>
   )
 }
@@ -37,7 +37,7 @@ export function FreeCourseCta({ className, placement, children }: { className?: 
     <Link
       href={FREE_COURSE_PATH}
       onClick={() => fbTrack("Lead", { content_name: "Free course", placement })}
-      className={cn("inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-white/80 underline-offset-4 transition hover:text-primary hover:underline", className)}
+      className={cn("inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-white/60 underline-offset-4 transition hover:text-white hover:underline", className)}
     >
       {children ?? "Start the free course →"}
     </Link>
@@ -84,7 +84,7 @@ export function StickyProBar({ watch }: { watch: string }) {
     <div
       aria-hidden={!visible}
       className={cn(
-        "fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#0a0c0b]/95 px-4 pt-3 backdrop-blur transition-transform duration-300 md:hidden",
+        "fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#0d0d0d]/95 px-4 pt-3 backdrop-blur transition-transform duration-300 md:hidden",
         "pb-[calc(0.75rem+env(safe-area-inset-bottom))]",
         visible ? "translate-y-0" : "pointer-events-none translate-y-full",
       )}

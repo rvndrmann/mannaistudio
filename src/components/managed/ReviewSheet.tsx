@@ -181,7 +181,7 @@ export default function ReviewSheet({
                 step={0.1}
                 value={position}
                 onChange={(event) => seek(Number(event.target.value))}
-                className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-white/15 accent-[#b9f42e]"
+                className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-white/15 accent-primary"
                 aria-label="Scrub"
               />
               <span className="shrink-0 font-mono text-xs tabular-nums text-white/50">

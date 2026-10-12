@@ -102,7 +102,7 @@ function OptionThumbnail({ option, active, size }: { option: Option; active: boo
   const Glyph = option.glyph || Camera;
   return (
     <span className={shell}>
-      <Glyph className={`h-4 w-4 ${active ? "text-[#b9f42e]" : "text-zinc-600"}`} aria-hidden />
+      <Glyph className={`h-4 w-4 ${active ? "text-primary" : "text-zinc-600"}`} aria-hidden />
     </span>
   );
 }
@@ -165,9 +165,9 @@ function CameraColumn({
               aria-checked={active}
               disabled={disabled}
               onClick={() => { if (option.value !== value) onChange(option.value); }}
-              className={`flex w-full items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#b9f42e]/60 ${
+              className={`flex w-full items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
                 active
-                  ? "border-[#b9f42e]/50 bg-[#b9f42e]/[0.10]"
+                  ? "border-primary/50 bg-primary/[0.10]"
                   : "border-transparent bg-white/[0.04] hover:bg-white/[0.08]"
               }`}
             >
@@ -275,15 +275,15 @@ export function CameraSettingsControl({
   const chips = [value.camera, value.lens, `${value.focalLength}mm`, value.aperture];
 
   return (
-    <div className={`overflow-hidden rounded-2xl border bg-white/[0.02] ${enabled ? "border-[#b9f42e]/25" : "border-white/10"}`}>
+    <div className={`overflow-hidden rounded-2xl border bg-white/[0.02] ${enabled ? "border-primary/25" : "border-white/10"}`}>
       <div className="flex items-center gap-2 p-2.5">
         <button
           type="button"
           onClick={() => setOpen((current) => !current)}
           aria-expanded={open}
-          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1 py-0.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#b9f42e]/60"
+          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1 py-0.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
         >
-          <Aperture className={`h-4 w-4 shrink-0 ${enabled ? "text-[#b9f42e]" : "text-zinc-600"}`} aria-hidden />
+          <Aperture className={`h-4 w-4 shrink-0 ${enabled ? "text-primary" : "text-zinc-600"}`} aria-hidden />
           <span className="min-w-0 flex-1">
             <span className="block text-[10px] font-bold text-zinc-500">Camera</span>
             {enabled ? (
@@ -310,7 +310,7 @@ export function CameraSettingsControl({
             onEnabledChange(next);
             if (next) setOpen(true);
           }}
-          className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors ${enabled ? "bg-[#b9f42e]" : "bg-white/15"}`}
+          className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors ${enabled ? "bg-primary" : "bg-white/15"}`}
           title={enabled ? "This image is generated with the camera package below" : "No camera language is added to this prompt"}
         >
           <span className={`h-4 w-4 rounded-full bg-black transition-transform ${enabled ? "translate-x-4" : "translate-x-0"}`} />

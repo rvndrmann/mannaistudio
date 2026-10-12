@@ -116,7 +116,7 @@ export default function BrandScripts({
                   <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-zinc-100">{script.title}</span>
                   <span
                     className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                      script.status === "final" ? "bg-[#b9f42e]/15 text-[#b9f42e]" : "bg-[#1a1a1a] text-zinc-400"
+                      script.status === "final" ? "bg-primary/15 text-primary" : "bg-[#1a1a1a] text-zinc-400"
                     }`}
                   >
                     {script.status}
@@ -128,7 +128,7 @@ export default function BrandScripts({
                     Sent to production ·{" "}
                     <button
                       onClick={() => router.push(`/studio/project/${script.sent_project_id}`)}
-                      className="font-bold text-[#b9f42e] hover:underline"
+                      className="font-bold text-primary hover:underline"
                     >
                       open the project
                     </button>
@@ -165,14 +165,14 @@ export default function BrandScripts({
                           <button
                             onClick={() => save(script)}
                             disabled={saving}
-                            className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-[12px] font-bold text-zinc-200 hover:border-[#b9f42e]/40 disabled:opacity-60"
+                            className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-[12px] font-bold text-zinc-200 hover:border-primary/40 disabled:opacity-60"
                           >
                             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save draft
                           </button>
                           <button
                             onClick={() => save(script, "final")}
                             disabled={saving}
-                            className="rounded-lg bg-[#b9f42e] px-3 py-2 text-[12px] font-bold text-black disabled:opacity-60"
+                            className="rounded-lg bg-primary px-3 py-2 text-[12px] font-bold text-black disabled:opacity-60"
                           >
                             Mark final
                           </button>
@@ -184,8 +184,8 @@ export default function BrandScripts({
                           </button>
                         </div>
 
-                        <div className="space-y-2 rounded-lg border border-[#b9f42e]/25 bg-[#b9f42e]/[0.04] p-3">
-                          <p className="text-[11px] font-bold tracking-[.14em] text-[#b9f42e]">SEND TO PRODUCTION</p>
+                        <div className="space-y-2 rounded-lg border border-primary/25 bg-primary/[0.04] p-3">
+                          <p className="text-[11px] font-bold tracking-[.14em] text-primary">SEND TO PRODUCTION</p>
                           <select
                             value={target}
                             onChange={(event) => setTarget(event.target.value)}
@@ -201,7 +201,7 @@ export default function BrandScripts({
                           <button
                             onClick={() => sendToProduction(script)}
                             disabled={sendingId === script.id}
-                            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#b9f42e] px-3 py-2.5 text-[12px] font-bold text-black disabled:opacity-60"
+                            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2.5 text-[12px] font-bold text-black disabled:opacity-60"
                           >
                             {sendingId === script.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clapperboard className="h-4 w-4" />}
                             Send script &amp; hand to the AI Director

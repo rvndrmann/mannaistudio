@@ -110,7 +110,7 @@ export function SocialConnectionCard({ platform }: { platform: PlatformConfig })
             <ul className="mt-2.5 space-y-2">
               {platform.features.map((feature) => (
                 <li key={feature} className="flex items-center gap-2 text-xs font-medium text-zinc-300">
-                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#b9f42e]" />
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-primary" />
                   <span>{feature}</span>
                 </li>
               ))}
@@ -124,7 +124,7 @@ export function SocialConnectionCard({ platform }: { platform: PlatformConfig })
             onClick={() => setModalOpen(true)}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-white/10 py-3 text-sm font-bold text-white hover:bg-white/20 transition"
           >
-            <ExternalLink className="h-4 w-4 text-[#b9f42e]" />
+            <ExternalLink className="h-4 w-4 text-primary" />
             Connect {platform.name}
           </button>
         </div>
@@ -145,7 +145,7 @@ export function SocialAccountsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">Social Media Agent</p>
+          <p className="text-xs font-bold tracking-[.18em] text-primary">Social Media Agent</p>
           <h1 className="mt-1 text-3xl font-semibold text-white">Social Accounts</h1>
         </div>
       </div>

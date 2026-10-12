@@ -31,7 +31,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (body.action === "cancel" && ["completed", "cancelled", "failed"].includes(current.status)) throw new Error("This workflow is already finished")
     if (body.action !== "cancel" && !["failed", "partially_completed", "blocked", "cancelled"].includes(current.status)) throw new Error("This workflow cannot be resumed from its current status")
     const status = body.action === "cancel" ? "cancelled" : body.action === "retry" ? "retrying" : "queued"
-    const { data, error } = await context.supabase.from("creator_workflow_runs").update({ status, completed_at: null, error: null }).eq("id", runId).eq("user_id", context.user.id).select("*").single()
+    const { data, error } = await context.supabase.from("creator_workflow_runs").update({ status, completed_at: body.action === "cancel" ? new Date().toISOString() : null, error: null }).eq("id", runId).eq("user_id", context.user.id).select("*").single()
     if (error) throw error
     if (body.action === "cancel") await context.supabase.from("creator_workflow_steps").update({ status: "cancelled", completed_at: new Date().toISOString() }).eq("run_id", runId).in("status", ["pending", "running"])
     await context.supabase.from("creator_audit_events").insert({ project_id: projectId, user_id: context.user.id, actor_type: "user", event_type: `workflow.${body.action}`, entity_type: "creator_workflow_runs", entity_id: runId, details: { previousStatus: current.status, nextStatus: status } })

@@ -106,7 +106,7 @@ export default function ProjectActivityDialog({ projectId, onClose }: { projectI
                 type="button"
                 onClick={() => setFilter(value)}
                 className={`flex-1 rounded-lg px-3 py-1.5 text-[11px] font-semibold transition ${
-                  filter === value ? "bg-[#b9f42e] text-black" : "text-zinc-400 hover:text-zinc-200"
+                  filter === value ? "bg-primary text-black" : "text-zinc-400 hover:text-zinc-200"
                 }`}
               >
                 {label}
@@ -118,7 +118,7 @@ export default function ProjectActivityDialog({ projectId, onClose }: { projectI
         {error && <p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-[11px] text-red-200">{error}</p>}
 
         {!activity ? (
-          <div className="grid place-items-center py-12"><Loader2 className="h-5 w-5 animate-spin text-[#b9f42e]" /></div>
+          <div className="grid place-items-center py-12"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
         ) : !rows.length ? (
           <p className="mt-6 rounded-xl border border-white/10 bg-white/[0.02] p-6 text-center text-xs text-zinc-500">
             No recorded changes yet. Edits to the script, storyboard, and assets appear here as they happen.
@@ -130,7 +130,7 @@ export default function ProjectActivityDialog({ projectId, onClose }: { projectI
               const isTeam = row.actor_role === "enterprise_team"
               return (
                 <li key={row.id} className="flex items-start gap-3 px-4 py-3">
-                  <span className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full ${isTeam ? "bg-[#b9f42e]/15 text-[#b9f42e]" : "bg-white/[0.06] text-zinc-400"}`}>
+                  <span className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full ${isTeam ? "bg-primary/15 text-primary" : "bg-white/[0.06] text-zinc-400"}`}>
                     <RoleIcon className="h-3 w-3" />
                   </span>
                   <div className="min-w-0 flex-1">
@@ -138,7 +138,7 @@ export default function ProjectActivityDialog({ projectId, onClose }: { projectI
                       <strong className="font-semibold">{row.actor_name || row.actor_email || "Someone"}</strong> {describe(row)}
                     </p>
                     <p className="mt-0.5 text-[11px] text-zinc-500">
-                      <span className={isTeam ? "text-[#b9f42e]/80" : ""}>{roleLabels[row.actor_role] || row.actor_role}</span>
+                      <span className={isTeam ? "text-primary/80" : ""}>{roleLabels[row.actor_role] || row.actor_role}</span>
                       {" · "}
                       {new Date(row.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
                     </p>

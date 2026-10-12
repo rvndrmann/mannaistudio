@@ -118,9 +118,9 @@ export function EntityMentionInput({ value, onChange, entities, placeholder, cla
               type="button"
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => choose(entity)}
-              className={`flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left ${index === activeIndex ? "bg-[#b9f42e]/12 text-white" : "text-zinc-300 hover:bg-white/[0.05]"}`}
+              className={`flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left ${index === activeIndex ? "bg-primary/12 text-white" : "text-zinc-300 hover:bg-white/[0.05]"}`}
             >
-              <span className="min-w-0 truncate text-sm"><span className="text-[#b9f42e]">@</span>{entity.name}</span>
+              <span className="min-w-0 truncate text-sm"><span className="text-primary">@</span>{entity.name}</span>
               <span className="shrink-0 rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-zinc-500">{typeLabel[entity.type]}</span>
             </button>
           ))}
@@ -129,7 +129,7 @@ export function EntityMentionInput({ value, onChange, entities, placeholder, cla
       {mentioned.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1.5" aria-label="Referenced entities">
           {mentioned.map((entity) => (
-            <span key={entity.id} className="inline-flex items-center gap-1 rounded-full border border-[#b9f42e]/20 bg-[#b9f42e]/5 px-2 py-0.5 text-[10px] font-medium text-[#d9ff84]">
+            <span key={entity.id} className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] font-medium text-white">
               <AtSign className="h-2.5 w-2.5" />{entity.name}<span className="text-zinc-500">· {typeLabel[entity.type]}</span>
             </span>
           ))}

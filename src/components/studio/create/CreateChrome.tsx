@@ -43,11 +43,11 @@ export function CreateChrome({ children }: { children: React.ReactNode }) {
             </Link>
             <span className="hidden h-6 border-r border-white/10 sm:block" />
             <div className="flex min-w-0 items-center gap-2 truncate text-base font-semibold sm:gap-3 sm:text-lg">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#b9f42e] text-black">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-black">
                 <Wand2 className="h-5 w-5" />
               </span>
               <span className="truncate">
-                Quick <span className="text-[#b9f42e]">Create</span>
+                Quick <span className="text-primary">Create</span>
               </span>
             </div>
           </div>
@@ -73,7 +73,7 @@ export function CreateChrome({ children }: { children: React.ReactNode }) {
                 href={tab.href}
                 className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold transition ${
                   active
-                    ? "bg-[#b9f42e]/12 text-[#b9f42e]"
+                    ? "bg-primary/12 text-primary"
                     : "text-zinc-500 hover:bg-white/5 hover:text-white"
                 }`}
               >

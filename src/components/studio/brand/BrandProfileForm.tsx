@@ -107,7 +107,7 @@ export default function BrandProfileForm({
             value={draft.name}
             disabled={!canEdit}
             onChange={(event) => set("name", event.target.value)}
-            className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm outline-none focus:border-[#b9f42e]/40 disabled:opacity-60"
+            className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm outline-none focus:border-primary/40 disabled:opacity-60"
           />
         </label>
         <label className="block">
@@ -116,7 +116,7 @@ export default function BrandProfileForm({
             value={draft.kind}
             disabled={!canEdit}
             onChange={(event) => set("kind", event.target.value)}
-            className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm outline-none focus:border-[#b9f42e]/40 disabled:opacity-60"
+            className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm outline-none focus:border-primary/40 disabled:opacity-60"
           >
             <option value="brand">Brand</option>
             <option value="creator">Creator</option>
@@ -134,7 +134,7 @@ export default function BrandProfileForm({
           disabled={!canEdit}
           onChange={(event) => set("website_url", event.target.value)}
           placeholder="https://yourbrand.com"
-          className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm outline-none placeholder:text-zinc-600 focus:border-[#b9f42e]/40 disabled:opacity-60"
+          className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm outline-none placeholder:text-zinc-600 focus:border-primary/40 disabled:opacity-60"
         />
 
         {/* The agents read the site itself, so the panel has to show what they
@@ -148,7 +148,7 @@ export default function BrandProfileForm({
               </p>
             ) : brand.website_fetched_at ? (
               <p className="flex items-start gap-1.5 text-[11px] leading-5 text-zinc-400">
-                <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#b9f42e]" />
+                <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
                 Your agents have read {brand.website_pages?.length || 0} page
                 {(brand.website_pages?.length || 0) === 1 ? "" : "s"} of this site, on{" "}
                 {new Date(brand.website_fetched_at).toLocaleDateString()}.
@@ -174,7 +174,7 @@ export default function BrandProfileForm({
                 onClick={readWebsite}
                 disabled={reading || dirty}
                 title={dirty ? "Save the brand first, then read the site" : "Read the site again"}
-                className="mt-2 flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#141414] px-2.5 py-1.5 text-[11px] font-bold text-zinc-200 hover:border-[#b9f42e]/40 disabled:opacity-50"
+                className="mt-2 flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#141414] px-2.5 py-1.5 text-[11px] font-bold text-zinc-200 hover:border-primary/40 disabled:opacity-50"
               >
                 {reading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                 {reading ? "Reading the site…" : brand.website_fetched_at ? "Read it again" : "Read the site now"}
@@ -191,7 +191,7 @@ export default function BrandProfileForm({
             value={draft.industry}
             disabled={!canEdit}
             onChange={(event) => set("industry", event.target.value)}
-            className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm outline-none focus:border-[#b9f42e]/40 disabled:opacity-60"
+            className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm outline-none focus:border-primary/40 disabled:opacity-60"
           />
         </label>
         <label className="block">
@@ -200,7 +200,7 @@ export default function BrandProfileForm({
             value={draft.default_aspect}
             disabled={!canEdit}
             onChange={(event) => set("default_aspect", event.target.value)}
-            className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm outline-none focus:border-[#b9f42e]/40 disabled:opacity-60"
+            className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm outline-none focus:border-primary/40 disabled:opacity-60"
           >
             <option value="9:16">9:16 — vertical</option>
             <option value="16:9">16:9 — landscape</option>
@@ -216,7 +216,7 @@ export default function BrandProfileForm({
           value={draft.tagline}
           disabled={!canEdit}
           onChange={(event) => set("tagline", event.target.value)}
-          className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm outline-none focus:border-[#b9f42e]/40 disabled:opacity-60"
+          className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm outline-none focus:border-primary/40 disabled:opacity-60"
         />
       </label>
 
@@ -229,7 +229,7 @@ export default function BrandProfileForm({
             rows={field.rows || 2}
             onChange={(event) => set(field.key, event.target.value)}
             placeholder={field.hint}
-            className="mt-1.5 w-full resize-y rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm leading-6 outline-none placeholder:text-zinc-600 focus:border-[#b9f42e]/40 disabled:opacity-60"
+            className="mt-1.5 w-full resize-y rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm leading-6 outline-none placeholder:text-zinc-600 focus:border-primary/40 disabled:opacity-60"
           />
         </label>
       ))}
@@ -242,7 +242,7 @@ export default function BrandProfileForm({
           rows={3}
           onChange={(event) => set("forbidden_claims", event.target.value.split("\n").map((line) => line.trim()).filter(Boolean))}
           placeholder={"One per line.\nNo agent will write these, in any wording."}
-          className="mt-1.5 w-full resize-y rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm leading-6 outline-none placeholder:text-zinc-600 focus:border-[#b9f42e]/40 disabled:opacity-60"
+          className="mt-1.5 w-full resize-y rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm leading-6 outline-none placeholder:text-zinc-600 focus:border-primary/40 disabled:opacity-60"
         />
       </label>
 
@@ -253,7 +253,7 @@ export default function BrandProfileForm({
           disabled={!canEdit}
           onChange={(event) => set("color_palette", event.target.value.split(",").map((value) => value.trim()).filter(Boolean))}
           placeholder="#2b1a12, #e9d5b8"
-          className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm outline-none placeholder:text-zinc-600 focus:border-[#b9f42e]/40 disabled:opacity-60"
+          className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-sm outline-none placeholder:text-zinc-600 focus:border-primary/40 disabled:opacity-60"
         />
       </label>
 
@@ -267,7 +267,7 @@ export default function BrandProfileForm({
             checked={draft.widget_enabled}
             disabled={!canEdit}
             onChange={(event) => set("widget_enabled", event.target.checked)}
-            className="mt-0.5 h-4 w-4 accent-[#b9f42e]"
+            className="mt-0.5 h-4 w-4 accent-primary"
           />
           <span className="text-[12px] leading-5 text-zinc-300">
             Answer visitors on the home page, using this brand&apos;s material, and keep whoever leaves their details.
@@ -279,7 +279,7 @@ export default function BrandProfileForm({
           rows={2}
           onChange={(event) => set("widget_greeting", event.target.value)}
           placeholder={`Hi — I work with ${draft.name}. What are you trying to make?`}
-          className="mt-2 w-full resize-y rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-[12px] leading-6 outline-none placeholder:text-zinc-600 focus:border-[#b9f42e]/40 disabled:opacity-50"
+          className="mt-2 w-full resize-y rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-[12px] leading-6 outline-none placeholder:text-zinc-600 focus:border-primary/40 disabled:opacity-50"
         />
         {/* Only one widget can own the site, so say which one wins rather than
             letting a second brand silently take it over. */}
@@ -295,7 +295,7 @@ export default function BrandProfileForm({
         <button
           onClick={save}
           disabled={saving || !dirty}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#b9f42e] px-4 py-2.5 text-[13px] font-bold text-black transition duration-press ease-out active:scale-[0.98] disabled:opacity-40"
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-[13px] font-bold text-black transition duration-press ease-out active:scale-[0.98] disabled:opacity-40"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           {saved && !dirty ? "Saved" : "Save brand"}

@@ -15,9 +15,9 @@ export default function StudioTeamPage() {
           </Link>
           <Link
             href="/studio/credits"
-            className="flex items-center gap-2 rounded-full border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-3 py-1.5 text-xs font-bold text-[#b9f42e] transition hover:bg-[#b9f42e]/20"
+            className="flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition hover:bg-primary/20"
           >
-            <Zap className="h-3.5 w-3.5 fill-[#b9f42e]" />
+            <Zap className="h-3.5 w-3.5 fill-primary" />
             Credits
           </Link>
         </div>
@@ -25,7 +25,7 @@ export default function StudioTeamPage() {
 
       <main className="mx-auto max-w-4xl px-6 py-12">
         <div className="mb-8 text-center">
-          <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-[#b9f42e]/30 bg-[#b9f42e]/10 text-[#b9f42e]">
+          <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/30 bg-primary/10 text-primary">
             <Users className="h-7 w-7" />
           </div>
           <h1 className="text-3xl font-semibold text-white">Your Team</h1>

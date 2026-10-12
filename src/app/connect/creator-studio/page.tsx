@@ -14,7 +14,7 @@ export default async function CreatorStudioConnect() {
   try { endpoint = mcpResource() } catch {
     return <main className="mx-auto max-w-2xl px-6 py-24"><h1 className="text-3xl font-semibold">Connect Creator Studio</h1><p className="mt-4 text-white/70">Assistant connections are being set up. Please try again later.</p><Link href="/studio" className="mt-6 inline-block underline">Back to Studio</Link></main>
   }
-  if (!user) return <main className="mx-auto max-w-3xl px-6 py-16 space-y-8"><Link href="/" className="text-sm text-white/60">← AI Director Hub</Link><header className="space-y-4"><h1 className="text-3xl font-semibold">Connect Creator Studio to Codex</h1><p className="text-white/70">Copy the prompt below to start setup. Sign in to your own website account when Codex opens the authorization page.</p><Link href="/login?next=%2Fconnect%2Fcreator-studio" className="inline-block text-[#b9f42e] underline">Sign in to manage connections →</Link></header><CodexSetup endpoint={endpoint} /></main>
+  if (!user) return <main className="mx-auto max-w-3xl px-6 py-16 space-y-8"><Link href="/" className="text-sm text-white/60">← AI Director Hub</Link><header className="space-y-4"><h1 className="text-3xl font-semibold">Connect Creator Studio to Codex</h1><p className="text-white/70">Copy the prompt below to start setup. Sign in to your own website account when Codex opens the authorization page.</p><Link href="/login?next=%2Fconnect%2Fcreator-studio" className="inline-block text-primary underline">Sign in to manage connections →</Link></header><CodexSetup endpoint={endpoint} /></main>
   const pending = await pendingConsent()
   const entitled = await hasCreatorStudioEntitlement(supabase, user.id)
   const enabled = (await fetchSiteFeatures(supabase)).mcp
@@ -31,7 +31,7 @@ export default async function CreatorStudioConnect() {
       <form action="/api/mcp/oauth/consent" method="POST" className="flex gap-3">
         <input type="hidden" name="requestId" value={pending.id} />
         <input type="hidden" name="accountId" value={user.id} />
-        <button name="decision" value="approve" disabled={!availableScopes.length || !enabled} className="rounded-xl bg-[#b9f42e] px-5 py-3 font-semibold text-black disabled:opacity-40">Connect my account</button>
+        <button name="decision" value="approve" disabled={!availableScopes.length || !enabled} className="rounded-xl bg-primary px-5 py-3 font-semibold text-black disabled:opacity-40">Connect my account</button>
         <button name="decision" value="deny" className="rounded-xl border border-white/20 px-5 py-3">Cancel</button>
       </form>
     </section> : <Connections endpoint={endpoint} />}

@@ -532,7 +532,7 @@ export default function OriginalsManager() {
                 type="checkbox"
                 checked={draft.is_published}
                 onChange={(e) => setDraft({ ...draft, is_published: e.target.checked })}
-                className="h-4 w-4 accent-[#b9f42e]"
+                className="h-4 w-4 accent-primary"
               />
               <span className="text-sm text-white/70">Published — visible on /originals</span>
             </label>
@@ -760,7 +760,7 @@ export default function OriginalsManager() {
                                   type="checkbox"
                                   checked={episode.is_published}
                                   onChange={(e) => patchEpisode(row.id, index, { is_published: e.target.checked })}
-                                  className="h-3.5 w-3.5 accent-[#b9f42e]"
+                                  className="h-3.5 w-3.5 accent-primary"
                                 />
                                 Published
                               </label>

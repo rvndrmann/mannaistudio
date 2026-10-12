@@ -38,7 +38,7 @@ export function PillGroup<T extends string | number>({
             onClick={() => onChange(option)}
             className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
               option === value
-                ? "bg-[#b9f42e] text-black"
+                ? "bg-primary text-black"
                 : "border border-white/10 text-zinc-400 hover:border-white/25 hover:text-white"
             }`}
           >
@@ -85,7 +85,7 @@ export function RecentStrip({
               onClick={() => onFocus(item)}
               title={item.prompt}
               className={`block h-20 w-20 overflow-hidden rounded-lg border transition ${
-                item.id === focusedId ? "border-[#b9f42e]" : "border-white/10 hover:border-white/30"
+                item.id === focusedId ? "border-primary" : "border-white/10 hover:border-white/30"
               }`}
             >
               <SignedMedia path={item.resultPath} kind={kind} className="h-full w-full object-cover" />

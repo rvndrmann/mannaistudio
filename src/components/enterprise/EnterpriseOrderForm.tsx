@@ -101,17 +101,17 @@ export default function EnterpriseOrderForm({
   const projectOrders = projectId ? orders.filter((order) => order.project_id === projectId) : orders
 
   if (!rate) {
-    return <div className="grid place-items-center py-10"><Loader2 className="h-5 w-5 animate-spin text-[#b9f42e]" /></div>
+    return <div className="grid place-items-center py-10"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
   }
 
   if (placed) {
     return (
-      <div className="rounded-2xl border border-[#b9f42e]/30 bg-[#b9f42e]/[0.06] p-6 text-center">
-        <BadgeCheck className="mx-auto h-8 w-8 text-[#b9f42e]" />
+      <div className="rounded-2xl border border-primary/30 bg-primary/[0.06] p-6 text-center">
+        <BadgeCheck className="mx-auto h-8 w-8 text-primary" />
         <p className="mt-3 text-sm font-bold text-white">Request sent to the production team</p>
         <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-zinc-400">
           {placed.minutes} finished minute{placed.minutes === 1 ? "" : "s"} at ${placed.rate_usd_per_minute}/min —
-          <strong className="text-[#b9f42e]">${Number(placed.total_usd).toLocaleString()}</strong>.
+          <strong className="text-primary">${Number(placed.total_usd).toLocaleString()}</strong>.
           Nothing has been charged yet. The team reviews the request, and the credits are deducted only when we accept it and start work.
         </p>
         <button type="button" onClick={() => setPlaced(null)} className="mt-4 rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/[0.06]">
@@ -125,7 +125,7 @@ export default function EnterpriseOrderForm({
     <div className="space-y-4">
       {!compact && (
         <div className="flex items-start gap-3">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#b9f42e]/15 text-[#b9f42e]"><Users className="h-5 w-5" /></span>
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary/15 text-primary"><Users className="h-5 w-5" /></span>
           <div>
             <h3 className="text-base font-bold text-white">Hire the AI Director Hub team</h3>
             <p className="mt-1 text-xs leading-5 text-zinc-400">
@@ -154,7 +154,7 @@ export default function EnterpriseOrderForm({
             value={minutes}
             onChange={(event) => setMinutes(event.target.value)}
             inputMode="decimal"
-            className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-sm text-white outline-none focus:border-[#b9f42e]/50"
+            className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-sm text-white outline-none focus:border-primary/50"
           />
         </label>
         <label className="space-y-1.5">
@@ -163,7 +163,7 @@ export default function EnterpriseOrderForm({
             value={contactName}
             onChange={(event) => setContactName(event.target.value)}
             placeholder="Who should we speak to?"
-            className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-sm text-white outline-none focus:border-[#b9f42e]/50"
+            className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-sm text-white outline-none focus:border-primary/50"
           />
         </label>
       </div>
@@ -173,7 +173,7 @@ export default function EnterpriseOrderForm({
         <input
           value={contactPhone}
           onChange={(event) => setContactPhone(event.target.value)}
-          className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-sm text-white outline-none focus:border-[#b9f42e]/50"
+          className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-sm text-white outline-none focus:border-primary/50"
         />
       </label>
 
@@ -184,14 +184,14 @@ export default function EnterpriseOrderForm({
           onChange={(event) => setBrief(event.target.value)}
           rows={compact ? 3 : 4}
           placeholder="Format, deadline, audience, references, anything already decided…"
-          className="w-full resize-y rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm leading-6 text-white outline-none focus:border-[#b9f42e]/50"
+          className="w-full resize-y rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm leading-6 text-white outline-none focus:border-primary/50"
         />
       </label>
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-4">
         <div>
           <p className="text-[10px] font-bold text-zinc-500">Estimate</p>
-          <p className="mt-1 text-2xl font-semibold text-[#b9f42e]">
+          <p className="mt-1 text-2xl font-semibold text-primary">
             ${total.toLocaleString()} <span className="text-xs font-medium text-zinc-500">{rate.currency}</span>
           </p>
           <p className="text-[11px] text-zinc-500">{validMinutes ? `${parsedMinutes} min × $${rate.usdPerMinute}/min` : `$${rate.usdPerMinute} per finished minute`}</p>
@@ -208,7 +208,7 @@ export default function EnterpriseOrderForm({
           type="button"
           onClick={submit}
           disabled={busy || !validMinutes || !rate.enabled}
-          className="rounded-xl bg-[#b9f42e] px-5 py-3 text-sm font-semibold text-black transition hover:bg-[#a6de25] disabled:opacity-50"
+          className="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-black transition hover:bg-white disabled:opacity-50"
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Request the team"}
         </button>

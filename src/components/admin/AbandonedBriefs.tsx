@@ -81,7 +81,7 @@ export default function AbandonedBriefs() {
               type="checkbox"
               checked={showConverted}
               onChange={(event) => setShowConverted(event.target.checked)}
-              className="h-3.5 w-3.5 accent-[#b9f42e]"
+              className="h-3.5 w-3.5 accent-primary"
             />
             Include the ones who bought
           </label>

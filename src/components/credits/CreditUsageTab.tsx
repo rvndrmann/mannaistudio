@@ -47,7 +47,7 @@ export default function CreditUsageTab() {
   }, [])
 
   if (error) return <p className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">{error}</p>
-  if (!transactions) return <div className="grid place-items-center py-12"><Loader2 className="h-5 w-5 animate-spin text-[#b9f42e]" /></div>
+  if (!transactions) return <div className="grid place-items-center py-12"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
   if (!transactions.length) {
     return (
       <div className="rounded-xl border border-white/10 bg-white/[0.02] p-8 text-center">
@@ -76,7 +76,7 @@ export default function CreditUsageTab() {
                 {new Date(item.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
               </td>
               <td className="whitespace-nowrap px-4 py-3 font-medium text-zinc-200">{formatType(item.type)}</td>
-              <td className={`whitespace-nowrap px-4 py-3 font-bold ${item.amount < 0 ? "text-red-300" : item.amount > 0 ? "text-[#b9f42e]" : "text-zinc-400"}`}>
+              <td className={`whitespace-nowrap px-4 py-3 font-bold ${item.amount < 0 ? "text-red-300" : item.amount > 0 ? "text-primary" : "text-zinc-400"}`}>
                 <span className="inline-flex items-center gap-1">
                   {item.amount === 0 ? <KeyRound className="h-3 w-3" /> : item.amount < 0 ? <TrendingDown className="h-3 w-3" /> : <TrendingUp className="h-3 w-3" />}
                   {item.amount === 0 ? "0 · your key" : `${item.amount > 0 ? "+" : ""}${item.amount.toLocaleString()}`}

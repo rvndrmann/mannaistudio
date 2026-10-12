@@ -82,7 +82,7 @@ export function BillingModeToggle({ compact = false }: { compact?: boolean }) {
       <span
         aria-hidden
         className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
-          ownKeysOnly ? "bg-[#b9f42e]" : "bg-white/20"
+          ownKeysOnly ? "bg-brand" : "bg-white/20"
         }`}
       >
         <span
@@ -94,7 +94,7 @@ export function BillingModeToggle({ compact = false }: { compact?: boolean }) {
 
       {/* Spelled out as well as shown: the position carries the meaning, but a
           two-letter word costs nothing and removes the last doubt. */}
-      <span className={`text-xs font-semibold ${ownKeysOnly ? "text-[#b9f42e]" : "text-white/40"}`}>
+      <span className={`text-xs font-semibold ${ownKeysOnly ? "text-brand" : "text-white/40"}`}>
         {ownKeysOnly ? "ON" : "OFF"}
       </span>
     </button>

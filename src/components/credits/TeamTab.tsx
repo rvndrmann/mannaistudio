@@ -145,7 +145,7 @@ export default function TeamTab() {
     }
   }
 
-  if (!state) return <div className="grid place-items-center py-12"><Loader2 className="h-5 w-5 animate-spin text-[#b9f42e]" /></div>
+  if (!state) return <div className="grid place-items-center py-12"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
 
   const canManage = state.role === "owner" || state.role === "admin"
   const isOwner = state.role === "owner"
@@ -165,9 +165,9 @@ export default function TeamTab() {
               value={teamName}
               onChange={(event) => setTeamName(event.target.value)}
               placeholder="Team name"
-              className="w-48 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-[#b9f42e]/50"
+              className="w-48 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-primary/50"
             />
-            <button type="button" onClick={createTeam} disabled={busy || !teamName.trim()} className="rounded-lg bg-[#b9f42e] px-4 py-2 text-xs font-bold text-black disabled:opacity-50">
+            <button type="button" onClick={createTeam} disabled={busy || !teamName.trim()} className="rounded-lg bg-primary px-4 py-2 text-xs font-bold text-black disabled:opacity-50">
               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Create Team"}
             </button>
           </div>
@@ -189,15 +189,15 @@ export default function TeamTab() {
                 onChange={(event) => setRenameValue(event.target.value)}
                 onKeyDown={(event) => { if (event.key === "Enter") void renameTeam() }}
                 autoFocus
-                className="w-52 rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-white outline-none focus:border-[#b9f42e]/50"
+                className="w-52 rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-white outline-none focus:border-primary/50"
               />
-              <button type="button" onClick={renameTeam} disabled={busy || !renameValue.trim()} className="rounded-lg bg-[#b9f42e] px-3 py-1.5 text-[11px] font-bold text-black disabled:opacity-50">Save</button>
+              <button type="button" onClick={renameTeam} disabled={busy || !renameValue.trim()} className="rounded-lg bg-primary px-3 py-1.5 text-[11px] font-bold text-black disabled:opacity-50">Save</button>
               <button type="button" onClick={() => setRenaming(false)} className="rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-semibold text-zinc-300">Cancel</button>
             </div>
           ) : (
             <p className="flex items-center gap-2 text-sm font-bold text-white">
               {state.team.name}
-              {isOwner && <Crown className="h-3.5 w-3.5 text-[#b9f42e]" />}
+              {isOwner && <Crown className="h-3.5 w-3.5 text-primary" />}
               {canManage && (
                 <button type="button" onClick={() => { setRenameValue(state.team?.name || ""); setRenaming(true) }} title="Rename team" className="rounded-md p-1 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200">
                   <Pencil className="h-3 w-3" />
@@ -208,7 +208,7 @@ export default function TeamTab() {
           <p className="text-[11px] text-zinc-500">{state.members.length} member{state.members.length === 1 ? "" : "s"} · your role: {state.role}</p>
         </div>
         {canManage && (
-          <button type="button" onClick={() => setInviteOpen((open) => !open)} className="flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-3 py-2 text-xs font-bold text-black">
+          <button type="button" onClick={() => setInviteOpen((open) => !open)} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-black">
             <UserPlus className="h-3.5 w-3.5" /> Add Member
           </button>
         )}
@@ -217,13 +217,13 @@ export default function TeamTab() {
       <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="flex items-center gap-2 text-xs font-semibold text-zinc-300"><Zap className="h-3.5 w-3.5 fill-[#b9f42e] text-[#b9f42e]" /> Team credit pool</p>
+            <p className="flex items-center gap-2 text-xs font-semibold text-zinc-300"><Zap className="h-3.5 w-3.5 fill-primary text-primary" /> Team credit pool</p>
             <p className="mt-1 text-[11px] text-zinc-500">Move your credits into the pool, then allocate them to members.</p>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-lg font-semibold text-[#b9f42e]">{(state.team.credits_balance ?? 0).toLocaleString()}</span>
+            <span className="text-lg font-semibold text-primary">{(state.team.credits_balance ?? 0).toLocaleString()}</span>
             {canManage && (
-              <button type="button" onClick={() => setTransferOpen((open) => !open)} className="rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-semibold text-zinc-200 hover:border-[#b9f42e]/40 hover:text-[#b9f42e]">
+              <button type="button" onClick={() => setTransferOpen((open) => !open)} className="rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-semibold text-zinc-200 hover:border-primary/40 hover:text-primary">
                 Transfer
               </button>
             )}
@@ -232,17 +232,17 @@ export default function TeamTab() {
         {transferOpen && canManage && (
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/[0.06] pt-3">
             <div className="flex overflow-hidden rounded-lg border border-white/10">
-              <button type="button" onClick={() => setTransferMode("in")} className={`px-3 py-2 text-[11px] font-semibold ${transferMode === "in" ? "bg-[#b9f42e] text-black" : "text-zinc-300"}`}>Transfer In</button>
-              <button type="button" onClick={() => setTransferMode("out")} className={`px-3 py-2 text-[11px] font-semibold ${transferMode === "out" ? "bg-[#b9f42e] text-black" : "text-zinc-300"}`}>Transfer Out</button>
+              <button type="button" onClick={() => setTransferMode("in")} className={`px-3 py-2 text-[11px] font-semibold ${transferMode === "in" ? "bg-primary text-black" : "text-zinc-300"}`}>Transfer In</button>
+              <button type="button" onClick={() => setTransferMode("out")} className={`px-3 py-2 text-[11px] font-semibold ${transferMode === "out" ? "bg-primary text-black" : "text-zinc-300"}`}>Transfer Out</button>
             </div>
             <input
               value={transferAmount}
               onChange={(event) => setTransferAmount(event.target.value)}
               inputMode="numeric"
               placeholder="Amount"
-              className="w-32 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-[#b9f42e]/50"
+              className="w-32 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-primary/50"
             />
-            <button type="button" onClick={submitTransfer} disabled={busy} className="rounded-lg bg-[#b9f42e] px-4 py-2 text-xs font-bold text-black disabled:opacity-50">
+            <button type="button" onClick={submitTransfer} disabled={busy} className="rounded-lg bg-primary px-4 py-2 text-xs font-bold text-black disabled:opacity-50">
               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Confirm"}
             </button>
             <p className="w-full text-[11px] text-zinc-500">
@@ -261,14 +261,14 @@ export default function TeamTab() {
               value={inviteEmail}
               onChange={(event) => setInviteEmail(event.target.value)}
               placeholder="member@example.com"
-              className="min-w-[200px] flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-[#b9f42e]/50"
+              className="min-w-[200px] flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-primary/50"
             />
             <select value={inviteRole} onChange={(event) => setInviteRole(event.target.value)} className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs text-white outline-none">
               <option value="admin">Admin</option>
               <option value="member">Member</option>
               <option value="viewer">Viewer</option>
             </select>
-            <button type="button" onClick={addMember} disabled={busy} className="rounded-lg bg-[#b9f42e] px-4 py-2 text-xs font-bold text-black disabled:opacity-50">
+            <button type="button" onClick={addMember} disabled={busy} className="rounded-lg bg-primary px-4 py-2 text-xs font-bold text-black disabled:opacity-50">
               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Add"}
             </button>
           </div>
@@ -313,9 +313,9 @@ export default function TeamTab() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-1.5 font-bold text-[#b9f42e]"><Zap className="h-3 w-3 fill-[#b9f42e]" />{member.credits_balance.toLocaleString()}</span>
+                    <span className="inline-flex items-center gap-1.5 font-bold text-primary"><Zap className="h-3 w-3 fill-primary" />{member.credits_balance.toLocaleString()}</span>
                     {canManage && !isSelf && (
-                      <button type="button" onClick={() => { setAllocateFor(member); setAllocateAmount(""); setAllocateMode("allocate") }} className="ml-2 rounded-md border border-white/10 px-2 py-1 text-[10px] font-semibold text-zinc-300 hover:border-[#b9f42e]/40 hover:text-[#b9f42e]">
+                      <button type="button" onClick={() => { setAllocateFor(member); setAllocateAmount(""); setAllocateMode("allocate") }} className="ml-2 rounded-md border border-white/10 px-2 py-1 text-[10px] font-semibold text-zinc-300 hover:border-primary/40 hover:text-primary">
                         Allocate
                       </button>
                     )}
@@ -338,22 +338,22 @@ export default function TeamTab() {
       </div>
 
       {allocateFor && (
-        <div className="rounded-xl border border-[#b9f42e]/25 bg-[#b9f42e]/[0.06] p-4">
+        <div className="rounded-xl border border-primary/25 bg-primary/[0.06] p-4">
           <p className="text-xs font-semibold text-zinc-100">Manage credits for {allocateFor.full_name || allocateFor.email}</p>
           <p className="mt-1 text-[11px] text-zinc-400">Allocate moves credits from the team pool to this member. Reclaim moves them back into the pool.</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <div className="flex overflow-hidden rounded-lg border border-white/10">
-              <button type="button" onClick={() => setAllocateMode("allocate")} className={`px-3 py-2 text-[11px] font-semibold ${allocateMode === "allocate" ? "bg-[#b9f42e] text-black" : "text-zinc-300"}`}>Allocate</button>
-              <button type="button" onClick={() => setAllocateMode("reclaim")} className={`px-3 py-2 text-[11px] font-semibold ${allocateMode === "reclaim" ? "bg-[#b9f42e] text-black" : "text-zinc-300"}`}>Reclaim</button>
+              <button type="button" onClick={() => setAllocateMode("allocate")} className={`px-3 py-2 text-[11px] font-semibold ${allocateMode === "allocate" ? "bg-primary text-black" : "text-zinc-300"}`}>Allocate</button>
+              <button type="button" onClick={() => setAllocateMode("reclaim")} className={`px-3 py-2 text-[11px] font-semibold ${allocateMode === "reclaim" ? "bg-primary text-black" : "text-zinc-300"}`}>Reclaim</button>
             </div>
             <input
               value={allocateAmount}
               onChange={(event) => setAllocateAmount(event.target.value)}
               inputMode="numeric"
               placeholder="Amount"
-              className="w-32 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-[#b9f42e]/50"
+              className="w-32 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-primary/50"
             />
-            <button type="button" onClick={submitAllocation} disabled={busy} className="rounded-lg bg-[#b9f42e] px-4 py-2 text-xs font-bold text-black disabled:opacity-50">
+            <button type="button" onClick={submitAllocation} disabled={busy} className="rounded-lg bg-primary px-4 py-2 text-xs font-bold text-black disabled:opacity-50">
               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Confirm"}
             </button>
             <button type="button" onClick={() => setAllocateFor(null)} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-zinc-300">Cancel</button>

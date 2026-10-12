@@ -184,7 +184,7 @@ export default function BrandChat({
               body: JSON.stringify({ agentKey: nextKey }),
             });
           }}
-          className="ml-auto max-w-[45%] shrink-0 rounded-full border border-white/[0.08] bg-[#141414] px-2.5 py-1.5 text-[11px] font-bold text-zinc-200 outline-none hover:border-[#b9f42e]/40"
+          className="ml-auto max-w-[45%] shrink-0 rounded-full border border-white/[0.08] bg-[#141414] px-2.5 py-1.5 text-[11px] font-bold text-zinc-200 outline-none hover:border-primary/40"
         >
           {agents.map((option) => (
             <option key={option.agent_key} value={option.agent_key}>
@@ -216,7 +216,7 @@ export default function BrandChat({
                 {handovers.map((note, index) => (
                   <p
                     key={`${item.id}-handover-${index}`}
-                    className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold text-[#b9f42e]"
+                    className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold text-primary"
                   >
                     <ArrowRightLeft className="h-3.5 w-3.5 shrink-0" />
                     {note}
@@ -227,7 +227,7 @@ export default function BrandChat({
                 )}
                 <div
                   className={`whitespace-pre-wrap rounded-xl p-3 text-[13px] leading-6 ${
-                    item.role === "user" ? "bg-[#b9f42e] text-black" : "bg-[#181918] text-zinc-200"
+                    item.role === "user" ? "bg-primary text-black" : "bg-[#181918] text-zinc-200"
                   }`}
                 >
                   {prose || (script ? "Script below." : "")}
@@ -254,13 +254,13 @@ export default function BrandChat({
                 )}
 
                 {script && (
-                  <div className="mt-2 overflow-hidden rounded-xl border border-[#b9f42e]/30 bg-[#b9f42e]/[0.04]">
-                    <p className="border-b border-[#b9f42e]/20 px-3 py-2 text-[11px] font-bold tracking-[.14em] text-[#b9f42e]">SCRIPT</p>
+                  <div className="mt-2 overflow-hidden rounded-xl border border-primary/30 bg-primary/[0.04]">
+                    <p className="border-b border-primary/20 px-3 py-2 text-[11px] font-bold tracking-[.14em] text-primary">SCRIPT</p>
                     <pre className="max-h-72 overflow-auto whitespace-pre-wrap p-3 font-mono text-[12px] leading-6 text-zinc-200">{script}</pre>
                     <button
                       onClick={() => saveScript(item.id, script)}
                       disabled={savingScriptFor === item.id}
-                      className="flex w-full items-center justify-center gap-1.5 border-t border-[#b9f42e]/20 bg-[#b9f42e]/10 px-3 py-2.5 text-[12px] font-bold text-[#b9f42e] hover:bg-[#b9f42e]/20 disabled:opacity-60"
+                      className="flex w-full items-center justify-center gap-1.5 border-t border-primary/20 bg-primary/10 px-3 py-2.5 text-[12px] font-bold text-primary hover:bg-primary/20 disabled:opacity-60"
                     >
                       {savingScriptFor === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
                       Save as draft script
@@ -310,7 +310,7 @@ export default function BrandChat({
             onClick={() => fileInput.current?.click()}
             disabled={uploading}
             title="Attach a product or character image"
-            className="shrink-0 rounded-lg border border-white/[0.08] bg-[#141414] p-2.5 text-zinc-300 hover:border-[#b9f42e]/40 disabled:opacity-60"
+            className="shrink-0 rounded-lg border border-white/[0.08] bg-[#141414] p-2.5 text-zinc-300 hover:border-primary/40 disabled:opacity-60"
           >
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
           </button>
@@ -326,13 +326,13 @@ export default function BrandChat({
             }}
             rows={2}
             placeholder={`Ask ${agent?.name || "the agent"}…`}
-            className="min-h-[44px] w-full resize-y rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2.5 text-[13px] leading-6 outline-none placeholder:text-zinc-600 focus:border-[#b9f42e]/40"
+            className="min-h-[44px] w-full resize-y rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2.5 text-[13px] leading-6 outline-none placeholder:text-zinc-600 focus:border-primary/40"
           />
           <button
             type="submit"
             disabled={sending || !message.trim()}
             aria-label="Send"
-            className="shrink-0 rounded-lg bg-[#b9f42e] p-2.5 text-black disabled:opacity-40"
+            className="shrink-0 rounded-lg bg-primary p-2.5 text-black disabled:opacity-40"
           >
             <Send className="h-4 w-4" />
           </button>

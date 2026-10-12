@@ -34,6 +34,7 @@ import {
   Pencil,
   Plus,
   Send,
+  Square,
   Settings,
   Sparkles,
   Trash2,
@@ -406,6 +407,9 @@ export default function WorkspacePage({
   const voiceStreamRef = useRef<MediaStream | null>(null);
   const hasLoadedRef = useRef(false);
   const loadRef = useRef<(silent?: boolean) => Promise<void>>(async () => {});
+  // The request carrying the turn in flight, so Stop has something to end.
+  const chatAbortRef = useRef<AbortController | null>(null);
+  const [chatStopping, setChatStopping] = useState(false);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     if (chatContainerRef.current) {
@@ -759,7 +763,7 @@ export default function WorkspacePage({
   if (loading)
     return (
       <div className="grid min-h-screen place-items-center bg-[#070807]">
-        <Loader2 className="animate-spin text-[#b9f42e]" />
+        <Loader2 className="animate-spin text-primary" />
       </div>
     );
   if (!data)
@@ -774,11 +778,11 @@ export default function WorkspacePage({
             <button
               type="button"
               onClick={() => void load()}
-              className="shrink-0 whitespace-nowrap rounded-lg bg-[#b9f42e] px-3.5 py-2 text-[12px] font-bold text-black transition duration-press ease-out active:scale-[0.97] lg:px-4 lg:text-sm"
+              className="shrink-0 whitespace-nowrap rounded-lg bg-primary px-3.5 py-2 text-[12px] font-bold text-black transition duration-press ease-out active:scale-[0.97] lg:px-4 lg:text-sm"
             >
               Try again
             </button>
-            <Link href="/studio" className="text-sm text-[#b9f42e]">
+            <Link href="/studio" className="text-sm text-primary">
               Back to Studio
             </Link>
           </div>
@@ -822,6 +826,8 @@ export default function WorkspacePage({
     setComposerChip(null);
     setChatSending(true);
     setChatError(null);
+    const abort = new AbortController();
+    chatAbortRef.current = abort;
     setData((current) => current ? {
       ...current,
       chatMessages: [
@@ -847,6 +853,7 @@ export default function WorkspacePage({
         : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/director-chat`;
       const response = await fetch(chatUrl, {
         method: "POST",
+        signal: abort.signal,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ projectId, episodeId: episode.id, sessionId: data.activeSessionId || chatSessionId || undefined, message: outgoing, mentionedEntityIds, model: directorModel, idempotencyKey: crypto.randomUUID(), stream: true, automated }),
       });
@@ -969,10 +976,43 @@ export default function WorkspacePage({
     } catch (error) {
       setStreamingReply(null);
       notifyCreditBalanceChanged();
-      setChatError(error instanceof Error ? error.message : "AI Director could not respond");
+      // Stopping is the user's own decision, not a failure to report back to them.
+      if (!abort.signal.aborted) setChatError(error instanceof Error ? error.message : "AI Director could not respond");
       await load(true);
     } finally {
+      if (chatAbortRef.current === abort) chatAbortRef.current = null;
       setChatSending(false);
+    }
+  };
+  // Stop ends two things, because a turn is two things: the stream this page
+  // is reading, and the run on the server that outlives it. Dropping only the
+  // stream would free the composer and leave the run going, to be rejoined as
+  // "picking up where the Director left off" a moment later.
+  const stopDirector = async () => {
+    if (chatStopping) return;
+    setChatStopping(true);
+    // Otherwise the loop reads the stopped turn as one that needs a follow-up.
+    setAutopilotEngaged(false);
+    chatAbortRef.current?.abort();
+    try {
+      // Read fresh rather than from state: the run was created by the request
+      // just dropped, so the copy on this page may not have it yet.
+      const query = new URLSearchParams({ ...(episodeId ? { episodeId } : {}), ...(chatSessionId ? { sessionId: chatSessionId } : {}) }).toString();
+      const response = await fetch(`/api/studio/projects/${projectId}${query ? `?${query}` : ""}`, { cache: "no-store" });
+      const workspace = await response.json() as Workspace;
+      const run = (workspace.production?.workflowRuns || []).find((item) => item.session_id === workspace.activeSessionId);
+      if (response.ok && run && !run.completed_at && ["queued", "planning", "running", "retrying"].includes(run.status)) {
+        await fetch(`/api/studio/projects/${projectId}/director/workflows/${run.id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "cancel" }),
+        });
+      }
+    } catch (error) {
+      console.warn("Could not cancel the Director run:", error);
+    } finally {
+      await load(true);
+      setChatStopping(false);
     }
   };
   // Anything the user presses themselves counts as taking part, so a mode left
@@ -1195,7 +1235,7 @@ export default function WorkspacePage({
             <ArrowLeft className="h-4 w-4" />
           </Link>
         )}
-        <Clapperboard className="hidden h-4 w-4 text-[#b9f42e] sm:block" />
+        <Clapperboard className="hidden h-4 w-4 text-primary sm:block" />
         <p className="max-w-[34vw] truncate text-[13px] font-semibold text-zinc-100 sm:max-w-none">{data.project.name}</p>
         <span className="text-zinc-600">/</span>
 
@@ -1203,7 +1243,7 @@ export default function WorkspacePage({
         <div className="relative z-50">
           <button
             onClick={() => setEpisodeMenu((open) => !open)}
-            className="flex shrink-0 items-center gap-1.5 text-[13px] font-medium text-zinc-300 hover:text-[#b9f42e] transition"
+            className="flex shrink-0 items-center gap-1.5 text-[13px] font-medium text-zinc-300 hover:text-primary transition"
           >
             {episode?.name || "Episode 1"}
             <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
@@ -1235,13 +1275,13 @@ export default function WorkspacePage({
                 }}
                 className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-[12px] text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200"
               >
-                <Settings className="h-3.5 w-3.5 text-[#b9f42e]" /> Basic Settings
+                <Settings className="h-3.5 w-3.5 text-primary" /> Basic Settings
               </button>
               <button
                 onClick={createEpisode}
-                className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-[12px] font-bold text-zinc-200 hover:bg-[#b9f42e]/10"
+                className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-[12px] font-bold text-zinc-200 hover:bg-primary/10"
               >
-                <Plus className="h-4 w-4 text-[#b9f42e]" /> Create Next Episode
+                <Plus className="h-4 w-4 text-primary" /> Create Next Episode
               </button>
             </div>
           )}
@@ -1274,9 +1314,9 @@ export default function WorkspacePage({
                     setShowBasicSettings(true);
                     setProjectMenu(false);
                   }}
-                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[11px] font-bold text-zinc-300 hover:bg-white/[0.04] hover:text-[#b9f42e]"
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[11px] font-bold text-zinc-300 hover:bg-white/[0.04] hover:text-primary"
                 >
-                  <Settings className="h-3.5 w-3.5 text-[#b9f42e]" />
+                  <Settings className="h-3.5 w-3.5 text-primary" />
                   <span>Settings</span>
                 </button>
                 <button
@@ -1321,7 +1361,7 @@ export default function WorkspacePage({
             <div key={id} className="flex items-center gap-1.5">
               <button
                 onClick={() => setTab(id)}
-                className={`flex min-h-[38px] items-center gap-1.5 rounded-full px-3 py-2 text-[11px] font-bold transition duration-press ease-out active:scale-[0.97] sm:min-h-0 sm:px-2.5 sm:py-1.5 ${tab === id ? "bg-[#b9f42e] text-black" : "bg-[#141414] text-zinc-300 hover:bg-[#1e1e1e]"}`}
+                className={`flex min-h-[38px] items-center gap-1.5 rounded-full px-3 py-2 text-[11px] font-bold transition duration-press ease-out active:scale-[0.97] sm:min-h-0 sm:px-2.5 sm:py-1.5 ${tab === id ? "bg-primary text-black" : "bg-[#141414] text-zinc-300 hover:bg-[#1e1e1e]"}`}
               >
                 <Icon className="h-3 w-3" />
                 <span>{label}</span>
@@ -1336,7 +1376,7 @@ export default function WorkspacePage({
 
           {/* Hand the project to the AI Director Hub production team */}
           {data.project.enterprise_status ? (
-            <span className="hidden items-center gap-1 rounded-full border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2.5 py-1.5 text-[11px] font-bold text-[#b9f42e] sm:flex" title="This project is with the AI Director Hub production team">
+            <span className="hidden items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-[11px] font-bold text-primary sm:flex" title="This project is with the AI Director Hub production team">
               <BadgeCheck className="h-3 w-3" />
               <span>{data.project.enterprise_status === "delivered" ? "Delivered" : data.project.enterprise_status === "active" ? "Enterprise" : "Enterprise requested"}</span>
             </span>
@@ -1344,7 +1384,7 @@ export default function WorkspacePage({
             <button
               type="button"
               onClick={() => setEnterpriseOpen(true)}
-              className="hidden items-center gap-1 rounded-full border border-[#b9f42e]/25 bg-[#b9f42e]/[0.07] px-2.5 py-1.5 text-[11px] font-bold text-[#b9f42e] transition hover:bg-[#b9f42e]/15 sm:flex"
+              className="hidden items-center gap-1 rounded-full border border-primary/25 bg-primary/[0.07] px-2.5 py-1.5 text-[11px] font-bold text-primary transition hover:bg-primary/15 sm:flex"
               title="Hire the AI Director Hub team to finish this project"
             >
               <BadgeCheck className="h-3 w-3" />
@@ -1371,7 +1411,7 @@ export default function WorkspacePage({
           )}
 
           {/* Credits badge */}
-          <Link href="/studio/credits" className="flex items-center gap-1 rounded-full bg-[#141414] px-2.5 py-1.5 text-[11px] font-bold text-[#b9f42e] hover:bg-[#1e1e1e] transition">
+          <Link href="/studio/credits" className="flex items-center gap-1 rounded-full bg-[#141414] px-2.5 py-1.5 text-[11px] font-bold text-primary hover:bg-[#1e1e1e] transition">
             <Zap className="h-3 w-3" />
             <span>Credits</span>
           </Link>
@@ -1381,7 +1421,7 @@ export default function WorkspacePage({
         <button
           type="button"
           onClick={() => setChatSheetOpen(true)}
-          className="fixed bottom-5 right-5 z-50 flex h-14 min-h-[44px] items-center gap-2 rounded-full bg-[#b9f42e] px-5 text-[13px] font-semibold text-black shadow-[0_10px_30px_-6px_rgba(185,244,46,0.5)] transition-transform duration-press ease-out active:scale-95 xl:hidden"
+          className="fixed bottom-5 right-5 z-50 flex h-14 min-h-[44px] items-center gap-2 rounded-full bg-primary px-5 text-[13px] font-semibold text-black shadow-[0_10px_30px_-6px_rgba(255,255,255,0.5)] transition-transform duration-press ease-out active:scale-95 xl:hidden"
         >
           <Sparkles className="h-4 w-4" />
           Director
@@ -1398,10 +1438,10 @@ export default function WorkspacePage({
                 <button
                   type="button"
                   onClick={() => setShowBasicSettings(true)}
-                  className="flex items-center gap-1.5 rounded-full border border-white/[0.06] bg-[#141414] px-2.5 py-1 text-[11px] font-bold text-zinc-200 hover:border-[#b9f42e]/40 transition"
+                  className="flex items-center gap-1.5 rounded-full border border-white/[0.06] bg-[#141414] px-2.5 py-1 text-[11px] font-bold text-zinc-200 hover:border-primary/40 transition"
                   title="Edit Basic Settings"
                 >
-                  <Settings className="h-3 w-3 text-[#b9f42e]" />
+                  <Settings className="h-3 w-3 text-primary" />
                   <span>{data.project.default_aspect || "9:16"}</span>
                 </button>
                 <span className="text-[10px] text-zinc-700">•</span>
@@ -1539,13 +1579,13 @@ export default function WorkspacePage({
               />
             )}
             <div className="flex items-center gap-2 text-[12px] text-zinc-400">
-              <Bot className="h-4 w-4 text-[#b9f42e]" />
+              <Bot className="h-4 w-4 text-primary" />
               <span className="font-bold text-zinc-200">AI Director</span>
               <div className="relative ml-auto flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setChatSessionMenu((open) => !open)}
-                  className="flex max-w-[190px] items-center gap-2 rounded-lg border border-white/[0.08] bg-[#141414] px-2.5 py-1.5 text-[11px] font-semibold text-zinc-300 hover:border-[#b9f42e]/40"
+                  className="flex max-w-[190px] items-center gap-2 rounded-lg border border-white/[0.08] bg-[#141414] px-2.5 py-1.5 text-[11px] font-semibold text-zinc-300 hover:border-primary/40"
                 >
                   <span className="truncate">{data.chatSessions.find((session) => session.id === data.activeSessionId)?.title || "Current chat"}</span>
                   <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
@@ -1553,7 +1593,7 @@ export default function WorkspacePage({
                 <button
                   type="button"
                   onClick={createChatSession}
-                  className="rounded-lg border border-white/[0.08] bg-[#141414] px-2.5 py-1.5 text-[11px] font-bold text-zinc-100 hover:border-[#b9f42e]/40 hover:text-[#b9f42e]"
+                  className="rounded-lg border border-white/[0.08] bg-[#141414] px-2.5 py-1.5 text-[11px] font-bold text-zinc-100 hover:border-primary/40 hover:text-primary"
                 >
                   New Chat
                 </button>
@@ -1567,7 +1607,7 @@ export default function WorkspacePage({
                           setChatSessionId(session.id);
                           setChatSessionMenu(false);
                         }}
-                        className={`block w-full rounded-lg px-3 py-2 text-left text-[12px] ${session.id === data.activeSessionId ? "bg-[#b9f42e] text-black" : "text-zinc-300 hover:bg-white/10"}`}
+                        className={`block w-full rounded-lg px-3 py-2 text-left text-[12px] ${session.id === data.activeSessionId ? "bg-primary text-black" : "text-zinc-300 hover:bg-white/10"}`}
                       >
                         <span className="block truncate font-bold">{session.title || "AI Director"}</span>
                         <span className="mt-0.5 block truncate text-[10px] opacity-70">{session.model || "Studio chat"}</span>
@@ -1594,7 +1634,7 @@ export default function WorkspacePage({
             {data.chatMessages.map((item) => (
               <div
                 key={item.id}
-                className={`mt-3 max-w-[90%] rounded-xl p-3 text-[13px] ${item.role === "user" ? "ml-auto bg-[#b9f42e] text-black" : "bg-[#1a1a1a] text-zinc-200"}`}
+                className={`mt-3 max-w-[90%] rounded-xl p-3 text-[13px] ${item.role === "user" ? "ml-auto bg-primary text-black" : "bg-[#1a1a1a] text-zinc-200"}`}
               >
                 {item.content}
                 {item.role === "assistant" && item.workflow_run_id && <ChatRunStatus run={(data.production?.workflowRuns || []).find((run) => run.id === item.workflow_run_id)} />}
@@ -1692,7 +1732,7 @@ export default function WorkspacePage({
               onModeChange={changeAutopilotMode}
             />
             {chatError && <div role="alert" className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-[12px] text-red-200"><p>{chatError}</p>{/subscri|API key/i.test(chatError) && <div className="mt-3 flex gap-3"><Link href="/billing" className="rounded-lg bg-primary px-3 py-2 font-semibold text-black">Subscribe to All Access</Link><Link href="/studio/integrations" className="rounded-lg border border-white/20 px-3 py-2 text-white">Connect API keys</Link></div>}</div>}
-            {voiceState !== "idle" && <p className={`mt-3 rounded-lg border p-2.5 text-[12px] ${voiceState === "connected" ? "border-[#b9f42e]/30 bg-[#b9f42e]/10 text-[#d9ff84]" : "border-white/[0.06] bg-white/[0.03] text-zinc-300"}`}>{voiceState === "connecting" ? "Connecting your AI Voice Director…" : voiceState === "connected" ? "AI Voice Director is listening. You can speak naturally." : voiceError}</p>}
+            {voiceState !== "idle" && <p className={`mt-3 rounded-lg border p-2.5 text-[12px] ${voiceState === "connected" ? "border-primary/30 bg-primary/10 text-white" : "border-white/[0.06] bg-white/[0.03] text-zinc-300"}`}>{voiceState === "connecting" ? "Connecting your AI Voice Director…" : voiceState === "connected" ? "AI Voice Director is listening. You can speak naturally." : voiceError}</p>}
             <div ref={chatEndRef} />
 
             {/* Floating button with down arrow when user is scrolled up */}
@@ -1700,7 +1740,7 @@ export default function WorkspacePage({
               <button
                 type="button"
                 onClick={() => scrollToBottom("smooth")}
-                className="sticky bottom-3 float-right z-30 flex items-center gap-1.5 rounded-full border border-[#b9f42e]/50 bg-[#141514]/95 px-3 py-1.5 text-xs font-extrabold text-[#b9f42e] shadow-2xl backdrop-blur-md transition hover:bg-[#b9f42e] hover:text-black active:scale-[0.98]"
+                className="sticky bottom-3 float-right z-30 flex items-center gap-1.5 rounded-full border border-primary/50 bg-[#141514]/95 px-3 py-1.5 text-xs font-extrabold text-primary shadow-2xl backdrop-blur-md transition hover:bg-primary hover:text-black active:scale-[0.98]"
                 aria-label="Scroll to bottom of chat"
               >
                 <ArrowDown className="h-3.5 w-3.5" />
@@ -1770,7 +1810,7 @@ export default function WorkspacePage({
                     setDirectorModel(event.target.value);
                     localStorage.setItem(directorModelStorageKey, event.target.value);
                   }}
-                  className="rounded-full border border-white/[0.06] bg-[#141414] px-2.5 py-1 text-[11px] font-medium text-zinc-300 outline-none hover:border-[#b9f42e]/40"
+                  className="rounded-full border border-white/[0.06] bg-[#141414] px-2.5 py-1 text-[11px] font-medium text-zinc-300 outline-none hover:border-primary/40"
                 >
                   {directorModels.map((modelOption) => (
                     <option key={modelOption.id} value={modelOption.id}>
@@ -1783,9 +1823,18 @@ export default function WorkspacePage({
                 {/* The Voice Director is hidden for now. The button, its state, and
                     the WebRTC session it opens are all still here — putting it back
                     is restoring this one element, not rebuilding the feature. */}
-                <button type="submit" disabled={chatSending} aria-label="Send message to AI Director" className="rounded-full bg-[#b9f42e] p-2 text-black disabled:opacity-50">
-                  {chatSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                </button>
+                {/* While a turn is running this is the way out of it. A spinner
+                    in the send button's place said the Director was busy and
+                    offered nothing to do about it. */}
+                {chatSending || activeRun ? (
+                  <button type="button" onClick={() => void stopDirector()} disabled={chatStopping} aria-label="Stop the AI Director" title="Stop" className="touch-target grid place-items-center rounded-full bg-white p-2 text-black transition hover:bg-zinc-200 disabled:opacity-50">
+                    {chatStopping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3.5 w-3.5 fill-current" />}
+                  </button>
+                ) : (
+                  <button type="submit" aria-label="Send message to AI Director" className="rounded-full bg-primary p-2 text-black disabled:opacity-50">
+                    <Send className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
             </div>
           </form>
@@ -1833,13 +1882,13 @@ function ProductionOverview({ data }: { data: Workspace }) {
       <section className="rounded-2xl border border-white/10 bg-[#121412] p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-bold tracking-[.2em] text-[#b9f42e]">PROJECT OVERVIEW</p>
+            <p className="text-xs font-bold tracking-[.2em] text-primary">PROJECT OVERVIEW</p>
             <h2 className="mt-2 text-2xl font-bold">{data.project.name}</h2>
             <p className="mt-2 text-sm text-zinc-400">{data.project.production_mode || "Legacy project"} · {data.project.project_type || "Unspecified type"}</p>
           </div>
-          <div className="rounded-xl border border-[#b9f42e]/30 bg-[#b9f42e]/5 px-4 py-3 text-right">
+          <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-right">
             <p className="text-xs text-zinc-500">AVAILABLE CREDITS</p>
-            <p className="text-xl font-bold text-[#b9f42e]">{production.creditAccount ? production.creditAccount.balance - production.creditAccount.reserved : "—"}</p>
+            <p className="text-xl font-bold text-primary">{production.creditAccount ? production.creditAccount.balance - production.creditAccount.reserved : "—"}</p>
             <p className="text-xs text-zinc-500">{production.creditAccount?.reserved || 0} reserved</p>
           </div>
         </div>
@@ -1940,7 +1989,7 @@ function Canvas({
             <path
               d="M305 220 C430 220 440 380 555 380 S690 340 760 340"
               fill="none"
-              stroke="#b9f42e"
+              stroke="#f5f5f5"
               strokeOpacity=".45"
               strokeDasharray="5 8"
               strokeWidth="2"
@@ -1982,7 +2031,7 @@ function Canvas({
             <div className="mt-3 grid grid-cols-3 gap-2">
               {(["character", "scene", "prop"] as const).map((kind) => (
                 <div key={kind} className="rounded-lg bg-black/30 p-2">
-                  <p className="text-lg font-bold text-[#b9f42e]">
+                  <p className="text-lg font-bold text-primary">
                     {data.entities.filter((e) => e.type === kind).length}
                   </p>
                   <p className="text-[10px] text-zinc-500">
@@ -2015,7 +2064,7 @@ function Canvas({
                   key={shot.id}
                   className="aspect-[9/11] overflow-hidden rounded-lg bg-gradient-to-br from-[#314656] to-[#161b1c] p-2"
                 >
-                  <span className="rounded bg-black/40 px-1.5 py-1 text-[10px] font-bold text-[#b9f42e]">
+                  <span className="rounded bg-black/40 px-1.5 py-1 text-[10px] font-bold text-primary">
                     {index + 1}
                   </span>
                   <p className="mt-6 line-clamp-2 text-[10px] text-zinc-300">
@@ -2057,17 +2106,17 @@ function Canvas({
         <div className="fixed bottom-5 left-5 z-10 flex items-center gap-3 rounded-xl border border-white/10 bg-[#151715]/95 p-2 text-sm shadow-xl">
           <button
             onClick={() => zoomTo(zoom - 0.1)}
-            className="px-2 text-zinc-300 hover:text-[#b9f42e]"
+            className="px-2 text-zinc-300 hover:text-primary"
             aria-label="Zoom out"
           >
             −
           </button>
-          <span className="min-w-11 text-center text-[#b9f42e]">
+          <span className="min-w-11 text-center text-primary">
             {Math.round(zoom * 100)}%
           </span>
           <button
             onClick={() => zoomTo(zoom + 0.1)}
-            className="px-2 text-zinc-300 hover:text-[#b9f42e]"
+            className="px-2 text-zinc-300 hover:text-primary"
             aria-label="Zoom in"
           >
             +
@@ -2110,14 +2159,14 @@ function CanvasNode({
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] font-bold tracking-[.18em] text-[#b9f42e]">
+          <p className="text-[10px] font-bold tracking-[.18em] text-primary">
             {eyebrow}
           </p>
           <h3 className="mt-1 font-bold">{title}</h3>
         </div>
         <button
           onClick={onClick}
-          className="rounded-lg bg-white/5 px-2 py-1 text-xs text-zinc-300 hover:bg-[#b9f42e] hover:text-black"
+          className="rounded-lg bg-white/5 px-2 py-1 text-xs text-zinc-300 hover:bg-primary hover:text-black"
         >
           {action}
         </button>
@@ -2157,13 +2206,13 @@ function Script({
     <div className="space-y-4 lg:space-y-5">
       <section className="border border-white/10 bg-[#0b0c0b] p-6 sm:p-9">
         <div className="mb-7 flex items-start justify-between gap-4">
-          <p className="text-xs font-bold tracking-[.2em] text-[#b9f42e]">
+          <p className="text-xs font-bold tracking-[.2em] text-primary">
             PRODUCTION SCRIPT
           </p>
           <button
             onClick={submit}
             disabled={saving}
-            className="shrink-0 whitespace-nowrap rounded-lg bg-[#b9f42e] px-3.5 py-2 text-[12px] font-bold text-black transition duration-press ease-out active:scale-[0.97] lg:px-4 lg:text-sm"
+            className="shrink-0 whitespace-nowrap rounded-lg bg-primary px-3.5 py-2 text-[12px] font-bold text-black transition duration-press ease-out active:scale-[0.97] lg:px-4 lg:text-sm"
           >
             {saving ? "Saving…" : "Save script"}
           </button>
@@ -2183,7 +2232,7 @@ function Script({
           className="mt-7 min-h-36 w-full resize-y bg-transparent text-lg leading-8 text-zinc-300 outline-none placeholder:text-zinc-600"
         />
         <div className="mt-7 border-t border-slate-700/70 pt-7">
-          <label className="t-caption text-[#b9f42e]">
+          <label className="t-caption text-primary">
             Full script
           </label>
           <textarea
@@ -2201,9 +2250,9 @@ function Script({
         .map((s) => (
           <section
             key={s.id}
-            className="border border-[#b9f42e]/35 bg-[#b9f42e]/5 p-5"
+            className="border border-primary/35 bg-primary/5 p-5"
           >
-            <p className="font-bold text-[#b9f42e]">
+            <p className="font-bold text-primary">
               AI Director draft — review required
             </p>
             <p className="mt-1 text-sm text-zinc-400">{s.summary}</p>
@@ -2220,7 +2269,7 @@ function Script({
                   });
                   await reload();
                 }}
-                className="rounded-lg bg-[#b9f42e] px-3 py-2 text-sm font-bold text-black"
+                className="rounded-lg bg-primary px-3 py-2 text-sm font-bold text-black"
               >
                 Accept update
               </button>
@@ -2295,7 +2344,7 @@ function Assets({
             </div>
             <button
               onClick={() => openAdd(type)}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#b9f42e] px-3 py-2 text-sm font-bold text-black"
+              className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-bold text-black"
             >
               <Plus className="h-4 w-4" /> Add
             </button>
@@ -2331,7 +2380,7 @@ function Assets({
             {!entities.some((e) => e.type === type) && (
               <button
                 onClick={() => openAdd(type)}
-                className="min-h-40 rounded-xl border border-dashed border-white/15 p-6 text-left text-sm text-zinc-500 hover:border-[#b9f42e]/50"
+                className="min-h-40 rounded-xl border border-dashed border-white/15 p-6 text-left text-sm text-zinc-500 hover:border-primary/50"
               >
                 Add your first {type}. The AI Director can later suggest missing
                 assets from your script.
@@ -2376,7 +2425,7 @@ function AssetCard({
   const [editing, setEditing] = useState(false);
   const imageGenerationStatus = generating ? "generating" : entityImageGenerationStatus(entity);
   return (
-    <article className="relative overflow-hidden rounded-xl border border-white/10 bg-[#1b1d1c] transition hover:border-[#b9f42e]/55">
+    <article className="relative overflow-hidden rounded-xl border border-white/10 bg-[#1b1d1c] transition hover:border-primary/55">
       <button onClick={openWorkspace} className="block w-full text-left">
         <AssetImage src={entity.reference_images?.[0]} />
       </button>
@@ -2384,11 +2433,11 @@ function AssetCard({
         <div className="flex justify-between gap-2">
           <button
             onClick={openWorkspace}
-            className="font-bold hover:text-[#b9f42e]"
+            className="font-bold hover:text-primary"
           >
             {entity.name}
           </button>
-          <span className="rounded-full bg-[#b9f42e]/10 px-2 py-1 text-[10px] font-bold text-[#b9f42e]">
+          <span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-bold text-primary">
             {entity.status}
           </span>
         </div>
@@ -2410,7 +2459,7 @@ function AssetCard({
               });
               reload();
             }}
-            className="text-sm font-semibold text-[#b9f42e]"
+            className="text-sm font-semibold text-primary"
           >
             Redo
           </button>
@@ -2421,9 +2470,9 @@ function AssetCard({
         // asset: opening it is how you watch the attempt, queue the next prompt
         // or fix the description. The card's own buttons stay live underneath.
         <div className="pointer-events-none absolute inset-0 grid place-items-center overflow-hidden bg-black/65 backdrop-blur-[1px]">
-          <span aria-hidden="true" className="pointer-events-none absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-[#b9f42e]/20 to-transparent" />
+          <span aria-hidden="true" className="pointer-events-none absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
           <div className="flex flex-col items-center gap-1.5">
-            <div className="flex items-center gap-2 rounded-full border border-[#b9f42e]/35 bg-[#151715] px-3 py-2 text-xs font-bold text-[#d9ff84]">
+            <div className="flex items-center gap-2 rounded-full border border-primary/35 bg-[#151715] px-3 py-2 text-xs font-bold text-white">
               <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" /><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></svg>
               Generating reference image…
             </div>
@@ -2575,7 +2624,7 @@ function ModelMenu({
         className={
           inline
             ? "flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-white transition outline-none"
-            : "mt-2 flex w-full items-center justify-between rounded-xl border border-white/10 bg-[#0b0c0b] px-3 py-3 text-left text-sm font-bold text-white outline-none hover:border-[#b9f42e]/50"
+            : "mt-2 flex w-full items-center justify-between rounded-xl border border-white/10 bg-[#0b0c0b] px-3 py-3 text-left text-sm font-bold text-white outline-none hover:border-primary/50"
         }
       >
         {inline ? (
@@ -2591,7 +2640,7 @@ function ModelMenu({
               <span className="truncate">{selected.label}</span>
             </span>
             <div className="flex items-center gap-2">
-              <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-xs font-bold text-[#b9f42e]">
+              <span className="rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">
                 ⚡ {calculateCreditCost(selected.id, type, options?.durationSeconds || 5, options)} Credits
               </span>
               <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition ${open ? "rotate-180" : ""}`} />
@@ -2627,7 +2676,7 @@ function ModelMenu({
                             className={`mt-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${isSelected ? "bg-[#fff878] font-bold text-black" : "text-zinc-300 hover:bg-white/5"}`}
                           >
                             <span className="min-w-0">{modelOption.label}</span>
-                            <span className={`ml-2 shrink-0 whitespace-nowrap text-xs font-semibold ${isSelected ? "text-black" : "text-[#b9f42e]"}`}>
+                            <span className={`ml-2 shrink-0 whitespace-nowrap text-xs font-semibold ${isSelected ? "text-black" : "text-primary"}`}>
                               ⚡ {cost} Credits
                             </span>
                           </button>
@@ -2685,7 +2734,7 @@ function CostBar({ data }: { data: Workspace }) {
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="flex items-center gap-1.5 rounded-full border border-[#b9f42e]/20 bg-[#b9f42e]/[0.06] px-2.5 py-1 text-[11px] font-bold text-[#b9f42e] transition hover:border-[#b9f42e]/50"
+        className="flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/[0.06] px-2.5 py-1 text-[11px] font-bold text-primary transition hover:border-primary/50"
         title="Estimated and actual credit cost for this episode"
       >
         <Zap className="h-3 w-3" />
@@ -2749,7 +2798,7 @@ function CostBar({ data }: { data: Workspace }) {
 
             <div className="flex items-center justify-between py-2">
               <span className="text-xs font-bold text-zinc-200">Remaining</span>
-              <span className="text-sm font-bold text-[#b9f42e]">⚡ {estimate.remainingCredits.toLocaleString()} <span className="text-[11px] font-medium text-zinc-500">≈ {money(estimate.remainingCredits)}</span></span>
+              <span className="text-sm font-bold text-primary">⚡ {estimate.remainingCredits.toLocaleString()} <span className="text-[11px] font-medium text-zinc-500">≈ {money(estimate.remainingCredits)}</span></span>
             </div>
             <p className="text-[11px] text-zinc-600">Whole episode from scratch: ⚡ {estimate.totalCredits.toLocaleString()}</p>
 
@@ -3001,7 +3050,7 @@ function BasicSettingsModal({
               value={projectName}
               onChange={(event) => setProjectName(event.target.value)}
               maxLength={160}
-              className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-[#b9f42e]"
+              className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-primary"
               placeholder="Name this production"
             />
           </div>
@@ -3033,7 +3082,7 @@ function BasicSettingsModal({
               <select
                 value={aspectRatio}
                 onChange={(e) => setAspectRatio(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-[#b9f42e]"
+                className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-primary"
               >
                 <option value="9:16">9:16 (Vertical)</option>
                 <option value="16:9">16:9 (Horizontal)</option>
@@ -3049,7 +3098,7 @@ function BasicSettingsModal({
               <select
                 value={resolution}
                 onChange={(e) => setResolution(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-[#b9f42e]"
+                className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-primary"
               >
                 <option value="720p">720p (HD)</option>
                 <option value="1080p">1080p (FHD)</option>
@@ -3064,7 +3113,7 @@ function BasicSettingsModal({
               <select
                 value={storyboardImageModel}
                 onChange={(e) => setStoryboardImageModel(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-[#b9f42e]"
+                className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-primary"
               >
                 {imageGenerationModels.map((m) => (
                   <option key={m.id} value={m.id}>{m.label}</option>
@@ -3081,7 +3130,7 @@ function BasicSettingsModal({
               <select
                 value={characterImageModel}
                 onChange={(e) => setCharacterImageModel(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-[#b9f42e]"
+                className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-primary"
               >
                 {imageGenerationModels.map((m) => (
                   <option key={m.id} value={m.id}>{m.label}</option>
@@ -3095,7 +3144,7 @@ function BasicSettingsModal({
               <select
                 value={imageQuality}
                 onChange={(e) => setImageQuality(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-[#b9f42e]"
+                className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-primary"
               >
                 <option value="Low">Low (⚡ fastest, cheapest)</option>
                 <option value="Medium">Medium (balanced)</option>
@@ -3121,7 +3170,7 @@ function BasicSettingsModal({
               <select
                 value={videoModel}
                 onChange={(e) => setVideoModel(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-[#b9f42e]"
+                className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-primary"
               >
                 {videoGenerationModels.map((m) => (
                   <option key={m.id} value={m.id}>{m.label} (⚡ 10s ≈ 160 credits)</option>
@@ -3136,7 +3185,7 @@ function BasicSettingsModal({
                 <button
                   type="button"
                   onClick={() => setGenerateAudio(!generateAudio)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${generateAudio ? "bg-[#b9f42e]" : "bg-white/20"}`}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${generateAudio ? "bg-primary" : "bg-white/20"}`}
                 >
                   <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-black shadow transform ring-0 transition duration-200 ease-in-out ${generateAudio ? "translate-x-5" : "translate-x-0"}`} />
                 </button>
@@ -3151,7 +3200,7 @@ function BasicSettingsModal({
               <select
                 value={workflowApplyMode}
                 onChange={(event) => setWorkflowApplyMode(event.target.value === "episode" ? "episode" : "project_default")}
-                className="rounded-lg border border-white/10 bg-[#0b0c0b] px-3 py-2 text-xs font-bold text-zinc-300 outline-none focus:border-[#b9f42e]"
+                className="rounded-lg border border-white/10 bg-[#0b0c0b] px-3 py-2 text-xs font-bold text-zinc-300 outline-none focus:border-primary"
               >
                 <option value="project_default">Apply to this episode + future/default episodes</option>
                 <option value="episode">Apply only to this episode</option>
@@ -3166,13 +3215,13 @@ function BasicSettingsModal({
                     key={item.id}
                     type="button"
                     onClick={() => setWorkflow(item.id)}
-                    className={`flex items-start gap-3 rounded-xl border p-4 text-left transition ${isSelected ? "border-[#b9f42e] bg-[#b9f42e]/10" : "border-white/10 bg-white/5 hover:border-white/20"}`}
+                    className={`flex items-start gap-3 rounded-xl border p-4 text-left transition ${isSelected ? "border-primary bg-primary/10" : "border-white/10 bg-white/5 hover:border-white/20"}`}
                   >
-                    <div className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg ${isSelected ? "bg-[#b9f42e] text-black" : "bg-white/10 text-zinc-400"}`}>
+                    <div className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg ${isSelected ? "bg-primary text-black" : "bg-white/10 text-zinc-400"}`}>
                       <Icon className="h-4 w-4" />
                     </div>
                     <div>
-                      <h4 className={`text-sm font-bold ${isSelected ? "text-[#b9f42e]" : "text-white"}`}>{item.title}</h4>
+                      <h4 className={`text-sm font-bold ${isSelected ? "text-primary" : "text-white"}`}>{item.title}</h4>
                       <p className="mt-1 text-xs leading-relaxed text-zinc-400">{item.description}</p>
                       {item.skill && <p className="mt-2 line-clamp-2 text-[11px] leading-5 text-zinc-500">{item.skill}</p>}
                     </div>
@@ -3196,7 +3245,7 @@ function BasicSettingsModal({
                   type="checkbox"
                   checked={cameraDefaultsEnabled}
                   onChange={(event) => setCameraDefaultsEnabled(event.target.checked)}
-                  className="h-3.5 w-3.5 accent-[#b9f42e]"
+                  className="h-3.5 w-3.5 accent-primary"
                 />
                 Set one for this project
               </label>
@@ -3224,7 +3273,7 @@ function BasicSettingsModal({
                     key={style.id}
                     type="button"
                     onClick={() => setVisualStyle(style.id)}
-                    className={`group relative overflow-hidden rounded-xl border-2 text-left transition aspect-[4/3] ${isSelected ? "border-[#b9f42e] ring-2 ring-[#b9f42e]/40" : "border-white/10 hover:border-white/30"}`}
+                    className={`group relative overflow-hidden rounded-xl border-2 text-left transition aspect-[4/3] ${isSelected ? "border-primary ring-2 ring-primary/40" : "border-white/10 hover:border-white/30"}`}
                   >
                     <img src={style.img} alt={style.label} className="h-full w-full object-cover transition group-active:scale-[0.98]" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
@@ -3233,7 +3282,7 @@ function BasicSettingsModal({
                         🔥 Hot
                       </span>
                     )}
-                    <span className={`absolute bottom-2 left-2 right-2 truncate text-xs font-bold ${isSelected ? "text-[#b9f42e]" : "text-white"}`}>
+                    <span className={`absolute bottom-2 left-2 right-2 truncate text-xs font-bold ${isSelected ? "text-primary" : "text-white"}`}>
                       {style.label}
                     </span>
                   </button>
@@ -3255,7 +3304,7 @@ function BasicSettingsModal({
           <button
             onClick={confirmSettings}
             disabled={saving}
-            className="flex items-center gap-2 rounded-xl bg-[#b9f42e] px-8 py-3 text-sm font-semibold text-black hover:bg-[#a6de25] transition disabled:opacity-50"
+            className="flex items-center gap-2 rounded-xl bg-primary px-8 py-3 text-sm font-semibold text-black hover:bg-white transition disabled:opacity-50"
           >
             {saving ? "Saving…" : "✓ Confirm"}
           </button>
@@ -3538,7 +3587,7 @@ function AssetWorkspace({
                   {attempt.status === "generating" ? (
                     <div className="grid aspect-[3/4] place-items-center bg-black/40">
                       <div className="flex flex-col items-center gap-2">
-                        <Loader2 className="h-6 w-6 animate-spin text-[#b9f42e]" />
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
                         <span className="text-[10px] text-zinc-400">Generating…</span>
                       </div>
                     </div>
@@ -3736,7 +3785,7 @@ function AssetWorkspace({
           >
             <X className="h-5 w-5" />
           </button>
-          <label className="grid aspect-[3/4] w-[72px] shrink-0 cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-[11px] text-zinc-400 transition hover:border-[#b9f42e] lg:mb-4 lg:w-auto lg:text-xs">
+          <label className="grid aspect-[3/4] w-[72px] shrink-0 cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-[11px] text-zinc-400 transition hover:border-primary lg:mb-4 lg:w-auto lg:text-xs">
             +<br />Upload
             <input type="file" accept="image/*" className="hidden" onChange={(e) => uploadImage(e.target.files?.[0], "library")} />
           </label>
@@ -3759,7 +3808,7 @@ function AssetWorkspace({
                     }}
                     className={`block w-[72px] shrink-0 overflow-hidden rounded-xl border-2 transition text-left lg:w-full ${
                       isChosen
-                        ? "border-[#b9f42e] ring-2 ring-[#b9f42e]/40"
+                        ? "border-primary ring-2 ring-primary/40"
                         : isSel
                         ? "border-white/60"
                         : "border-white/10 hover:border-white/25"
@@ -3767,7 +3816,7 @@ function AssetWorkspace({
                   >
                     <AssetImage src={image} />
                     {isChosen && (
-                      <span className="absolute left-1 top-1 rounded-md bg-[#b9f42e] px-1 py-0.5 text-[10px] font-bold leading-none text-black shadow lg:left-1.5 lg:top-1.5 lg:px-1.5">
+                      <span className="absolute left-1 top-1 rounded-md bg-primary px-1 py-0.5 text-[10px] font-bold leading-none text-black shadow lg:left-1.5 lg:top-1.5 lg:px-1.5">
                         ✓<span className="hidden lg:inline"> CHOSEN</span>
                       </span>
                     )}
@@ -3784,7 +3833,7 @@ function AssetWorkspace({
           {/* Top Bar Actions */}
           <header className="flex h-16 items-center gap-3 border-b border-white/10 px-6 bg-[#0b0c0b]">
             {isCurrentlyChosen ? (
-              <span className="flex items-center gap-1.5 rounded-lg border border-[#b9f42e]/50 bg-[#b9f42e]/20 px-4 py-2 text-xs font-semibold text-[#b9f42e]">
+              <span className="flex items-center gap-1.5 rounded-lg border border-primary/50 bg-primary/20 px-4 py-2 text-xs font-semibold text-primary">
                 ✓ Chosen Concept
               </span>
             ) : (
@@ -3792,7 +3841,7 @@ function AssetWorkspace({
                 type="button"
                 onClick={chooseSelectedImage}
                 disabled={working || !activeImage}
-                className="flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-4 py-2 text-xs font-semibold text-black hover:bg-[#a6de25] transition shadow-lg disabled:opacity-40"
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-black hover:bg-white transition shadow-lg disabled:opacity-40"
               >
                 ✓ Choose
               </button>
@@ -3828,7 +3877,7 @@ function AssetWorkspace({
                 type="button"
                 onClick={() => setDrawing(true)}
                 disabled={working}
-                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-zinc-200 hover:border-[#b9f42e]/40 hover:text-[#b9f42e] transition disabled:opacity-40"
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-zinc-200 hover:border-primary/40 hover:text-primary transition disabled:opacity-40"
                 title="Draw on this image and describe the edit"
               >
                 <Pencil className="h-3.5 w-3.5" />
@@ -3877,7 +3926,7 @@ function AssetWorkspace({
               {activeAttempt?.status === "generating" || (working && !activeImage) ? (
                 <div className={`grid place-items-center p-8 ${aspectRatio === "9:16" ? "aspect-[9/16] h-[55vh] max-h-[580px]" : "aspect-[16/9] w-full max-w-[640px]"}`}>
                   <div className="flex flex-col items-center gap-4">
-                    <svg className="h-12 w-12 animate-spin text-[#b9f42e]" viewBox="0 0 24 24" fill="none">
+                    <svg className="h-12 w-12 animate-spin text-primary" viewBox="0 0 24 24" fill="none">
                       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="opacity-20" />
                       <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
                     </svg>
@@ -3902,7 +3951,7 @@ function AssetWorkspace({
               {(activeImage || activeAttempt) && (
                 <div className="w-full border-t border-white/10 bg-black/60 p-4 rounded-b-xl">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-[10px] font-bold text-[#b9f42e]">
+                    <p className="text-[10px] font-bold text-primary">
                       PROMPT USED
                     </p>
                     <span className="flex flex-wrap items-center gap-2">
@@ -3911,7 +3960,7 @@ function AssetWorkspace({
                           className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[11px] font-semibold text-zinc-300"
                           title="The camera package this image was generated with"
                         >
-                          <Aperture className="h-3 w-3 text-[#b9f42e]" />
+                          <Aperture className="h-3 w-3 text-primary" />
                           {describeCameraSettings(recipeByImage.get(activeImage)!.camera!)}
                         </span>
                       )}
@@ -3922,11 +3971,11 @@ function AssetWorkspace({
                             ? `This image used the extracted Look & Feel description. ${recipeByImage.get(activeImage)!.styleDna!.overrideProjectStyle ? "The description decided the medium." : "The Visual Style setting decided the medium; the description supplied palette, light and texture."}`
                             : "No look reference was applied. This image followed the Visual Style setting alone."}
                         >
-                          <Palette className={`h-3 w-3 ${recipeByImage.get(activeImage)?.styleDna ? "text-[#b9f42e]" : "text-zinc-600"}`} />
+                          <Palette className={`h-3 w-3 ${recipeByImage.get(activeImage)?.styleDna ? "text-primary" : "text-zinc-600"}`} />
                           {describeStyleDna(recipeByImage.get(activeImage)?.styleDna, recipeByImage.get(activeImage)?.styleReferences.length || 0)}
                         </span>
                       )}
-                      <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-[11px] font-bold text-[#b9f42e]">
+                      <span className="rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">
                         Model: {getModelLabel(activeAttempt?.model || model)}{quality ? ` · ${quality}` : ""}
                       </span>
                     </span>
@@ -3945,7 +3994,7 @@ function AssetWorkspace({
         <button
           type="button"
           onClick={() => document.getElementById("asset-generate-controls")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-          className="fixed bottom-5 right-5 z-[60] flex h-14 min-h-[44px] items-center gap-2 rounded-full bg-[#b9f42e] px-5 text-[13px] font-semibold text-black shadow-[0_10px_30px_-6px_rgba(185,244,46,0.5)] transition-transform duration-press ease-out active:scale-95 lg:hidden"
+          className="fixed bottom-5 right-5 z-[60] flex h-14 min-h-[44px] items-center gap-2 rounded-full bg-primary px-5 text-[13px] font-semibold text-black shadow-[0_10px_30px_-6px_rgba(255,255,255,0.5)] transition-transform duration-press ease-out active:scale-95 lg:hidden"
         >
           <WandSparkles className="h-4 w-4" />
           Generate
@@ -3953,7 +4002,7 @@ function AssetWorkspace({
         <aside id="asset-generate-controls" className="flex w-full shrink-0 scroll-mt-4 flex-col border-t border-white/10 bg-[#151715] lg:w-[420px] lg:border-l lg:border-t-0">
           <div className="flex items-start justify-between p-6 border-b border-white/10">
             <div>
-              <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">
+              <p className="text-xs font-bold tracking-[.18em] text-primary">
                 {asset.type}
               </p>
               <h2 className="mt-1 text-2xl font-semibold">{asset.name}</h2>
@@ -4077,7 +4126,7 @@ function AssetWorkspace({
 
                 <div className="flex items-center gap-3 pl-2">
                   <span
-                    className={`text-xs font-semibold ${generationSource.ownKey ? "text-[#b9f42e]" : "text-zinc-400"}`}
+                    className={`text-xs font-semibold ${generationSource.ownKey ? "text-primary" : "text-zinc-400"}`}
                     title={generationSource.ownKey
                       ? `Runs on your own ${generationSource.provider} key. Billed by them, no studio credits.`
                       : "Runs on studio credits."}
@@ -4086,7 +4135,7 @@ function AssetWorkspace({
                       ? "\u{1F511} Your key"
                       : <><Sparkles className="mb-0.5 inline h-3 w-3" /> {currentCreditCost}</>}
                   </span>
-                  {generationSource.requiresKey && <a href="/studio/integrations" className="text-xs text-[#b9f42e] underline">Connect API key</a>}
+                  {generationSource.requiresKey && <a href="/studio/integrations" className="text-xs text-primary underline">Connect API key</a>}
                   {creditsBlocked ? (
                     <button
                       disabled
@@ -4111,7 +4160,7 @@ function AssetWorkspace({
 
             <GenerationRecovery jobs={generationJobs.filter(job => job.entity_id === asset.id && job.type === "image")} projectId={projectId} reload={reload} />
             {persistedGenerationStatus === "generating" && !working && (
-              <p role="status" className="mt-4 rounded-xl border border-[#b9f42e]/25 bg-[#b9f42e]/[0.07] p-3 text-xs text-[#d9ff84]">
+              <p role="status" className="mt-4 rounded-xl border border-primary/25 bg-primary/[0.07] p-3 text-xs text-white">
                 An earlier image for this asset is still rendering — it will drop into the gallery on its own. You can start another one now.
               </p>
             )}
@@ -4123,7 +4172,7 @@ function AssetWorkspace({
             
             {creditsBlocked && !generationSource.requiresKey && (
               <p className="mt-4 text-center text-xs text-amber-300">
-                Insufficient credits (⚡ {currentCreditCost} needed). <a href="/studio/credits" className="font-bold underline hover:text-[#b9f42e]">Buy more</a>
+                Insufficient credits (⚡ {currentCreditCost} needed). <a href="/studio/credits" className="font-bold underline hover:text-primary">Buy more</a>
               </p>
             )}
           </div>
@@ -4278,7 +4327,7 @@ function AssetModal({
             <select
               value={(asset as Record<string, unknown>).character_type as string || "ai_human"}
               onChange={(e) => setAsset((a) => ({ ...a, character_type: e.target.value }))}
-              className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 p-3 text-sm outline-none focus:border-[#b9f42e]"
+              className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 p-3 text-sm outline-none focus:border-primary"
             >
               <option value="ai_human">✨ AI Fictional Human (Auto-Registers with BytePlus)</option>
               <option value="real_person">👤 Real Person / Actor</option>
@@ -4375,7 +4424,7 @@ function AssetModal({
                               }}
                               className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2 py-2 text-center hover:opacity-90"
                             >
-                              <span className="rounded-full bg-[#b9f42e] px-3 py-1 text-[10px] font-bold text-black">
+                              <span className="rounded-full bg-primary px-3 py-1 text-[10px] font-bold text-black">
                                 Verify for Seedance
                               </span>
                             </button>
@@ -4401,7 +4450,7 @@ function AssetModal({
                   </div>
                 )}
               </div>
-              <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-white/20 p-3 text-sm text-zinc-400 hover:border-[#b9f42e]">
+              <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-white/20 p-3 text-sm text-zinc-400 hover:border-primary">
                 <Upload className="h-4 w-4" /> Upload reference face image
                 <input
                   type="file"
@@ -4411,7 +4460,7 @@ function AssetModal({
                 />
               </label>
               <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-400">
-                <p className="font-bold text-[#b9f42e]">Photo Requirements for Seedance</p>
+                <p className="font-bold text-primary">Photo Requirements for Seedance</p>
                 <ul className="mt-1.5 space-y-1 list-disc list-inside text-zinc-400">
                   <li><strong>Orientation:</strong> Portrait orientation</li>
                   <li><strong>Framing:</strong> Front-facing close-up with face occupying ~2/3 of frame</li>
@@ -4430,10 +4479,10 @@ function AssetModal({
                       metadata: { ...(a.metadata || {}), byteplus_asset_id: e.target.value },
                     }))
                   }
-                  className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 p-2.5 font-mono text-xs outline-none focus:border-[#b9f42e]"
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 p-2.5 font-mono text-xs outline-none focus:border-primary"
                 />
                 <span className="mt-0.5 block text-[10px] text-zinc-600">
-                  Formats automatically as <code className="text-[#b9f42e]/70">asset://&lt;id&gt;</code> for Seedance requests
+                  Formats automatically as <code className="text-primary/70">asset://&lt;id&gt;</code> for Seedance requests
                 </span>
               </label>
               <label className="mt-3 block text-sm">
@@ -4453,7 +4502,7 @@ function AssetModal({
           {generationError && <p role="alert" className="mb-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{generationError}</p>}
           <button
             disabled={busy}
-            className="w-full rounded-xl bg-[#b9f42e] px-4 py-3 font-bold text-black"
+            className="w-full rounded-xl bg-primary px-4 py-3 font-bold text-black"
           >
             {busy ? "Saving…" : "Save asset"}
           </button>
@@ -4502,7 +4551,7 @@ function MentionedPrompt({ text, entities }: { text: string; entities: Entity[] 
         const image = entityPrimaryReference(part);
         return (
           <span key={index} className="group/mention relative inline-block">
-            <span className="rounded bg-[#b9f42e]/15 px-1 font-semibold text-[#b9f42e]">@{part.name}</span>
+            <span className="rounded bg-primary/15 px-1 font-semibold text-primary">@{part.name}</span>
             <span className="pointer-events-none absolute bottom-full left-0 z-30 mb-1 hidden w-40 overflow-hidden rounded-lg border border-white/15 bg-[#1c1c1c] shadow-xl group-hover/mention:block">
               {image
                 ? <AssetThumb src={image} />
@@ -4550,7 +4599,7 @@ function InsertShotDivider({ afterNumber, total, persistent, onAskDirector, onWr
   const shown = open || persistent;
   return (
     <div className={`group relative flex items-center justify-center ${persistent ? "h-11" : "h-3"}`}>
-      <span className={`absolute inset-x-0 h-px transition ${shown ? "bg-[#b9f42e]/40" : "bg-[#b9f42e]/0 group-hover:bg-[#b9f42e]/40"}`} />
+      <span className={`absolute inset-x-0 h-px transition ${shown ? "bg-primary/40" : "bg-primary/0 group-hover:bg-primary/40"}`} />
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
@@ -4558,8 +4607,8 @@ function InsertShotDivider({ afterNumber, total, persistent, onAskDirector, onWr
         aria-label={label}
         aria-expanded={open}
         className={persistent
-          ? "relative flex items-center gap-1.5 rounded-full border border-[#b9f42e]/30 bg-[#1a1c1b] px-3 py-1.5 text-[11px] font-bold text-[#b9f42e] transition hover:border-[#b9f42e]/70 hover:bg-[#b9f42e]/[0.08]"
-          : `relative grid h-6 w-6 place-items-center rounded-full border bg-[#1a1c1b] transition focus-visible:opacity-100 ${open ? "border-[#b9f42e]/50 text-[#b9f42e] opacity-100" : "border-white/10 text-zinc-500 opacity-0 group-hover:border-[#b9f42e]/50 group-hover:text-[#b9f42e] group-hover:opacity-100"}`}
+          ? "relative flex items-center gap-1.5 rounded-full border border-primary/30 bg-[#1a1c1b] px-3 py-1.5 text-[11px] font-bold text-primary transition hover:border-primary/70 hover:bg-primary/[0.08]"
+          : `relative grid h-6 w-6 place-items-center rounded-full border bg-[#1a1c1b] transition focus-visible:opacity-100 ${open ? "border-primary/50 text-primary opacity-100" : "border-white/10 text-zinc-500 opacity-0 group-hover:border-primary/50 group-hover:text-primary group-hover:opacity-100"}`}
       >
         <Plus className="h-3 w-3" />
         {persistent && <span>Add shot at the end</span>}
@@ -4585,7 +4634,7 @@ function InsertShotDivider({ afterNumber, total, persistent, onAskDirector, onWr
               onClick={() => { setOpen(false); onAskDirector(); }}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-bold text-zinc-200 transition hover:bg-white/[0.06]"
             >
-              <Bot className="h-3.5 w-3.5 text-[#b9f42e]" />
+              <Bot className="h-3.5 w-3.5 text-primary" />
               Ask the Director
             </button>
           </div>
@@ -4807,7 +4856,7 @@ function Storyboard({
         </div>
         <button
           onClick={() => setAdding(order.length)}
-          className="shrink-0 whitespace-nowrap rounded-lg bg-[#b9f42e] px-3.5 py-2 text-[12px] font-bold text-black transition duration-press ease-out active:scale-[0.97] lg:px-4 lg:text-sm"
+          className="shrink-0 whitespace-nowrap rounded-lg bg-primary px-3.5 py-2 text-[12px] font-bold text-black transition duration-press ease-out active:scale-[0.97] lg:px-4 lg:text-sm"
         >
           + Add shot
         </button>
@@ -4898,19 +4947,19 @@ function Storyboard({
                     setDragArmedId(null);
                     if (moved) void moveShotTo(moved, index);
                   }}
-                  className={`relative grid grid-cols-[34px_minmax(0,1fr)_minmax(0,1fr)] items-start gap-2 rounded-xl border bg-[#1a1c1b] p-2.5 transition lg:gap-3 lg:p-3 lg:grid-cols-[42px_minmax(210px,1.6fr)_150px_170px_170px] ${rendering ? "border-[#b9f42e]/40 ring-1 ring-[#b9f42e]/20" : dropIndex === index ? "border-[#b9f42e] ring-1 ring-[#b9f42e]/40" : "border-white/10"} ${draggingId === shot.id ? "opacity-40" : ""} ${busyShot === shot.id ? "pointer-events-none opacity-60" : ""}`}
+                  className={`relative grid grid-cols-[34px_minmax(0,1fr)_minmax(0,1fr)] items-start gap-2 rounded-xl border bg-[#1a1c1b] p-2.5 transition lg:gap-3 lg:p-3 lg:grid-cols-[42px_minmax(210px,1.6fr)_150px_170px_170px] ${rendering ? "border-primary/40 ring-1 ring-primary/20" : dropIndex === index ? "border-primary ring-1 ring-primary/40" : "border-white/10"} ${draggingId === shot.id ? "opacity-40" : ""} ${busyShot === shot.id ? "pointer-events-none opacity-60" : ""}`}
                 >
                   {rendering && (
                     <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-0.5 overflow-hidden rounded-t-xl">
-                      <span className="block h-full w-full -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-[#b9f42e] to-transparent" />
+                      <span className="block h-full w-full -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-primary to-transparent" />
                     </span>
                   )}
                   <div className="flex flex-col items-center gap-3">
-                    <span className={`grid h-8 w-8 place-items-center rounded-lg font-bold text-[#b9f42e] ${rendering ? "bg-[#b9f42e]/25" : "bg-[#b9f42e]/12"}`}>
+                    <span className={`grid h-8 w-8 place-items-center rounded-lg font-bold text-primary ${rendering ? "bg-primary/25" : "bg-primary/12"}`}>
                       {index + 1}
                     </span>
                     {rendering ? (
-                      <span className="flex flex-col items-center gap-1 text-[#b9f42e]">
+                      <span className="flex flex-col items-center gap-1 text-primary">
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         <span className="text-[8px] font-bold">
                           {renderingImage && renderingVideo ? "Both" : renderingImage ? "Image" : "Video"}
@@ -4979,7 +5028,7 @@ function Storyboard({
                         badge still read "4s", and the number the user was
                         reading was never the number being filmed.
                       */}
-                      <span className="rounded bg-[#b9f42e]/15 px-1.5 py-0.5 text-xs font-bold text-[#b9f42e]">
+                      <span className="rounded bg-primary/15 px-1.5 py-0.5 text-xs font-bold text-primary">
                         {resolveShotSeconds(shot, supportedVideoModel(videoModel))}s
                       </span>
                       <p className="text-[13px] font-bold leading-tight lg:text-base">{shot.title}</p>
@@ -4992,7 +5041,7 @@ function Storyboard({
                           entities={entities}
                           ariaLabel={`Prompt for ${shot.title}`}
                           placeholder="Describe the shot. Type @ to reference a character, scene, or prop."
-                          className="min-h-[140px] w-full rounded-lg border border-white/10 bg-black/30 p-2.5 text-sm leading-6 text-zinc-200 outline-none focus:border-[#b9f42e]/40"
+                          className="min-h-[140px] w-full rounded-lg border border-white/10 bg-black/30 p-2.5 text-sm leading-6 text-zinc-200 outline-none focus:border-primary/40"
                         />
                         <p className="text-[11px] text-zinc-500">Mentioned assets become this shot&apos;s references.</p>
                         <div className="flex gap-2">
@@ -5000,7 +5049,7 @@ function Storyboard({
                             type="button"
                             disabled={savingShot}
                             onClick={() => saveShotPrompt(shot)}
-                            className="rounded bg-[#b9f42e] px-3 py-1.5 text-[11px] font-bold text-black hover:bg-[#a6de25] disabled:opacity-50"
+                            className="rounded bg-primary px-3 py-1.5 text-[11px] font-bold text-black hover:bg-white disabled:opacity-50"
                           >
                             {savingShot ? "Saving…" : "Save prompt"}
                           </button>
@@ -5028,7 +5077,7 @@ function Storyboard({
                           {shot.prompt && shot.prompt.length > 130 && (
                             <button
                               onClick={toggleExpanded}
-                              className="mt-1 text-[11px] font-bold text-[#b9f42e] hover:underline"
+                              className="mt-1 text-[11px] font-bold text-primary hover:underline"
                             >
                               {isExpanded ? "Show less" : "Read more"}
                             </button>
@@ -5045,7 +5094,7 @@ function Storyboard({
                           <button
                             type="button"
                             onClick={() => setMedia({ shot, type: "image" })}
-                            className="text-xs font-semibold text-[#b9f42e] hover:underline"
+                            className="text-xs font-semibold text-primary hover:underline"
                           >
                             ↻ Redo
                           </button>
@@ -5074,7 +5123,7 @@ function Storyboard({
                       <button
                         type="button"
                         onClick={() => { setCastPicker(castPicker === shot.id ? null : shot.id); setCastQuery(""); }}
-                        className="grid h-14 w-14 place-items-center rounded-full border border-dashed border-white/20 text-zinc-500 hover:border-[#b9f42e] hover:text-[#b9f42e]"
+                        className="grid h-14 w-14 place-items-center rounded-full border border-dashed border-white/20 text-zinc-500 hover:border-primary hover:text-primary"
                         aria-label="Add an asset to this shot"
                       >
                         +
@@ -5086,7 +5135,7 @@ function Storyboard({
                             onChange={(event) => setCastQuery(event.target.value)}
                             placeholder="Search subjects"
                             autoFocus
-                            className="mb-2 w-full rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[#b9f42e]/40"
+                            className="mb-2 w-full rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-primary/40"
                           />
                           <div className="max-h-64 space-y-0.5 overflow-y-auto">
                             {entities
@@ -5100,7 +5149,7 @@ function Storyboard({
                                     onClick={() => toggleShotEntity(shot, castIds, entity.id)}
                                     className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left hover:bg-white/5"
                                   >
-                                    <span className={`grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] font-semibold ${active ? "border-[#b9f42e] bg-[#b9f42e] text-black" : "border-white/25 text-transparent"}`}>✓</span>
+                                    <span className={`grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] font-semibold ${active ? "border-primary bg-primary text-black" : "border-white/25 text-transparent"}`}>✓</span>
                                     <span className="block h-8 w-8 shrink-0 overflow-hidden rounded">
                                       <AssetThumb src={entityPrimaryReference(entity)} className="block h-full w-full object-cover" />
                                     </span>
@@ -5120,7 +5169,7 @@ function Storyboard({
                   <div className="relative group col-start-2 lg:col-start-auto">
                     <button
                       onClick={() => setMedia({ shot, type: "image" })}
-                      className="w-full overflow-hidden rounded-lg bg-[#292b2a] text-left transition hover:ring-2 hover:ring-[#b9f42e]"
+                      className="w-full overflow-hidden rounded-lg bg-[#292b2a] text-left transition hover:ring-2 hover:ring-primary"
                     >
                       <Preview
                         src={shot.keyframe_image}
@@ -5128,11 +5177,11 @@ function Storyboard({
                         busy={renderingImage}
                         aspectRatio={shot.aspect_ratio || "9:16"}
                       />
-                      <div className={`flex flex-col gap-1 border-t border-white/10 px-2 py-2 text-xs ${renderingImage ? "text-[#b9f42e]" : "text-zinc-400"}`}>
+                      <div className={`flex flex-col gap-1 border-t border-white/10 px-2 py-2 text-xs ${renderingImage ? "text-primary" : "text-zinc-400"}`}>
                         <div className="flex items-center justify-between">
                           <span>{renderingImage ? "Generating…" : "Image reference"}</span>
                           {shot.keyframe_image && (
-                            <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold  ${shot.is_trusted_provider_asset || (typeof shot.metadata === "object" && shot.metadata !== null && "byteplus_asset_id" in shot.metadata) ? "bg-[#b9f42e]/20 text-[#b9f42e]" : "bg-white/10 text-zinc-400"}`}>
+                            <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold  ${shot.is_trusted_provider_asset || (typeof shot.metadata === "object" && shot.metadata !== null && "byteplus_asset_id" in shot.metadata) ? "bg-primary/20 text-primary" : "bg-white/10 text-zinc-400"}`}>
                               {shot.is_trusted_provider_asset || (typeof shot.metadata === "object" && shot.metadata !== null && "byteplus_asset_id" in shot.metadata) ? "✓ Seedance Verified" : "+ Asset Library"}
                             </span>
                           )}
@@ -5171,7 +5220,7 @@ function Storyboard({
                             alert(err instanceof Error ? err.message : "Asset registration failed");
                           }
                         }}
-                        className="mt-1 w-full rounded-md bg-[#b9f42e]/10 py-1 text-[11px] font-bold text-[#b9f42e] hover:bg-[#b9f42e]/20 transition text-center"
+                        className="mt-1 w-full rounded-md bg-primary/10 py-1 text-[11px] font-bold text-primary hover:bg-primary/20 transition text-center"
                       >
                         + Add to Asset Library (Seedance)
                       </button>
@@ -5180,10 +5229,10 @@ function Storyboard({
 
                   <button
                     onClick={() => setMedia({ shot, type: "video" })}
-                    className="col-start-3 overflow-hidden rounded-lg bg-[#292b2a] text-left transition hover:ring-2 hover:ring-[#b9f42e] lg:col-start-auto"
+                    className="col-start-3 overflow-hidden rounded-lg bg-[#292b2a] text-left transition hover:ring-2 hover:ring-primary lg:col-start-auto"
                   >
                     <Preview src={shot.video_url} label={renderingVideo ? "Generating video…" : "Generated video"} busy={renderingVideo} type="video" aspectRatio={shot.aspect_ratio || "9:16"} />
-                    <div className={`border-t border-white/10 px-1.5 py-1.5 text-[11px] lg:px-2 lg:py-2 lg:text-xs ${renderingVideo ? "text-[#b9f42e]" : "text-zinc-400"}`}>
+                    <div className={`border-t border-white/10 px-1.5 py-1.5 text-[11px] lg:px-2 lg:py-2 lg:text-xs ${renderingVideo ? "text-primary" : "text-zinc-400"}`}>
                       {renderingVideo
                         ? "Generating…"
                         : shot.video_status === "completed"
@@ -6335,7 +6384,7 @@ function ShotMediaWorkspace({
           <div className="sticky top-0 left-0 z-20 flex shrink-0 flex-col items-center justify-start gap-1 border-r border-white/10 bg-[#0b0c0b]/95 p-3 backdrop-blur-md lg:flex-row lg:justify-between lg:border-b lg:border-r-0">
             <button
               onClick={close}
-              className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white transition hover:bg-white/20 hover:text-[#b9f42e]"
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white transition hover:bg-white/20 hover:text-primary"
               title="Close Workspace (Esc)"
             >
               <X className="h-5 w-5" />
@@ -6343,7 +6392,7 @@ function ShotMediaWorkspace({
             <span className="text-[10px] font-bold text-zinc-500">Esc</span>
           </div>
           <div className="no-scrollbar flex flex-1 gap-3 overflow-x-auto p-3 lg:block lg:overflow-x-visible lg:overflow-y-auto">
-            <label className="grid aspect-[3/4] w-16 shrink-0 cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-xs text-zinc-400 transition hover:border-[#b9f42e] lg:mb-3 lg:w-auto">
+            <label className="grid aspect-[3/4] w-16 shrink-0 cursor-pointer place-items-center rounded-xl border border-dashed border-white/25 text-center text-xs text-zinc-400 transition hover:border-primary lg:mb-3 lg:w-auto">
               +<br />Upload
               <input type="file" accept="image/*,video/*" className="hidden" onChange={(e) => uploadReference(e.target.files?.[0])} />
             </label>
@@ -6373,7 +6422,7 @@ function ShotMediaWorkspace({
                       }}
                       className={`group relative block w-[72px] shrink-0 overflow-hidden rounded-xl border-2 transition text-left lg:w-full ${
                         isGenChosen
-                          ? "border-[#b9f42e] ring-2 ring-[#b9f42e]/40"
+                          ? "border-primary ring-2 ring-primary/40"
                           : isActive
                           ? "border-white/60"
                           : "border-white/10 hover:border-white/25"
@@ -6382,7 +6431,7 @@ function ShotMediaWorkspace({
                       {gen.status === "generating" ? (
                         <div className="grid aspect-[3/4] place-items-center bg-black/40">
                           <div className="flex flex-col items-center gap-2">
-                            <svg className={`h-6 w-6 text-[#b9f42e] ${gen.type !== "video" || gen.providerJobId ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none">
+                            <svg className={`h-6 w-6 text-primary ${gen.type !== "video" || gen.providerJobId ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none">
                               <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-20" />
                               <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
                             </svg>
@@ -6404,14 +6453,14 @@ function ShotMediaWorkspace({
 
                       {/* Quality badge (top left) */}
                       {gen.quality && (
-                        <span className="absolute left-1 top-1 z-10 rounded bg-black/85 border border-[#b9f42e]/40 px-1.5 py-0.5 text-[9px] font-bold text-[#b9f42e] shadow-md">
+                        <span className="absolute left-1 top-1 z-10 rounded bg-black/85 border border-primary/40 px-1.5 py-0.5 text-[9px] font-bold text-primary shadow-md">
                           {gen.quality}
                         </span>
                       )}
 
                       {/* Chosen Badge */}
                       {isGenChosen && (
-                        <span className="absolute right-1 top-1 z-10 rounded-md bg-[#b9f42e] px-1 py-0.5 text-[10px] font-bold leading-none text-black shadow-md lg:right-1.5 lg:top-1.5 lg:px-1.5">
+                        <span className="absolute right-1 top-1 z-10 rounded-md bg-primary px-1 py-0.5 text-[10px] font-bold leading-none text-black shadow-md lg:right-1.5 lg:top-1.5 lg:px-1.5">
                           ✓<span className="hidden lg:inline"> CHOSEN</span>
                         </span>
                       )}
@@ -6419,7 +6468,7 @@ function ShotMediaWorkspace({
                       {/* Prompt & quality preview badge */}
                       <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/95 via-black/80 to-transparent px-2 py-1.5 text-[10px] text-zinc-300">
                         {gen.quality && (
-                          <span className="mr-1 inline-block rounded bg-[#b9f42e]/25 px-1 py-0.2 text-[9px] font-bold text-[#b9f42e]">
+                          <span className="mr-1 inline-block rounded bg-primary/25 px-1 py-0.2 text-[9px] font-bold text-primary">
                             {gen.quality}
                           </span>
                         )}
@@ -6449,7 +6498,7 @@ function ShotMediaWorkspace({
         <main className="flex min-w-0 flex-1 flex-col">
           <header className="flex h-16 items-center gap-3 border-b border-white/10 px-6">
             {isCurrentlyChosen ? (
-              <span className="flex items-center gap-1.5 rounded-lg border border-[#b9f42e]/50 bg-[#b9f42e]/20 px-4 py-2 text-xs font-semibold text-[#b9f42e]">
+              <span className="flex items-center gap-1.5 rounded-lg border border-primary/50 bg-primary/20 px-4 py-2 text-xs font-semibold text-primary">
                 ✓ Chosen for Storyboard
               </span>
             ) : (
@@ -6457,7 +6506,7 @@ function ShotMediaWorkspace({
                 type="button"
                 onClick={chooseCurrentMedia}
                 disabled={busy || !previewSource}
-                className="flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-4 py-2 text-xs font-semibold text-black hover:bg-[#a6de25] transition shadow-lg disabled:opacity-40"
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-black hover:bg-white transition shadow-lg disabled:opacity-40"
               >
                 ✓ Choose
               </button>
@@ -6480,7 +6529,7 @@ function ShotMediaWorkspace({
               <button
                 type="button"
                 onClick={() => loadPromptFromGen(activeGen)}
-                className="rounded-lg bg-white/5 px-3 py-2 text-xs font-semibold text-[#b9f42e] hover:bg-white/10"
+                className="rounded-lg bg-white/5 px-3 py-2 text-xs font-semibold text-primary hover:bg-white/10"
               >
                 ♻ Reuse prompt
               </button>
@@ -6503,7 +6552,7 @@ function ShotMediaWorkspace({
                 type="button"
                 onClick={() => setDrawing(true)}
                 disabled={busy}
-                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-zinc-200 hover:border-[#b9f42e]/40 hover:text-[#b9f42e] transition disabled:opacity-40"
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-zinc-200 hover:border-primary/40 hover:text-primary transition disabled:opacity-40"
                 title="Draw on this frame and describe the edit"
               >
                 <Pencil className="h-3.5 w-3.5" />
@@ -6517,7 +6566,7 @@ function ShotMediaWorkspace({
             {targetImageForBytePlus && <button
               onClick={registerCurrentAsBytePlusAsset}
               disabled={registeringAsset || !targetImageForBytePlus}
-              className="rounded-lg bg-[#b9f42e]/10 px-3 py-2 text-xs font-bold text-[#b9f42e] hover:bg-[#b9f42e]/20 disabled:opacity-40"
+              className="rounded-lg bg-primary/10 px-3 py-2 text-xs font-bold text-primary hover:bg-primary/20 disabled:opacity-40"
             >
               {registeringAsset ? "Registering…" : "Verify for Seedance"}
             </button>}
@@ -6525,7 +6574,7 @@ function ShotMediaWorkspace({
             <button
               type="button"
               onClick={generate}
-              className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3.5 py-2 text-xs font-bold text-[#b9f42e] hover:bg-white/10 transition shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+              className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3.5 py-2 text-xs font-bold text-primary hover:bg-white/10 transition shadow-sm hover:scale-[1.02] active:scale-[0.98]"
             >
               ↻ Regenerate ({generationSource.ownKey || generationSource.requiresKey ? generationSource.label : `${currentCreditCost} Credits`})
             </button>
@@ -6538,7 +6587,7 @@ function ShotMediaWorkspace({
               {previewGenerating ? (
                 <div className={`grid place-items-center p-8 ${aspectRatio === "9:16" ? "aspect-[9/16] h-[55vh] max-h-[580px]" : "aspect-[16/9] w-full max-w-[640px]"}`}>
                   <div className="flex flex-col items-center gap-4">
-                    <svg className={`h-12 w-12 text-[#b9f42e] ${isImage || activeGen?.providerJobId ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none">
+                    <svg className={`h-12 w-12 text-primary ${isImage || activeGen?.providerJobId ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none">
                       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="opacity-20" />
                       <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
                     </svg>
@@ -6574,7 +6623,7 @@ function ShotMediaWorkspace({
               {activeGen && (
                 <div className="w-full border-t border-white/10 bg-black/60 p-4 rounded-b-xl">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-[10px] font-bold text-[#b9f42e]">
+                    <p className="text-[10px] font-bold text-primary">
                       PROMPT USED
                     </p>
                     <span className="flex flex-wrap items-center gap-2">
@@ -6583,7 +6632,7 @@ function ShotMediaWorkspace({
                           className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[11px] font-semibold text-zinc-300"
                           title="The camera package this image was generated with"
                         >
-                          <Aperture className="h-3 w-3 text-[#b9f42e]" />
+                          <Aperture className="h-3 w-3 text-primary" />
                           {describeCameraSettings(activeGen.cameraSettingsUsed)}
                         </span>
                       )}
@@ -6594,12 +6643,12 @@ function ShotMediaWorkspace({
                             ? `This image used the extracted Look & Feel description. ${activeGen.styleDnaUsed.overrideProjectStyle ? "The description decided the medium." : "The Visual Style setting decided the medium; the description supplied palette, light and texture."}`
                             : "No look reference was applied. This image followed the Visual Style setting alone."}
                         >
-                          <Palette className={`h-3 w-3 ${activeGen.styleDnaUsed ? "text-[#b9f42e]" : "text-zinc-600"}`} />
+                          <Palette className={`h-3 w-3 ${activeGen.styleDnaUsed ? "text-primary" : "text-zinc-600"}`} />
                           {describeStyleDna(activeGen.styleDnaUsed, activeGen.styleReferenceImages.length)}
                         </span>
                       )}
                       {activeGen.model && (
-                        <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-[11px] font-bold text-[#b9f42e]">
+                        <span className="rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">
                           Model: {getModelLabel(activeGen.model)}
                           {(() => {
                             const effectiveQuality = activeGen.quality
@@ -6622,7 +6671,7 @@ function ShotMediaWorkspace({
                     {activeGen.prompt && activeGen.prompt.length > 130 && (
                       <button
                         onClick={() => setPromptExpanded(!promptExpanded)}
-                        className="mt-1 text-[11px] font-bold text-[#b9f42e] hover:underline"
+                        className="mt-1 text-[11px] font-bold text-primary hover:underline"
                       >
                         {promptExpanded ? "Show less" : "Read more"}
                       </button>
@@ -6684,7 +6733,7 @@ function ShotMediaWorkspace({
         <button
           type="button"
           onClick={() => document.getElementById("shot-generate-controls")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-          className="fixed bottom-5 right-5 z-[60] flex h-14 min-h-[44px] items-center gap-2 rounded-full bg-[#b9f42e] px-5 text-[13px] font-semibold text-black shadow-[0_10px_30px_-6px_rgba(185,244,46,0.5)] transition-transform duration-press ease-out active:scale-95 lg:hidden"
+          className="fixed bottom-5 right-5 z-[60] flex h-14 min-h-[44px] items-center gap-2 rounded-full bg-primary px-5 text-[13px] font-semibold text-black shadow-[0_10px_30px_-6px_rgba(255,255,255,0.5)] transition-transform duration-press ease-out active:scale-95 lg:hidden"
         >
           <WandSparkles className="h-4 w-4" />
           Generate
@@ -6747,8 +6796,8 @@ function ShotMediaWorkspace({
               ) : (
                 <div className="mb-4 flex flex-col gap-4 border-b border-white/5 pb-4">
                   <div className="inline-flex self-start rounded-full bg-black/40 p-1">
-                    <button type="button" onClick={() => setVideoInputMode("keyframe")} className={`rounded-full px-4 py-2 text-xs font-bold transition-colors ${videoInputMode === "keyframe" ? "bg-[#b9f42e] text-black" : "text-zinc-400 hover:text-white"}`}>Key Frame</button>
-                    <button type="button" onClick={() => setVideoInputMode("multi_image")} className={`rounded-full px-4 py-2 text-xs font-bold transition-colors ${videoInputMode === "multi_image" ? "bg-[#b9f42e] text-black" : "text-zinc-400 hover:text-white"}`}>Multi Image</button>
+                    <button type="button" onClick={() => setVideoInputMode("keyframe")} className={`rounded-full px-4 py-2 text-xs font-bold transition-colors ${videoInputMode === "keyframe" ? "bg-primary text-black" : "text-zinc-400 hover:text-white"}`}>Key Frame</button>
+                    <button type="button" onClick={() => setVideoInputMode("multi_image")} className={`rounded-full px-4 py-2 text-xs font-bold transition-colors ${videoInputMode === "multi_image" ? "bg-primary text-black" : "text-zinc-400 hover:text-white"}`}>Multi Image</button>
                   </div>
                   {videoInputMode === "keyframe" ? (
                     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
@@ -6899,11 +6948,11 @@ function ShotMediaWorkspace({
                               onClick={() => toggleCharacterSelection(character.id)}
                               className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-semibold transition ${
                                 isSelected
-                                  ? "border-[#b9f42e]/50 bg-[#b9f42e]/10 text-[#d9ff84]"
+                                  ? "border-primary/50 bg-primary/10 text-white"
                                   : "border-white/5 bg-black/20 text-zinc-400 hover:border-white/20"
                               }`}
                             >
-                              <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? "bg-[#b9f42e]" : "bg-white/20"}`} />
+                              <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? "bg-primary" : "bg-white/20"}`} />
                               <span>{character.name}</span>
                             </button>
                           );
@@ -7039,8 +7088,8 @@ function ShotMediaWorkspace({
                         </select>
                         <ChevronDown className="absolute right-0 h-3 w-3 opacity-50 pointer-events-none" />
                       </div>}
-                      {!isGenjutsu && <button type="button" onClick={() => setAudioEnabled((current) => !current)} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-bold transition-colors ${audioEnabled ? "bg-[#b9f42e]/20 text-[#b9f42e]" : "bg-white/5 text-zinc-500 hover:text-zinc-300"}`}>
-                        <span className={`grid h-3 w-5 rounded-full p-0.5 ${audioEnabled ? "bg-[#b9f42e]" : "bg-zinc-600"}`}>
+                      {!isGenjutsu && <button type="button" onClick={() => setAudioEnabled((current) => !current)} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-bold transition-colors ${audioEnabled ? "bg-primary/20 text-primary" : "bg-white/5 text-zinc-500 hover:text-zinc-300"}`}>
+                        <span className={`grid h-3 w-5 rounded-full p-0.5 ${audioEnabled ? "bg-primary" : "bg-zinc-600"}`}>
                           <span className={`h-2 w-2 rounded-full bg-black transition-transform ${audioEnabled ? "translate-x-2" : "translate-x-0"}`} />
                         </span>
                         {audioEnabled ? "Audio On" : "Audio Off"}
@@ -7053,7 +7102,7 @@ function ShotMediaWorkspace({
                   <span className="text-xs font-semibold text-zinc-400">
                     {generationSource.ownKey || generationSource.requiresKey ? generationSource.label : <><Sparkles className="mb-0.5 inline h-3 w-3" /> {currentCreditCost}</>}
                   </span>
-                  {generationSource.requiresKey && <a href="/studio/integrations" className="text-xs text-[#b9f42e] underline">Connect API key</a>}
+                  {generationSource.requiresKey && <a href="/studio/integrations" className="text-xs text-primary underline">Connect API key</a>}
                   {blockedByCredits(generationSource, creditBalance) ? (
                     <button
                       disabled
@@ -7071,7 +7120,7 @@ function ShotMediaWorkspace({
                       className={`group relative grid h-8 w-8 place-items-center rounded-full transition ${
                         busy
                           ? "bg-zinc-700 text-zinc-400"
-                          : "bg-[#b9f42e] text-black active:scale-[0.98] hover:bg-[#a6de25] hover:shadow-[0_0_15px_rgba(185,244,46,0.4)]"
+                          : "bg-primary text-black active:scale-[0.98] hover:bg-white hover:shadow-[0_0_15px_rgba(255,255,255,0.4)]"
                       }`}
                     >
                       {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4 text-black" />}
@@ -7256,7 +7305,7 @@ function GenerationPreviewError({
                     type="button"
                     onClick={() => onVerifyAll(displayItems)}
                     disabled={Boolean(verifyingReferencePath) || unverifiedItems.length === 0}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-[#b9f42e] px-3 py-1.5 text-xs font-bold text-black transition hover:bg-[#a6de25] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-bold text-black transition hover:bg-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {verifyingReferencePath ? (
                       <>
@@ -7309,7 +7358,7 @@ function GenerationPreviewError({
                             className={`mt-2 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition shadow-sm ${
                               isVerified
                                 ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 cursor-default"
-                                : "bg-[#b9f42e] text-black hover:bg-[#a6de25] active:scale-95 disabled:opacity-60"
+                                : "bg-primary text-black hover:bg-white active:scale-95 disabled:opacity-60"
                             }`}
                           >
                             {isVerifying ? (
@@ -7349,7 +7398,7 @@ function GenerationPreviewError({
                 <button
                   type="button"
                   onClick={onRegenerate}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#b9f42e] px-3.5 py-1.5 text-xs font-bold text-black hover:bg-[#a6de25] transition shadow-md hover:scale-[1.02] active:scale-95"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-bold text-black hover:bg-white transition shadow-md hover:scale-[1.02] active:scale-95"
                 >
                   ↻ Regenerate Video Now
                 </button>
@@ -7460,9 +7509,9 @@ function ThinkingBubble({ reply }: { reply?: { content: string; status: string |
       <div className="flex items-center gap-2">
         <span className="text-[12px] text-zinc-400">{label}</span>
         <span className="flex gap-1" aria-hidden="true">
-          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#b9f42e]" />
-          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#b9f42e] [animation-delay:120ms]" />
-          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#b9f42e] [animation-delay:240ms]" />
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary" />
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:120ms]" />
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:240ms]" />
         </span>
         {/* A counter that keeps moving is the cheapest proof the run is alive
             even during the long stretches when no tool reports anything. */}
@@ -7479,11 +7528,11 @@ function ThinkingBubble({ reply }: { reply?: { content: string; status: string |
             <li key={`${step.label}-${index}`} className="flex items-start gap-2 text-[12px] leading-5">
               <span className="mt-0.5 shrink-0" aria-hidden="true">
                 {step.state === "running" ? (
-                  <Loader2 className="h-3 w-3 animate-spin text-[#b9f42e]" />
+                  <Loader2 className="h-3 w-3 animate-spin text-primary" />
                 ) : step.state === "failed" ? (
                   <AlertTriangle className="h-3 w-3 text-red-400" />
                 ) : (
-                  <Check className="h-3 w-3 text-[#b9f42e]" />
+                  <Check className="h-3 w-3 text-primary" />
                 )}
               </span>
               <span className={step.state === "running" ? "text-zinc-200" : step.state === "failed" ? "text-red-300" : "text-zinc-500"}>
@@ -7497,7 +7546,7 @@ function ThinkingBubble({ reply }: { reply?: { content: string; status: string |
       {reply?.content ? (
         <p className="mt-2 whitespace-pre-wrap leading-relaxed">
           {reply.content}
-          <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-[#b9f42e] align-middle" aria-hidden="true" />
+          <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-primary align-middle" aria-hidden="true" />
         </p>
       ) : null}
     </div>
@@ -7564,7 +7613,7 @@ function ChatTimelineBlock({ block, proposals, awaitingApproval, onAction, disab
         <summary className="flex cursor-pointer list-none items-center gap-2 p-2.5 text-[12px] font-semibold">
           <span className={`grid h-5 w-5 place-items-center rounded-full text-[10px] ${failed ? "bg-red-500/20 text-red-300" : "bg-amber-400/15 text-amber-200"}`}>{failed ? "×" : "…"}</span>
           <span className="min-w-0">
-            {block.agent && <span className="mr-1.5 rounded-full border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-1.5 py-0.5 text-[9px] font-bold text-[#b9f42e]">{block.agent}</span>}
+            {block.agent && <span className="mr-1.5 rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold text-primary">{block.agent}</span>}
             {block.label}
           </span>
           <span className="ml-auto shrink-0 text-[9px] text-zinc-500">{block.status.replaceAll("_", " ")}</span>
@@ -7588,16 +7637,16 @@ function ChatTimelineBlock({ block, proposals, awaitingApproval, onAction, disab
   if (block.type === "media_result") return <ChatMedia media={block.media} />;
   if (block.type === "production_progress") {
     return (
-      <div className="rounded-lg border border-[#b9f42e]/25 bg-[#b9f42e]/[0.05] p-2.5">
+      <div className="rounded-lg border border-primary/25 bg-primary/[0.05] p-2.5">
         <div className="flex items-center gap-2">
-          <p className="min-w-0 flex-1 truncate text-[11px] font-bold text-[#b9f42e]">{block.headline}</p>
+          <p className="min-w-0 flex-1 truncate text-[11px] font-bold text-primary">{block.headline}</p>
           {block.awardedXp > 0 && (
-            <span className="shrink-0 rounded-full bg-[#b9f42e] px-2 py-0.5 text-[10px] font-bold text-black">+{block.awardedXp} XP</span>
+            <span className="shrink-0 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-black">+{block.awardedXp} XP</span>
           )}
           <span className="shrink-0 text-[10px] font-semibold text-zinc-400">Lv {block.level}</span>
         </div>
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
-          <div className="h-full rounded-full bg-[#b9f42e] transition-all duration-500" style={{ width: `${block.percent}%` }} />
+          <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${block.percent}%` }} />
         </div>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {block.stages.map((stage) => (
@@ -7605,9 +7654,9 @@ function ChatTimelineBlock({ block, proposals, awaitingApproval, onAction, disab
               key={stage.key}
               className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                 stage.status === "done"
-                  ? "bg-[#b9f42e]/15 text-[#b9f42e]"
+                  ? "bg-primary/15 text-primary"
                   : stage.status === "current"
-                    ? "border border-[#b9f42e]/40 text-zinc-100"
+                    ? "border border-primary/40 text-zinc-100"
                     : "text-zinc-600"
               }`}
             >
@@ -7640,7 +7689,7 @@ function ChatInlineChoices({ blocks, selectedId, disabled, onChoose }: {
             type="button"
             disabled={disabled}
             onClick={() => onChoose(action)}
-            className={`rounded-lg px-3 py-1.5 text-[12px] font-bold transition ${selected ? "bg-[#b9f42e] text-black" : "border border-white/[0.14] text-zinc-200 hover:border-[#b9f42e]/50"} disabled:opacity-50`}
+            className={`rounded-lg px-3 py-1.5 text-[12px] font-bold transition ${selected ? "bg-primary text-black" : "border border-white/[0.14] text-zinc-200 hover:border-primary/50"} disabled:opacity-50`}
           >
             {selected ? "✓ " : ""}{action.label}
           </button>
@@ -7702,15 +7751,15 @@ function ChatNextStep({ messages, proposals, shots, sessionId, busy, onAction }:
     : block.actions;
   if (!actions.length) return null;
   return (
-    <div className="mt-3 rounded-xl border border-[#b9f42e]/25 bg-[#b9f42e]/[0.06] p-3">
-      <p className="text-[10px] font-bold text-[#b9f42e]">Next step</p>
+    <div className="mt-3 rounded-xl border border-primary/25 bg-primary/[0.06] p-3">
+      <p className="text-[10px] font-bold text-primary">Next step</p>
       <div className="mt-2 flex flex-wrap gap-2">
         {actions.map((action) => (
           <button
             key={action.id}
             type="button"
             onClick={() => onAction(action.intent)}
-            className={`rounded-lg px-3 py-1.5 text-[12px] font-bold transition ${action.recommended ? "bg-[#b9f42e] text-black hover:bg-[#a8e526]" : "border border-white/[0.12] text-zinc-200 hover:border-[#b9f42e]/40"}`}
+            className={`rounded-lg px-3 py-1.5 text-[12px] font-bold transition ${action.recommended ? "bg-primary text-black hover:bg-white" : "border border-white/[0.12] text-zinc-200 hover:border-primary/40"}`}
           >
             {action.label}
             {action.risk === "costly" && <span className="ml-1.5 font-medium opacity-70">· uses credits</span>}
@@ -8173,7 +8222,7 @@ function VideoGenerationProposalBlock({
       <div className="space-y-3 p-3">
         <div className="flex flex-wrap items-center gap-2">
           {entityReferences.map(({ entity, image }) => (
-            <div key={`entity-${entity.id}`} className="group/ref relative h-14 w-14 overflow-hidden rounded-lg border border-[#b9f42e]/50" title={`${entity.name} — referenced because the prompt names it`}>
+            <div key={`entity-${entity.id}`} className="group/ref relative h-14 w-14 overflow-hidden rounded-lg border border-primary/50" title={`${entity.name} — referenced because the prompt names it`}>
               <AssetImage src={image} />
               {canDecide && (
                 <button
@@ -8185,7 +8234,7 @@ function VideoGenerationProposalBlock({
                   ×
                 </button>
               )}
-              <span className="absolute inset-x-0 bottom-0 truncate bg-black/75 px-1 text-center text-[9px] font-bold text-[#b9f42e]">
+              <span className="absolute inset-x-0 bottom-0 truncate bg-black/75 px-1 text-center text-[9px] font-bold text-primary">
                 {entity.name}
               </span>
             </div>
@@ -8237,7 +8286,7 @@ function VideoGenerationProposalBlock({
                 type="button"
                 onClick={() => setAddMenu((open) => !open)}
                 disabled={uploading || references.length >= 8}
-                className="grid h-14 w-14 place-items-center rounded-lg border border-dashed border-white/20 text-zinc-400 hover:border-[#b9f42e] hover:text-[#b9f42e] disabled:opacity-40"
+                className="grid h-14 w-14 place-items-center rounded-lg border border-dashed border-white/20 text-zinc-400 hover:border-primary hover:text-primary disabled:opacity-40"
                 aria-label="Add reference image"
               >
                 <Plus className="h-4 w-4" />
@@ -8316,7 +8365,7 @@ function VideoGenerationProposalBlock({
                 key={key}
                 type="button"
                 onClick={() => setActivePromptKey(key)}
-                className={`rounded-md px-2 py-1 text-[11px] font-bold transition ${key === activeKey ? "bg-[#b9f42e] text-black" : "border border-white/10 text-zinc-400 hover:text-zinc-200"}`}
+                className={`rounded-md px-2 py-1 text-[11px] font-bold transition ${key === activeKey ? "bg-primary text-black" : "border border-white/10 text-zinc-400 hover:text-zinc-200"}`}
               >
                 {promptKeyLabel(key, shots)}
               </button>
@@ -8331,7 +8380,7 @@ function VideoGenerationProposalBlock({
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             rows={promptExpanded ? 12 : 5}
-            className="w-full resize-none rounded-lg border border-white/10 bg-black/30 p-2.5 text-[12px] leading-relaxed text-zinc-200 outline-none focus:border-[#b9f42e]/40"
+            className="w-full resize-none rounded-lg border border-white/10 bg-black/30 p-2.5 text-[12px] leading-relaxed text-zinc-200 outline-none focus:border-primary/40"
           />
         ) : (
           <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-zinc-300">{prompt}</p>
@@ -8376,7 +8425,7 @@ function VideoGenerationProposalBlock({
                 className="flex items-center gap-1.5 text-zinc-400"
               >
                 Audio
-                <span className={`h-4 w-7 rounded-full p-0.5 transition ${audioEnabled ? "bg-[#b9f42e]" : "bg-white/15"}`}>
+                <span className={`h-4 w-7 rounded-full p-0.5 transition ${audioEnabled ? "bg-primary" : "bg-white/15"}`}>
                   <span className={`block h-3 w-3 rounded-full bg-black transition ${audioEnabled ? "translate-x-3" : ""}`} />
                 </span>
               </button>
@@ -8563,7 +8612,7 @@ function EntityBatchProposalBlock({
                   </div>
 
                   {attached.map((path) => (
-                    <div key={path} className="group/photo relative h-10 w-10 shrink-0 overflow-hidden rounded-md border border-[#b9f42e]/50">
+                    <div key={path} className="group/photo relative h-10 w-10 shrink-0 overflow-hidden rounded-md border border-primary/50">
                       <AssetImage src={path} />
                       <button
                         type="button"
@@ -8741,7 +8790,7 @@ function ProposalCard({
             {proposal.action_type.split("_").pop()}
           </span>
           {shotLabel ? (
-            <span className="shrink-0 rounded bg-[#b9f42e]/15 px-1.5 py-0.5 text-[10px] font-bold text-[#b9f42e]">
+            <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold text-primary">
               {shotLabel}
             </span>
           ) : null}
@@ -8795,7 +8844,7 @@ function ProposalCard({
 function FrameSlot({ label, value, onAdd, onClear }: { label: string; value: string | null; onAdd: () => void; onClear: () => void }) {
   return (
     <div>
-      <button type="button" onClick={onAdd} className="grid aspect-square w-full min-w-0 place-items-center overflow-hidden rounded-xl border border-dashed border-white/20 bg-white/[0.03] text-zinc-300 hover:border-[#b9f42e]">
+      <button type="button" onClick={onAdd} className="grid aspect-square w-full min-w-0 place-items-center overflow-hidden rounded-xl border border-dashed border-white/20 bg-white/[0.03] text-zinc-300 hover:border-primary">
         {value ? <AssetImage src={value} /> : <span className="text-3xl">+</span>}
       </button>
       <div className="mt-2 flex items-center justify-between gap-2">
@@ -8918,7 +8967,7 @@ function ReferencePicker({
                 type="button"
                 onClick={() => setFilter(item)}
                 className={`rounded-lg px-3 py-2 text-sm font-semibold capitalize ${
-                  filter === item ? "bg-[#b9f42e] text-black" : "text-zinc-400 hover:text-white"
+                  filter === item ? "bg-primary text-black" : "text-zinc-400 hover:text-white"
                 }`}
               >
                 {item === "all" ? "All" : item === "storyboard" ? "Storyboard" : `${item}s`}
@@ -8940,12 +8989,12 @@ function ReferencePicker({
                 type="button"
                 onClick={() => setChoices((items) => (active ? items.filter((i) => i !== image) : [...items, image]))}
                 className={`relative overflow-hidden rounded-xl border-2 text-left transition ${
-                  active ? "border-[#b9f42e]" : "border-transparent hover:border-white/20"
+                  active ? "border-primary" : "border-transparent hover:border-white/20"
                 }`}
               >
                 {item.kind === "video" ? <div className="aspect-[4/3]"><AssetVideo src={image} /></div> : <AssetImage src={image} />}
                 {item.number !== null && (
-                  <span className="absolute left-2 top-2 grid h-5 min-w-5 place-items-center rounded-full bg-black/80 px-1.5 text-[11px] font-semibold text-[#b9f42e]">
+                  <span className="absolute left-2 top-2 grid h-5 min-w-5 place-items-center rounded-full bg-black/80 px-1.5 text-[11px] font-semibold text-primary">
                     {item.number}
                   </span>
                 )}
@@ -8958,7 +9007,7 @@ function ReferencePicker({
                   {item.name}
                 </span>
                 {active && (
-                  <span className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full bg-[#b9f42e] text-xs font-semibold text-black">
+                  <span className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full bg-primary text-xs font-semibold text-black">
                     ✓
                   </span>
                 )}
@@ -8975,7 +9024,7 @@ function ReferencePicker({
         </div>
         <footer className="flex items-center justify-end gap-4 border-t border-white/10 p-5">
           <span className="text-sm text-zinc-400">{choices.length} selected</span>
-          <button type="button" onClick={() => confirm(choices)} className="rounded-xl bg-[#b9f42e] px-6 py-3 font-bold text-black hover:bg-[#a5db26]">
+          <button type="button" onClick={() => confirm(choices)} className="rounded-xl bg-primary px-6 py-3 font-bold text-black hover:bg-[#a5db26]">
             Confirm references
           </button>
         </footer>
@@ -8984,7 +9033,7 @@ function ReferencePicker({
   );
 }
 function ReferenceSourcePicker({ close, onChooseExisting, onUpload }: { close: () => void; onChooseExisting: () => void; onUpload: (file?: File) => Promise<void> }) {
-  return <div className="fixed inset-0 z-[70] grid place-items-center bg-black/65 p-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Add a reference image"><section className="w-full max-w-md rounded-2xl border border-white/10 bg-[#171918] p-6 shadow-2xl"><div className="flex items-start justify-between"><div><p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">REFERENCE IMAGE</p><h3 className="mt-2 text-2xl font-semibold">Add a reference</h3><p className="mt-2 text-sm leading-6 text-zinc-400">Choose a project asset or upload an image from your device.</p></div><button type="button" aria-label="Close reference picker" onClick={close} className="rounded-lg p-2 text-zinc-400 hover:bg-white/10"><X /></button></div><div className="mt-6 flex gap-3"><div className="grid h-32 w-32 shrink-0 place-items-center rounded-2xl border-2 border-dashed border-white/15 text-5xl text-zinc-300">+</div><div className="flex-1 overflow-hidden rounded-2xl border border-white/15 bg-[#101110]"><button type="button" onClick={onChooseExisting} className="flex w-full items-center gap-4 px-5 py-5 text-left text-lg font-bold hover:bg-white/5"><ImageIcon className="h-6 w-6" />Select from existing assets</button><label className="flex cursor-pointer items-center gap-4 border-t border-white/10 px-5 py-5 text-lg font-bold hover:bg-white/5"><Upload className="h-6 w-6" />Upload from local device<input type="file" accept="image/*" className="hidden" onChange={async (event) => { const file = event.target.files?.[0]; if (file) await onUpload(file); close(); }} /></label></div></div></section></div>
+  return <div className="fixed inset-0 z-[70] grid place-items-center bg-black/65 p-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Add a reference image"><section className="w-full max-w-md rounded-2xl border border-white/10 bg-[#171918] p-6 shadow-2xl"><div className="flex items-start justify-between"><div><p className="text-xs font-bold tracking-[.18em] text-primary">REFERENCE IMAGE</p><h3 className="mt-2 text-2xl font-semibold">Add a reference</h3><p className="mt-2 text-sm leading-6 text-zinc-400">Choose a project asset or upload an image from your device.</p></div><button type="button" aria-label="Close reference picker" onClick={close} className="rounded-lg p-2 text-zinc-400 hover:bg-white/10"><X /></button></div><div className="mt-6 flex gap-3"><div className="grid h-32 w-32 shrink-0 place-items-center rounded-2xl border-2 border-dashed border-white/15 text-5xl text-zinc-300">+</div><div className="flex-1 overflow-hidden rounded-2xl border border-white/15 bg-[#101110]"><button type="button" onClick={onChooseExisting} className="flex w-full items-center gap-4 px-5 py-5 text-left text-lg font-bold hover:bg-white/5"><ImageIcon className="h-6 w-6" />Select from existing assets</button><label className="flex cursor-pointer items-center gap-4 border-t border-white/10 px-5 py-5 text-lg font-bold hover:bg-white/5"><Upload className="h-6 w-6" />Upload from local device<input type="file" accept="image/*" className="hidden" onChange={async (event) => { const file = event.target.files?.[0]; if (file) await onUpload(file); close(); }} /></label></div></div></section></div>
 }
 function ShotForm({
   entities,
@@ -9038,9 +9087,9 @@ function ShotForm({
           setSaving(false);
         }
       }}
-      className="rounded-2xl border border-[#b9f42e]/30 bg-[#1b1d1c] p-5"
+      className="rounded-2xl border border-primary/30 bg-[#1b1d1c] p-5"
     >
-      <p className="mb-3 text-[11px] font-bold text-[#b9f42e]">{position}</p>
+      <p className="mb-3 text-[11px] font-bold text-primary">{position}</p>
       {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
       <input
         required
@@ -9061,7 +9110,7 @@ function ShotForm({
         {entities.map((e) => (
           <label
             key={e.id}
-            className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs ${ids.includes(e.id) ? "border-[#b9f42e] bg-[#b9f42e]/10" : "border-white/10"}`}
+            className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs ${ids.includes(e.id) ? "border-primary bg-primary/10" : "border-white/10"}`}
           >
             <input
               type="checkbox"
@@ -9080,7 +9129,7 @@ function ShotForm({
         ))}
       </div>
       <div className="mt-4 flex gap-2">
-        <button disabled={saving} className="rounded-lg bg-[#b9f42e] px-4 py-2 text-sm font-bold text-black disabled:opacity-60">
+        <button disabled={saving} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-black disabled:opacity-60">
           {saving ? "Adding…" : "Save shot"}
         </button>
         <button
@@ -9250,7 +9299,7 @@ function RenderExportModal({
           // Fallback image / title card frame rendering
           ctx.fillStyle = "#121413";
           ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.fillStyle = "#b9f42e";
+          ctx.fillStyle = "#f5f5f5";
           ctx.font = "bold 24px sans-serif";
           ctx.textAlign = "center";
           ctx.fillText(`Scene ${i + 1}: ${item.shot.title}`, canvas.width / 2, canvas.height / 2);
@@ -9315,7 +9364,7 @@ function RenderExportModal({
       <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-white/10 bg-[#161817] shadow-2xl">
         <header className="flex items-center justify-between border-b border-white/10 p-5">
           <div className="flex items-center gap-2">
-            <Film className="h-5 w-5 text-[#b9f42e]" />
+            <Film className="h-5 w-5 text-primary" />
             <h3 className="text-lg font-semibold text-white">Export Video Timeline</h3>
           </div>
           <button type="button" onClick={close} className="rounded-lg p-1 text-zinc-400 hover:bg-white/10 hover:text-white">
@@ -9328,14 +9377,14 @@ function RenderExportModal({
             <button
               type="button"
               onClick={() => setTab("all")}
-              className={`flex-1 rounded-lg py-2.5 text-xs font-bold transition ${tab === "all" ? "bg-[#b9f42e] text-black" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
+              className={`flex-1 rounded-lg py-2.5 text-xs font-bold transition ${tab === "all" ? "bg-primary text-black" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
             >
               Export Combined Video (All Shots)
             </button>
             <button
               type="button"
               onClick={() => setTab("parts")}
-              className={`flex-1 rounded-lg py-2.5 text-xs font-bold transition ${tab === "parts" ? "bg-[#b9f42e] text-black" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
+              className={`flex-1 rounded-lg py-2.5 text-xs font-bold transition ${tab === "parts" ? "bg-primary text-black" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
             >
               Export Clips in Parts ({shots.length})
             </button>
@@ -9354,7 +9403,7 @@ function RenderExportModal({
                         key={r}
                         type="button"
                         onClick={() => setResolution(r)}
-                        className={`rounded-xl border p-2.5 text-center text-xs font-bold transition ${resolution === r ? "border-[#b9f42e] bg-[#b9f42e]/10 text-[#b9f42e]" : "border-white/10 bg-white/5 text-zinc-300 hover:border-white/20"}`}
+                        className={`rounded-xl border p-2.5 text-center text-xs font-bold transition ${resolution === r ? "border-primary bg-primary/10 text-primary" : "border-white/10 bg-white/5 text-zinc-300 hover:border-white/20"}`}
                       >
                         {r}
                       </button>
@@ -9370,7 +9419,7 @@ function RenderExportModal({
                         key={f}
                         type="button"
                         onClick={() => setFormat(f)}
-                        className={`rounded-xl border p-2.5 text-center text-xs font-bold  transition ${format === f ? "border-[#b9f42e] bg-[#b9f42e]/10 text-[#b9f42e]" : "border-white/10 bg-white/5 text-zinc-300 hover:border-white/20"}`}
+                        className={`rounded-xl border p-2.5 text-center text-xs font-bold  transition ${format === f ? "border-primary bg-primary/10 text-primary" : "border-white/10 bg-white/5 text-zinc-300 hover:border-white/20"}`}
                       >
                         .{f}
                       </button>
@@ -9382,11 +9431,11 @@ function RenderExportModal({
               {rendering && (
                 <div className="space-y-2 rounded-xl border border-white/10 bg-black/40 p-4">
                   <div className="flex justify-between text-xs font-bold">
-                    <span className="text-[#b9f42e]">{statusMsg}</span>
+                    <span className="text-primary">{statusMsg}</span>
                     <span className="text-white">{progress}%</span>
                   </div>
                   <div className="h-2.5 w-full overflow-hidden rounded-full bg-white/10">
-                    <div className="h-full bg-gradient-to-r from-[#b9f42e] to-[#60a5fa] transition duration-state ease-out" style={{ width: `${progress}%` }} />
+                    <div className="h-full bg-gradient-to-r from-primary to-[#60a5fa] transition duration-state ease-out" style={{ width: `${progress}%` }} />
                   </div>
                 </div>
               )}
@@ -9395,7 +9444,7 @@ function RenderExportModal({
                 type="button"
                 disabled={rendering}
                 onClick={startFullRender}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#b9f42e] py-3.5 text-sm font-bold text-black shadow-lg shadow-[#b9f42e]/10 transition hover:bg-[#a4dc24] disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-bold text-black shadow-lg shadow-primary/10 transition hover:bg-[#a4dc24] disabled:opacity-50"
               >
                 {rendering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                 {rendering ? "Rendering MP4 video..." : `Render & Download .${format.toUpperCase()} Video`}
@@ -9419,7 +9468,7 @@ function RenderExportModal({
                       type="button"
                       disabled={!s.video_url || downloadingPartId === s.id}
                       onClick={() => downloadPart(s, idx)}
-                      className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-2 font-bold text-zinc-200 transition hover:bg-[#b9f42e] hover:text-black disabled:opacity-40"
+                      className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-2 font-bold text-zinc-200 transition hover:bg-primary hover:text-black disabled:opacity-40"
                     >
                       {downloadingPartId === s.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
                       Download Part
@@ -9713,13 +9762,13 @@ function Timeline({
       {/* Editor Header Toolbar */}
       <header className="flex h-16 items-center justify-between border-b border-white/10 bg-[#111211] px-6">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#b9f42e]/10 border border-[#b9f42e]/30">
-            <Film className="h-5 w-5 text-[#b9f42e]" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 border border-primary/30">
+            <Film className="h-5 w-5 text-primary" />
           </div>
           <div>
             <h2 className="text-sm font-semibold tracking-wide text-zinc-100">VIDEO TIMELINE STUDIO</h2>
             <p className="text-[11px] font-mono text-zinc-400">
-              {shots.length} Shot Clips • Sequence Total: <span className="text-[#b9f42e] font-bold">{formatTimecode(totalProjectDuration)}</span>
+              {shots.length} Shot Clips • Sequence Total: <span className="text-primary font-bold">{formatTimecode(totalProjectDuration)}</span>
             </p>
           </div>
         </div>
@@ -9731,14 +9780,14 @@ function Timeline({
             disabled={splitting || !currentShot}
             className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-200 transition hover:bg-white/10 disabled:opacity-50"
           >
-            {splitting ? <Loader2 className="h-4 w-4 animate-spin text-[#b9f42e]" /> : <Scissors className="h-4 w-4 text-[#b9f42e]" />}
+            {splitting ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <Scissors className="h-4 w-4 text-primary" />}
             Split Clip at Playhead
           </button>
 
           <button
             type="button"
             onClick={() => setExportModalOpen(true)}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#b9f42e] to-[#a4dc24] px-5 py-2.5 text-xs font-semibold text-black shadow-lg shadow-[#b9f42e]/20 transition hover:opacity-90"
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[#a4dc24] px-5 py-2.5 text-xs font-semibold text-black shadow-lg shadow-primary/20 transition hover:opacity-90"
           >
             <Download className="h-4 w-4" />
             Render & Export Video
@@ -9769,8 +9818,8 @@ function Timeline({
             )}
 
             {/* Timecode Badge Overlay */}
-            <div className="absolute top-3 left-3 flex items-center gap-1.5 rounded-lg border border-black/50 bg-black/70 px-2.5 py-1 text-[11px] font-mono text-[#b9f42e] backdrop-blur-md">
-              <span className="h-2 w-2 rounded-full bg-[#b9f42e] animate-pulse" />
+            <div className="absolute top-3 left-3 flex items-center gap-1.5 rounded-lg border border-black/50 bg-black/70 px-2.5 py-1 text-[11px] font-mono text-primary backdrop-blur-md">
+              <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
               {formatTimecode(globalTime)}
             </div>
 
@@ -9810,7 +9859,7 @@ function Timeline({
                 }
                 setIsPlaying((p) => !p);
               }}
-              className="flex h-12 w-12 items-center justify-center rounded-full bg-[#b9f42e] text-black shadow-lg shadow-[#b9f42e]/20 transition active:scale-[0.98]"
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-black shadow-lg shadow-primary/20 transition active:scale-[0.98]"
             >
               {isPlaying ? <Pause className="h-6 w-6 fill-current" /> : <Play className="h-6 w-6 fill-current translate-x-0.5" />}
             </button>
@@ -9827,7 +9876,7 @@ function Timeline({
             <button
               type="button"
               onClick={() => setIsLooping((l) => !l)}
-              className={`rounded-lg p-1.5 transition ${isLooping ? "bg-[#b9f42e]/20 text-[#b9f42e]" : "text-zinc-400 hover:text-white"}`}
+              className={`rounded-lg p-1.5 transition ${isLooping ? "bg-primary/20 text-primary" : "text-zinc-400 hover:text-white"}`}
               title="Toggle Loop"
             >
               <Layers className="h-4 w-4" />
@@ -9839,7 +9888,7 @@ function Timeline({
               className={`rounded-lg p-1.5 transition ${isMuted ? "bg-red-500/20 text-red-400" : "text-zinc-400 hover:text-white"}`}
               title={isMuted ? "Unmute Audio" : "Mute Audio"}
             >
-              {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4 text-[#b9f42e]" />}
+              {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4 text-primary" />}
             </button>
           </div>
         </main>
@@ -9850,7 +9899,7 @@ function Timeline({
             <div className="space-y-6">
               <div>
                 <div className="flex items-center justify-between">
-                  <span className="rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-2 py-0.5 text-[10px] font-bold text-[#b9f42e]">
+                  <span className="rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
                     Scene {selected + 1}
                   </span>
                   <div className="flex items-center gap-1">
@@ -9881,7 +9930,7 @@ function Timeline({
               <div className="space-y-4 rounded-xl border border-white/10 bg-black/30 p-4">
                 <div className="flex items-center justify-between">
                   <p className="t-caption text-zinc-400">Clip Trimming (Cut Range)</p>
-                  <Scissors className="h-4 w-4 text-[#b9f42e]" />
+                  <Scissors className="h-4 w-4 text-primary" />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -9894,7 +9943,7 @@ function Timeline({
                       max={getShotEnd(currentShot) - 0.1}
                       value={getShotStart(currentShot)}
                       onChange={(e) => handleUpdateTrim(currentShot, parseFloat(e.target.value) || 0, getShotEnd(currentShot))}
-                      className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs font-mono font-bold text-[#b9f42e] outline-none focus:border-[#b9f42e]"
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs font-mono font-bold text-primary outline-none focus:border-primary"
                     />
                   </div>
                   <div>
@@ -9906,7 +9955,7 @@ function Timeline({
                       max={currentShot.duration_seconds || 60}
                       value={getShotEnd(currentShot)}
                       onChange={(e) => handleUpdateTrim(currentShot, getShotStart(currentShot), parseFloat(e.target.value) || 1)}
-                      className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs font-mono font-bold text-[#b9f42e] outline-none focus:border-[#b9f42e]"
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs font-mono font-bold text-primary outline-none focus:border-primary"
                     />
                   </div>
                 </div>
@@ -9925,7 +9974,7 @@ function Timeline({
                     <button
                       type="button"
                       onClick={() => setShowMorePrompt((open) => !open)}
-                      className="text-[11px] font-semibold text-[#b9f42e] hover:underline"
+                      className="text-[11px] font-semibold text-primary hover:underline"
                     >
                       {showMorePrompt ? "Show less" : "Show more"}
                     </button>
@@ -9964,7 +10013,7 @@ function Timeline({
       <div className="border-t border-white/10 bg-[#0f100f] p-4">
         {/* Scrubber Time Bar & Zoom Controls */}
         <div className="mb-3 flex items-center justify-between text-xs font-mono">
-          <span className="text-[#b9f42e] font-bold">{formatTimecode(globalTime)}</span>
+          <span className="text-primary font-bold">{formatTimecode(globalTime)}</span>
 
           <div className="flex items-center gap-3 text-zinc-400">
             <ZoomOut className="h-4 w-4 cursor-pointer hover:text-white" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} />
@@ -9975,7 +10024,7 @@ function Timeline({
               step="0.25"
               value={zoom}
               onChange={(e) => setZoom(parseFloat(e.target.value))}
-              className="w-24 accent-[#b9f42e]"
+              className="w-24 accent-primary"
             />
             <ZoomIn className="h-4 w-4 cursor-pointer hover:text-white" onClick={() => setZoom((z) => Math.min(3, z + 0.25))} />
           </div>
@@ -10018,12 +10067,12 @@ function Timeline({
                     setSelected(idx);
                     setGlobalTime(cumulativeOffsets[idx] || 0);
                   }}
-                  className={`group relative flex h-20 min-w-[120px] flex-col justify-between overflow-hidden rounded-xl border p-2 text-left transition ${isSel ? "border-[#b9f42e] bg-[#b9f42e]/10 ring-2 ring-[#b9f42e]/30" : isAct ? "border-white/30 bg-white/10" : "border-white/10 bg-[#1b1c1b] hover:border-white/20"}`}
+                  className={`group relative flex h-20 min-w-[120px] flex-col justify-between overflow-hidden rounded-xl border p-2 text-left transition ${isSel ? "border-primary bg-primary/10 ring-2 ring-primary/30" : isAct ? "border-white/30 bg-white/10" : "border-white/10 bg-[#1b1c1b] hover:border-white/20"}`}
                   style={{ flex: dur }}
                 >
                   <div className="flex items-center justify-between text-[11px] font-bold">
                     <span className="truncate text-zinc-200">Scene {idx + 1}</span>
-                    <span className="font-mono text-[10px] text-[#b9f42e]">{dur.toFixed(1)}s</span>
+                    <span className="font-mono text-[10px] text-primary">{dur.toFixed(1)}s</span>
                   </div>
 
                   <p className="truncate text-[10px] text-zinc-400">{s.title}</p>
@@ -10223,11 +10272,11 @@ function Preview({
       ) : null}
       {busy && (
         <>
-          <span aria-hidden="true" className="pointer-events-none absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-[#b9f42e]/20 to-transparent" />
+          <span aria-hidden="true" className="pointer-events-none absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
           <div className="absolute inset-0 grid place-items-center p-2">
             <span className="flex flex-col items-center gap-1.5 text-center">
-              <Loader2 className="h-4 w-4 animate-spin text-[#b9f42e]" />
-              <span className="text-[10px] font-semibold leading-tight text-[#b9f42e]">{label}</span>
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              <span className="text-[10px] font-semibold leading-tight text-primary">{label}</span>
             </span>
           </div>
         </>

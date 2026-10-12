@@ -3,15 +3,19 @@
 @tailwind utilities;
 
 :root {
-  --background: 0 0% 0%;
+  --background: 0 0% 5%;
   --foreground: 0 0% 98%;
-  --card: 0 0% 3%;
+  --card: 0 0% 7%;
   --card-foreground: 0 0% 98%;
-  --popover: 0 0% 3%;
+  --popover: 0 0% 7%;
   --popover-foreground: 0 0% 98%;
-  /* Brand lime green (matches the logo) */
-  --primary: 74 89% 56%;
-  --primary-foreground: 0 0% 0%;
+  /* The action colour is off-white: a white control on a near-black page needs
+     no hue to be the loudest thing on screen. */
+  --primary: 0 0% 96%;
+  --primary-foreground: 0 0% 8%;
+  /* Brand lime (matches the logo). Reserved for a figure or a badge — never a
+     button, a heading or a border. */
+  --brand: 74 89% 56%;
   --secondary: 0 0% 12%;
   --secondary-foreground: 0 0% 98%;
   --muted: 0 0% 12%;
@@ -22,15 +26,17 @@
   --destructive-foreground: 0 0% 98%;
   --border: 0 0% 14%;
   --input: 0 0% 14%;
-  --ring: 74 89% 56%;
-  --radius: 0.75rem;
+  --ring: 0 0% 96%;
+  --radius: 0.25rem;
 
   /* Radius scale. Bigger surfaces carry bigger radii, consistently — the site
      previously used seven ad-hoc pixel values with nothing distinguishing them. */
-  --radius-sm: 8px;   /* chips, badges, inputs */
-  --radius-md: 14px;  /* buttons, small cards */
-  --radius-lg: 22px;  /* cards, panels */
-  --radius-xl: 30px;  /* hero containers, sheets */
+  --radius-sm: 2px;   /* chips, badges, inputs */
+  --radius-md: 3px;   /* buttons, small cards */
+  --radius-lg: 4px;   /* cards, panels */
+  --radius-xl: 6px;   /* hero containers, sheets */
+  --radius-2xl: 8px;
+  --radius-3xl: 10px;
 
   /* Motion. Springs handle anything a user can touch (see src/lib/motion.ts);
      these three durations cover everything that is not gesture-driven. */
@@ -39,13 +45,11 @@
   --dur-surface: 400ms; /* a panel or sheet arriving */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
-  /* The one accent. Lime comes from the logo and is the only colour allowed to
-     mean "act on this" — everything else on the page is a neutral. */
-  --accent-glow: 74 89% 56%;
+  --accent-glow: 0 0% 96%;
 }
 
 .dark {
-  --background: 0 0% 4%;
+  --background: 0 0% 5%;
   --foreground: 0 0% 98%;
   /* ... same for dark mode since we're dark by default ... */
 }
@@ -71,31 +75,31 @@
 }
 
 @layer components {
-  /* The type scale. Weight tops out at 600 — presence in the large sizes comes
+  /* The type scale. Weight tops out at 500 — presence in the large sizes comes
      from tight leading and negative tracking, not from bolding everything. */
   .t-display {
     font-size: clamp(2.75rem, 6vw, 5rem);
     line-height: 1.05;
-    letter-spacing: -0.03em;
-    font-weight: 600;
+    letter-spacing: -0.05em;
+    font-weight: 500;
   }
   .t-h1 {
     font-size: clamp(2rem, 4vw, 3rem);
     line-height: 1.1;
-    letter-spacing: -0.022em;
-    font-weight: 600;
+    letter-spacing: -0.045em;
+    font-weight: 500;
   }
   .t-h2 {
     font-size: clamp(1.5rem, 2.5vw, 1.875rem);
     line-height: 1.2;
-    letter-spacing: -0.015em;
-    font-weight: 600;
+    letter-spacing: -0.03em;
+    font-weight: 500;
   }
   .t-h3 {
     font-size: 1.125rem;
     line-height: 1.3;
-    letter-spacing: -0.01em;
-    font-weight: 600;
+    letter-spacing: -0.02em;
+    font-weight: 500;
   }
   .t-body-lg {
     font-size: 1.125rem;
@@ -221,8 +225,17 @@
     display: none;
   }
 
+  /* The page frame: a centred column with a hairline down each side, so every
+     section reads as a cell of one grid rather than a floating block. */
+  .frame {
+    @apply mx-auto w-full max-w-6xl border-x border-white/[.08];
+  }
+  .frame-row {
+    @apply border-t border-white/[.08];
+  }
+
   .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-lime-300 via-lime-400 to-emerald-300;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-white via-white to-white/60;
   }
 }
 
@@ -345,7 +358,7 @@
   @apply list-decimal pl-6 space-y-2 text-white/70;
 }
 .blog-prose blockquote {
-  @apply border-l-4 border-primary/50 pl-4 italic text-white/60;
+  @apply border-l-2 border-white/30 pl-4 italic text-white/60;
 }
 .blog-prose img {
   @apply rounded-2xl border border-white/10 my-6 w-full;

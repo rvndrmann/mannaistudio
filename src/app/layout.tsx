@@ -40,7 +40,7 @@ export default function RootLayout({
                     handshake off the largest paint. */}
                 <link rel="preconnect" href="https://cytkucdnllicnmljixwd.supabase.co" crossOrigin="anonymous" />
             </head>
-            <body dir="ltr" className={`${inter.className} bg-black text-white selection:bg-primary/30`}>
+            <body dir="ltr" className={`${inter.className} bg-background text-white selection:bg-white/25`}>
                 <PwaRegister />
                 {/* Google AdSense. Loaded once the page is idle: it was a
                     blocking-priority script in the head, ahead of the page's
@@ -86,7 +86,7 @@ export default function RootLayout({
                         src={`https://www.facebook.com/tr?id=${FB_PIXEL_ID}&ev=PageView&noscript=1`}
                         alt="" />
                 </noscript>
-                <div className="fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,rgba(196,245,43,0.06),transparent)] transition pointer-events-none" />
+                <div className="fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.035),transparent)] transition pointer-events-none" />
                 <AuthProvider>
                     {/* First-party page views and presence, for the admin
                         analytics section. The third-party tags above cannot

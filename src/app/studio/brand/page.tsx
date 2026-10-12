@@ -89,7 +89,7 @@ export default function BrandHome() {
           </p>
           <button
             onClick={() => signInWithGoogle()}
-            className="mt-6 rounded-lg bg-[#b9f42e] px-5 py-2.5 text-sm font-bold text-black"
+            className="mt-6 rounded-lg bg-primary px-5 py-2.5 text-sm font-bold text-black"
           >
             Sign in
           </button>
@@ -105,7 +105,7 @@ export default function BrandHome() {
           <ArrowLeft className="h-4 w-4" />
           Studio
         </Link>
-        <span className="ml-1 flex items-center gap-1.5 text-[12px] font-bold text-[#b9f42e]">
+        <span className="ml-1 flex items-center gap-1.5 text-[12px] font-bold text-primary">
           <Building2 className="h-4 w-4" />
           Brand rooms
         </span>
@@ -122,7 +122,7 @@ export default function BrandHome() {
         </p>
 
         <section className="mt-6 rounded-2xl border border-white/10 bg-[#0f100f] p-4 sm:p-5">
-          <p className="text-xs font-bold tracking-[.2em] text-[#b9f42e]">NEW BRAND ROOM</p>
+          <p className="text-xs font-bold tracking-[.2em] text-primary">NEW BRAND ROOM</p>
           <div className="mt-3 flex flex-col gap-2.5 sm:flex-row">
             <input
               value={name}
@@ -131,12 +131,12 @@ export default function BrandHome() {
                 if (event.key === "Enter") createBrand();
               }}
               placeholder="Aurora Coffee, or the name of your show"
-              className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2.5 text-sm outline-none placeholder:text-zinc-600 focus:border-[#b9f42e]/40"
+              className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2.5 text-sm outline-none placeholder:text-zinc-600 focus:border-primary/40"
             />
             <select
               value={kind}
               onChange={(event) => setKind(event.target.value)}
-              className="rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2.5 text-sm outline-none focus:border-[#b9f42e]/40"
+              className="rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2.5 text-sm outline-none focus:border-primary/40"
             >
               <option value="brand">Brand</option>
               <option value="creator">Creator</option>
@@ -145,7 +145,7 @@ export default function BrandHome() {
             <button
               onClick={createBrand}
               disabled={creating}
-              className="flex items-center justify-center gap-1.5 rounded-lg bg-[#b9f42e] px-4 py-2.5 text-[13px] font-bold text-black transition duration-press ease-out active:scale-[0.97] disabled:opacity-60"
+              className="flex items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-[13px] font-bold text-black transition duration-press ease-out active:scale-[0.97] disabled:opacity-60"
             >
               {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               Create
@@ -166,7 +166,7 @@ export default function BrandHome() {
               <Link
                 key={brand.id}
                 href={`/studio/brand/${brand.id}`}
-                className="group rounded-2xl border border-white/10 bg-[#0f100f] p-4 transition hover:border-[#b9f42e]/40"
+                className="group rounded-2xl border border-white/10 bg-[#0f100f] p-4 transition hover:border-primary/40"
               >
                 <div className="flex items-center gap-2">
                   <span className="rounded-full border border-white/[0.08] bg-[#141414] px-2 py-0.5 text-[10px] font-bold text-zinc-400">
@@ -174,7 +174,7 @@ export default function BrandHome() {
                   </span>
                   {brand.industry && <span className="truncate text-[11px] text-zinc-500">{brand.industry}</span>}
                 </div>
-                <p className="mt-3 text-base font-bold tracking-tight group-hover:text-[#b9f42e]">{brand.name}</p>
+                <p className="mt-3 text-base font-bold tracking-tight group-hover:text-primary">{brand.name}</p>
                 {brand.tagline && <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-zinc-400">{brand.tagline}</p>}
                 {brand.website_url && (
                   <p className="mt-3 flex items-center gap-1.5 truncate text-[11px] text-zinc-500">
@@ -182,7 +182,7 @@ export default function BrandHome() {
                     {brand.website_url.replace(/^https?:\/\//, "")}
                   </p>
                 )}
-                <p className="mt-3 flex items-center gap-1.5 text-[11px] font-bold text-[#b9f42e] opacity-0 transition group-hover:opacity-100">
+                <p className="mt-3 flex items-center gap-1.5 text-[11px] font-bold text-primary opacity-0 transition group-hover:opacity-100">
                   <Sparkles className="h-3.5 w-3.5" />
                   Open brand room
                 </p>

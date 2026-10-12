@@ -15,7 +15,7 @@ export function AutopilotPanel() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-xs font-bold tracking-[.18em] text-[#b9f42e]">Autonomous Marketing Agent</p>
+        <p className="text-xs font-bold tracking-[.18em] text-primary">Autonomous Marketing Agent</p>
         <h1 className="mt-1 text-3xl font-semibold text-white">AI Content Autopilot</h1>
         <p className="mt-1 text-sm text-zinc-400">Configure how autonomously your AI marketing agent generates, plans, and schedules video content.</p>
       </div>
@@ -25,7 +25,7 @@ export function AutopilotPanel() {
         <button
           type="button"
           onClick={() => setMode("manual")}
-          className={`flex flex-col justify-between rounded-2xl border p-6 text-left transition ${mode === "manual" ? "border-[#b9f42e] bg-[#b9f42e]/10" : "border-white/10 bg-[#161817] hover:border-white/20"}`}
+          className={`flex flex-col justify-between rounded-2xl border p-6 text-left transition ${mode === "manual" ? "border-primary bg-primary/10" : "border-white/10 bg-[#161817] hover:border-white/20"}`}
         >
           <div>
             <div className="flex items-center justify-between">
@@ -35,7 +35,7 @@ export function AutopilotPanel() {
             <h3 className="mt-4 text-lg font-bold text-white">MANUAL</h3>
             <p className="mt-1 text-xs text-zinc-400">AI generates videos and graphics, but you review, schedule, and publish every post manually.</p>
           </div>
-          <div className="mt-6 flex items-center gap-1 text-xs font-bold text-[#b9f42e]">
+          <div className="mt-6 flex items-center gap-1 text-xs font-bold text-primary">
             {mode === "manual" && <CheckCircle2 className="h-4 w-4" />} Active Mode
           </div>
         </button>
@@ -43,17 +43,17 @@ export function AutopilotPanel() {
         <button
           type="button"
           onClick={() => setMode("copilot")}
-          className={`flex flex-col justify-between rounded-2xl border p-6 text-left transition ${mode === "copilot" ? "border-[#b9f42e] bg-[#b9f42e]/10" : "border-white/10 bg-[#161817] hover:border-white/20"}`}
+          className={`flex flex-col justify-between rounded-2xl border p-6 text-left transition ${mode === "copilot" ? "border-primary bg-primary/10" : "border-white/10 bg-[#161817] hover:border-white/20"}`}
         >
           <div>
             <div className="flex items-center justify-between">
-              <span className="rounded-lg bg-[#b9f42e]/20 p-2 text-[#b9f42e]"><Bot className="h-5 w-5" /></span>
-              <span className="text-xs font-bold text-[#b9f42e]">RECOMMENDED</span>
+              <span className="rounded-lg bg-primary/20 p-2 text-primary"><Bot className="h-5 w-5" /></span>
+              <span className="text-xs font-bold text-primary">RECOMMENDED</span>
             </div>
             <h3 className="mt-4 text-lg font-bold text-white">COPILOT</h3>
             <p className="mt-1 text-xs text-zinc-400">AI generates content, proposes an optimal posting schedule, and awaits your 1-click approval.</p>
           </div>
-          <div className="mt-6 flex items-center gap-1 text-xs font-bold text-[#b9f42e]">
+          <div className="mt-6 flex items-center gap-1 text-xs font-bold text-primary">
             {mode === "copilot" && <CheckCircle2 className="h-4 w-4" />} Active Mode
           </div>
         </button>
@@ -87,7 +87,7 @@ export function AutopilotPanel() {
             <select
               value={frequency}
               onChange={(e) => setFrequency(e.target.value)}
-              className="mt-2 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm font-semibold text-white outline-none focus:border-[#b9f42e]"
+              className="mt-2 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm font-semibold text-white outline-none focus:border-primary"
             >
               <option value="2 videos per week">2 videos per week</option>
               <option value="4 videos per week">4 videos per week (Recommended)</option>
@@ -102,7 +102,7 @@ export function AutopilotPanel() {
               type="text"
               value={objective}
               onChange={(e) => setObjective(e.target.value)}
-              className="mt-2 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-[#b9f42e]"
+              className="mt-2 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-primary"
             />
           </div>
 
@@ -112,7 +112,7 @@ export function AutopilotPanel() {
               type="text"
               value={audience}
               onChange={(e) => setAudience(e.target.value)}
-              className="mt-2 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-[#b9f42e]"
+              className="mt-2 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none focus:border-primary"
             />
           </div>
 
@@ -124,7 +124,7 @@ export function AutopilotPanel() {
                 type="checkbox"
                 checked={approvalRequired}
                 onChange={(e) => setApprovalRequired(e.target.checked)}
-                className="h-5 w-5 rounded border-white/10 bg-black text-[#b9f42e] focus:ring-0"
+                className="h-5 w-5 rounded border-white/10 bg-black text-primary focus:ring-0"
               />
             </div>
           </div>

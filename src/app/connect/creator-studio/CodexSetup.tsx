@@ -33,7 +33,7 @@ Verify the connection with codex mcp list. If the tools are not available in thi
   ]
   return <div className="space-y-8">
     <section className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-semibold">1. Copy this prompt into Codex</h2><button onClick={() => void copy("prompt", prompt)} className="rounded-xl bg-[#b9f42e] px-5 py-3 font-semibold text-black">{copied === "prompt" ? "Prompt copied ✓" : "Copy connection prompt"}</button></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-semibold">1. Copy this prompt into Codex</h2><button onClick={() => void copy("prompt", prompt)} className="rounded-xl bg-primary px-5 py-3 font-semibold text-black">{copied === "prompt" ? "Prompt copied ✓" : "Copy connection prompt"}</button></div>
       <p className="text-sm text-white/70">Codex can help configure the connection. You complete sign-in and account approval in your browser.</p>
       <textarea readOnly aria-label="Codex connection prompt" value={prompt} className="h-72 w-full rounded-xl border border-white/10 bg-black/30 p-4 text-sm leading-relaxed text-white/80" />
     </section>
@@ -41,7 +41,7 @@ Verify the connection with codex mcp list. If the tools are not available in thi
       <h2 className="text-xl font-semibold">2. Sign in to your own account</h2>
       <p className="text-white/70">In the browser window opened by Codex, sign in to AI Director Hub. Check the account shown and the requested permissions, then choose <strong className="text-white">Connect my account</strong>.</p>
       <p className="text-sm text-white/60">Start a new Codex chat or reload Codex if the new tools do not appear. You can disconnect an assistant on your account connections page.</p>
-      <a href="/connect/creator-studio" className="inline-block text-[#b9f42e] underline">Manage my account connections →</a>
+      <a href="/connect/creator-studio" className="inline-block text-primary underline">Manage my account connections →</a>
     </section>
     <section className="space-y-4 rounded-2xl border border-white/10 p-6">
       <h2 className="text-xl font-semibold">Prefer to connect manually?</h2>
@@ -52,8 +52,8 @@ Verify the connection with codex mcp list. If the tools are not available in thi
       <button onClick={() => void copy("commands", commands)} className="rounded-lg border border-white/20 px-4 py-2">{copied === "commands" ? "Commands copied ✓" : "Copy commands"}</button>
       <a href="https://learn.chatgpt.com/docs/extend/mcp?surface=cli" target="_blank" rel="noopener noreferrer" className="block text-sm text-white/60 underline">Official OpenAI MCP setup documentation</a>
     </section>
-    <section className="space-y-4"><h2 className="text-xl font-semibold">3. Talk to your studio</h2><div className="grid gap-3">{examples.map((example) => <button key={example} onClick={() => void copy(example, example)} className="rounded-xl border border-white/10 p-4 text-left text-sm text-white/80 hover:bg-white/5">{example}<span className="mt-2 block text-xs text-[#b9f42e]">{copied === example ? "Copied ✓" : "Copy example →"}</span></button>)}</div><p className="text-sm text-white/60">Creating and generating requires active Creator Studio access. Generation uses your credits and configured providers. Hired-team customers can track their own orders and approved deliveries without a Studio subscription.</p></section>
-    <p role="status" aria-live="polite" className="text-sm text-[#b9f42e]">{copied ? "Copied to clipboard. Paste it into Codex." : ""}</p>
+    <section className="space-y-4"><h2 className="text-xl font-semibold">3. Talk to your studio</h2><div className="grid gap-3">{examples.map((example) => <button key={example} onClick={() => void copy(example, example)} className="rounded-xl border border-white/10 p-4 text-left text-sm text-white/80 hover:bg-white/5">{example}<span className="mt-2 block text-xs text-primary">{copied === example ? "Copied ✓" : "Copy example →"}</span></button>)}</div><p className="text-sm text-white/60">Creating and generating requires active Creator Studio access. Generation uses your credits and configured providers. Hired-team customers can track their own orders and approved deliveries without a Studio subscription.</p></section>
+    <p role="status" aria-live="polite" className="text-sm text-primary">{copied ? "Copied to clipboard. Paste it into Codex." : ""}</p>
     {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
   </div>
 }

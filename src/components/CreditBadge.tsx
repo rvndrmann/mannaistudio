@@ -157,10 +157,10 @@ export default function CreditBadge({ className }: { className?: string }) {
       <button
         type="button"
         onClick={() => setShowModal(true)}
-        className={`group flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#b9f42e]/30 bg-[#b9f42e]/10 px-3 text-xs font-bold text-[#b9f42e] transition hover:bg-[#b9f42e] hover:text-black ${className || ""}`}
+        className={`group flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-white/15 bg-white/[.04] px-3 text-xs font-semibold text-white transition hover:bg-white/10 ${className || ""}`}
         title="Click to top up AI Generation Credits via Razorpay."
       >
-        <Zap className="h-3.5 w-3.5 fill-[#b9f42e] group-hover:fill-black" />
+        <Zap className="h-3.5 w-3.5 fill-brand text-brand" />
         <span>{credits !== null ? `${credits.toLocaleString()} Credits` : "Loading..."}</span>
         {pending > 0 && (
           <span
@@ -189,8 +189,8 @@ export default function CreditBadge({ className }: { className?: string }) {
             </button>
 
             <div className="mb-4 flex items-center gap-3">
-              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#b9f42e]/15 text-[#b9f42e]">
-                <Zap className="h-6 w-6 fill-[#b9f42e]" />
+              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/15 text-primary">
+                <Zap className="h-6 w-6 fill-primary" />
               </div>
               <div>
                 <h3 className="text-lg font-bold">Generation Credits</h3>
@@ -208,7 +208,7 @@ export default function CreditBadge({ className }: { className?: string }) {
                   type="button"
                   onClick={() => setTab(item.id)}
                   className={`-mb-px border-b-2 px-3 py-2 text-xs font-semibold transition ${
-                    tab === item.id ? "border-[#b9f42e] text-[#b9f42e]" : "border-transparent text-zinc-400 hover:text-zinc-200"
+                    tab === item.id ? "border-primary text-primary" : "border-transparent text-zinc-400 hover:text-zinc-200"
                   }`}
                 >
                   {item.label}
@@ -228,7 +228,7 @@ export default function CreditBadge({ className }: { className?: string }) {
             ) : (
             <>
             {topUpSuccess && (
-              <div className="mb-4 flex items-center gap-2 rounded-xl border border-[#b9f42e]/40 bg-[#b9f42e]/15 p-3 text-xs font-semibold text-[#b9f42e]">
+              <div className="mb-4 flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/15 p-3 text-xs font-semibold text-primary">
                 <Check className="h-4 w-4 shrink-0" />
                 <span>{topUpSuccess}</span>
               </div>
@@ -249,17 +249,17 @@ export default function CreditBadge({ className }: { className?: string }) {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {[5, 10, 25, 50].map((amount) => (
-                    <button key={amount} type="button" onClick={() => setTopUpUsd(amount)} className={`rounded-lg border px-3 py-2 text-xs font-bold ${topUpUsd === amount ? "border-[#b9f42e] bg-[#b9f42e] text-black" : "border-white/10 bg-white/5 text-white hover:border-white/20"}`}>
+                    <button key={amount} type="button" onClick={() => setTopUpUsd(amount)} className={`rounded-lg border px-3 py-2 text-xs font-bold ${topUpUsd === amount ? "border-primary bg-primary text-black" : "border-white/10 bg-white/5 text-white hover:border-white/20"}`}>
                       ${amount}
                     </button>
                   ))}
                 </div>
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <div className="relative flex-1">
-                    <span className="absolute left-3 top-2.5 text-sm font-bold text-[#b9f42e]">$</span>
-                    <input id="credit-topup-usd" type="number" min={MIN_TOP_UP_USD} step="1" value={topUpUsd} onChange={(event) => setTopUpUsd(Math.max(0, Number(event.target.value) || 0))} className="w-full rounded-lg border border-white/15 bg-black/50 py-2.5 pl-8 pr-3 text-sm font-semibold text-white outline-none focus:border-[#b9f42e]" />
+                    <span className="absolute left-3 top-2.5 text-sm font-bold text-primary">$</span>
+                    <input id="credit-topup-usd" type="number" min={MIN_TOP_UP_USD} step="1" value={topUpUsd} onChange={(event) => setTopUpUsd(Math.max(0, Number(event.target.value) || 0))} className="w-full rounded-lg border border-white/15 bg-black/50 py-2.5 pl-8 pr-3 text-sm font-semibold text-white outline-none focus:border-primary" />
                   </div>
-                  <button disabled={loadingPkgId !== null || !Number.isFinite(topUpUsd) || topUpUsd < MIN_TOP_UP_USD} onClick={() => void handleTopUp(topUpUsd)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#b9f42e] px-4 py-2.5 text-sm font-bold text-black disabled:cursor-not-allowed disabled:opacity-50">
+                  <button disabled={loadingPkgId !== null || !Number.isFinite(topUpUsd) || topUpUsd < MIN_TOP_UP_USD} onClick={() => void handleTopUp(topUpUsd)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-black disabled:cursor-not-allowed disabled:opacity-50">
                     {loadingPkgId !== null ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
                     Buy credits · {formatUsd(Math.ceil(topUpUsd * INR_PER_USD))}
                   </button>
