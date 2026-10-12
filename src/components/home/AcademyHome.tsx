@@ -200,7 +200,12 @@ export default async function AcademyHome() {
               <ProCta placement="hero" className="w-full sm:w-auto" />
               <FreeCourseCta placement="hero" />
             </div>
-            {settings.costExample && <p className="mt-6 max-w-xl rounded-lg border border-primary/25 bg-primary/[.06] px-4 py-3 text-sm text-white/80">{settings.costExample}</p>}
+            {settings.costExample && (
+              <div className="mt-6 max-w-xl rounded-lg border border-primary/25 bg-primary/[.06] px-4 py-3">
+                <p className="text-sm font-semibold text-primary">Why use your own API key? You pay the real price.</p>
+                <p className="mt-1.5 text-sm text-white/80">{settings.costExample}</p>
+              </div>
+            )}
             <p className="mt-6 text-xs text-white/50">Cancel anytime · Your own API keys · No markup on generation</p>
           </div>
           {heroClips.length > 0 && <HeroReel clips={heroClips} />}
@@ -232,7 +237,17 @@ export default async function AcademyHome() {
         </section>
       )}
 
-      {/* 3. The craft */}
+      {/* 3. Proof wall */}
+      {(students.length > 0 || sales.length > 0) && (
+        <section id="proof" className="scroll-mt-24 border-y border-white/5 bg-white/[.02] px-5 py-20 sm:px-8">
+          <div className="mx-auto max-w-7xl">
+            <SectionTitle eyebrow="PROOF" title="Results from students and clients" body="Shared with the permission of the people shown." />
+            <ProofWall students={students.map(toWallItem)} sales={sales.map(toWallItem)} />
+          </div>
+        </section>
+      )}
+
+      {/* 4. The craft */}
       <section className="px-5 py-20 sm:px-8">
         <div className="mx-auto max-w-7xl">
           <SectionTitle eyebrow="THE DIFFERENCE" title="Stop Generating Clips. Start Directing AI Videos." body="Tools and models will change. Creative judgment and a repeatable production process keep paying off." />
@@ -248,7 +263,7 @@ export default async function AcademyHome() {
         </div>
       </section>
 
-      {/* 4. Client-grade work */}
+      {/* 5. Client-grade work */}
       {portfolio.length > 0 && (
         <section id="work" className="scroll-mt-24 border-y border-white/5 bg-white/[.02] px-5 py-20 sm:px-8">
           <div className="mx-auto max-w-7xl">
@@ -258,7 +273,7 @@ export default async function AcademyHome() {
         </section>
       )}
 
-      {/* 5. AI Director Agent */}
+      {/* 6. AI Director Agent */}
       <section className="mx-auto max-w-7xl px-5 py-20 sm:px-8">
         <div className={`grid gap-8 rounded-3xl border border-primary/25 bg-primary/[.04] p-7 sm:p-10 ${settings.studioDemoUrl ? "lg:grid-cols-2 lg:items-center" : ""}`}>
           <div>
@@ -282,7 +297,7 @@ export default async function AcademyHome() {
         </div>
       </section>
 
-      {/* 6. Why creators choose AI Director Hub */}
+      {/* 7. Why creators choose AI Director Hub */}
       <section className="border-y border-white/5 bg-white/[.02] px-5 py-20 sm:px-8">
         <div className="mx-auto max-w-6xl">
           <SectionTitle eyebrow={`${shownReasons.length} REASONS`} title="Why creators choose AI Director Hub" />
@@ -314,7 +329,7 @@ export default async function AcademyHome() {
         </div>
       </section>
 
-      {/* 7. Courses */}
+      {/* 8. Courses */}
       {(freeCourse || proCourse) && (
         <section id="courses" className="mx-auto max-w-7xl scroll-mt-24 px-5 py-20 sm:px-8">
           <SectionTitle eyebrow="COURSES" title="Start free. Go deeper with Pro." body="Practical training in AI filmmaking: shot design, character consistency, prompting, editing and the production workflow." />
@@ -323,16 +338,6 @@ export default async function AcademyHome() {
             {proCourse && <CourseCard course={proCourse} />}
           </div>
           <Link href="/courses" className="mt-8 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-primary hover:underline">View all courses <ArrowRight className="h-4 w-4" /></Link>
-        </section>
-      )}
-
-      {/* 8. Proof wall */}
-      {(students.length > 0 || sales.length > 0) && (
-        <section id="proof" className="scroll-mt-24 border-y border-white/5 bg-white/[.02] px-5 py-20 sm:px-8">
-          <div className="mx-auto max-w-7xl">
-            <SectionTitle eyebrow="PROOF" title="Results from students and clients" body="Shared with the permission of the people shown." />
-            <ProofWall students={students.map(toWallItem)} sales={sales.map(toWallItem)} />
-          </div>
         </section>
       )}
 
