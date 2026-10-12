@@ -64,9 +64,9 @@ const referenceUrlList = z.array(z.url().max(2083)).min(1).optional()
 export const higgsfieldSeedanceInputSchema = z.object({
   prompt: z.string().min(1).optional(),
   duration: z.number().int().min(4).max(15).default(5),
-  audio_urls: referenceUrlList,
-  image_urls: referenceUrlList,
-  video_urls: referenceUrlList,
+  audio_urls: z.array(z.url().max(2083)).min(1).max(3).optional(),
+  image_urls: z.array(z.url().max(2083)).min(1).max(9).optional(),
+  video_urls: z.array(z.url().max(2083)).min(1).max(3).optional(),
   resolution: z.enum(seedanceResolutions).default("720p"),
   aspect_ratio: z.enum(seedanceAspectRatios).default("16:9"),
   generate_audio: z.boolean().default(true),
@@ -77,7 +77,7 @@ export const higgsfieldWanInputSchema = z.object({
   prompt: z.string().min(1),
   duration: z.number().int().min(2).max(30).default(5),
   audio_urls: z.array(z.url().max(2083)).min(1).max(5).optional(),
-  image_urls: referenceUrlList,
+  image_urls: z.array(z.url().max(2083)).min(1).max(10).optional(),
   video_urls: z.array(z.url().max(2083)).min(1).max(5).optional(),
   resolution: z.enum(wanResolutions).default("1080p"),
   aspect_ratio: z.enum(wanAspectRatios).default("adaptive"),
@@ -96,7 +96,7 @@ export const higgsfieldKlingInputSchema = z.object({
 export const higgsfieldKlingO3InputSchema = z.object({
   mode: z.enum(["std", "pro", "4k"]).default("std"),
   sound: z.enum(["on", "off"]).default("off"),
-  prompt: z.string().min(1).optional(),
+  prompt: z.string().min(1),
   duration: z.number().int().min(3).max(15).default(5),
   shot_type: z.enum(["customize", "intelligent"]).default("customize"),
   image_urls: referenceUrlList,
@@ -109,16 +109,13 @@ export const higgsfieldKlingO3VideoInputSchema = z.object({
   mode: z.enum(["std", "pro"]).default("pro"),
   prompt: z.string().min(1),
   duration: z.number().int().min(3).max(10).default(5),
-  image_urls: referenceUrlList,
-  video_urls: z.array(z.url().max(2083)).min(1),
+  image_urls: z.array(z.url().max(2083)).min(1).max(4).optional(),
+  video_urls: z.array(z.url().max(2083)).min(1).max(1),
   aspect_ratio: z.enum(["16:9", "9:16", "1:1"]).optional(),
 }).strict()
-// Higgsfield's published page for this model shows only `prompt`. The rest of
-// this shape is the part of its schema that could be confirmed elsewhere:
-// 4-30 seconds, 480p or 720p, sound on by default, up to 30 `image_urls`. The
-// names of its video and audio inputs and of its camera, lighting and genre
-// controls could not be, and the schema refuses unknown fields, so none of
-// those is sent.
+// From the input schema published with the model. It refuses unknown fields.
+// Its optional era, genre, light, pacing, palette and camera controls are not
+// offered in the studio and are left out, which lets the model direct them.
 export const higgsfieldCinemaStudioInputSchema = z.object({
   prompt: z.string().min(1),
   duration: z.number().int().min(4).max(30).default(5),
@@ -126,6 +123,8 @@ export const higgsfieldCinemaStudioInputSchema = z.object({
   aspect_ratio: z.enum(seedanceAspectRatios).optional(),
   generate_audio: z.boolean().default(true),
   image_urls: z.array(z.url().max(2083)).min(1).max(30).optional(),
+  video_urls: z.array(z.url().max(2083)).min(1).max(10).optional(),
+  audio_urls: z.array(z.url().max(2083)).min(1).max(10).optional(),
 }).strict()
 export const soulV2InputSchema = z.object({
   prompt: z.string().min(1).max(10_000), seed: z.number().int().min(1).max(1_000_000).optional(), style_id: z.string().optional(),
@@ -194,10 +193,11 @@ export async function submitHiggsfieldMinimaxH3Video(input: { prompt: string; du
 }
 
 /**
- * Every input is optional at the endpoint, so the one thing checked here is
- * that the request carries something to make a video from. A list with nothing
- * in it is left out rather than sent empty, and only fetchable URLs are passed:
- * a BytePlus asset identity means nothing to this provider.
+ * The endpoint's schema requires a reference image or a reference video; a
+ * prompt alone is refused. A list with nothing in it is left out rather than
+ * sent empty, lists are cut to what the schema allows (9 images, 3 clips, 3
+ * audio files), and only fetchable URLs are passed: a BytePlus asset identity
+ * means nothing to this provider.
  */
 export async function submitHiggsfieldSeedanceVideo(input: {
   prompt?: string
@@ -209,19 +209,20 @@ export async function submitHiggsfieldSeedanceVideo(input: {
   audioUrls?: string[]
   audioEnabled?: boolean
 }) {
-  const urls = (values?: string[]) => {
-    const list = Array.from(new Set((values || []).filter((value) => /^https?:\/\//i.test(value))))
+  const urls = (values: string[] | undefined, limit: number) => {
+    const list = Array.from(new Set((values || []).filter((value) => /^https?:\/\//i.test(value)))).slice(0, limit)
     return list.length ? list : undefined
   }
   const prompt = input.prompt?.trim() || undefined
-  const image_urls = urls(input.imageUrls)
-  const video_urls = urls(input.videoUrls)
-  if (!prompt && !image_urls && !video_urls) throw new HiggsfieldProviderError("Seedance 2.0 needs a prompt or a reference image or video.", 400)
+  const image_urls = urls(input.imageUrls, 9)
+  const video_urls = urls(input.videoUrls, 3)
+  const audio_urls = urls(input.audioUrls, 3)
+  if (!image_urls && !video_urls) throw new HiggsfieldProviderError("Seedance 2.0 on Higgsfield needs a reference image or video. Generate the shot's keyframe or add a reference first.", 400)
   const resolution = String(input.resolution || "720p").toLowerCase()
   const parsed = higgsfieldSeedanceInputSchema.safeParse({
     ...(prompt ? { prompt } : {}),
     duration: Math.min(15, Math.max(4, Math.round(Number(input.duration) || 5))),
-    ...(urls(input.audioUrls) ? { audio_urls: urls(input.audioUrls) } : {}),
+    ...(audio_urls ? { audio_urls } : {}),
     ...(image_urls ? { image_urls } : {}),
     ...(video_urls ? { video_urls } : {}),
     resolution: (seedanceResolutions as readonly string[]).includes(resolution) ? resolution : "720p",
@@ -259,7 +260,7 @@ export async function submitHiggsfieldWanVideo(input: {
   if (!prompt) throw new HiggsfieldProviderError("Wan 3.0 Prime needs a prompt.", 400)
   const resolution = String(input.resolution || "1080p").toLowerCase()
   const audio_urls = urls(input.audioUrls, 5)
-  const image_urls = urls(input.imageUrls)
+  const image_urls = urls(input.imageUrls, 10)
   const video_urls = urls(input.videoUrls, 5)
   const parsed = higgsfieldWanInputSchema.safeParse({
     prompt,
@@ -303,8 +304,9 @@ export async function submitHiggsfieldKlingVideo(input: { prompt?: string; durat
 }
 
 /**
- * In key-frame mode the first image is the opening frame; otherwise every image
- * is a reference. The quality tier follows the resolution the shot asks for,
+ * A prompt is required by the endpoint's schema whenever multi-shot is off,
+ * which it always is here. In key-frame mode the first image is the opening
+ * frame; otherwise every image is a reference. The quality tier follows the resolution the shot asks for,
  * since this endpoint has tiers rather than resolutions. Elements and
  * multi-shot prompts are not exposed in the studio and stay off.
  */
@@ -322,13 +324,13 @@ export async function submitHiggsfieldKlingO3Video(input: {
   const first_frame_url = fetchable(input.firstFrameUrl)
   const last_frame_url = fetchable(input.lastFrameUrl)
   const images = Array.from(new Set((input.imageUrls || []).filter((value) => fetchable(value) && value !== first_frame_url && value !== last_frame_url)))
-  const prompt = input.prompt?.trim() || undefined
-  if (!prompt && !images.length && !first_frame_url) throw new HiggsfieldProviderError("Kling O3 needs a prompt or a reference image.", 400)
+  const prompt = input.prompt?.trim()
+  if (!prompt) throw new HiggsfieldProviderError("Kling O3 needs a prompt.", 400)
   const resolution = String(input.resolution || "").toLowerCase()
   const parsed = higgsfieldKlingO3InputSchema.safeParse({
     mode: resolution === "4k" ? "4k" : resolution === "1080p" ? "pro" : "std",
     sound: input.audioEnabled === false ? "off" : "on",
-    ...(prompt ? { prompt } : {}),
+    prompt,
     duration: Math.min(15, Math.max(3, Math.round(Number(input.duration) || 5))),
     ...(images.length ? { image_urls: images } : {}),
     ...(["16:9", "9:16", "1:1"].includes(input.aspectRatio || "") ? { aspect_ratio: input.aspectRatio } : {}),
@@ -352,7 +354,7 @@ export async function submitHiggsfieldKlingO3VideoReference(input: { prompt: str
   if (!prompt) throw new HiggsfieldProviderError("Kling O3 Video Reference needs a prompt.", 400)
   const videos = fetchable(input.videoUrls).slice(0, 1)
   if (!videos.length) throw new HiggsfieldProviderError("Kling O3 Video Reference needs a source video. Add a motion reference to this shot.", 400)
-  const images = fetchable(input.imageUrls)
+  const images = fetchable(input.imageUrls).slice(0, 4)
   const resolution = String(input.resolution || "").toLowerCase()
   const parsed = higgsfieldKlingO3VideoInputSchema.safeParse({
     mode: resolution === "480p" || resolution === "720p" ? "std" : "pro",
@@ -369,10 +371,13 @@ export async function submitHiggsfieldKlingO3VideoReference(input: { prompt: str
 }
 
 /** It renders at 480p or 720p, so anything higher is asked for at 720p. */
-export async function submitHiggsfieldCinemaStudioVideo(input: { prompt: string; duration?: number; resolution?: string; aspectRatio?: string; imageUrls?: string[]; audioEnabled?: boolean }) {
+export async function submitHiggsfieldCinemaStudioVideo(input: { prompt: string; duration?: number; resolution?: string; aspectRatio?: string; imageUrls?: string[]; videoUrls?: string[]; audioUrls?: string[]; audioEnabled?: boolean }) {
   const prompt = input.prompt?.trim()
   if (!prompt) throw new HiggsfieldProviderError("Cinema Studio 4.0 needs a prompt.", 400)
-  const images = Array.from(new Set((input.imageUrls || []).filter((value) => /^https?:\/\//i.test(value)))).slice(0, 30)
+  const urls = (values: string[] | undefined, limit: number) => Array.from(new Set((values || []).filter((value) => /^https?:\/\//i.test(value)))).slice(0, limit)
+  const images = urls(input.imageUrls, 30)
+  const videos = urls(input.videoUrls, 10)
+  const audios = urls(input.audioUrls, 10)
   const parsed = higgsfieldCinemaStudioInputSchema.safeParse({
     prompt,
     duration: Math.min(30, Math.max(4, Math.round(Number(input.duration) || 5))),
@@ -380,6 +385,8 @@ export async function submitHiggsfieldCinemaStudioVideo(input: { prompt: string;
     ...((seedanceAspectRatios as readonly string[]).includes(input.aspectRatio || "") ? { aspect_ratio: input.aspectRatio } : {}),
     generate_audio: input.audioEnabled !== false,
     ...(images.length ? { image_urls: images } : {}),
+    ...(videos.length ? { video_urls: videos } : {}),
+    ...(audios.length ? { audio_urls: audios } : {}),
   })
   if (!parsed.success) throw new HiggsfieldProviderError("Cinema Studio 4.0 could not accept those references.", 400)
   const response = await call(HIGGSFIELD_CINEMA_STUDIO_4_MODEL, parsed.data)

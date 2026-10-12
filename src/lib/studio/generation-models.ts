@@ -82,7 +82,7 @@ export const isImageOnlyVideoModel = (model: string) => model === "higgsfield/kl
 
 /** Higgsfield models whose endpoint takes audio files as references. */
 export const higgsfieldTakesAudioReferences = (model: string) =>
-  model === "higgsfield/bytedance/seedance-2.0/reference-to-video" || model === "higgsfield/alibaba/wan-3.0-prime/reference-to-video"
+  model === "higgsfield/bytedance/seedance-2.0/reference-to-video" || model === "higgsfield/alibaba/wan-3.0-prime/reference-to-video" || model === "higgsfield/cinema-studio/4.0"
 
 export function generationProvider(model: ImageGenerationModelId | VideoGenerationModelId) {
   if (model.startsWith("higgsfield/") || model.startsWith("higgsfield-ai/")) return "higgsfield"

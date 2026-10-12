@@ -507,6 +507,8 @@ export async function executeGenerationJobs(
                     resolution: typeof settings.resolution === "string" ? settings.resolution : "720p",
                     aspectRatio: effectiveAspectRatio,
                     imageUrls: referenceUrls,
+                    videoUrls: videoReferenceUrls,
+                    audioUrls: audioReferenceUrls,
                     audioEnabled: typeof settings.audioEnabled === "boolean" ? settings.audioEnabled : true,
                   })
                 : isHiggsfieldWanModel(job.model)

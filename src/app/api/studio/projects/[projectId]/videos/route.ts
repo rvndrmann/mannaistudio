@@ -87,7 +87,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!isGenjutsuModel(input.model) && !input.prompt) return NextResponse.json({ error: "A prompt is required for this model." }, { status: 400 })
     if (provider === "higgsfield") await runUserProvider(context.user.id, "higgsfield", async () => requireHiggsfieldCredentials())
     if (input.referenceAudios.length) {
-      if (!higgsfieldTakesAudioReferences(input.model) && (provider !== "byteplus" || !/seedance-2-[05]/.test(input.model))) return NextResponse.json({ error: "Audio references require a Seedance 2.0 or 2.5 model on BytePlus Direct, or Seedance 2.0 or Wan 3.0 Prime on Higgsfield." }, { status: 400 })
+      if (!higgsfieldTakesAudioReferences(input.model) && (provider !== "byteplus" || !/seedance-2-[05]/.test(input.model))) return NextResponse.json({ error: "Audio references require a Seedance 2.0 or 2.5 model on BytePlus Direct, or Seedance 2.0, Wan 3.0 Prime or Cinema Studio 4.0 on Higgsfield." }, { status: 400 })
       const maxAudios = input.model.includes("seedance-2-5") ? 10 : 3
       if (input.referenceAudios.length > maxAudios) return NextResponse.json({ error: `This model accepts at most ${maxAudios} audio references.` }, { status: 400 })
       if (!input.audioEnabled) return NextResponse.json({ error: "Turn Audio On to use audio references." }, { status: 400 })
@@ -406,6 +406,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       input.durationSeconds = Math.min(15, Math.max(5, input.durationSeconds || Number(shot.duration_seconds || 5)))
     }
     if (isHiggsfieldSeedanceModel(input.model)) {
+      if (!references.length && !videoReferences.length) throw new HiggsfieldProviderError("Seedance 2.0 on Higgsfield needs a reference image or video. Generate the shot's keyframe or add a reference first.", 400)
       input.durationSeconds = Math.min(15, Math.max(4, input.durationSeconds || Number(shot.duration_seconds || 5)))
     }
     if (isHiggsfieldWanModel(input.model) && input.resolution === "4K") input.resolution = "1080p"
@@ -496,7 +497,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const keyframe = input.generationMode === "keyframe"
         task = await submitHiggsfieldKlingO3Video({ prompt: resolvedPrompt, duration: input.durationSeconds, resolution: input.resolution || shot.resolution || "720p", aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16", imageUrls: keyframe ? references.slice(1) : references, firstFrameUrl: keyframe ? references[0] : undefined, lastFrameUrl, audioEnabled: input.audioEnabled })
       } else if (isHiggsfieldCinemaStudioModel(input.model)) {
-        task = await submitHiggsfieldCinemaStudioVideo({ prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16", imageUrls: references, audioEnabled: input.audioEnabled })
+        task = await submitHiggsfieldCinemaStudioVideo({ prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16", imageUrls: references, videoUrls: videoReferences, audioUrls: audioReferences, audioEnabled: input.audioEnabled })
       } else if (isHiggsfieldWanModel(input.model)) {
         task = await submitHiggsfieldWanVideo({ prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "1080p", aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16", imageUrls: references, videoUrls: videoReferences, audioUrls: audioReferences, audioEnabled: input.audioEnabled })
       } else if (provider === "higgsfield") {

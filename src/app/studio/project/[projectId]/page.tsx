@@ -6871,12 +6871,12 @@ function ShotMediaWorkspace({
                           + Upload audio
                           <input type="file" accept=".mp3,.wav,audio/mpeg,audio/wav" disabled={busy} className="hidden" onChange={(event) => { uploadReference(event.target.files?.[0], "audio"); event.target.value = ""; }} />
                         </label>
-                      ) : <p className="mt-2 text-xs text-amber-300">Select a Seedance BytePlus Direct model, or Seedance 2.0 or Wan 3.0 Prime on Higgsfield, to use audio references.</p>}
+                      ) : <p className="mt-2 text-xs text-amber-300">Select a Seedance BytePlus Direct model, or Seedance 2.0, Wan 3.0 Prime or Cinema Studio 4.0 on Higgsfield, to use audio references.</p>}
                     </div>
                   )}
                   {model === "higgsfield/minimax/h3/text-to-video" && <p className="mt-2 text-[11px] text-zinc-400">MiniMax H3 on Higgsfield is text to video only: it renders from the prompt at 2K, 5–15 seconds, and does not use the keyframe or reference images.</p>}
                   {model === "higgsfield/kling-video/o3/video-reference" && <p className="mt-2 text-[11px] text-zinc-400">Kling O3 Video Reference re-renders one source clip, 3–10 seconds. Add a motion reference above; it has no sound setting.</p>}
-                  {model === "higgsfield/cinema-studio/4.0" && <p className="mt-2 text-[11px] text-zinc-400">Cinema Studio 4.0 renders at 480p or 720p, 4–30 seconds, from the prompt and reference images. Video and audio references are not sent to it yet.</p>}
+                  {model === "higgsfield/cinema-studio/4.0" && <p className="mt-2 text-[11px] text-zinc-400">Cinema Studio 4.0 renders at 480p or 720p, 4–30 seconds, and directs camera, lighting and pacing itself from the prompt and your references.</p>}
                   {model === "higgsfield/kling-video/v3.0/std/image-to-video" && <p className="mt-2 text-[11px] text-zinc-400">Kling 3.0 Standard on Higgsfield animates the start frame, 3–15 seconds. The clip takes its shape from that image, and other reference images are not sent.</p>}
                   {isGenjutsu && <p className="mt-2 text-[11px] text-zinc-400">{isRestyle ? "Choose a style. Add up to 5 optional character references; source audio is retained. Prompt may be empty." : "Genjutsu uses 1–8 image references and the source clip motion. Object Swap also needs at least 409,600 source pixels per frame; prompt may be empty."}</p>}
                   {entities.some((e) => e.type === "character") && (

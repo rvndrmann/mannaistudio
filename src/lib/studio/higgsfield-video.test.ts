@@ -81,7 +81,11 @@ describe("Seedance 2.0 on Higgsfield", () => {
     const request = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ request_id: "req_4" }), { status: 200 }))
     await submitHiggsfieldSeedanceVideo({ imageUrls: ["https://cdn.example/a.png"], duration: 30 })
     expect(JSON.parse(String(request.mock.calls[0][1]?.body))).toEqual({ duration: 15, image_urls: ["https://cdn.example/a.png"], resolution: "720p", aspect_ratio: "16:9", generate_audio: true })
-    await expect(submitHiggsfieldSeedanceVideo({ prompt: " ", imageUrls: ["asset://x"] })).rejects.toThrow("needs a prompt or a reference")
+    // The schema requires an image or a clip; a prompt on its own is refused.
+    await expect(submitHiggsfieldSeedanceVideo({ prompt: "Just words", imageUrls: ["asset://x"] })).rejects.toThrow("needs a reference image or video")
+    await submitHiggsfieldSeedanceVideo({ imageUrls: Array.from({ length: 12 }, (_, n) => `https://cdn.example/${n}.png`), videoUrls: Array.from({ length: 5 }, (_, n) => `https://cdn.example/${n}.mp4`) })
+    const capped = JSON.parse(String(request.mock.calls[1][1]?.body))
+    expect([capped.image_urls.length, capped.video_urls.length]).toEqual([9, 3])
   })
 })
 
@@ -153,7 +157,7 @@ describe("Kling O3 on Higgsfield", () => {
     expect(second).toMatchObject({ mode: "4k", sound: "on", duration: 15, image_urls: ["https://cdn.example/b.png"], first_frame_url: "https://cdn.example/first.png", last_frame_url: "https://cdn.example/last.png" })
     // 21:9 is not offered here, so the ratio is left for the model to take from the images.
     expect(second).not.toHaveProperty("aspect_ratio")
-    await expect(submitHiggsfieldKlingO3Video({ prompt: " " })).rejects.toThrow("needs a prompt or a reference image")
+    await expect(submitHiggsfieldKlingO3Video({ prompt: " ", imageUrls: ["https://cdn.example/a.png"] })).rejects.toThrow("needs a prompt")
   })
 })
 
@@ -165,7 +169,7 @@ describe("Cinema Studio 4.0 on Higgsfield", () => {
     expect(videoModelMaxDuration(HIGGSFIELD_CINEMA_STUDIO_4_MODEL)).toBe(30)
   })
 
-  it("sends only the fields that are confirmed, at a resolution it renders", async () => {
+  it("sends the published fields, at a resolution it renders", async () => {
     vi.stubEnv("HF_CREDENTIALS", "key-id:key-secret")
     const request = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ request_id: "req_8" }), { status: 200 }))
     await submitHiggsfieldCinemaStudioVideo({ prompt: "A cinematic portrait in soft natural light", duration: 8, resolution: "1080p", aspectRatio: "9:16", imageUrls: ["https://cdn.example/a.png", "asset://x"] })
@@ -173,6 +177,8 @@ describe("Cinema Studio 4.0 on Higgsfield", () => {
     expect(url).toBe("https://api.higgsfield.ai/higgsfield/cinema-studio/4.0")
     expect(init).toMatchObject({ headers: { Authorization: "Key key-id:key-secret" } })
     expect(JSON.parse(String(init?.body))).toEqual({ prompt: "A cinematic portrait in soft natural light", duration: 8, resolution: "720p", aspect_ratio: "9:16", generate_audio: true, image_urls: ["https://cdn.example/a.png"] })
+    await submitHiggsfieldCinemaStudioVideo({ prompt: "Continue the chase", videoUrls: ["https://cdn.example/prev.mp4"], audioUrls: ["https://cdn.example/voice.mp3"] })
+    expect(JSON.parse(String(request.mock.calls[1][1]?.body))).toEqual({ prompt: "Continue the chase", duration: 5, resolution: "720p", generate_audio: true, video_urls: ["https://cdn.example/prev.mp4"], audio_urls: ["https://cdn.example/voice.mp3"] })
     await expect(submitHiggsfieldCinemaStudioVideo({ prompt: "" })).rejects.toThrow("needs a prompt")
   })
 })
