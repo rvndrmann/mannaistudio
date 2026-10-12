@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 const aliceProject = "11111111-1111-4111-8111-111111111111"
 const bobProject = "22222222-2222-4222-8222-222222222222"
 const episode = "33333333-3333-4333-8333-333333333333"
-const mocks = vi.hoisted(() => ({ validate: vi.fn(), context: vi.fn(), list: vi.fn(), create: vi.fn(), project: vi.fn(), chat: vi.fn(), decide: vi.fn(), media: vi.fn() }))
+const mocks = vi.hoisted(() => ({ validate: vi.fn(), context: vi.fn(), list: vi.fn(), create: vi.fn(), project: vi.fn(), chat: vi.fn(), decide: vi.fn(), media: vi.fn(), savePrompts: vi.fn(), generate: vi.fn(), advance: vi.fn() }))
 vi.mock("@/lib/studio/external-auth", () => ({
   bearerToken: (request: Request) => request.headers.get("authorization")?.replace(/^Bearer /, "") || "",
   validateExternalRequest: mocks.validate,
@@ -16,6 +16,8 @@ vi.mock("@/app/api/studio/projects/[projectId]/route", () => ({ GET: mocks.proje
 vi.mock("@/app/api/studio/projects/[projectId]/director/chat/route", () => ({ POST: mocks.chat }))
 vi.mock("@/app/api/studio/projects/[projectId]/director/proposals/[proposalId]/route", () => ({ POST: mocks.decide }))
 vi.mock("@/app/api/studio/projects/[projectId]/media/route", () => ({ GET: mocks.media }))
+vi.mock("@/lib/studio/advance-jobs", () => ({ advanceGenerationJobs: mocks.advance }))
+vi.mock("@/lib/studio/own-prompts", async (original) => ({ ...await original<typeof import("@/lib/studio/own-prompts")>(), saveOwnPrompts: mocks.savePrompts, proposeOwnGeneration: mocks.generate }))
 import { POST } from "@/app/api/mcp/route"
 import { StudioAccessError } from "@/lib/studio/server-context"
 const clients: Client[] = []
@@ -93,11 +95,63 @@ describe("hosted MCP with the real SDK HTTP client", () => {
     expect(foreignSession.isError).toBe(true)
     expect(mocks.chat).toHaveBeenCalledTimes(1)
   })
+  it("saves own prompts and proposes own renders on the caller's project and episode, and nowhere else", async () => {
+    mocks.savePrompts.mockResolvedValue({ saved: [{ shotNumber: 1, saved: ["imagePrompt"] }] })
+    mocks.generate.mockResolvedValue({ approvalRequired: true, proposal: { id: "proposal", estimated_credits: 12 } })
+    const alice = await connect("alice")
+    const { tools } = await alice.listTools()
+    expect(tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(["studio_set_prompts", "studio_generate"]))
+    const saved = await alice.callTool({ name: "studio_set_prompts", arguments: { projectId: aliceProject, shots: [{ shotNumber: 1, imagePrompt: "A red door." }] } })
+    expect(saved.isError).not.toBe(true)
+    expect(mocks.savePrompts.mock.calls[0][1]).toBe(episode)
+    expect(mocks.savePrompts.mock.calls[0][2]).toMatchObject({ shots: [{ shotNumber: 1, imagePrompt: "A red door." }] })
+    const proposed = await alice.callTool({ name: "studio_generate", arguments: { projectId: aliceProject, kind: "storyboard_image", shotNumbers: [1] } })
+    expect(JSON.stringify(proposed)).toContain("approvalRequired")
+    expect(mocks.generate.mock.calls[0][0]).toMatchObject({ user: { id: "alice" }, project: { id: aliceProject } })
+    const foreign = await alice.callTool({ name: "studio_generate", arguments: { projectId: bobProject, kind: "storyboard_image", shotNumbers: [1] } })
+    expect(foreign.isError).toBe(true)
+    expect(mocks.generate).toHaveBeenCalledTimes(1)
+  })
+  it("shows an image in the chat itself and hands back a link for anything else", async () => {
+    mocks.media.mockImplementation(async (request: Request) => {
+      const path = new URL(request.url).searchParams.get("path")
+      return Response.json({ path, url: `https://files.example/${path}`, expiresInSeconds: 3600 })
+    })
+    const download = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(new Uint8Array([137, 80, 78, 71]), { status: 200 }))
+    const alice = await connect("alice")
+    const image = await alice.callTool({ name: "studio_view_media", arguments: { projectId: aliceProject, path: "alice/p/frame.png" } }) as { content: Array<{ type: string; mimeType?: string; data?: string }> }
+    expect(image.content[0]).toMatchObject({ type: "image", mimeType: "image/png", data: Buffer.from([137, 80, 78, 71]).toString("base64") })
+    expect(image.content[1].type).toBe("text")
+    download.mockClear()
+    const video = await alice.callTool({ name: "studio_view_media", arguments: { projectId: aliceProject, path: "alice/p/clip.mp4" } })
+    expect(JSON.stringify(video)).toContain("https://files.example/alice/p/clip.mp4")
+    expect(JSON.stringify(video)).not.toContain('"type":"image"')
+    expect(download).not.toHaveBeenCalled()
+    download.mockRestore()
+  })
+  it("moves unfinished jobs forward when pending work is read, and still answers if that fails", async () => {
+    mocks.project.mockImplementation(async () => Response.json({ actionProposals: [], production: { generationJobs: [{ id: "job", status: "completed" }], spend: { episode: 4 } } }))
+    mocks.advance.mockResolvedValue({ checked: 2, stillWorking: true })
+    const alice = await connect("alice")
+    const working = await alice.callTool({ name: "studio_pending_work", arguments: { projectId: aliceProject } })
+    expect(mocks.advance.mock.calls[0][0]).toMatchObject({ user: { id: "alice" }, project: { id: aliceProject } })
+    expect(JSON.stringify(working)).toContain("Call this again shortly")
+    mocks.advance.mockRejectedValue(new Error("provider down"))
+    const afterFailure = await alice.callTool({ name: "studio_pending_work", arguments: { projectId: aliceProject } })
+    expect(afterFailure.isError).not.toBe(true)
+    expect(JSON.stringify(afterFailure)).toContain("completed")
+    const foreign = await alice.callTool({ name: "studio_pending_work", arguments: { projectId: bobProject } })
+    expect(foreign.isError).toBe(true)
+    expect(mocks.advance).toHaveBeenCalledTimes(2)
+  })
   it("exposes only consented tools and refuses a foreign browser Origin", async () => {
     const reader = await connect("read-only")
     const { tools } = await reader.listTools()
     expect(tools.map((tool) => tool.name)).not.toContain("studio_create_project")
     expect(tools.map((tool) => tool.name)).not.toContain("studio_chat")
+    // Writing prompts and asking for renders are creative work, not reading.
+    expect(tools.map((tool) => tool.name)).not.toContain("studio_set_prompts")
+    expect(tools.map((tool) => tool.name)).not.toContain("studio_generate")
     const response = await POST(new Request("https://studio.example/api/mcp", { method: "POST", headers: { origin: "https://attacker.example", authorization: "Bearer alice" } }))
     expect(response.status).toBe(403)
   })

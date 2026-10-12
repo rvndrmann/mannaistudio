@@ -111,9 +111,20 @@ async function resolveVideoBatchDuration(
   return shots.reduce((max, shot) => Math.max(max, resolveShotSeconds(shot, model)), 0) || null
 }
 
-export async function requestDirectorTool(context: AuthenticatedProjectContext, raw: unknown) {
+/**
+ * Writes a person may make to their own text without an approval card.
+ *
+ * Approval exists so the agent cannot change a project unasked. A person
+ * sending their own prompt is the one asking, exactly as when they type it into
+ * the studio, so these two plain text edits run directly for them. Nothing that
+ * spends credits is ever on this list.
+ */
+const userAuthoredTools = new Set<string>(["update_shot", "update_asset"])
+
+export async function requestDirectorTool(context: AuthenticatedProjectContext, raw: unknown, options?: { userAuthored?: boolean }) {
   const request = toolRequestSchema.parse(raw)
   const tool = directorTools[request.tool]
+  const needsApproval = tool.requiresApproval && !(options?.userAuthored && tool.risk === "write" && userAuthoredTools.has(tool.name))
   // Both of these take the run id from the live run rather than from the model:
   // submit_generation so a job is attributed to the workflow that proposed it,
   // read_tool_output so it can only ever read back this run's own results.
@@ -186,7 +197,7 @@ export async function requestDirectorTool(context: AuthenticatedProjectContext, 
   if (existing) return { reused: true, execution: existing }
 
   const executionId = randomUUID()
-  const status = tool.requiresApproval ? "awaiting_approval" : "started"
+  const status = needsApproval ? "awaiting_approval" : "started"
   const { error: executionError } = await context.supabase.from("creator_tool_executions").insert({
     id: executionId,
     project_id: context.project.id,
@@ -202,7 +213,7 @@ export async function requestDirectorTool(context: AuthenticatedProjectContext, 
   })
   if (executionError) throw executionError
 
-  if (tool.requiresApproval) {
+  if (needsApproval) {
     const proposalCopy = await describeProposal(context, tool.name, scoredInput)
     const { data: proposal, error } = await context.supabase.from("creator_action_proposals").insert({
       project_id: context.project.id,

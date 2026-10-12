@@ -72,6 +72,8 @@ A job already running is not cancelled by disconnecting.
 | `studio_pending_work` | `projects:read` |
 | `studio_view_media` | `projects:read` |
 | `studio_chat` | `director:chat` |
+| `studio_set_prompts` | `director:chat` |
+| `studio_generate` | `director:chat` |
 | `studio_decide_proposal` | `director:proposals` |
 
 Tools absent from the user's consent are not registered. Chat invokes the
