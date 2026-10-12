@@ -2,6 +2,7 @@ import { prepareImageModelPrompt } from "./image-prompt-composition"
 import { activeCredentialPart } from "@/lib/byok/active-credential"
 import { assertAllowedProviderUrl } from "@/lib/byok/providers"
 import { z } from "zod"
+import { aiInfluencerTierIds, isAiInfluencerTier } from "./generation-models"
 
 export const GENJUTSU_MODEL = "higgsfield/genjutsu/motion-transfer/v1.0"
 export const GENJUTSU_OBJECT_SWAP_MODEL = "higgsfield/genjutsu/object-swap/v1.0"
@@ -39,6 +40,12 @@ export const isHiggsfieldKlingO3VideoModel = (model: string) => model === HIGGSF
 // with the provider name and is used as the studio id unchanged.
 export const HIGGSFIELD_CINEMA_STUDIO_4_MODEL = "higgsfield/cinema-studio/4.0"
 export const isHiggsfieldCinemaStudioModel = (model: string) => model === HIGGSFIELD_CINEMA_STUDIO_4_MODEL
+// AI Influencer: one character reference sheet per request, a close-up portrait
+// beside a full-body view. Higgsfield's own model, so the API path is the id.
+export const HIGGSFIELD_AI_INFLUENCER_MODEL = "higgsfield/ai-influencer"
+export const isHiggsfieldAiInfluencerModel = (model: string) => model === HIGGSFIELD_AI_INFLUENCER_MODEL
+export const AI_INFLUENCER_BRIEF_LIMIT = 4_000
+export const AI_INFLUENCER_ITEM_LIMIT = 3
 export const GENJUTSU_MODELS = [GENJUTSU_MODEL, GENJUTSU_OBJECT_SWAP_MODEL, GENJUTSU_RESTYLE_MODEL] as const
 export const isGenjutsuModel = (model: string) => (GENJUTSU_MODELS as readonly string[]).includes(model)
 const baseUrl = "https://api.higgsfield.ai"
@@ -131,6 +138,18 @@ export const soulV2InputSchema = z.object({
   custom_reference_id: z.uuid().nullable().optional(), custom_reference_strength: z.number().min(0).max(1).default(1),
   batch_size: z.union([z.literal(1), z.literal(4)]).default(1), resolution: z.enum(["720p", "1080p"]).default("720p"),
   aspect_ratio: z.enum(["9:16", "16:9", "4:3", "3:4", "1:1", "2:3", "3:2"]).default("4:3"), enhance_prompt: z.boolean().default(true),
+}).strict()
+// From the input description published with the model. Every field is
+// optional. Resolution (2K), aspect ratio (16:9) and quality are fixed by the
+// endpoint and are not inputs. `selection`, `trait_variants`, `variation_index`,
+// `body_color` and `pinned_species` are left out: the studio does not offer the
+// appearance catalogue yet, and an absent field lets the model choose.
+export const aiInfluencerInputSchema = z.object({
+  tier: z.enum(aiInfluencerTierIds).default("normal"),
+  image_url: z.url().max(2083).optional(),
+  item_image_urls: z.array(z.url().max(2083)).max(AI_INFLUENCER_ITEM_LIMIT).optional(),
+  brief: z.string().max(AI_INFLUENCER_BRIEF_LIMIT).optional(),
+  seed: z.number().int().min(1).max(1_000_000).optional(),
 }).strict()
 export const soulV2ImageToImageInputSchema = soulV2InputSchema.extend({ image_url: z.url().max(2083) }).strict()
 
@@ -414,6 +433,32 @@ export async function submitSoulV2Image(input: z.input<typeof soulV2InputSchema>
   input = { ...input, prompt: prepareImageModelPrompt(input.prompt, model) }
   const parsed = model === SOUL_V2_IMAGE_TO_IMAGE_MODEL ? soulV2ImageToImageInputSchema.parse(input) : soulV2InputSchema.parse(input)
   const response = await call(model, parsed)
+  if (typeof response.request_id !== "string" || !response.request_id) throw new HiggsfieldProviderError("Higgsfield did not return an image request ID")
+  return { id: response.request_id, response }
+}
+
+/**
+ * The first reference is the identity photo; the next three are clothing or
+ * item references, in order. The two are separate inputs to the endpoint, so
+ * the identity photo does not count against the three.
+ *
+ * The brief is the user's own words. The studio's composed prompt is not sent:
+ * it carries framing and aspect directions for a canvas this endpoint fixes.
+ */
+export async function submitAiInfluencerSheet(input: { brief?: string; tier?: string; seed?: number; referenceUrls?: string[] }) {
+  const urls = Array.from(new Set((input.referenceUrls || []).filter((value) => /^https?:\/\//i.test(value))))
+  const brief = (input.brief || "").trim()
+  if (brief.length > AI_INFLUENCER_BRIEF_LIMIT) throw new HiggsfieldProviderError(`The character brief is ${brief.length} characters; AI Influencer takes at most ${AI_INFLUENCER_BRIEF_LIMIT}.`, 400)
+  const items = urls.slice(1, 1 + AI_INFLUENCER_ITEM_LIMIT)
+  const parsed = aiInfluencerInputSchema.safeParse({
+    tier: isAiInfluencerTier(input.tier) ? input.tier : "normal",
+    ...(urls[0] ? { image_url: urls[0] } : {}),
+    ...(items.length ? { item_image_urls: items } : {}),
+    ...(brief ? { brief } : {}),
+    ...(input.seed ? { seed: input.seed } : {}),
+  })
+  if (!parsed.success) throw new HiggsfieldProviderError("AI Influencer could not accept that request.", 400)
+  const response = await call(HIGGSFIELD_AI_INFLUENCER_MODEL, parsed.data)
   if (typeof response.request_id !== "string" || !response.request_id) throw new HiggsfieldProviderError("Higgsfield did not return an image request ID")
   return { id: response.request_id, response }
 }

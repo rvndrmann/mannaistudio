@@ -7,7 +7,7 @@ import { generateOpenAIImage, openAIImageModels, OpenAIProviderError, retrieveOp
 import { createBytePlusAsset, generateBytePlusImage, BytePlusProviderError } from "@/lib/studio/byteplus"
 import { FalProviderError, submitFalImage, waitForFalImage } from "@/lib/studio/fal"
 import { generateGoogleImage, GoogleProviderError } from "@/lib/studio/google"
-import { generationProvider, imageModelRequiresReference, isImageGenerationModel, type ImageGenerationModelId } from "@/lib/studio/generation-models"
+import { aiInfluencerTierIds, generationProvider, imageModelRequiresReference, isImageGenerationModel, type ImageGenerationModelId } from "@/lib/studio/generation-models"
 import { byokProviderFor } from "@/lib/byok/providers"
 import { decideBilling } from "@/lib/byok/billing"
 import { hasCredential, withCredential } from "@/lib/byok/credential-service"
@@ -23,7 +23,7 @@ import { cameraBlockForEntityType, projectCameraDefaults, resolveCameraSettings 
 import { projectStyleDna, resolveStyleDna, styleBlockForEntityType, styleDnaSchema } from "@/lib/studio/style-dna"
 import { recordExistingAsset } from "@/lib/studio/byteplus-assets"
 import { VERIFIED_ASSET } from "@/lib/studio/asset-verification"
-import { getHiggsfieldImageTask, HiggsfieldProviderError, SOUL_V2_IMAGE_TO_IMAGE_MODEL, submitSoulV2Image } from "@/lib/studio/higgsfield"
+import { AI_INFLUENCER_BRIEF_LIMIT, getHiggsfieldImageTask, HiggsfieldProviderError, isHiggsfieldAiInfluencerModel, SOUL_V2_IMAGE_TO_IMAGE_MODEL, submitAiInfluencerSheet, submitSoulV2Image } from "@/lib/studio/higgsfield"
 
 /**
  * One image generation, written so it does not care which host is running it.
@@ -146,6 +146,8 @@ export const imageRequestSchema = z.object({
     objects: z.array(z.unknown()).max(500),
   }).optional(),
   soulSettings: z.object({ seed: z.number().int().min(1).max(1_000_000).optional(), styleId: z.string().optional(), customReferenceId: z.string().uuid().optional(), customReferenceStrength: z.number().min(0).max(1).optional(), enhancePrompt: z.boolean().optional(), resolution: z.enum(["720p", "1080p"]).optional() }).optional(),
+  // AI Influencer character sheets: the character type and an optional seed.
+  influencerSettings: z.object({ tier: z.enum(aiInfluencerTierIds).optional(), seed: z.number().int().min(1).max(1_000_000).optional() }).optional(),
 }).strict()
 
 /**
@@ -291,7 +293,14 @@ export async function renderProjectImage(
     const shotImageFallback = input.target === "shot" && imageModelRequiresReference(input.model) && typeof shotData?.keyframe_image === "string" && shotData.keyframe_image.trim()
       ? [shotData.keyframe_image]
       : []
-    const referenceOrder = input.model === SOUL_V2_IMAGE_TO_IMAGE_MODEL
+    // The sheet is briefed with the user's own words, so the limit is checked
+    // against those, before anything is reserved or charged.
+    if (isHiggsfieldAiInfluencerModel(input.model) && input.prompt.trim().length > AI_INFLUENCER_BRIEF_LIMIT) {
+      throw new ImageRequestError(`AI Influencer takes a brief of at most ${AI_INFLUENCER_BRIEF_LIMIT} characters. Shorten the prompt and try again.`, 400)
+    }
+    // For these two the order carries meaning: the first image is the picture
+    // to edit, or the identity photo, so what the user attached leads.
+    const referenceOrder = input.model === SOUL_V2_IMAGE_TO_IMAGE_MODEL || isHiggsfieldAiInfluencerModel(input.model)
       ? [...input.referenceImages, ...mentionReferencePaths, ...ownImageFallback, ...shotImageFallback]
       : [...mentionReferencePaths, ...input.referenceImages, ...ownImageFallback]
     const distinctReferences = Array.from(new Set(referenceOrder))
@@ -351,7 +360,7 @@ export async function renderProjectImage(
           style,
           aspectRatio: effectiveAspectRatio,
           quality,
-          ...(provider === "higgsfield" ? { soulSettings: input.soulSettings || { resolution: "720p", enhancePrompt: true, batchSize: 1 } } : {}),
+          ...(isHiggsfieldAiInfluencerModel(input.model) ? { influencerSettings: input.influencerSettings || { tier: "normal" } } : provider === "higgsfield" ? { soulSettings: input.soulSettings || { resolution: "720p", enhancePrompt: true, batchSize: 1 } } : {}),
           // Snapshotted, not referenced: editing the project package later
           // must leave every image already generated exactly as it was, and
           // "regenerate this exact frame" needs the package it was shot on.
@@ -477,7 +486,12 @@ export async function renderProjectImage(
       })
     } else if (provider === "higgsfield") {
       if (input.model === SOUL_V2_IMAGE_TO_IMAGE_MODEL && !referenceUrls[0]) throw new ImageRequestError("Soul V2 Image-to-Image needs a reference image. Add one in the reference strip or choose another image model.", 400)
-      const submitted = await submitSoulV2Image({
+      const submitted = isHiggsfieldAiInfluencerModel(input.model) ? await submitAiInfluencerSheet({
+        brief: input.prompt,
+        tier: input.influencerSettings?.tier,
+        seed: input.influencerSettings?.seed,
+        referenceUrls,
+      }) : await submitSoulV2Image({
         prompt: resolvedPrompt,
         aspect_ratio: ["9:16", "16:9", "4:3", "3:4", "1:1", "2:3", "3:2"].includes(effectiveAspectRatio) ? effectiveAspectRatio as "9:16" | "16:9" | "4:3" | "3:4" | "1:1" | "2:3" | "3:2" : "4:3",
         resolution: input.soulSettings?.resolution || "720p",

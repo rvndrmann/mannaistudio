@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { calculateCreditCost } from "./credits"
-import { generationProvider, imageGenerationModels, isImageOnlyVideoModel, isTextOnlyVideoModel, videoGenerationModels, videoModelNeedsSourceVideo } from "./generation-models"
+import { generationProvider, imageGenerationModels, isCharacterSheetImageModel, isImageOnlyVideoModel, isTextOnlyVideoModel, videoGenerationModels, videoModelNeedsSourceVideo } from "./generation-models"
 
 export const generationRequestSchema = z.object({
   type: z.enum(["image", "video"]),
@@ -96,9 +96,13 @@ export function routeGeneration(raw: unknown, models: GenerationModel[] = genera
   // — a shot whose script has spoken lines is described as dialogueRequired,
   // and asking for its storyboard frame then failed with "No configured model
   // supports this shot request" for a frame every image model could render.
-  const source = request.model?.startsWith("higgsfield/") ? "video" : request.source
+  // Higgsfield's video models all re-render or reference a clip. Its image
+  // models share the prefix and must keep the source they were asked with.
+  const source = request.type === "video" && request.model?.startsWith("higgsfield/") ? "video" : request.source
   const needsDialogue = request.dialogueRequired && request.type === "video"
-  const candidates = models.filter((model) => model.types.includes(request.type) && model.sources.includes(source) && (!request.referenceImageRequired || model.referenceImages) && (!needsDialogue || model.dialogue))
+  // A character sheet model is used only when it is named: scoring must never
+  // hand a storyboard frame to something that draws a reference sheet.
+  const candidates = models.filter((model) => (!isCharacterSheetImageModel(model.model) || request.model === model.model) && model.types.includes(request.type) && model.sources.includes(source) && (!request.referenceImageRequired || model.referenceImages) && (!needsDialogue || model.dialogue))
   if (!candidates.length) throw new Error("No configured model supports this shot request")
   const score = (model: GenerationModel) => request.preference === "quality" ? model.quality * 3 - model.costPerSecond : request.preference === "speed" ? model.speed * 3 - model.costPerSecond : request.preference === "cost" ? -(model.baseCredits + model.costPerSecond * request.durationSeconds) : model.quality + model.speed - model.costPerSecond
   // An explicit choice wins over preference scoring, but only among the models

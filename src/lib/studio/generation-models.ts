@@ -14,6 +14,7 @@ export const imageGenerationModels = [
   { id: "fal-flux-realism", label: "Flux Realism (fal.ai)", provider: "fal" },
   { id: "higgsfield-ai/soul/v2/standard", label: "Soul V2 Standard (Higgsfield)", provider: "higgsfield" },
   { id: "higgsfield-ai/soul/v2/image-to-image", label: "Soul V2 Image-to-Image (Higgsfield)", provider: "higgsfield" },
+  { id: "higgsfield/ai-influencer", label: "AI Influencer Character Sheet (Higgsfield)", provider: "higgsfield" },
 ] as const
 
 export const videoGenerationModels = [
@@ -67,6 +68,35 @@ export function isVideoGenerationModel(value: unknown): value is VideoGeneration
 export function imageModelRequiresReference(model: string): boolean {
   return model === "fal-gpt-image-2-5-sunburst-edit" || model === "higgsfield-ai/soul/v2/image-to-image"
 }
+
+/**
+ * Image models that always return a character reference sheet.
+ *
+ * A sheet is a portrait beside a full-body view on a fixed 16:9 canvas, so it
+ * is never the right answer for a storyboard frame or a scene. Such a model is
+ * used only when somebody picks it; it is never a project default and never
+ * something routing falls back to.
+ */
+export const isCharacterSheetImageModel = (model: string) => model === "higgsfield/ai-influencer"
+
+/** The character types AI Influencer draws. The id is what the API takes; the label is what its playground shows. */
+export const aiInfluencerTiers = [
+  { id: "normal", label: "Average" },
+  { id: "freak", label: "Bold" },
+  { id: "total", label: "Extreme" },
+  { id: "insects", label: "Insect" },
+  { id: "frogs", label: "Frog" },
+  { id: "cats", label: "Cat" },
+  { id: "dogs", label: "Dog" },
+  { id: "capybaras", label: "Rodent" },
+  { id: "birds", label: "Bird" },
+] as const
+export type AiInfluencerTier = (typeof aiInfluencerTiers)[number]["id"]
+export const aiInfluencerTierIds = aiInfluencerTiers.map((tier) => tier.id) as [AiInfluencerTier, ...AiInfluencerTier[]]
+export const isAiInfluencerTier = (value: unknown): value is AiInfluencerTier => (aiInfluencerTierIds as readonly unknown[]).includes(value)
+
+/** Image models to offer as a project-wide default. */
+export const projectDefaultImageModels = imageGenerationModels.filter((model) => !isCharacterSheetImageModel(model.id))
 
 /** Genjutsu re-renders a source clip; it cannot start from text or a still. */
 export const isGenjutsuVideoModel = (model: string) => model.startsWith("higgsfield/genjutsu/")

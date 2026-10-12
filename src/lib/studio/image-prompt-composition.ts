@@ -134,6 +134,8 @@ export function imageAdapterReferenceLimit(model: string): number | null {
   if (model.startsWith("fal-flux-")) return 0
   if (model === "higgsfield-ai/soul/v2/standard") return 0
   if (model === "higgsfield-ai/soul/v2/image-to-image") return 1
+  // One identity photo plus three clothing or item references.
+  if (model === "higgsfield/ai-influencer") return 4
   return null
 }
 

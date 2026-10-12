@@ -140,6 +140,8 @@ export const MODEL_CREDIT_RATES: Record<string, ModelCreditRate> = {
   "fal-flux-realism": { unit: "per image", base: 9, description: "Flux Realism (FLUX1.1 Pro rate)", estimated: true },
   "higgsfield-ai/soul/v2/standard": { unit: "per image", base: 1, description: "Soul V2 Standard", byResolution: { "720p": 0.0032 * 95.4 * 2.2, "1080p": 0.0057 * 95.4 * 2.2 } },
   "higgsfield-ai/soul/v2/image-to-image": { unit: "per image", base: 1, description: "Soul V2 Image-to-Image", byResolution: { "720p": 0.0032 * 95.4 * 2.2, "1080p": 0.0057 * 95.4 * 2.2 } },
+  // $0.05 a sheet for every character type; resolution and quality are fixed.
+  "higgsfield/ai-influencer": { unit: "per image", base: 0.05 * 95.4 * 2.2, description: "AI Influencer Character Sheet" },
 
   // Higgsfield published list prices, USD to INR at 95.4, with the studio 2.2x rate.
   "higgsfield/genjutsu/motion-transfer/v1.0": { unit: "per second", base: 0.681 * 95.4 * 2.2, description: "Genjutsu Motion Transfer", byResolution: { "480p": 0.318 * 95.4 * 2.2, "720p": 0.681 * 95.4 * 2.2, "1080p": 1.632 * 95.4 * 2.2 } },

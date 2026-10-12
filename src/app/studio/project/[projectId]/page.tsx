@@ -61,7 +61,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models";
-import { getModelLabel, imageGenerationModels, supportedVideoModel, videoDurationOptions, videoGenerationModels, videoModelMaxDuration, type ImageGenerationModelId, type VideoGenerationModelId, higgsfieldTakesAudioReferences } from "@/lib/studio/generation-models";
+import { aiInfluencerTiers, type AiInfluencerTier, getModelLabel, imageGenerationModels, isCharacterSheetImageModel, projectDefaultImageModels, supportedVideoModel, videoDurationOptions, videoGenerationModels, videoModelMaxDuration, type ImageGenerationModelId, type VideoGenerationModelId, higgsfieldTakesAudioReferences } from "@/lib/studio/generation-models";
 import { resolveShotSeconds } from "@/lib/studio/shot-duration";
 import { defaultDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows";
 import { isAbandonedRun } from "@/lib/studio/workflow-runs";
@@ -104,7 +104,6 @@ import { downloadSignedMedia, getSignedMediaUrl } from "@/lib/studio/signed-medi
 import { parseDirectorTimeline, type DirectorTimelineBlock } from "@/lib/studio/timeline";
 import { EntityMentionInput } from "@/components/studio/EntityMentionInput";
 import ShareProjectDialog from "@/components/studio/ShareProjectDialog";
-import ConvertToEnterpriseDialog from "@/components/enterprise/ConvertToEnterpriseDialog";
 import ProjectActivityDialog from "@/components/studio/ProjectActivityDialog";
 import DrawToEditModal from "@/components/studio/DrawToEditModal";
 import { entityPrimaryReference, findMentionedEntityIds, findShotCastEntityIds, unresolvedEntityMentions } from "@/lib/studio/entity-mentions";
@@ -497,7 +496,6 @@ export default function WorkspacePage({
   const autoStartedRef = useRef(false);
   const [projectMenu, setProjectMenu] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const [enterpriseOpen, setEnterpriseOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   // Generation runs on the server after approval and writes its result onto the
    // shot or entity, so the workspace only looks stale because nothing refetched.
@@ -1197,14 +1195,6 @@ export default function WorkspacePage({
     <main className="studio-dense flex h-[100dvh] flex-col overflow-hidden bg-black text-[#e8e6df]">
       {shareOpen && <ShareProjectDialog projectId={projectId} onClose={() => setShareOpen(false)} />}
       {activityOpen && <ProjectActivityDialog projectId={projectId} onClose={() => setActivityOpen(false)} />}
-      {enterpriseOpen && (
-        <ConvertToEnterpriseDialog
-          projectId={projectId}
-          projectName={data.project.name || "this project"}
-          onClose={() => setEnterpriseOpen(false)}
-          onPlaced={() => load(true)}
-        />
-      )}
       <header className="relative z-50 flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-white/[0.06] bg-[#0a0a0a] px-3 sm:h-12 sm:flex-nowrap">
         {(projectMenu || episodeMenu) && (
           <div
@@ -1374,22 +1364,12 @@ export default function WorkspacePage({
 
           <span className="mx-0.5 hidden h-4 border-l border-white/[0.06] sm:block" />
 
-          {/* Hand the project to the AI Director Hub production team */}
-          {data.project.enterprise_status ? (
+          {/* A project already with the production team says so. */}
+          {data.project.enterprise_status && (
             <span className="hidden items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-[11px] font-bold text-primary sm:flex" title="This project is with the AI Director Hub production team">
               <BadgeCheck className="h-3 w-3" />
               <span>{data.project.enterprise_status === "delivered" ? "Delivered" : data.project.enterprise_status === "active" ? "Enterprise" : "Enterprise requested"}</span>
             </span>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setEnterpriseOpen(true)}
-              className="hidden items-center gap-1 rounded-full border border-primary/25 bg-primary/[0.07] px-2.5 py-1.5 text-[11px] font-bold text-primary transition hover:bg-primary/15 sm:flex"
-              title="Hire the AI Director Hub team to finish this project"
-            >
-              <BadgeCheck className="h-3 w-3" />
-              <span>Hire our team</span>
-            </button>
           )}
 
           {/* Team */}
@@ -3115,7 +3095,7 @@ function BasicSettingsModal({
                 onChange={(e) => setStoryboardImageModel(e.target.value)}
                 className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-primary"
               >
-                {imageGenerationModels.map((m) => (
+                {projectDefaultImageModels.map((m) => (
                   <option key={m.id} value={m.id}>{m.label}</option>
                 ))}
               </select>
@@ -3132,7 +3112,7 @@ function BasicSettingsModal({
                 onChange={(e) => setCharacterImageModel(e.target.value)}
                 className="w-full rounded-xl border border-white/10 bg-[#0b0c0b] p-3 text-sm font-bold text-zinc-200 outline-none focus:border-primary"
               >
-                {imageGenerationModels.map((m) => (
+                {projectDefaultImageModels.map((m) => (
                   <option key={m.id} value={m.id}>{m.label}</option>
                 ))}
               </select>
@@ -3314,6 +3294,27 @@ function BasicSettingsModal({
   );
 }
 
+type InfluencerSettings = { tier: AiInfluencerTier; seed: string };
+
+const influencerRequestSettings = (value: InfluencerSettings) => ({ tier: value.tier, ...(Number(value.seed) >= 1 ? { seed: Number(value.seed) } : {}) });
+
+/**
+ * The two choices the AI Influencer model takes besides its brief and
+ * references. Everything else about the sheet is fixed by the endpoint, which
+ * the note says so nobody hunts for an aspect ratio that will be ignored.
+ */
+function InfluencerControls({ value, onChange }: { value: InfluencerSettings; onChange: (next: InfluencerSettings) => void }) {
+  return (
+    <>
+      <select aria-label="Character type" value={value.tier} onChange={(event) => onChange({ ...value, tier: event.target.value as AiInfluencerTier })} className="rounded-full border border-white/10 bg-[#141414] px-2 py-1 text-xs text-zinc-300">
+        {aiInfluencerTiers.map((tier) => <option key={tier.id} value={tier.id}>{tier.label}</option>)}
+      </select>
+      <input aria-label="Character seed" inputMode="numeric" value={value.seed} onChange={(event) => onChange({ ...value, seed: event.target.value.replace(/\D/g, "").slice(0, 7) })} placeholder="Seed (optional)" className="w-28 rounded-full border border-white/10 bg-[#141414] px-2 py-1 text-xs text-zinc-300" />
+      <span className="basis-full text-[11px] text-zinc-500">One character sheet: a close-up portrait beside a full-body view, always 2K at 16:9. The first reference is the identity photo; up to three more are clothing or items. The prompt is sent as the character brief.</span>
+    </>
+  );
+}
+
 function AssetWorkspace({
   asset,
   entities,
@@ -3352,6 +3353,7 @@ function AssetWorkspace({
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState(asset.description || "");
   const [model, setModel] = useState<string>(characterImageModel);
+  const [influencer, setInfluencer] = useState<InfluencerSettings>({ tier: "normal", seed: "" });
   const [aspectRatio, setAspectRatio] = useState<string>("9:16");
   const [quality, setQuality] = useState<CreditQuality>("Medium");
   // The camera package is opt-in. Off, the prompt is sent exactly as written —
@@ -3674,6 +3676,7 @@ function AssetWorkspace({
           // the prompt alone rather than resolving a package of its own.
           ...(cameraEnabled ? { cameraSettings } : {}),
           ...(styleOverrideEnabled ? { styleDna: styleOverride } : {}),
+          ...(isCharacterSheetImageModel(model) ? { influencerSettings: influencerRequestSettings(influencer) } : {}),
       });
       const body = await readGenerationResponse(response);
       if (!response.ok) {
@@ -4087,6 +4090,7 @@ function AssetWorkspace({
               <div className="flex items-center justify-between border-t border-white/10 pt-3">
                 <div className="flex flex-wrap items-center gap-4">
                   <ModelMenu type="image" value={model} onChange={setModel} options={{ quality, aspectRatio }} inline />
+                  {isCharacterSheetImageModel(model) && <InfluencerControls value={influencer} onChange={setInfluencer} />}
                   
                   <div className="relative flex items-center gap-1.5 text-xs font-semibold text-zinc-400 transition hover:text-white group">
                     <Monitor className="h-3.5 w-3.5" />
@@ -5925,7 +5929,7 @@ function ShotMediaWorkspace({
       const characterEntityIds = Array.from(new Set([...mentionedCharacterIds, ...selectedCharacterIds])).slice(0, 10);
       if (isImage) {
         setGenerationStatus("Submitting image generation job…");
-        const response = await requestProjectImage(projectId, { target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, mentionedEntityIds, aspectRatio, quality, ...(cameraEnabled ? { cameraSettings } : {}), ...(styleOverrideEnabled ? { styleDna: styleOverride } : {}), ...(isSoulV2 ? { soulSettings: { ...(soulSeed.trim() ? { seed: Number(soulSeed) } : {}), ...(soulStyleId.trim() ? { styleId: soulStyleId.trim() } : {}), ...(soulReferenceId.trim() ? { customReferenceId: soulReferenceId.trim(), customReferenceStrength: soulReferenceStrength } : {}), enhancePrompt: soulEnhancePrompt, resolution: soulResolution } } : {}) });
+        const response = await requestProjectImage(projectId, { target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, mentionedEntityIds, aspectRatio, quality, ...(cameraEnabled ? { cameraSettings } : {}), ...(styleOverrideEnabled ? { styleDna: styleOverride } : {}), ...(isSoulV2 ? { soulSettings: { ...(soulSeed.trim() ? { seed: Number(soulSeed) } : {}), ...(soulStyleId.trim() ? { styleId: soulStyleId.trim() } : {}), ...(soulReferenceId.trim() ? { customReferenceId: soulReferenceId.trim(), customReferenceStrength: soulReferenceStrength } : {}), enhancePrompt: soulEnhancePrompt, resolution: soulResolution } } : {}), ...(isCharacterSheetImageModel(model) ? { influencerSettings: influencerRequestSettings(influencer) } : {}) });
         const body = await readGenerationResponse(response);
         if (!response.ok) throw new Error(body.error || "Image generation failed");
         notifyCreditBalanceChanged(typeof body.creditBalance === "number" ? body.creditBalance : undefined);
@@ -6254,6 +6258,7 @@ function ShotMediaWorkspace({
   const isRestyle = model === "higgsfield/genjutsu/restyle/v1.0";
   const isSoulV2 = model === "higgsfield-ai/soul/v2/standard" || model === "higgsfield-ai/soul/v2/image-to-image";
   const isSoulV2ImageToImage = model === "higgsfield-ai/soul/v2/image-to-image";
+  const [influencer, setInfluencer] = useState<InfluencerSettings>({ tier: "normal", seed: "" });
   const [soulSeed, setSoulSeed] = useState("");
   const [soulStyleId, setSoulStyleId] = useState("");
   const [soulReferenceId, setSoulReferenceId] = useState("");
@@ -7019,6 +7024,7 @@ function ShotMediaWorkspace({
               <div className="flex flex-col gap-3 border-t border-white/10 pt-3">
                 <div className="flex flex-wrap items-center gap-4">
                   <ModelMenu type={isImage ? "image" : "video"} value={model} onChange={(value) => { setModel(value); if (value.startsWith("higgsfield/genjutsu/") && resolution === "4K") setResolution("720p"); if (value === "higgsfield/genjutsu/restyle/v1.0") { setReferences((items) => items.filter((path) => path !== media.shot.keyframe_image)); setStartFrame(null); setEndFrame(null); } }} options={{ quality, aspectRatio, resolution, durationSeconds }} inline />
+                  {isImage && isCharacterSheetImageModel(model) && <InfluencerControls value={influencer} onChange={setInfluencer} />}
                   {isSoulV2 && <>
                     <select aria-label="Soul V2 resolution" value={soulResolution} onChange={(event) => setSoulResolution(event.target.value as "720p" | "1080p")} className="rounded-full border border-white/10 bg-[#141414] px-2 py-1 text-xs text-zinc-300"><option value="720p">720p</option><option value="1080p">1080p</option></select>
                     <input aria-label="Soul V2 style ID" value={soulStyleId} onChange={(event) => setSoulStyleId(event.target.value)} placeholder="Style ID (optional)" className="w-32 rounded-full border border-white/10 bg-[#141414] px-2 py-1 text-xs text-zinc-300" />

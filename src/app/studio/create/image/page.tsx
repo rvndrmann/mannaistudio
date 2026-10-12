@@ -10,7 +10,7 @@ import { useCreditBalance } from "@/components/studio/create/use-credit-balance"
 import { PillGroup, RecentStrip } from "@/components/studio/create/GeneratorControls";
 import { AttemptBlock, type Attempt } from "@/components/studio/create/AttemptBlock";
 import { useAuth } from "@/components/auth/auth-provider";
-import { imageGenerationModels, type ImageGenerationModelId } from "@/lib/studio/generation-models";
+import { imageGenerationModels, isCharacterSheetImageModel, type ImageGenerationModelId } from "@/lib/studio/generation-models";
 import { calculateCreditCost } from "@/lib/studio/credits";
 import { blockedByCredits, resolveGenerationSource } from "@/lib/byok/generation-source";
 import { useProviderBillingPolicy } from "@/lib/byok/use-connected-providers";
@@ -173,7 +173,7 @@ export default function QuickImagePage() {
               onChange={(event) => setModel(event.target.value as ImageGenerationModelId)}
               className="w-full rounded-xl border border-white/10 bg-[#131413] px-3 py-2.5 text-sm text-white focus:border-primary/60 focus:outline-none"
             >
-              {imageGenerationModels.map((entry) => (
+              {imageGenerationModels.filter((entry) => !isCharacterSheetImageModel(entry.id)).map((entry) => (
                 <option key={entry.id} value={entry.id}>{entry.label}</option>
               ))}
             </select>
