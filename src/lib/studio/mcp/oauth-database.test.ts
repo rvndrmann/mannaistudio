@@ -31,6 +31,7 @@ beforeAll(async () => {
     grant select,insert on creator_projects,creator_episodes,creator_chat_sessions to authenticated;
   `)
   await db.exec(await readFile(new URL("../../../../supabase/migrations/20261001120000_creator_studio_mcp_oauth.sql", import.meta.url), "utf8"))
+  await db.exec(await readFile(new URL("../../../../supabase/migrations/20261013090000_mcp_access_token_grace.sql", import.meta.url), "utf8"))
   await db.exec(`
     insert into creator_mcp_clients values('client-a','Assistant A',array['https://client.example/callback'],now()),('client-b','Assistant B',array['https://other.example/callback'],now());
     insert into creator_mcp_connections(id,user_id,client_id,name,scopes,resource) values('${connection}','${owner}','client-a','Assistant A',array['projects:read'],'https://studio.example/api/mcp');
@@ -51,16 +52,28 @@ describe("MCP migration on PostgreSQL", () => {
     expect(rows[0].expires_at).toBeTruthy()
     await expect(exchange("authorization_code", "code-1")).rejects.toThrow("invalid_grant")
   })
-  it("atomically rotates refresh tokens and revokes previous access tokens", async () => {
+  it("atomically rotates refresh tokens and lets the previous access token finish what is in flight", async () => {
     const outcomes = await Promise.allSettled([
       exchange("refresh_token", "refresh-1", "client-a", undefined, undefined, "access-2", "refresh-2"),
       exchange("refresh_token", "refresh-1", "client-a", undefined, undefined, "access-3", "refresh-3"),
     ])
     expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1)
-    const { rows } = await db.query<{ revoked_at: string }>("select revoked_at from creator_external_access_tokens where token_hash='access-1'")
-    expect(rows[0].revoked_at).toBeTruthy()
-    const active = await db.query("select id from creator_external_access_tokens where revoked_at is null")
-    expect(active.rows).toHaveLength(1)
+    // Not revoked: calls already on their way with it must still land. But it
+    // is on a two-minute clock now, not the hour it was issued for.
+    const { rows } = await db.query<{ revoked_at: string | null; seconds_left: number }>("select revoked_at, extract(epoch from (expires_at - now()))::float as seconds_left from creator_external_access_tokens where token_hash='access-1'")
+    expect(rows[0].revoked_at).toBeNull()
+    expect(rows[0].seconds_left).toBeGreaterThan(60)
+    expect(rows[0].seconds_left).toBeLessThanOrEqual(120)
+    const fresh = await db.query<{ seconds_left: number }>("select extract(epoch from (expires_at - now()))::float as seconds_left from creator_external_access_tokens where token_hash in ('access-2','access-3')")
+    expect(fresh.rows).toHaveLength(1)
+    expect(fresh.rows[0].seconds_left).toBeGreaterThan(3500)
+  })
+  it("never lengthens an old token that was already closer to its own expiry", async () => {
+    const { rows: current } = await db.query<{ token_hash: string; refresh_hash: string }>("select t.token_hash, c.refresh_hash from creator_external_access_tokens t join creator_mcp_connections c on c.id = t.mcp_connection_id where t.token_hash in ('access-2','access-3')")
+    await db.query("update creator_external_access_tokens set expires_at = now() + interval '20 seconds' where token_hash = $1", [current[0].token_hash])
+    await exchange("refresh_token", current[0].refresh_hash, "client-a", undefined, undefined, "access-4", "refresh-4")
+    const { rows } = await db.query<{ seconds_left: number }>("select extract(epoch from (expires_at - now()))::float as seconds_left from creator_external_access_tokens where token_hash = $1", [current[0].token_hash])
+    expect(rows[0].seconds_left).toBeLessThanOrEqual(20)
   })
   it("refuses revoked and expired connections", async () => {
     const { rows } = await db.query<{ refresh_hash: string }>("select refresh_hash from creator_mcp_connections")

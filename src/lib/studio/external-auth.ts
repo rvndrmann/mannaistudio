@@ -115,7 +115,10 @@ export async function validateExternalRequest(request: Request, requiredScope?: 
     .select("id,user_id,scopes,revoked_at,expires_at,resource,mcp_connection_id")
     .eq("token_hash", hashExternalToken(token))
     .maybeSingle()
-  if (error || !data || data.revoked_at || (data.expires_at && (!Number.isFinite(Date.parse(data.expires_at)) || Date.parse(data.expires_at) <= Date.now()))) throw new StudioAccessError("Invalid external access token", 401)
+  // A lookup that failed says nothing about the token. Reported as a 401 it
+  // told a healthy connection it had been disconnected.
+  if (error) throw Object.assign(new Error("Could not verify the connection just now. Please try again."), { status: 503 })
+  if (!data || data.revoked_at || (data.expires_at && (!Number.isFinite(Date.parse(data.expires_at)) || Date.parse(data.expires_at) <= Date.now()))) throw new StudioAccessError("Invalid external access token", 401)
   if (data.mcp_connection_id) {
     if (data.resource !== mcpResource()) throw new StudioAccessError("Token was issued for a different Studio resource", 401)
     const { data: connection, error: connectionError } = await supabase.from("creator_mcp_connections")
