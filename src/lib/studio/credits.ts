@@ -171,6 +171,21 @@ export const MODEL_CREDIT_RATES: Record<string, ModelCreditRate> = {
     // The card quotes 768p and 2K; 480p through 1080p take the 768p rate and 4K takes 2K's.
     byResolution: { "480p": 135 / 8, "720p": 135 / 8, "1080p": 135 / 8, "4K": 220 / 8 },
   },
+  // No Higgsfield quote for this endpoint either; it carries the card's
+  // Seedance 2.0 curve, which is the same model at the same resolutions.
+  "higgsfield/bytedance/seedance-2.0/reference-to-video": { unit: "per second", base: 32, description: "Seedance 2.0 (Higgsfield, Seedance 2.0 rate)", estimated: true, byResolution: { ...seedanceResolutionCurve } },
+  // Not on the card at all: priced at the cheapest quoted video tier, the
+  // same figure an unlisted model falls back to, until Higgsfield's rate is known.
+  "higgsfield/alibaba/wan-3.0-prime/reference-to-video": { unit: "per second", base: 135 / 8, description: "Wan 3.0 Prime (Higgsfield, unquoted)", estimated: true },
+  // Higgsfield lists $0.2057 to $0.4623 a second for this model; read here as
+  // its 480p and 720p rates, the only two resolutions it renders.
+  "higgsfield/cinema-studio/4.0": { unit: "per second", base: 0.4623 * 95.4 * 2.2, description: "Cinema Studio 4.0 (Higgsfield)", estimated: true, byResolution: { "480p": 0.2057 * 95.4 * 2.2, "720p": 0.4623 * 95.4 * 2.2, "1080p": 0.4623 * 95.4 * 2.2, "4K": 0.4623 * 95.4 * 2.2 } },
+  "higgsfield/kling-video/o3/video-reference": { unit: "per second", base: 135 / 8, description: "Kling O3 Video Reference (Higgsfield, MiniMax H3 rate)", estimated: true },
+  "higgsfield/kling-video/o3/image-reference": { unit: "per second", base: 135 / 8, description: "Kling O3 (Higgsfield, MiniMax H3 rate)", estimated: true },
+  "higgsfield/kling-video/v3.0/std/image-to-video": { unit: "per second", base: 135 / 8, description: "Kling 3.0 Standard (Higgsfield, MiniMax H3 rate)", estimated: true },
+  // No Higgsfield quote for this endpoint yet. It renders at 2K only, so every
+  // resolution carries the card's 2K MiniMax H3 figure until one exists.
+  "higgsfield/minimax/h3/text-to-video": { unit: "per second", base: 220 / 8, description: "MiniMax H3 2K (Higgsfield, MiniMax H3 rate)", estimated: true },
   "fal-minimax-video-01": { unit: "per second", base: 135 / 8, description: "MiniMax Video-01 (MiniMax H3 rate)", estimated: true },
   "fal-kling-3": { unit: "per second", base: 135 / 8, description: "Kling 3.0 (MiniMax H3 rate)", estimated: true },
   "fal-kling-o3": { unit: "per second", base: 135 / 8, description: "Kling O3 (MiniMax H3 rate)", estimated: true },

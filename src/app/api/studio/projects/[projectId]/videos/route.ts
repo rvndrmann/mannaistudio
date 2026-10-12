@@ -1,5 +1,5 @@
 import { runUserProvider } from "@/lib/byok/run-user-provider"
-import { GENJUTSU_OBJECT_SWAP_MODEL, GENJUTSU_RESTYLE_MODEL, isGenjutsuModel, genjutsuInputSchema, genjutsuRestyleInputSchema, getGenjutsuPresets, HiggsfieldProviderError, requireHiggsfieldCredentials, submitGenjutsuVideo } from "@/lib/studio/higgsfield"
+import { GENJUTSU_OBJECT_SWAP_MODEL, GENJUTSU_RESTYLE_MODEL, isGenjutsuModel, isHiggsfieldMinimaxH3Model, submitHiggsfieldMinimaxH3Video, isHiggsfieldSeedanceModel, submitHiggsfieldSeedanceVideo, isHiggsfieldWanModel, submitHiggsfieldWanVideo, isHiggsfieldKlingModel, submitHiggsfieldKlingVideo, isHiggsfieldKlingO3Model, submitHiggsfieldKlingO3Video, isHiggsfieldKlingO3VideoModel, submitHiggsfieldKlingO3VideoReference, isHiggsfieldCinemaStudioModel, submitHiggsfieldCinemaStudioVideo, genjutsuInputSchema, genjutsuRestyleInputSchema, getGenjutsuPresets, HiggsfieldProviderError, requireHiggsfieldCredentials, submitGenjutsuVideo } from "@/lib/studio/higgsfield"
 import { readSourceVideoDuration } from "@/lib/studio/source-video-duration"
 import { pollVideos } from "@/lib/studio/poll-videos"
 import { createHash, randomUUID } from "node:crypto"
@@ -10,7 +10,7 @@ import { z, ZodError } from "zod"
 import { BytePlusProviderError, bytePlusVideoRatio, bytePlusVideoReferenceLimit, createBytePlusAsset, getBytePlusAsset, getBytePlusVideoTask, resolveBytePlusReferenceUrl, submitBytePlusVideo } from "@/lib/studio/byteplus"
 import { falVideoEndpoint, FalProviderError, getFalVideoTask, submitFalVideo } from "@/lib/studio/fal"
 import { getGoogleVideoTask, GoogleProviderError, submitGoogleVideo } from "@/lib/studio/google"
-import { generationProvider, isVideoGenerationModel } from "@/lib/studio/generation-models"
+import { generationProvider, isVideoGenerationModel, higgsfieldTakesAudioReferences } from "@/lib/studio/generation-models"
 import { byokProviderFor } from "@/lib/byok/providers"
 import { decideBilling, refundableCredits } from "@/lib/byok/billing"
 import { hasCredential, withCredential } from "@/lib/byok/credential-service"
@@ -84,10 +84,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const shot = await verifyShot(context, projectId, input.shotId)
     if (!shot) return NextResponse.json({ error: "Shot not found" }, { status: 404 })
     const provider = generationProvider(input.model)
-    if (provider !== "higgsfield" && !input.prompt) return NextResponse.json({ error: "A prompt is required for this model." }, { status: 400 })
+    if (!isGenjutsuModel(input.model) && !input.prompt) return NextResponse.json({ error: "A prompt is required for this model." }, { status: 400 })
     if (provider === "higgsfield") await runUserProvider(context.user.id, "higgsfield", async () => requireHiggsfieldCredentials())
     if (input.referenceAudios.length) {
-      if (provider !== "byteplus" || !/seedance-2-[05]/.test(input.model)) return NextResponse.json({ error: "Audio references require a Seedance 2.0 or 2.5 BytePlus Direct model." }, { status: 400 })
+      if (!higgsfieldTakesAudioReferences(input.model) && (provider !== "byteplus" || !/seedance-2-[05]/.test(input.model))) return NextResponse.json({ error: "Audio references require a Seedance 2.0 or 2.5 model on BytePlus Direct, or Seedance 2.0 or Wan 3.0 Prime on Higgsfield." }, { status: 400 })
       const maxAudios = input.model.includes("seedance-2-5") ? 10 : 3
       if (input.referenceAudios.length > maxAudios) return NextResponse.json({ error: `This model accepts at most ${maxAudios} audio references.` }, { status: 400 })
       if (!input.audioEnabled) return NextResponse.json({ error: "Turn Audio On to use audio references." }, { status: 400 })
@@ -366,7 +366,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (previousShot?.video_url) videoReferencePaths.unshift(previousShot.video_url)
     }
     const videoLimit = bytePlusVideoReferenceLimit(input.model)
-    const distinctVideoPaths = Array.from(new Set(videoReferencePaths)).slice(0, provider === "higgsfield" ? 11 : videoLimit.maxVideos)
+    const distinctVideoPaths = Array.from(new Set(videoReferencePaths)).slice(0, isGenjutsuModel(input.model) ? 11 : videoLimit.maxVideos)
     const distinctVideoInputs = distinctVideoPaths.map((videoPath) => {
       const registeredAssetUri = provider === "byteplus" ? seedanceReferenceAssetUri(shotReferenceAssets[videoPath]) : null
       return registeredAssetUri || videoPath
@@ -396,11 +396,30 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     const mentionContext = buildEntityMentionContext((resolvedEntities || []) as MentionableEntity[])
     const style = projectVisualStyle(context.project)
-    const resolvedPrompt = provider === "higgsfield" ? input.prompt : [stripIdentityDescriptions(input.prompt), ...(input.referenceAudios.length ? ["Use the attached audio references for the soundtrack, speech delivery, and timing of this shot."] : []), ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
+    const resolvedPrompt = isGenjutsuModel(input.model) ? input.prompt : [stripIdentityDescriptions(input.prompt), ...(input.referenceAudios.length ? ["Use the attached audio references for the soundtrack, speech delivery, and timing of this shot."] : []), ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
     const displayRatio = input.aspectRatio || shot.aspect_ratio || "9:16"
     const providerRatio = provider === "byteplus" ? bytePlusVideoRatio(displayRatio, videoReferences.length > 0) : displayRatio
     let sourceVideoInfo: Awaited<ReturnType<typeof readSourceVideoDuration>> | null = null
-    if (provider === "higgsfield") {
+    if (isHiggsfieldMinimaxH3Model(input.model)) {
+      // The endpoint renders 5 to 15 whole seconds; held to that here so the
+      // shot records the length that is actually asked for.
+      input.durationSeconds = Math.min(15, Math.max(5, input.durationSeconds || Number(shot.duration_seconds || 5)))
+    }
+    if (isHiggsfieldSeedanceModel(input.model)) {
+      input.durationSeconds = Math.min(15, Math.max(4, input.durationSeconds || Number(shot.duration_seconds || 5)))
+    }
+    if (isHiggsfieldWanModel(input.model) && input.resolution === "4K") input.resolution = "1080p"
+    if (isHiggsfieldCinemaStudioModel(input.model) && input.resolution !== "480p") input.resolution = "720p"
+    if (isHiggsfieldKlingO3Model(input.model)) input.durationSeconds = Math.min(15, input.durationSeconds || Number(shot.duration_seconds || 5))
+    if (isHiggsfieldKlingO3VideoModel(input.model)) {
+      if (!videoReferences.length) throw new HiggsfieldProviderError("Kling O3 Video Reference needs a source video. Add a motion reference to this shot.", 400)
+      input.durationSeconds = Math.min(10, input.durationSeconds || Number(shot.duration_seconds || 5))
+    }
+    if (isHiggsfieldKlingModel(input.model)) {
+      if (!references.length) throw new HiggsfieldProviderError("Kling 3.0 Standard needs a start image. Generate or choose the shot's keyframe first.", 400)
+      input.durationSeconds = Math.min(15, input.durationSeconds || Number(shot.duration_seconds || 5))
+    }
+    if (isGenjutsuModel(input.model)) {
       if (input.referenceVideos.length !== 1 || pickedVideoPaths.length) throw new HiggsfieldProviderError("Select exactly one source video from this project.", 400)
       if (videoReferences.length !== 1) throw new HiggsfieldProviderError("Genjutsu requires exactly one source video.", 400)
       if (input.model === GENJUTSU_RESTYLE_MODEL && resolvedEntities?.some((entity) => entity.type !== "character")) throw new HiggsfieldProviderError("Restyle references are for characters. Remove scene and prop references.", 400)
@@ -463,7 +482,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     try {
       const task: { id: string; response?: unknown } = await runOnBillingAccount(async () => {
       let task: { id: string; response?: unknown }
-      if (provider === "higgsfield") {
+      if (isHiggsfieldMinimaxH3Model(input.model)) {
+        task = await submitHiggsfieldMinimaxH3Video({ prompt: resolvedPrompt, duration: input.durationSeconds, aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16" })
+      } else if (isHiggsfieldSeedanceModel(input.model)) {
+        task = await submitHiggsfieldSeedanceVideo({ prompt: resolvedPrompt, duration: input.durationSeconds, resolution: input.resolution || shot.resolution || "720p", aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16", imageUrls: references, videoUrls: videoReferences, audioUrls: audioReferences, audioEnabled: input.audioEnabled })
+      } else if (isHiggsfieldKlingModel(input.model)) {
+        const [lastImageUrl] = input.endFrame ? await signedReferenceUrls(context, [input.endFrame]) : []
+        task = await submitHiggsfieldKlingVideo({ prompt: resolvedPrompt, duration: input.durationSeconds, imageUrl: references[0], lastImageUrl, audioEnabled: input.audioEnabled })
+      } else if (isHiggsfieldKlingO3VideoModel(input.model)) {
+        task = await submitHiggsfieldKlingO3VideoReference({ prompt: resolvedPrompt, duration: input.durationSeconds, resolution: input.resolution || shot.resolution || "720p", aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16", imageUrls: references, videoUrls: videoReferences })
+      } else if (isHiggsfieldKlingO3Model(input.model)) {
+        const [lastFrameUrl] = input.endFrame ? await signedReferenceUrls(context, [input.endFrame]) : []
+        const keyframe = input.generationMode === "keyframe"
+        task = await submitHiggsfieldKlingO3Video({ prompt: resolvedPrompt, duration: input.durationSeconds, resolution: input.resolution || shot.resolution || "720p", aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16", imageUrls: keyframe ? references.slice(1) : references, firstFrameUrl: keyframe ? references[0] : undefined, lastFrameUrl, audioEnabled: input.audioEnabled })
+      } else if (isHiggsfieldCinemaStudioModel(input.model)) {
+        task = await submitHiggsfieldCinemaStudioVideo({ prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16", imageUrls: references, audioEnabled: input.audioEnabled })
+      } else if (isHiggsfieldWanModel(input.model)) {
+        task = await submitHiggsfieldWanVideo({ prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "1080p", aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16", imageUrls: references, videoUrls: videoReferences, audioUrls: audioReferences, audioEnabled: input.audioEnabled })
+      } else if (provider === "higgsfield") {
         task = await submitGenjutsuVideo(input.model, { prompt: input.prompt, video_url: videoReferences[0], image_urls: references, resolution: input.resolution as "480p" | "720p" | "1080p", ...(input.model === GENJUTSU_RESTYLE_MODEL ? { preset_id: input.restylePresetId } : {}) })
       } else if (provider === "fal") {
         // Resolution and the audio flag travel with the request now. They were

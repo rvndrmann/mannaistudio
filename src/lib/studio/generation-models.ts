@@ -35,6 +35,13 @@ export const videoGenerationModels = [
   { id: "fal-kling-1-6-pro", label: "Kling 1.6 Pro (fal.ai)", provider: "fal" },
   { id: "fal-minimax-h3", label: "MiniMax H3 (fal.ai)", provider: "fal" },
   { id: "fal-minimax-video-01", label: "MiniMax Video-01 (fal.ai)", provider: "fal" },
+  { id: "higgsfield/cinema-studio/4.0", label: "Cinema Studio 4.0 (Higgsfield)", provider: "higgsfield" },
+  { id: "higgsfield/bytedance/seedance-2.0/reference-to-video", label: "Seedance 2.0 (Higgsfield)", provider: "higgsfield" },
+  { id: "higgsfield/alibaba/wan-3.0-prime/reference-to-video", label: "Wan 3.0 Prime (Higgsfield)", provider: "higgsfield" },
+  { id: "higgsfield/kling-video/v3.0/std/image-to-video", label: "Kling 3.0 Standard (Higgsfield)", provider: "higgsfield" },
+  { id: "higgsfield/kling-video/o3/image-reference", label: "Kling O3 (Higgsfield)", provider: "higgsfield" },
+  { id: "higgsfield/kling-video/o3/video-reference", label: "Kling O3 Video Reference (Higgsfield)", provider: "higgsfield" },
+  { id: "higgsfield/minimax/h3/text-to-video", label: "MiniMax H3 (Higgsfield)", provider: "higgsfield" },
   { id: "higgsfield/genjutsu/motion-transfer/v1.0", label: "Genjutsu Motion Transfer (Higgsfield)", provider: "higgsfield" },
   { id: "higgsfield/genjutsu/object-swap/v1.0", label: "Genjutsu Object Swap (Higgsfield)", provider: "higgsfield" },
   { id: "higgsfield/genjutsu/restyle/v1.0", label: "Genjutsu Restyle (Higgsfield)", provider: "higgsfield" },
@@ -60,6 +67,22 @@ export function isVideoGenerationModel(value: unknown): value is VideoGeneration
 export function imageModelRequiresReference(model: string): boolean {
   return model === "fal-gpt-image-2-5-sunburst-edit" || model === "higgsfield-ai/soul/v2/image-to-image"
 }
+
+/** Genjutsu re-renders a source clip; it cannot start from text or a still. */
+export const isGenjutsuVideoModel = (model: string) => model.startsWith("higgsfield/genjutsu/")
+
+/** Video models that re-render a source clip and cannot run without one. */
+export const videoModelNeedsSourceVideo = (model: string) => isGenjutsuVideoModel(model) || model === "higgsfield/kling-video/o3/video-reference"
+
+/** Video models whose endpoint accepts a prompt and nothing else. */
+export const isTextOnlyVideoModel = (model: string) => model === "higgsfield/minimax/h3/text-to-video"
+
+/** Video models that animate one start image and cannot begin from text alone. */
+export const isImageOnlyVideoModel = (model: string) => model === "higgsfield/kling-video/v3.0/std/image-to-video"
+
+/** Higgsfield models whose endpoint takes audio files as references. */
+export const higgsfieldTakesAudioReferences = (model: string) =>
+  model === "higgsfield/bytedance/seedance-2.0/reference-to-video" || model === "higgsfield/alibaba/wan-3.0-prime/reference-to-video"
 
 export function generationProvider(model: ImageGenerationModelId | VideoGenerationModelId) {
   if (model.startsWith("higgsfield/") || model.startsWith("higgsfield-ai/")) return "higgsfield"
@@ -110,11 +133,14 @@ export function getModelLabel(modelId: string) {
  * for seconds they never receive.
  */
 export function videoModelMaxDuration(model: string) {
-  return model.startsWith("higgsfield/genjutsu/") || /seedance-2[-.]5/i.test(model) ? 30 : 15
+  if (model === "higgsfield/kling-video/o3/video-reference") return 10
+  return model.startsWith("higgsfield/genjutsu/") || model.startsWith("higgsfield/alibaba/wan-3.0-prime/") || model === "higgsfield/cinema-studio/4.0" || /seedance-2[-.]5/i.test(model) ? 30 : 15
 }
 
 /** Duration choices to offer for a model, never exceeding what it can render. */
 export function videoDurationOptions(model: string) {
   const max = videoModelMaxDuration(model)
-  return [3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30].filter((seconds) => seconds <= max)
+  // Higgsfield's MiniMax H3 endpoint starts at five seconds.
+  const min = isTextOnlyVideoModel(model) ? 5 : 0
+  return [3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30].filter((seconds) => seconds >= min && seconds <= max)
 }

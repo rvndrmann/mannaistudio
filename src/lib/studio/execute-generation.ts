@@ -1,6 +1,6 @@
 import { composeImagePrompt, prepareImageModelPrompt, assertImageReferenceCapacity } from "./image-prompt-composition"
 import { ownKeysOnly } from "@/lib/byok/preferences"
-import { submitGenjutsuVideo, genjutsuInputSchema, genjutsuRestyleInputSchema, GENJUTSU_RESTYLE_MODEL, SOUL_V2_IMAGE_TO_IMAGE_MODEL, submitSoulV2Image } from "./higgsfield"
+import { submitGenjutsuVideo, submitHiggsfieldMinimaxH3Video, isHiggsfieldMinimaxH3Model, submitHiggsfieldSeedanceVideo, isHiggsfieldSeedanceModel, submitHiggsfieldWanVideo, isHiggsfieldWanModel, submitHiggsfieldKlingVideo, isHiggsfieldKlingModel, submitHiggsfieldKlingO3Video, isHiggsfieldKlingO3Model, submitHiggsfieldKlingO3VideoReference, isHiggsfieldKlingO3VideoModel, submitHiggsfieldCinemaStudioVideo, isHiggsfieldCinemaStudioModel, genjutsuInputSchema, genjutsuRestyleInputSchema, GENJUTSU_RESTYLE_MODEL, SOUL_V2_IMAGE_TO_IMAGE_MODEL, submitSoulV2Image } from "./higgsfield"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { generateOpenAIImage, submitOpenAIImage, supportsBackgroundImageResponse, type OpenAIImageModel } from "./openai"
 import { submitBytePlusVideo, generateBytePlusImage, createBytePlusAsset } from "./byteplus"
@@ -465,8 +465,73 @@ export async function executeGenerationJobs(
           } else if (job.type === "video" && ["byteplus", "fal", "google", "higgsfield"].includes(job.provider)) {
             let task: { id: string; response?: unknown }
             try {
-              if (job.provider === "higgsfield" && videoReferenceUrls.length !== 1) throw new Error("Genjutsu requires exactly one source video.")
-              task = job.provider === "higgsfield"
+              if (job.provider === "higgsfield" && !isHiggsfieldMinimaxH3Model(job.model) && !isHiggsfieldSeedanceModel(job.model) && !isHiggsfieldWanModel(job.model) && !isHiggsfieldKlingModel(job.model) && !isHiggsfieldKlingO3Model(job.model) && !isHiggsfieldKlingO3VideoModel(job.model) && !isHiggsfieldCinemaStudioModel(job.model) && videoReferenceUrls.length !== 1) throw new Error("Genjutsu requires exactly one source video.")
+              task = isHiggsfieldMinimaxH3Model(job.model)
+                ? await submitHiggsfieldMinimaxH3Video({
+                    prompt: canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[]),
+                    duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 5,
+                    aspectRatio: effectiveAspectRatio,
+                  })
+                : isHiggsfieldKlingModel(job.model)
+                ? await submitHiggsfieldKlingVideo({
+                    prompt: canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[]),
+                    duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 5,
+                    imageUrl: referenceUrls.find((url) => /^https?:\/\//i.test(url)),
+                    lastImageUrl: typeof settings.endFrame === "string" ? settings.endFrame : undefined,
+                    audioEnabled: typeof settings.audioEnabled === "boolean" ? settings.audioEnabled : true,
+                  })
+                : isHiggsfieldKlingO3VideoModel(job.model)
+                ? await submitHiggsfieldKlingO3VideoReference({
+                    prompt: canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[]),
+                    duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 5,
+                    resolution: typeof settings.resolution === "string" ? settings.resolution : "720p",
+                    aspectRatio: effectiveAspectRatio,
+                    imageUrls: referenceUrls,
+                    videoUrls: videoReferenceUrls,
+                  })
+                : isHiggsfieldKlingO3Model(job.model)
+                ? await submitHiggsfieldKlingO3Video({
+                    prompt: canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[]),
+                    duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 5,
+                    resolution: typeof settings.resolution === "string" ? settings.resolution : "720p",
+                    aspectRatio: effectiveAspectRatio,
+                    imageUrls: settings.generationMode === "keyframe" ? referenceUrls.slice(1) : referenceUrls,
+                    firstFrameUrl: settings.generationMode === "keyframe" ? referenceUrls[0] : undefined,
+                    lastFrameUrl: typeof settings.endFrame === "string" ? settings.endFrame : undefined,
+                    audioEnabled: typeof settings.audioEnabled === "boolean" ? settings.audioEnabled : true,
+                  })
+                : isHiggsfieldCinemaStudioModel(job.model)
+                ? await submitHiggsfieldCinemaStudioVideo({
+                    prompt: canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[]),
+                    duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 5,
+                    resolution: typeof settings.resolution === "string" ? settings.resolution : "720p",
+                    aspectRatio: effectiveAspectRatio,
+                    imageUrls: referenceUrls,
+                    audioEnabled: typeof settings.audioEnabled === "boolean" ? settings.audioEnabled : true,
+                  })
+                : isHiggsfieldWanModel(job.model)
+                ? await submitHiggsfieldWanVideo({
+                    prompt: canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[]),
+                    duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 5,
+                    resolution: typeof settings.resolution === "string" ? settings.resolution : "1080p",
+                    aspectRatio: effectiveAspectRatio,
+                    imageUrls: referenceUrls,
+                    videoUrls: videoReferenceUrls,
+                    audioUrls: audioReferenceUrls,
+                    audioEnabled: typeof settings.audioEnabled === "boolean" ? settings.audioEnabled : true,
+                  })
+                : isHiggsfieldSeedanceModel(job.model)
+                ? await submitHiggsfieldSeedanceVideo({
+                    prompt: canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[]),
+                    duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 5,
+                    resolution: typeof settings.resolution === "string" ? settings.resolution : "720p",
+                    aspectRatio: effectiveAspectRatio,
+                    imageUrls: referenceUrls,
+                    videoUrls: videoReferenceUrls,
+                    audioUrls: audioReferenceUrls,
+                    audioEnabled: typeof settings.audioEnabled === "boolean" ? settings.audioEnabled : true,
+                  })
+                : job.provider === "higgsfield"
                 ? await submitGenjutsuVideo(job.model, (job.model === GENJUTSU_RESTYLE_MODEL ? genjutsuRestyleInputSchema : genjutsuInputSchema).parse({ prompt: canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[]), video_url: videoReferenceUrls[0], image_urls: referenceUrls, resolution: settings.resolution || "720p", ...(job.model === GENJUTSU_RESTYLE_MODEL ? { preset_id: settings.restylePresetId } : {}) }))
                 : job.provider === "google"
                 ? await submitGoogleVideo({

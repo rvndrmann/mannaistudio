@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { calculateCreditCost } from "./credits"
-import { generationProvider, imageGenerationModels, videoGenerationModels } from "./generation-models"
+import { generationProvider, imageGenerationModels, isImageOnlyVideoModel, isTextOnlyVideoModel, videoGenerationModels, videoModelNeedsSourceVideo } from "./generation-models"
 
 export const generationRequestSchema = z.object({
   type: z.enum(["image", "video"]),
@@ -85,7 +85,7 @@ export type GenerationModel = {
 
 export const generationModels: GenerationModel[] = [
   ...imageGenerationModels.map((item, index) => ({ provider: generationProvider(item.id), model: item.id, types: ["image"] as Array<"image" | "video">, sources: ["text", "image"] as Array<"text" | "image">, referenceImages: true, dialogue: false, quality: Math.max(2, 5 - index / 3), speed: 3, costPerSecond: 0, baseCredits: calculateCreditCost(item.id, "image") })),
-  ...videoGenerationModels.map((item, index) => ({ provider: generationProvider(item.id), model: item.id, types: ["video"] as Array<"image" | "video">, sources: (item.provider === "higgsfield" ? ["video"] : ["text", "image"]) as Array<"text" | "image" | "video">, referenceImages: true, dialogue: item.provider !== "higgsfield", quality: Math.max(2, 5 - index / 6), speed: 3, costPerSecond: 0, baseCredits: 0 })),
+  ...videoGenerationModels.map((item, index) => ({ provider: generationProvider(item.id), model: item.id, types: ["video"] as Array<"image" | "video">, sources: (videoModelNeedsSourceVideo(item.id) ? ["video"] : isTextOnlyVideoModel(item.id) ? ["text"] : isImageOnlyVideoModel(item.id) ? ["image"] : ["text", "image"]) as Array<"text" | "image" | "video">, referenceImages: !isTextOnlyVideoModel(item.id), dialogue: !videoModelNeedsSourceVideo(item.id), quality: Math.max(2, 5 - index / 6), speed: 3, costPerSecond: 0, baseCredits: 0 })),
 ]
 
 export function routeGeneration(raw: unknown, models: GenerationModel[] = generationModels) {

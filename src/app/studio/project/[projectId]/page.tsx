@@ -60,7 +60,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models";
-import { getModelLabel, imageGenerationModels, supportedVideoModel, videoDurationOptions, videoGenerationModels, videoModelMaxDuration, type ImageGenerationModelId, type VideoGenerationModelId } from "@/lib/studio/generation-models";
+import { getModelLabel, imageGenerationModels, supportedVideoModel, videoDurationOptions, videoGenerationModels, videoModelMaxDuration, type ImageGenerationModelId, type VideoGenerationModelId, higgsfieldTakesAudioReferences } from "@/lib/studio/generation-models";
 import { resolveShotSeconds } from "@/lib/studio/shot-duration";
 import { defaultDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows";
 import { isAbandonedRun } from "@/lib/studio/workflow-runs";
@@ -2520,6 +2520,31 @@ function ModelMenu({
   inline?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [bounds, setBounds] = useState<{ maxWidth: number; maxHeight: number } | null>(null);
+  // The list opens upward from wherever its button sits, inside a side panel
+  // that clips what leaves it. Sized to its own contents it ran off the right
+  // edge and under the panel header, so it is measured against the panel that
+  // clips it each time it opens.
+  const toggle = () => {
+    if (!open && rootRef.current) {
+      const rect = rootRef.current.getBoundingClientRect();
+      let right = window.innerWidth;
+      let top = 0;
+      for (let node = rootRef.current.parentElement; node; node = node.parentElement) {
+        const style = getComputedStyle(node);
+        if (style.overflowY !== "visible" || style.overflowX !== "visible") {
+          const box = node.getBoundingClientRect();
+          right = Math.min(right, box.right);
+          top = Math.max(top, box.top);
+        }
+        // A fixed panel is clipped by the window, not by what it sits inside.
+        if (style.position === "fixed") break;
+      }
+      setBounds({ maxWidth: Math.max(200, right - rect.left - 12), maxHeight: Math.max(160, rect.top - top - 16) });
+    }
+    setOpen((current) => !current);
+  };
   const models = type === "image" ? imageGenerationModels : videoGenerationModels;
   const selected = models.find((modelOption) => modelOption.id === value) || models[0];
   const families = type === "image"
@@ -2538,15 +2563,15 @@ function ModelMenu({
       { label: "Google AI Studio (Veo 3.1, Omni, Pro)", icon: Sparkles, models: videoGenerationModels.filter((m) => m.provider === "google") },
       { label: "fal.ai Seedance Series", icon: WandSparkles, models: videoGenerationModels.filter((m) => m.id.startsWith("fal-seedance")) },
       { label: "BytePlus Direct Seedance Series", icon: WandSparkles, models: videoGenerationModels.filter((m) => m.id.startsWith("dreamina-")) },
-      { label: "Kling AI Series (Kling 3, O3)", icon: WandSparkles, models: videoGenerationModels.filter((m) => m.id.includes("kling")) },
-      { label: "MiniMax & Hailuo Series (H3)", icon: WandSparkles, models: videoGenerationModels.filter((m) => m.id.includes("minimax")) },
+      { label: "Kling AI Series (Kling 3, O3)", icon: WandSparkles, models: videoGenerationModels.filter((m) => m.provider !== "higgsfield" && m.id.includes("kling")) },
+      { label: "MiniMax & Hailuo Series (H3)", icon: WandSparkles, models: videoGenerationModels.filter((m) => m.provider !== "higgsfield" && m.id.includes("minimax")) },
     ];
   return (
-    <div className={`relative ${inline ? "" : "mt-5"}`}>
+    <div ref={rootRef} className={`relative ${inline ? "" : "mt-5"}`}>
       {!inline && <p className="t-caption text-zinc-500">{type === "image" ? "Image model" : "Video model"}</p>}
       <button
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={toggle}
         className={
           inline
             ? "flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-white transition outline-none"
@@ -2575,7 +2600,7 @@ function ModelMenu({
         )}
       </button>
       {open && (
-        <div className={`absolute z-[80] overflow-hidden rounded-xl border border-white/10 bg-[#18191c] p-2 shadow-2xl ${inline ? "bottom-full left-0 mb-2 w-max min-w-[240px]" : "bottom-[calc(100%+8px)] left-0 w-full min-w-[280px]"}`}>
+        <div style={bounds ? { maxHeight: bounds.maxHeight, ...(inline ? { maxWidth: bounds.maxWidth } : {}) } : undefined} className={`absolute z-[80] overflow-y-auto overflow-x-hidden rounded-xl border border-white/10 bg-[#18191c] p-2 shadow-2xl ${inline ? "bottom-full left-0 mb-2 w-max min-w-[200px]" : "bottom-[calc(100%+8px)] left-0 w-full min-w-[280px]"}`}>
           {families.map((family) => {
             const Icon = family.icon;
             return (
@@ -2584,8 +2609,8 @@ function ModelMenu({
                   <details className="group" open={family.models.some((modelOption) => modelOption.id === value)}>
                     <summary className="flex cursor-pointer list-none items-center gap-3 rounded-lg px-3 py-3 text-sm font-bold text-zinc-100 hover:bg-white/5">
                       <Icon className="h-5 w-5 text-zinc-200" />
-                      <span className="flex-1">{family.label}</span>
-                      <ChevronDown className="h-4 w-4 text-zinc-500 transition group-open:rotate-180" />
+                      <span className="min-w-0 flex-1">{family.label}</span>
+                      <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500 transition group-open:rotate-180" />
                     </summary>
                     <div className="pb-1 pl-8">
                       {family.models.map((modelOption) => {
@@ -2601,8 +2626,8 @@ function ModelMenu({
                             }}
                             className={`mt-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${isSelected ? "bg-[#fff878] font-bold text-black" : "text-zinc-300 hover:bg-white/5"}`}
                           >
-                            <span>{modelOption.label}</span>
-                            <span className={`ml-2 text-xs font-semibold ${isSelected ? "text-black" : "text-[#b9f42e]"}`}>
+                            <span className="min-w-0">{modelOption.label}</span>
+                            <span className={`ml-2 shrink-0 whitespace-nowrap text-xs font-semibold ${isSelected ? "text-black" : "text-[#b9f42e]"}`}>
                               ⚡ {cost} Credits
                             </span>
                           </button>
@@ -6841,14 +6866,18 @@ function ShotMediaWorkspace({
                           <button type="button" aria-label={`Remove audio reference ${index + 1}`} onClick={() => setAudioReferencePaths((items) => items.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></button>
                         </div>
                       ))}
-                      {/^(dreamina-seedance-2-[05])/.test(model) ? (
+                      {/^(dreamina-seedance-2-[05])/.test(model) || higgsfieldTakesAudioReferences(model) ? (
                         <label className={`mt-2 inline-block rounded-lg border border-white/20 px-3 py-1 text-xs ${busy ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
                           + Upload audio
                           <input type="file" accept=".mp3,.wav,audio/mpeg,audio/wav" disabled={busy} className="hidden" onChange={(event) => { uploadReference(event.target.files?.[0], "audio"); event.target.value = ""; }} />
                         </label>
-                      ) : <p className="mt-2 text-xs text-amber-300">Select a Seedance BytePlus Direct model to use audio references.</p>}
+                      ) : <p className="mt-2 text-xs text-amber-300">Select a Seedance BytePlus Direct model, or Seedance 2.0 or Wan 3.0 Prime on Higgsfield, to use audio references.</p>}
                     </div>
                   )}
+                  {model === "higgsfield/minimax/h3/text-to-video" && <p className="mt-2 text-[11px] text-zinc-400">MiniMax H3 on Higgsfield is text to video only: it renders from the prompt at 2K, 5–15 seconds, and does not use the keyframe or reference images.</p>}
+                  {model === "higgsfield/kling-video/o3/video-reference" && <p className="mt-2 text-[11px] text-zinc-400">Kling O3 Video Reference re-renders one source clip, 3–10 seconds. Add a motion reference above; it has no sound setting.</p>}
+                  {model === "higgsfield/cinema-studio/4.0" && <p className="mt-2 text-[11px] text-zinc-400">Cinema Studio 4.0 renders at 480p or 720p, 4–30 seconds, from the prompt and reference images. Video and audio references are not sent to it yet.</p>}
+                  {model === "higgsfield/kling-video/v3.0/std/image-to-video" && <p className="mt-2 text-[11px] text-zinc-400">Kling 3.0 Standard on Higgsfield animates the start frame, 3–15 seconds. The clip takes its shape from that image, and other reference images are not sent.</p>}
                   {isGenjutsu && <p className="mt-2 text-[11px] text-zinc-400">{isRestyle ? "Choose a style. Add up to 5 optional character references; source audio is retained. Prompt may be empty." : "Genjutsu uses 1–8 image references and the source clip motion. Object Swap also needs at least 409,600 source pixels per frame; prompt may be empty."}</p>}
                   {entities.some((e) => e.type === "character") && (
                     <div className="mt-2 rounded-2xl bg-white/[0.02] p-3 border border-white/5">
