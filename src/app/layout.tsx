@@ -35,15 +35,22 @@ export default function RootLayout({
     return (
         <html lang="en" className="dark">
             <head>
-                {/* Google AdSense */}
-                <script
-                    async
-                    src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}`}
-                    crossOrigin="anonymous"
-                />
+                {/* The storage host serves the hero poster: opening the
+                    connection while the HTML is still arriving takes that
+                    handshake off the largest paint. */}
+                <link rel="preconnect" href="https://cytkucdnllicnmljixwd.supabase.co" crossOrigin="anonymous" />
             </head>
             <body dir="ltr" className={`${inter.className} bg-black text-white selection:bg-primary/30`}>
                 <PwaRegister />
+                {/* Google AdSense. Loaded once the page is idle: it was a
+                    blocking-priority script in the head, ahead of the page's
+                    own code, for something no visitor is waiting on. */}
+                <Script
+                    id="adsense"
+                    src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}`}
+                    crossOrigin="anonymous"
+                    strategy="lazyOnload"
+                />
                 {/* Google Analytics 4 */}
                 <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`} strategy="afterInteractive" />
                 <Script id="ga4" strategy="afterInteractive">
@@ -54,7 +61,7 @@ export default function RootLayout({
                     gtag('config', '${GADS_ID}');`}
                 </Script>
                 {/* Microsoft Clarity */}
-                <Script id="ms-clarity" strategy="afterInteractive">
+                <Script id="ms-clarity" strategy="lazyOnload">
                     {`(function(c,l,a,r,i,t,y){
                         c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
                         t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;

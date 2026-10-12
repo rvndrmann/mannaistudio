@@ -1,0 +1,148 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { Play, Quote, X } from "lucide-react"
+import { videoEmbedUrl } from "@/lib/video-embed"
+import { cn } from "@/lib/utils"
+
+export type WallItem = {
+  id: string
+  title: string
+  personName: string
+  personRole: string
+  avatar: string
+  quote: string
+  screenshots: Array<{ url: string; thumb: string }>
+  video: string
+  poster: string
+  amount: string
+  date: string
+}
+
+type Opened = { kind: "image"; url: string; alt: string } | { kind: "video"; url: string; poster: string; title: string }
+
+const PAGE = 6
+
+/**
+ * Student results and client sales, as published in /admin/proof.
+ *
+ * A tab with nothing behind it is not drawn, and the section itself is left out
+ * by the page when both are empty — there is no state of this component that
+ * shows a placeholder.
+ */
+export default function ProofWall({ students, sales }: { students: WallItem[]; sales: WallItem[] }) {
+  const tabs = [
+    { key: "students", label: "Student results", items: students },
+    { key: "sales", label: "Client sales", items: sales },
+  ].filter((tab) => tab.items.length > 0)
+  const [tab, setTab] = useState(tabs[0]?.key)
+  const [shown, setShown] = useState(PAGE)
+  const [opened, setOpened] = useState<Opened | null>(null)
+  const current = tabs.find((entry) => entry.key === tab) ?? tabs[0]
+
+  useEffect(() => {
+    if (!opened) return
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setOpened(null) }
+    document.addEventListener("keydown", onKey)
+    document.body.style.overflow = "hidden"
+    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = "" }
+  }, [opened])
+
+  if (!current) return null
+
+  return (
+    <>
+      {tabs.length > 1 && (
+        <div role="tablist" className="mt-8 inline-flex rounded-lg border border-white/10 bg-black/30 p-1">
+          {tabs.map((entry) => (
+            <button
+              key={entry.key}
+              role="tab"
+              aria-selected={entry.key === current.key}
+              onClick={() => { setTab(entry.key); setShown(PAGE) }}
+              className={cn("min-h-10 rounded-md px-4 text-sm font-semibold transition", entry.key === current.key ? "bg-primary text-black" : "text-white/60 hover:text-white")}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {current.items.slice(0, shown).map((item) => (
+          <article key={item.id} className="flex flex-col rounded-2xl border border-white/10 bg-white/[.03] p-5">
+            <div className="flex items-center gap-3">
+              {item.avatar
+                ? <img src={item.avatar} alt="" loading="lazy" decoding="async" className="h-11 w-11 shrink-0 rounded-full object-cover" />
+                : <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary/15 text-sm font-semibold text-primary">{(item.personName || item.title).charAt(0).toUpperCase()}</span>}
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{item.personName || item.title}</p>
+                {item.personRole && <p className="truncate text-xs text-white/50">{item.personRole}</p>}
+              </div>
+              {item.amount && <span className="ml-auto shrink-0 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">{item.amount}</span>}
+            </div>
+
+            {item.personName && item.title && <p className="mt-4 text-sm font-semibold text-white/90">{item.title}</p>}
+            {item.quote && (
+              <blockquote className="mt-3 flex gap-2 text-sm leading-relaxed text-white/70">
+                <Quote className="mt-0.5 h-4 w-4 shrink-0 text-primary/70" aria-hidden />
+                <p className="whitespace-pre-line">{item.quote}</p>
+              </blockquote>
+            )}
+
+            {item.video && item.poster && (
+              <button
+                type="button"
+                onClick={() => setOpened({ kind: "video", url: item.video, poster: item.poster, title: item.title })}
+                aria-label={`Play video: ${item.title || item.personName}`}
+                className="relative mt-4 block aspect-video overflow-hidden rounded-xl border border-white/10"
+              >
+                <img src={item.poster} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                <span className="absolute inset-0 grid place-items-center bg-black/25"><span className="grid h-12 w-12 place-items-center rounded-full bg-black/60"><Play className="h-4 w-4 translate-x-0.5 fill-current" /></span></span>
+              </button>
+            )}
+
+            {item.screenshots.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {item.screenshots.map((shot, position) => (
+                  <button
+                    key={shot.url}
+                    type="button"
+                    onClick={() => setOpened({ kind: "image", url: shot.url, alt: `${item.personName || item.title} — screenshot ${position + 1}` })}
+                    aria-label={`Open screenshot ${position + 1}`}
+                    className="h-16 w-16 overflow-hidden rounded-lg border border-white/10 transition hover:border-primary/50"
+                  >
+                    <img src={shot.thumb} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {item.date && <p className="mt-auto pt-4 text-xs text-white/35">{item.date}</p>}
+          </article>
+        ))}
+      </div>
+
+      {current.items.length > shown && (
+        <div className="mt-8 flex justify-center">
+          <button type="button" onClick={() => setShown((count) => count + PAGE)} className="inline-flex h-11 items-center rounded-md border border-white/20 px-5 text-sm font-semibold hover:bg-white/10">Show more</button>
+        </div>
+      )}
+
+      {opened && (
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] grid place-items-center bg-black/90 p-4" onClick={() => setOpened(null)}>
+          <button type="button" aria-label="Close" onClick={() => setOpened(null)} className="absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full bg-white/10 hover:bg-white/20"><X className="h-5 w-5" /></button>
+          <div className="max-h-full max-w-4xl" onClick={(event) => event.stopPropagation()}>
+            {opened.kind === "image" ? (
+              <img src={opened.url} alt={opened.alt} className="max-h-[88vh] w-auto rounded-lg object-contain" />
+            ) : videoEmbedUrl(opened.url) ? (
+              <iframe src={videoEmbedUrl(opened.url, { autoplay: true })!} title={opened.title} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen className="aspect-video w-[min(90vw,56rem)] rounded-lg" />
+            ) : (
+              <video src={opened.url} poster={opened.poster} controls autoPlay playsInline className="max-h-[88vh] w-auto rounded-lg" />
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}

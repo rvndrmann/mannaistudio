@@ -107,6 +107,11 @@ export default function HireHome() {
     createClient()
       .from("showcase_items")
       .select("*")
+      // The table also holds reviews and sales now, and an admin's session can
+      // read drafts; this reel is published work and nothing else.
+      .eq("type", "portfolio")
+      .eq("published", true)
+      .is("deleted_at", null)
       .then(({ data }) => {
         if (!active || !data) return
         setVideos(sortShowcase(data.map(toShowcaseVideo)).filter((video) => video.videoUrl).slice(0, 9))

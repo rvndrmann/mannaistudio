@@ -483,7 +483,7 @@ function AdminDashboardContent() {
             description: "Enter course description here...",
             thumbnail: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=800",
             xp: 1000,
-            duration: "0 Hours",
+            duration: "",
             level: "Beginner",
             chapters: 0,
             instructor: "Admin",
@@ -1503,15 +1503,15 @@ function AdminDashboardContent() {
                             >
                                 <Sparkles className="w-4 h-4" /> Academy Ecosystem
                             </button>
-                            <button
-                                onClick={() => setActiveTab("showcase")}
-                                className={cn(
-                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium",
-                                    activeTab === "showcase" ? "bg-primary text-black" : "text-white/40 hover:bg-white/5 hover:text-white"
-                                )}
+                            {/* The showcase reel is managed with the rest of the
+                                homepage's proof now: same rows, plus reviews,
+                                sales, consent and publishing. */}
+                            <a
+                                href="/admin/proof"
+                                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition text-sm font-medium text-white/40 hover:bg-white/5 hover:text-white"
                             >
-                                <Tv className="w-4 h-4" /> Showcase Manager
-                            </button>
+                                <Tv className="w-4 h-4" /> Proof Manager
+                            </a>
                             <button
                                 onClick={() => setActiveTab("originals")}
                                 className={cn(

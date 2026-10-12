@@ -191,6 +191,38 @@ operating the studio themselves. Migration
 - **Pausing:** `site_features.hireUs` hides the nav entry *and* closes the
   checkout route. Running projects stay deliverable.
 
+## Proof and the Pro homepage (admin → /admin/proof)
+
+The `academy` homepage sells AI Director Hub Pro and is **server-rendered**
+(`src/components/home/AcademyHome.tsx`, also served at `/start` and `/learn`).
+Migration `20261012120000_proof_items.sql`.
+
+- **Proof lives in `showcase_items`**, extended rather than duplicated: `type`
+  (`portfolio` | `student_review` | `sale_proof`), person fields, `quote`,
+  `screenshots` (jsonb, max 6), `amount`/`currency`, `proof_date`,
+  `consent_confirmed`, `published`, `deleted_at`. Four brief names map onto
+  older columns: poster → `thumbnail`, video → `video_url`, featured →
+  `is_featured`, sort_order → `position`. `src/lib/proof.ts` is the only place
+  that knows this.
+- **Publish guard is a check constraint**, not just a form rule: published
+  requires `consent_confirmed`, not deleted, and a poster whenever there is a
+  video. RLS: anon reads published rows only; admins read everything — so any
+  public read must filter `published` itself (use `fetchPublishedProof` with
+  `createPublicClient()`).
+- **No placeholders.** A homepage section with no published rows is not
+  rendered. Never add fallback testimonials, numbers or logos.
+- **Public API:** `GET /api/proof?type=&featured=&limit=`.
+- **Page settings:** `site_settings.proof_page` via
+  `admin_set_proof_page_settings` — cost example, API guide link, community
+  reason toggle, annual plan toggle + price, Creator Studio demo media. Empty
+  means hidden.
+- **CTAs:** every Pro button is `ProCta` (→ `/billing`, fires
+  `InitiateCheckout`); every free-course link is `FreeCourseCta` (→
+  `/free-course`, which redirects to the current free course, fires `Lead`).
+- **Courses:** `/courses` is the public catalogue; `/my-courses` is what a
+  signed-in student owns. `courseDurationLabel` hides zero durations.
+- **Nav:** `AcademyNavbar`. Originals and Hire Our Team are footer-only.
+
 ## MCP bridge (control the studio from an MCP client)
 
 `mcp/server.mjs` — a dependency-free stdio MCP server registered in `.mcp.json`.

@@ -57,7 +57,7 @@ export const homeVariants: Array<{
   {
     id: "academy",
     label: "AI Video Academy",
-    description: "Education-first homepage for AI video creators. Promotes courses, digital AI tools, 1:1 coaching and Creator Studio access for eligible students.",
+    description: "Sells AI Director Hub Pro: hero reel, proof from the Proof manager, the free mini course, pricing and FAQ. Server-rendered.",
     confirmation: "Homepage now shows AI Video Academy.",
   },
 ]

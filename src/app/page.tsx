@@ -1,15 +1,11 @@
 import type { Metadata } from "next"
 import { createClient } from "@/lib/supabase/server"
 import { fetchHomeVariant, isHomeVariant } from "@/lib/home-variant"
-import StudioHome from "@/components/home/StudioHome"
-import OriginalsHome from "@/components/home/OriginalsHome"
-import HireHome from "@/components/home/HireHome"
-import CreativeAgentHome from "@/components/home/CreativeAgentHome"
-import AcademyHome from "@/components/home/AcademyHome"
+import AcademyHome, { academyMetadata } from "@/components/home/AcademyHome"
 
 // The variant is read per request so flipping the switch in Admin takes effect
-// on the next page load. Every homepage is a client component that fetches its
-// own content, so serving this dynamically costs a shell render and no more.
+// on the next page load. The academy homepage renders its content on the
+// server; the others are client components that fetch their own.
 export const dynamic = "force-dynamic"
 
 /**
@@ -36,8 +32,7 @@ export async function generateMetadata(): Promise<Metadata> {
   }
   if (variant === "academy") {
     return {
-      title: "AI Courses & Image and Video Generation | AI Director Hub",
-      description: "Learn AI filmmaking and generate images and videos with your own API keys. AI Director Hub Pro includes all published courses and Creator Studio for ₹799/month.",
+      ...academyMetadata,
     }
   }
   if (variant === "originals") {
@@ -61,9 +56,24 @@ export default async function Home({ searchParams }: {
   const requested = (await searchParams).home
   const variant = isHomeVariant(requested) ? requested : await fetchHomeVariant(supabase)
 
-  if (variant === "originals") return <OriginalsHome />
-  if (variant === "hire") return <HireHome />
-  if (variant === "creative-agent") return <CreativeAgentHome />
   if (variant === "academy") return <AcademyHome />
+
+  // The other homepages are imported only when they are the one being served.
+  // Imported at the top of the file, every visitor to the academy page was sent
+  // the scripts for all four of them — an animation library included — to
+  // render a page that uses none of it.
+  if (variant === "originals") {
+    const { default: OriginalsHome } = await import("@/components/home/OriginalsHome")
+    return <OriginalsHome />
+  }
+  if (variant === "hire") {
+    const { default: HireHome } = await import("@/components/home/HireHome")
+    return <HireHome />
+  }
+  if (variant === "creative-agent") {
+    const { default: CreativeAgentHome } = await import("@/components/home/CreativeAgentHome")
+    return <CreativeAgentHome />
+  }
+  const { default: StudioHome } = await import("@/components/home/StudioHome")
   return <StudioHome />
 }

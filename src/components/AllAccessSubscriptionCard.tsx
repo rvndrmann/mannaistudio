@@ -81,6 +81,12 @@ export default function AllAccessSubscriptionCard() {
   }
   const subscription = offer?.subscription
   const ongoing = subscription && ["creating", "created", "authenticated", "active", "pending", "halted"].includes(subscription.status)
+  // "created" means the checkout window was opened and closed again without a
+  // payment method ever being entered. Nothing is pending and nothing can be
+  // charged, so it is shown as what it is — not subscribed — rather than as a
+  // status with a "Cancel pending subscription" button beside it. Pressing
+  // Subscribe again resumes that same checkout.
+  const abandoned = subscription?.status === "created"
   return (
     <section className="mx-auto my-10 max-w-6xl rounded-3xl border border-primary/40 bg-primary/5 p-7 md:p-10" aria-labelledby="all-access-title">
       <p className="text-sm font-semibold text-primary">Learn and create with your own API keys</p>
@@ -88,10 +94,10 @@ export default function AllAccessSubscriptionCard() {
       <p className="mt-3 max-w-3xl text-white/65">Access every published course, including new releases while subscribed, and use Creator Studio with your own OpenAI, Gemini, fal.ai, or BytePlus keys. Your provider bills you directly for chat and generation. No Studio credits are included or used.</p>
       <p className="mt-4 text-2xl font-semibold">{offer?.priceInr ? `₹${offer.priceInr.toLocaleString("en-IN")} / month` : "Price available when checkout is configured"}</p>
       {offer?.active && <p className="mt-3 text-primary">Access active until {new Date(offer.paidUntil!).toLocaleDateString("en-IN")}{subscription?.cancel_at_cycle_end || subscription?.status === "cancelled" ? " · Renewal cancelled" : ""}</p>}
-      {subscription && !offer?.active && <p className="mt-3 text-white/60">Subscription status: {subscription.status}. Access starts after a confirmed charge.</p>}
+      {subscription && !abandoned && !offer?.active && <p className="mt-3 text-white/60">Subscription status: {subscription.status}. Access starts after a confirmed charge.</p>}
       <div className="mt-5 flex flex-wrap gap-4">
-        {!offer?.active && <button onClick={subscribe} disabled={busy || !offer?.configured || Boolean(ongoing && subscription?.status !== "created")} className="rounded-xl bg-primary px-5 py-3 font-semibold text-black disabled:opacity-40">{busy ? "Please wait…" : subscription?.status === "created" ? "Complete checkout" : "Subscribe to AI Director Hub Pro"}</button>}
-        {ongoing && !subscription?.cancel_at_cycle_end && subscription?.status !== "creating" && <button onClick={cancel} disabled={busy} className="rounded-xl border border-white/20 px-5 py-3 disabled:opacity-40">{offer?.active ? "Cancel subscription renewal" : "Cancel pending subscription"}</button>}
+        {!offer?.active && <button onClick={subscribe} disabled={busy || !offer?.configured || Boolean(ongoing && subscription?.status !== "created")} className="rounded-xl bg-primary px-5 py-3 font-semibold text-black disabled:opacity-40">{busy ? "Please wait…" : "Subscribe to AI Director Hub Pro"}</button>}
+        {ongoing && !abandoned && !subscription?.cancel_at_cycle_end && subscription?.status !== "creating" && <button onClick={cancel} disabled={busy} className="rounded-xl border border-white/20 px-5 py-3 disabled:opacity-40">{offer?.active ? "Cancel subscription renewal" : "Cancel pending subscription"}</button>}
         <Link href="/courses" className="rounded-xl border border-white/20 px-5 py-3">Browse courses</Link>
         {offer?.active && <Link href="/studio/integrations" className="rounded-xl border border-white/20 px-5 py-3">Connect API keys</Link>}
         <button onClick={() => load().catch(error => setMessage(error.message))} className="px-2 py-3 text-sm text-white/60">Refresh status</button>

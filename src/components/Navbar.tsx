@@ -14,6 +14,7 @@ import NotificationBell from "@/components/NotificationBell"
 import { createClient } from "@/lib/supabase/client"
 import { defaultBillingSettings, fetchBillingSettings, isAdminUser } from "@/lib/membership"
 import { defaultSiteFeatures, fetchSiteFeatures, type SiteFeatures } from "@/lib/studio/feature-flags"
+import AcademyNavbar from "@/components/AcademyNavbar"
 
 /**
  * `adminOnly` marks the SaaS-era surfaces that survived the move to a
@@ -45,7 +46,7 @@ const baseNavLinks = [
 
 const adminLink = { key: "admin", name: "Admin", href: "/admin", icon: ShieldCheck } as (typeof baseNavLinks)[number]
 
-export default function Navbar({ academy = false }: { academy?: boolean }) {
+export default function Navbar({ academy = false, signedInHint = false }: { academy?: boolean; signedInHint?: boolean }) {
     const [isAdmin, setIsAdmin] = useState(false)
     const [offerText, setOfferText] = useState("")
     // null until the real setting arrives. Starting from the defaults — which
@@ -131,24 +132,7 @@ export default function Navbar({ academy = false }: { academy?: boolean }) {
 
     const navLinks = isAdmin ? [...permittedNavLinks, adminLink] : permittedNavLinks
 
-    const academyNavLinks = user
-        ? [
-            { key: "my-courses", name: "My Courses", href: "/my-courses", icon: BookOpen },
-            { key: "creator-studio", name: "Creator Studio", href: "/studio", icon: Sparkles },
-            { key: "my-projects", name: "My Projects", href: "/hire-us/projects", icon: LayoutDashboard },
-            { key: "account", name: "My Account", href: "/account", icon: User },
-            { key: "billing", name: "Billing", href: "/billing", icon: CreditCard, public: true },
-            { key: "originals", name: "Originals", href: "/originals", icon: Clapperboard, public: true },
-            { key: "hireUs", name: "Hire Our Team", href: "/hire-us", icon: Briefcase, public: true },
-          ]
-        : [
-            { key: "courses", name: "Courses", href: "/my-courses", icon: BookOpen, public: true },
-            { key: "billing", name: "Billing", href: "/billing", icon: CreditCard, public: true },
-            { key: "originals", name: "Originals", href: "/originals", icon: Clapperboard, public: true },
-            { key: "hireUs", name: "Hire Our Team", href: "/hire-us", icon: Briefcase, public: true },
-          ]
     const isAcademyNav = academy || homeVariant === "academy"
-    const activeNavLinks = isAcademyNav ? academyNavLinks : navLinks
 
     // What a signed-out visitor is shown: the catalogue, because the first
     // episodes of every series play free and hiding it behind sign-in would
@@ -156,9 +140,12 @@ export default function Navbar({ academy = false }: { academy?: boolean }) {
     // which today is the managed service. Both are things the site sells to
     // strangers, and a shop window nobody can find is not a shop window. The
     // operator surfaces stay hidden, as they were.
-    const visibleNavLinks = isAcademyNav
-        ? (isAdmin ? [...activeNavLinks, adminLink] : activeNavLinks)
-        : user ? navLinks : navLinks.filter((link) => link.key === "originals" || link.public)
+    const visibleNavLinks = user ? navLinks : navLinks.filter((link) => link.key === "originals" || link.public)
+
+    // The course-and-studio site has its own bar: a different set of links, a
+    // different button, and none of the catalogue-era seats this one reserves
+    // for Originals and Hire Us on a phone.
+    if (isAcademyNav) return <AcademyNavbar offerText={offerText} signedInHint={signedInHint} />
 
     return (
         <nav className="fixed top-0 left-0 right-0 z-50 flex justify-center p-4">
@@ -411,12 +398,7 @@ export default function Navbar({ academy = false }: { academy?: boolean }) {
                         </Link>
                     ))}
 
-                    {!loading && isAcademyNav && (
-                        <Link href="/my-courses" className="flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md bg-primary px-4 text-sm font-semibold text-black transition hover:brightness-110">
-                            Start Learning <Sparkles className="h-4 w-4" />
-                        </Link>
-                    )}
-                    {!loading && isAdmin && !isAcademyNav && (
+                    {!loading && isAdmin && (
                         <Link
                             href="/studio"
                             className="flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md bg-primary px-4 text-sm font-medium text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"

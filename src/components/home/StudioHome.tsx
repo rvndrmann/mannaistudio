@@ -137,6 +137,9 @@ export default function StudioHome() {
                 const { data, error } = await supabase
                     .from("showcase_items")
                     .select("*")
+                    .eq("type", "portfolio")
+                    .eq("published", true)
+                    .is("deleted_at", null)
                     .order("created_at", { ascending: false })
                 if (!error && data && data.length > 0) {
                     setAdminShowcase(

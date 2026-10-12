@@ -14,8 +14,9 @@ const legalLinks = [
 // a drama catalogue — leaving them here would put two dead ends on every page,
 // because middleware bounces a viewer straight back to /originals.
 const siteLinks = [
+    { href: "/courses", label: "Courses" },
     { href: "/originals", label: "Originals" },
-    { href: "/hire-us", label: "Hire Our Creative Team" },
+    { href: "/hire-us", label: "Hire Our Team" },
     { href: "/account", label: "My Account" },
     { href: "/about", label: "About Us" },
 ]

@@ -111,6 +111,28 @@ export function instagramEmbedUrl(url: string): string | null {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Vimeo                                                                       */
+/* -------------------------------------------------------------------------- */
+
+/** The numeric id in a vimeo.com or player.vimeo.com link. */
+export function vimeoVideoId(url: string): string | null {
+  if (!url) return null
+  const found = url.match(/vimeo\.com\/(?:video\/|channels\/[^/]+\/|groups\/[^/]+\/videos\/)?(\d{6,})/i)
+  return found ? found[1] : null
+}
+
+export function vimeoEmbedUrl(url: string, options: EmbedOptions = {}): string | null {
+  const id = vimeoVideoId(url)
+  if (!id) return null
+  const params = new URLSearchParams({ playsinline: "1", dnt: "1" })
+  if (options.autoplay) params.set("autoplay", "1")
+  if (options.muted) params.set("muted", "1")
+  if (options.loop) params.set("loop", "1")
+  if (options.controls === false) params.set("controls", "0")
+  return `https://player.vimeo.com/video/${id}?${params.toString()}`
+}
+
+/* -------------------------------------------------------------------------- */
 /* Either                                                                      */
 /* -------------------------------------------------------------------------- */
 
@@ -124,12 +146,12 @@ export function instagramEmbedUrl(url: string): string | null {
  * honest — its player genuinely cannot be told to start muted.
  */
 export function videoEmbedUrl(url: string, options: EmbedOptions = {}): string | null {
-  return youtubeEmbedUrl(url, options) ?? instagramEmbedUrl(url)
+  return youtubeEmbedUrl(url, options) ?? vimeoEmbedUrl(url, options) ?? instagramEmbedUrl(url)
 }
 
 /** Whether this link plays in an iframe rather than a `<video>` element. */
 export function isEmbeddedVideo(url: string): boolean {
-  return Boolean(youtubeVideoId(url) || instagramShortcode(url))
+  return Boolean(youtubeVideoId(url) || vimeoVideoId(url) || instagramShortcode(url))
 }
 
 /**
