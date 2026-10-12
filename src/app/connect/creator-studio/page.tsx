@@ -2,6 +2,7 @@ import Link from "next/link"
 import { createClient } from "@/lib/supabase/server"
 import { hasCreatorStudioEntitlement } from "@/lib/studio/entitlement"
 import { fetchSiteFeatures } from "@/lib/studio/feature-flags"
+import { isAdminUser } from "@/lib/membership"
 import { pendingConsent } from "@/lib/studio/mcp/oauth"
 import { isManagedScope, mcpResource, scopeLabels } from "@/lib/studio/mcp/config"
 import Connections from "./Connections"
@@ -14,15 +15,22 @@ export default async function CreatorStudioConnect() {
   try { endpoint = mcpResource() } catch {
     return <main className="mx-auto max-w-2xl px-6 py-24"><h1 className="text-3xl font-semibold">Connect Creator Studio</h1><p className="mt-4 text-white/70">Assistant connections are being set up. Please try again later.</p><Link href="/studio" className="mt-6 inline-block underline">Back to Studio</Link></main>
   }
+  const live = (await fetchSiteFeatures(supabase)).mcp
+  // Paused means not offered: a visitor is told so rather than walked through a
+  // setup that would be refused at the last step. Signing in stays possible,
+  // because that is how an admin gets in to test it.
+  if (!user && !live) return <main className="mx-auto max-w-2xl px-6 py-24"><h1 className="text-3xl font-semibold">Connect Creator Studio</h1><p className="mt-4 text-white/70">Assistant connections are not open yet.</p><Link href="/login?next=%2Fconnect%2Fcreator-studio" className="mt-6 inline-block underline">Sign in</Link></main>
   if (!user) return <main className="mx-auto max-w-3xl px-6 py-16 space-y-8"><Link href="/" className="text-sm text-white/60">← AI Director Hub</Link><header className="space-y-4"><h1 className="text-3xl font-semibold">Connect Creator Studio to Codex</h1><p className="text-white/70">Copy the prompt below to start setup. Sign in to your own website account when Codex opens the authorization page.</p><Link href="/login?next=%2Fconnect%2Fcreator-studio" className="inline-block text-primary underline">Sign in to manage connections →</Link></header><CodexSetup endpoint={endpoint} /></main>
   const pending = await pendingConsent()
   const entitled = await hasCreatorStudioEntitlement(supabase, user.id)
-  const enabled = (await fetchSiteFeatures(supabase)).mcp
+  const testing = !live && await isAdminUser(supabase, user.id)
+  const enabled = live || testing
   const availableScopes: string[] = pending ? (entitled ? pending.scopes : pending.scopes.filter(isManagedScope)) : []
   return <main className="mx-auto max-w-2xl px-6 py-16 space-y-8">
     <Link href="/studio" className="text-sm text-white/60 hover:text-white">← Back to Studio</Link>
     <div><h1 className="text-3xl font-semibold">Connect Creator Studio</h1><p className="mt-3 text-white/70">Signed in as <strong className="text-white">{user.email}</strong>. Assistants can access only projects owned by this account.</p></div>
     {!enabled && <p role="alert" className="text-amber-200">Assistant connections are currently paused. You can still disconnect existing assistants below.</p>}
+    {testing && <p role="status" className="rounded-md border border-amber-200/30 bg-amber-200/10 px-4 py-3 text-sm text-amber-100">Paused for customers. You are an admin, so you can still connect and test. Turn it on in Admin when it is ready.</p>}
     {pending ? <section className="space-y-6 rounded-2xl border border-white/10 bg-white/5 p-6">
       <div><h2 className="text-xl font-semibold">Allow {pending.clientName} to connect?</h2><p className="mt-2 text-sm text-white/60">This is the client name supplied by the assistant. The connection returns to <strong className="text-white">{new URL(pending.redirect_uri).host}</strong>.</p></div>
       <ul className="space-y-3 text-white/80">{availableScopes.map((scope: string) => <li key={scope}>• {scopeLabels[scope] || scope}</li>)}</ul>

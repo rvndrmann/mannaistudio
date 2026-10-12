@@ -6,7 +6,7 @@ import { createServiceClient } from "@/lib/supabase/service"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { requireAuthenticatedProject, StudioAccessError } from "./server-context"
 import { hasCreatorStudioEntitlement } from "./entitlement"
-import { fetchSiteFeatures } from "./feature-flags"
+import { mcpOpenFor } from "./mcp/access"
 import { isManagedScope, mcpResource } from "./mcp/config"
 
 /**
@@ -144,7 +144,7 @@ export async function validateExternalRequest(request: Request, requiredScope?: 
       if (!scopes.length) throw new StudioAccessError("Creator Studio access is required.", 403)
     }
   }
-  if (!(await fetchSiteFeatures(acting)).mcp) throw new StudioAccessError("Assistant connections are currently paused.", 403)
+  if (!await mcpOpenFor(acting, user.user.id)) throw new StudioAccessError("Assistant connections are currently paused.", 403)
   return { supabase: acting, user: user.user, scopes, resource: data.resource, connectionId: data.mcp_connection_id, tokenId: data.id }
 }
 

@@ -20,6 +20,7 @@ import CreditBadge from "@/components/CreditBadge";
 import StudioCreditOffer from "@/components/studio/StudioCreditOffer";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useByokEnabled } from "@/lib/byok/use-byok-enabled"
+import { useMcpVisible } from "@/lib/studio/mcp/use-mcp-visible"
 import { createClient } from "@/lib/supabase/client"
 
 type Project = {
@@ -348,6 +349,7 @@ function ProjectGalleryCard({ project, onDelete }: { project: Project; onDelete?
 
 function TopBar({ onOpenCreate, creating }: { onOpenCreate: () => void; creating: boolean }) {
   const byokEnabled = useByokEnabled();
+  const mcpVisible = useMcpVisible();
   return (
     <>
       {/* Two rows until xl, one after. Nine controls do not fit beside the
@@ -387,13 +389,15 @@ function TopBar({ onOpenCreate, creating }: { onOpenCreate: () => void; creating
           <CreditBadge />
         </div>
         <div className="no-scrollbar -mx-3 flex h-[52px] basis-full items-center gap-2 overflow-x-auto border-t border-white/10 px-3 sm:-mx-5 sm:px-5 xl:mx-0 xl:h-auto xl:min-w-0 xl:basis-auto xl:border-t-0 xl:px-0 [&>*]:shrink-0">
-          <Link
-            href="/connect/creator-studio"
-            title="Connect an AI assistant to your own Studio account"
-            className="flex h-9 items-center whitespace-nowrap rounded-md border border-white/10 px-3 text-xs font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
-          >
-            MCP
-          </Link>
+          {mcpVisible && (
+            <Link
+              href="/connect/creator-studio"
+              title="Connect an AI assistant to your own Studio account"
+              className="flex h-9 items-center whitespace-nowrap rounded-md border border-white/10 px-3 text-xs font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+            >
+              MCP
+            </Link>
+          )}
           <Link
             href="/studio/create"
             title="Generate a single image or clip, with no production attached"

@@ -2,7 +2,7 @@ import { cookies } from "next/headers"
 import { createServiceClient } from "@/lib/supabase/service"
 import { createClient } from "@/lib/supabase/server"
 import { hasCreatorStudioEntitlement } from "@/lib/studio/entitlement"
-import { fetchSiteFeatures } from "@/lib/studio/feature-flags"
+import { mcpOpenFor } from "@/lib/studio/mcp/access"
 import { createExternalToken, hashExternalToken, tokenDisplayPrefix } from "@/lib/studio/external-auth"
 import { consentCookie, digest, isManagedScope, McpOAuthError, mcpOrigin, mcpResource, parseScopes, pkceChallenge, registrationSchema, secret } from "./config"
 
@@ -69,7 +69,7 @@ export async function decideConsent(id: string, approved: boolean, displayedUser
   const entitled = approved && await hasCreatorStudioEntitlement(supabase, user.id)
   const grantedScopes: string[] = entitled ? pending.scopes : pending.scopes.filter(isManagedScope)
   if (approved && !grantedScopes.length) throw new McpOAuthError("access_denied", "Creator Studio access is required for these permissions", 403)
-  if (approved && !(await fetchSiteFeatures(supabase)).mcp) throw new McpOAuthError("access_denied", "Assistant connections are currently paused", 403)
+  if (approved && !await mcpOpenFor(supabase, user.id)) throw new McpOAuthError("access_denied", "Assistant connections are currently paused", 403)
   const db = createServiceClient()
   // Single-use browser consent; duplicate submissions cannot issue two grants.
   const { data: consumed, error: consumeError } = await db.from("creator_mcp_requests").delete()

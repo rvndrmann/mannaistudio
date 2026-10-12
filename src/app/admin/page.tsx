@@ -3388,7 +3388,7 @@ function AdminDashboardContent() {
                                     {[
                                         { key: "originals" as const, label: "Originals", path: "/originals", desc: "Episodic series watched with credits" },
                                         { key: "hireUs" as const, label: "Hire Our Creative Team", path: "/hire-us", desc: "Managed production: clients hire the team to make UGC, direct response and cinematic ads. Pausing hides it from the navigation and stops new orders; projects already running stay open and deliverable." },
-                                        { key: "mcp" as const, label: "MCP & CLI", path: "/studio/external", desc: "External AI Client Integration Setup" },
+                                        { key: "mcp" as const, label: "MCP & CLI", path: "/connect/creator-studio", desc: "Assistant connections over MCP. Pausing hides the MCP button in the studio and refuses customers at the connect page and the endpoint. Admins can still connect while it is paused, to test before launch." },
                                         { key: "byok" as const, label: "Bring your own API keys", path: "/studio/integrations", desc: "Customers connecting their own OpenAI / Google / BytePlus / fal.ai keys. Pausing also removes it from pricing, the billing page and plan features. Stored keys are kept." },
                                         { key: "calendar" as const, label: "Calendar", path: "/calendar", desc: "Content Calendar & Post Scheduler" },
                                         { key: "analytics" as const, label: "Analytics", path: "/analytics", desc: "Social Media & Video Analytics Dashboard" },
