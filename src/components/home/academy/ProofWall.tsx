@@ -23,6 +23,9 @@ type Opened = { kind: "image"; url: string; alt: string } | { kind: "video"; url
 
 const PAGE = 6
 
+/** Past this a quote is folded: one long review was three screens tall on a phone. */
+const LONG_QUOTE = 160
+
 /**
  * Student results and client sales, as published in /admin/proof.
  *
@@ -38,6 +41,7 @@ export default function ProofWall({ students, sales }: { students: WallItem[]; s
   const [tab, setTab] = useState(tabs[0]?.key)
   const [shown, setShown] = useState(PAGE)
   const [opened, setOpened] = useState<Opened | null>(null)
+  const [unfolded, setUnfolded] = useState<string[]>([])
   const current = tabs.find((entry) => entry.key === tab) ?? tabs[0]
 
   useEffect(() => {
@@ -83,12 +87,57 @@ export default function ProofWall({ students, sales }: { students: WallItem[]; s
             </div>
 
             {item.personName && item.title && <p className="mt-4 text-sm font-semibold text-white/90">{item.title}</p>}
-            {item.quote && (
-              <blockquote className="mt-3 flex gap-2 text-sm leading-relaxed text-white/70">
-                <Quote className="mt-0.5 h-4 w-4 shrink-0 text-primary/70" aria-hidden />
-                <p className="min-w-0 whitespace-pre-line break-words">{item.quote}</p>
-              </blockquote>
+            {/* The screenshot is the evidence, so it is shown at a size it can
+                be read at rather than as a thumbnail to go looking behind. The
+                first one leads; any others sit under it. */}
+            {item.screenshots.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setOpened({ kind: "image", url: item.screenshots[0].url, alt: `${item.personName || item.title} — screenshot 1` })}
+                aria-label="Open screenshot 1 full size"
+                className="mt-4 block overflow-hidden rounded-xl border border-white/10 bg-black transition hover:border-primary/50"
+              >
+                <img src={item.screenshots[0].url} alt={`Review screenshot from ${item.personName || item.title}`} loading="lazy" decoding="async" className="max-h-80 w-full object-contain object-top" />
+              </button>
             )}
+            {item.screenshots.length > 1 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {item.screenshots.slice(1).map((shot, position) => (
+                  <button
+                    key={shot.url}
+                    type="button"
+                    onClick={() => setOpened({ kind: "image", url: shot.url, alt: `${item.personName || item.title} — screenshot ${position + 2}` })}
+                    aria-label={`Open screenshot ${position + 2}`}
+                    className="h-16 w-16 overflow-hidden rounded-lg border border-white/10 transition hover:border-primary/50"
+                  >
+                    <img src={shot.thumb} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {item.quote && (() => {
+              const long = item.quote.length > LONG_QUOTE
+              const open = unfolded.includes(item.id)
+              return (
+                <blockquote className="mt-4 flex gap-2 text-sm leading-relaxed text-white/70">
+                  <Quote className="mt-0.5 h-4 w-4 shrink-0 text-primary/70" aria-hidden />
+                  <div className="min-w-0">
+                    <p className={cn("whitespace-pre-line break-words", long && !open && "line-clamp-4")}>{item.quote}</p>
+                    {long && (
+                      <button
+                        type="button"
+                        aria-expanded={open}
+                        onClick={() => setUnfolded((ids) => (open ? ids.filter((id) => id !== item.id) : [...ids, item.id]))}
+                        className="mt-1 inline-flex min-h-9 items-center text-xs font-medium text-white/90 underline underline-offset-4 hover:text-white"
+                      >
+                        {open ? "Show less" : "Read full review"}
+                      </button>
+                    )}
+                  </div>
+                </blockquote>
+              )
+            })()}
 
             {item.video && item.poster && (
               <button
@@ -100,22 +149,6 @@ export default function ProofWall({ students, sales }: { students: WallItem[]; s
                 <img src={item.poster} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                 <span className="absolute inset-0 grid place-items-center bg-black/25"><span className="grid h-12 w-12 place-items-center rounded-full bg-black/60"><Play className="h-4 w-4 translate-x-0.5 fill-current" /></span></span>
               </button>
-            )}
-
-            {item.screenshots.length > 0 && (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {item.screenshots.map((shot, position) => (
-                  <button
-                    key={shot.url}
-                    type="button"
-                    onClick={() => setOpened({ kind: "image", url: shot.url, alt: `${item.personName || item.title} — screenshot ${position + 1}` })}
-                    aria-label={`Open screenshot ${position + 1}`}
-                    className="h-16 w-16 overflow-hidden rounded-lg border border-white/10 transition hover:border-primary/50"
-                  >
-                    <img src={shot.thumb} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
-                  </button>
-                ))}
-              </div>
             )}
 
             {item.date && <p className="mt-auto pt-4 text-xs text-white/35">{item.date}</p>}
