@@ -87,6 +87,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const { primary_reference_image: _unused, ...withoutChosen } = payload
         ;({ data, error } = await writeAsset(withoutChosen))
       }
+      // The handle is unique per project. Left to surface as it comes, this
+      // read "duplicate key value violates unique constraint …" to someone who
+      // had only uploaded a picture.
+      if (error?.code === "23505" && /handle/i.test(error.message || "")) {
+        return NextResponse.json({ error: `This project already has an asset called "${body.asset.name}". Give this one a different name.` }, { status: 409 })
+      }
       if (error) throw error; return NextResponse.json(data)
     }
     if (body.action === "deleteAsset") { const { error } = await supabase.from("creator_entities").delete().eq("id", body.id).eq("project_id", projectId); if (error) throw error; return NextResponse.json({ success: true }) }

@@ -2900,7 +2900,14 @@ function BasicSettingsModal({
       const { error: uploadError } = await client.storage.from("creator-studio-media").upload(path, preparedFile);
       if (uploadError) throw uploadError;
 
-      const name = file.name.replace(/\.[^.]+$/, "").trim() || "Product reference";
+      // A second "Untitled design.png" is a different product, not a clash:
+      // the project keys its assets by a handle made from the name, so the
+      // name is numbered until its handle is free.
+      const handleOf = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const taken = new Set([...data.entities, ...(uploadedProduct ? [uploadedProduct] : [])].flatMap((entity) => [(entity as { handle?: string | null }).handle || "", handleOf(entity.name)]));
+      const baseName = file.name.replace(/\.[^.]+$/, "").trim() || "Product reference";
+      let name = baseName;
+      for (let copy = 2; taken.has(handleOf(name)); copy += 1) name = `${baseName} ${copy}`;
       const product = await save({
         action: "saveAsset",
         asset: {
