@@ -23,7 +23,6 @@ import {
   UNLOCK_WINDOW_DAYS,
   unlockTimeRemaining,
 } from "@/lib/originals"
-import { onCreditBalanceChanged } from "@/lib/credit-balance-events"
 import ManagedProjectCards, { useManagedProjects } from "@/components/managed/ManagedProjectCards"
 import { formatUsd } from "@/lib/currency"
 import { billingTiers } from "@/lib/billing-plans"
@@ -72,7 +71,6 @@ const dateLabel = (value: string) =>
 
 export default function AccountPage() {
   const { user, loading: authLoading, signInWithGoogle } = useAuth()
-  const [balance, setBalance] = useState<number | null>(null)
   const [unlocks, setUnlocks] = useState<UnlockRow[]>([])
   const [passes, setPasses] = useState<PassRow[]>([])
   const [payments, setPayments] = useState<PaymentRecord[]>([])
@@ -93,7 +91,7 @@ export default function AccountPage() {
     // thing a viewer opens after paying, and it should not spend a second
     // waiting on requests that do not depend on each other.
     const [profileRes, unlockRes, passRes, paymentRows] = await Promise.all([
-      supabase.from("profiles").select("credits_balance,contact_phone").eq("id", user.id).maybeSingle(),
+      supabase.from("profiles").select("contact_phone").eq("id", user.id).maybeSingle(),
       supabase.rpc("originals_my_unlocks", { p_profile_id: user.id }),
       supabase
         .from("originals_season_passes")
@@ -103,7 +101,6 @@ export default function AccountPage() {
         .order("expires_at", { ascending: false }),
       fetchMyPayments(supabase, user.id),
     ])
-    setBalance(Number(profileRes.data?.credits_balance ?? 0))
     setContactPhone(profileRes.data?.contact_phone || "")
     setUnlocks((unlockRes.data as UnlockRow[] | null) || [])
     setPasses(((passRes.data as unknown as PassRow[] | null) || []))
@@ -202,13 +199,6 @@ export default function AccountPage() {
     setSavingPhone(false)
   }
 
-  // The nav's credit badge and this page must never disagree about the balance.
-  // An event with no figure means "re-read it", not "it is zero".
-  useEffect(
-    () => onCreditBalanceChanged((next) => (typeof next === "number" ? setBalance(next) : void load())),
-    [load],
-  )
-
   if (authLoading) {
     return (
       <main className="min-h-screen bg-black text-white">
@@ -266,6 +256,9 @@ export default function AccountPage() {
           {phoneNotice && <p role="status" className="mt-3 text-sm text-primary">{phoneNotice}</p>}
         </section>
 
+        {/* Shown only to someone who has this subscription: it is the one place
+            they can renew or cancel it. Everyone else has nothing to manage. */}
+        {studioSubscription?.subscribed && (
         <section className="mt-6 rounded-2xl border border-primary/20 bg-primary/[0.04] p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -280,9 +273,6 @@ export default function AccountPage() {
             )}
           </div>
 
-          {studioSubscription === null ? (
-            <p className="mt-4 text-sm text-white/45">Loading subscription status…</p>
-          ) : studioSubscription.subscribed ? (
             <div className="mt-4 flex flex-col gap-4 rounded-xl border border-white/10 bg-black/20 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className={`text-sm font-semibold ${studioSubscription.active ? "text-primary" : "text-white/60"}`}>
@@ -310,32 +300,9 @@ export default function AccountPage() {
                 )}
               </div>
             </div>
-          ) : (
-            <p className="mt-4 text-sm text-white/50">No Creator Studio subscription found. Request an invitation from <Link href="/studio" className="font-semibold text-primary hover:underline">Creator Studio</Link> to get started.</p>
-          )}
           {studioSubNotice && <p role="status" className="mt-3 text-sm text-primary">{studioSubNotice}</p>}
         </section>
-
-        {/* Balance ---------------------------------------------------------- */}
-        <section className="mt-6 rounded-2xl border border-white/10 bg-gradient-to-br from-primary/[0.12] to-transparent p-6">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-white/40">Balance</p>
-              <p className="mt-1 text-4xl font-semibold tabular-nums">
-                {balance === null ? "—" : balance.toLocaleString()}
-                <span className="ml-2 text-base font-medium text-white/40">credits</span>
-              </p>
-              <p className="mt-1 text-xs text-white/45">Credits are managed through Creator Studio.</p>
-            </div>
-            <Link
-              href="/originals"
-              className="flex h-10 items-center gap-2 rounded-xl border border-white/15 px-4 text-sm font-semibold text-white/80 transition hover:bg-white/10 hover:text-white"
-            >
-              <Clapperboard className="h-4 w-4" />
-              Browse Originals
-            </Link>
-          </div>
-        </section>
+        )}
 
         {/* Managed production ----------------------------------------------- */}
         {(managedLoading || managedProjects.length > 0) && (
