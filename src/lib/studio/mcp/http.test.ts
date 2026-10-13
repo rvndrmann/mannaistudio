@@ -155,10 +155,10 @@ describe("hosted MCP with the real SDK HTTP client", () => {
     // tools is stale from the version, so a new tool behind an old number is a
     // tool nobody is offered.
     expect(names).toEqual([
-      "studio_add_characters_and_assets", "studio_add_shots", "studio_api_keys", "studio_chat", "studio_create_project", "studio_decide_proposal", "studio_generate",
-      "studio_list_models", "studio_list_projects", "studio_pending_work", "studio_set_project_models", "studio_set_prompts", "studio_storyboard", "studio_view_media", "studio_write_script",
+      "studio_add_characters_and_assets", "studio_add_shots", "studio_api_keys", "studio_attach_media", "studio_chat", "studio_create_project", "studio_decide_proposal", "studio_generate",
+      "studio_list_models", "studio_list_projects", "studio_pending_work", "studio_set_project_models", "studio_set_prompts", "studio_storyboard", "studio_upload_media", "studio_view_media", "studio_write_script",
     ])
-    expect(alice.getServerVersion()).toMatchObject({ name: "creator-studio", version: "1.4.0" })
+    expect(alice.getServerVersion()).toMatchObject({ name: "creator-studio", version: "1.5.0" })
   })
   it("exposes only consented tools and refuses a foreign browser Origin", async () => {
     const reader = await connect("read-only")
@@ -168,7 +168,7 @@ describe("hosted MCP with the real SDK HTTP client", () => {
     // Writing prompts and asking for renders are creative work, not reading.
     expect(tools.map((tool) => tool.name)).not.toContain("studio_set_prompts")
     expect(tools.map((tool) => tool.name)).not.toContain("studio_generate")
-    for (const name of ["studio_write_script", "studio_add_characters_and_assets", "studio_add_shots"]) expect(tools.map((tool) => tool.name)).not.toContain(name)
+    for (const name of ["studio_write_script", "studio_add_characters_and_assets", "studio_add_shots", "studio_upload_media", "studio_attach_media"]) expect(tools.map((tool) => tool.name)).not.toContain(name)
     const response = await POST(new Request("https://studio.example/api/mcp", { method: "POST", headers: { origin: "https://attacker.example", authorization: "Bearer alice" } }))
     expect(response.status).toBe(403)
   })

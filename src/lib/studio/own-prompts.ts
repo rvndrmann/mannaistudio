@@ -5,6 +5,8 @@ import { requestDirectorTool } from "./tool-service"
 import { isImageGenerationModel, isVideoGenerationModel } from "./generation-models"
 import { parseShotBeats } from "./shot-video-prompt"
 import { entityKindSchema } from "./story"
+import { mediaKind, storeDirectorUpload } from "./director-upload"
+import { fetchPublicMedia } from "./media-import"
 
 /**
  * Working without the agent.
@@ -44,8 +46,72 @@ export const ownGenerationSchema = z.object({
   durationSeconds: z.number().positive().max(120).optional(),
   aspectRatio: z.string().trim().max(20).optional(),
   resolution: z.string().trim().max(20).optional(),
+  referencePaths: z.array(z.string().trim().min(1).max(2_000)).max(8).default([]).describe("For the two storyboard kinds: stored image paths to use as references for this render, such as one returned by studio_upload_media."),
   idempotencyKey: z.string().min(8).max(200).optional().describe("Reuse the same key when retrying the same request."),
 })
+
+export const ownUploadSchema = z.object({
+  episodeId: z.string().uuid().optional(),
+  url: z.string().trim().min(8).max(2_083).describe("A public https link straight to the image, video or audio file. Not a web page that shows it."),
+})
+
+export const ownAttachSchema = z.object({
+  episodeId: z.string().uuid().optional(),
+  path: z.string().trim().min(1).max(2_000).describe("A stored media path from studio_upload_media, the storyboard, or a finished job."),
+  entityId: z.string().uuid().optional().describe("Attach it to this character, location or asset as a reference image."),
+  shotNumber: z.number().int().positive().max(10_000).optional().describe("Or set it on this storyboard shot."),
+  as: z.enum(["frame", "video"]).default("frame").describe("For a shot: frame makes it the shot's storyboard image; video makes it the shot's clip."),
+}).refine((input) => Boolean(input.entityId) !== Boolean(input.shotNumber), { message: "Name either an entityId or a shotNumber, not both" })
+
+/**
+ * A stored path may be handed to these tools by an assistant, so it is checked
+ * against the caller's own folder for this project before anything uses it.
+ * Without that a path guessed or copied from elsewhere could be attached to a
+ * character and then signed for viewing as if it were theirs.
+ */
+function ownPath(context: AuthenticatedProjectContext, path: string) {
+  if (path.includes("..") || !path.startsWith(`${context.user.id}/${context.project.id}/`)) {
+    throw new Error("That file is not in this project. Use a path returned by studio_upload_media, the storyboard, or a finished job in this project.")
+  }
+  return path
+}
+
+/** Brings a file the user linked to into the project. */
+export async function importOwnMedia(context: AuthenticatedProjectContext, episodeId: string, raw: unknown) {
+  const input = ownUploadSchema.parse(raw)
+  const fetched = await fetchPublicMedia(input.url)
+  const stored = await storeDirectorUpload(context, {
+    episodeId,
+    name: fetched.name,
+    contentType: fetched.contentType,
+    body: new Blob([new Uint8Array(fetched.bytes)], { type: fetched.contentType }),
+  })
+  return {
+    path: stored.media.path,
+    type: stored.media.type,
+    name: stored.media.name,
+    sizeBytes: stored.media.size,
+    note: "Uploaded to the project. Attach it to a character or asset, or to a shot, with studio_attach_media; or pass the path in referencePaths when generating a storyboard image or video.",
+  }
+}
+
+/** Puts a stored file onto a character or asset, or onto a shot. */
+export async function attachOwnMedia(context: AuthenticatedProjectContext, episodeId: string, raw: unknown) {
+  const input = ownAttachSchema.parse(raw)
+  const path = ownPath(context, input.path)
+  const extension = path.split("?")[0].split(".").pop()?.toLowerCase() || ""
+  const kind = mediaKind(["mp4", "webm", "mov"].includes(extension) ? "video/" : ["mp3", "m4a", "wav", "ogg"].includes(extension) ? "audio/" : "image/")
+  if (input.entityId) {
+    if (kind !== "image") throw new Error("A character or asset takes an image as its reference, not a video or audio file.")
+    await requestDirectorTool(context, { tool: "attach_media_to_asset", input: { assetId: input.entityId, storagePath: path }, idempotencyKey: `own-attach-${randomUUID()}` }, { userAuthored: true })
+    return { attached: true, entityId: input.entityId, path, note: "Added to its reference images. It now has art, so it no longer needs drawing before shots can be added." }
+  }
+  if (input.as === "video" && kind !== "video") throw new Error("That file is not a video, so it cannot be set as the shot's clip.")
+  if (input.as === "frame" && kind !== "image") throw new Error("That file is not an image, so it cannot be set as the shot's frame.")
+  const shotId = (await shotsByNumber(context, episodeId))(input.shotNumber!)
+  await requestDirectorTool(context, { tool: "attach_media_to_shot", input: { shotId, storagePath: path, mediaType: input.as === "video" ? "video" : "image" }, idempotencyKey: `own-attach-${randomUUID()}` }, { userAuthored: true })
+  return { attached: true, shotNumber: input.shotNumber, as: input.as, path, note: input.as === "video" ? "Set as this shot's clip." : "Set as this shot's storyboard image, replacing the one it had." }
+}
 
 export const ownScriptSchema = z.object({
   episodeId: z.string().uuid().optional(),
@@ -234,6 +300,7 @@ export async function proposeOwnGeneration(context: AuthenticatedProjectContext,
         ...(input.durationSeconds ? { durationSeconds: input.durationSeconds } : {}),
         ...(aspectRatio ? { aspectRatio } : {}),
         ...(input.resolution ? { resolution: input.resolution } : {}),
+        ...(input.referencePaths.length ? { referencePaths: input.referencePaths.map((path) => ownPath(context, path)) } : {}),
       },
       prompts,
       idempotencyKey,

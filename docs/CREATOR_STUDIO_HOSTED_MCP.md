@@ -78,6 +78,8 @@ A job already running is not cancelled by disconnecting.
 | `studio_write_script` | `director:chat` |
 | `studio_add_characters_and_assets` | `director:chat` |
 | `studio_add_shots` | `director:chat` |
+| `studio_upload_media` | `director:chat` |
+| `studio_attach_media` | `director:chat` |
 | `studio_set_prompts` | `director:chat` |
 | `studio_generate` | `director:chat` |
 | `studio_decide_proposal` | `director:proposals` |

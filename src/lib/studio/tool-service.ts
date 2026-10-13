@@ -119,7 +119,7 @@ async function resolveVideoBatchDuration(
  * the studio, so their own script, characters, shots and prompts are written
  * directly for them. Nothing that spends credits is ever on this list.
  */
-const userAuthoredTools = new Set<string>(["update_shot", "update_asset", "update_script", "create_production_entities_batch", "create_storyboard_batch"])
+const userAuthoredTools = new Set<string>(["update_shot", "update_asset", "update_script", "create_production_entities_batch", "create_storyboard_batch", "attach_media_to_asset", "attach_media_to_shot"])
 
 export async function requestDirectorTool(context: AuthenticatedProjectContext, raw: unknown, options?: { userAuthored?: boolean }) {
   const request = toolRequestSchema.parse(raw)

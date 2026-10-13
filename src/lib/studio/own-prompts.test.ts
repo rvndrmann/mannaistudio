@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const mocks = vi.hoisted(() => ({ request: vi.fn() }))
+const mocks = vi.hoisted(() => ({ request: vi.fn(), fetchMedia: vi.fn(), store: vi.fn() }))
 vi.mock("./tool-service", () => ({ requestDirectorTool: mocks.request }))
+vi.mock("./media-import", () => ({ fetchPublicMedia: mocks.fetchMedia }))
+vi.mock("./director-upload", async (original) => ({ ...await original<typeof import("./director-upload")>(), storeDirectorUpload: mocks.store }))
 
-import { createOwnEntities, createOwnShots, proposeOwnGeneration, saveOwnPrompts, saveOwnScript } from "./own-prompts"
+import { attachOwnMedia, createOwnEntities, createOwnShots, importOwnMedia, proposeOwnGeneration, saveOwnPrompts, saveOwnScript } from "./own-prompts"
 
 const EPISODE = "11111111-1111-4111-8111-111111111111"
 const ENTITY = "22222222-2222-4222-8222-222222222222"
@@ -157,5 +159,62 @@ describe("createOwnShots", () => {
   it("refuses a shot with no image prompt", async () => {
     await expect(createOwnShots(context(), EPISODE, { shots: [{ title: "Empty" }] })).rejects.toThrow()
     expect(mocks.request).not.toHaveBeenCalled()
+  })
+})
+
+const MINE = "user/project/chat/image-1.png"
+
+describe("importOwnMedia", () => {
+  it("fetches the link and stores it in the project as the user's upload", async () => {
+    mocks.fetchMedia.mockResolvedValue({ bytes: Buffer.from([1, 2, 3]), contentType: "image/png", name: "shoe.png" })
+    mocks.store.mockResolvedValue({ media: { path: MINE, type: "image", name: "shoe.png", size: 3 } })
+    const result = await importOwnMedia(context(), EPISODE, { url: "https://cdn.example.com/shoe.png" })
+    expect(mocks.fetchMedia).toHaveBeenCalledWith("https://cdn.example.com/shoe.png")
+    const [, stored] = mocks.store.mock.calls[0]
+    expect(stored).toMatchObject({ episodeId: EPISODE, name: "shoe.png", contentType: "image/png" })
+    expect(stored.body.size).toBe(3)
+    expect(result).toMatchObject({ path: MINE, type: "image", sizeBytes: 3 })
+  })
+})
+
+describe("attachOwnMedia", () => {
+  it("adds an image to a character's references", async () => {
+    const result = await attachOwnMedia(context(), EPISODE, { path: MINE, entityId: ENTITY })
+    const [, call, options] = mocks.request.mock.calls[0]
+    expect(call).toMatchObject({ tool: "attach_media_to_asset", input: { assetId: ENTITY, storagePath: MINE } })
+    expect(options).toEqual({ userAuthored: true })
+    expect(result.attached).toBe(true)
+  })
+
+  it("sets a shot's frame, or its clip, on the shot the number names", async () => {
+    await attachOwnMedia(context(), EPISODE, { path: MINE, shotNumber: 2 })
+    expect(mocks.request.mock.calls[0][1]).toMatchObject({ tool: "attach_media_to_shot", input: { shotId: "shot-b", storagePath: MINE, mediaType: "image" } })
+    await attachOwnMedia(context(), EPISODE, { path: "user/project/chat/video-1.mp4", shotNumber: 3, as: "video" })
+    expect(mocks.request.mock.calls[1][1]).toMatchObject({ input: { shotId: "shot-c", mediaType: "video" } })
+  })
+
+  it("refuses a file from another account or project, and a path that climbs out", async () => {
+    for (const path of ["someone-else/project/chat/image.png", "user/other-project/chat/image.png", "user/project/../../secret.png", "https://evil.example/a.png"]) {
+      await expect(attachOwnMedia(context(), EPISODE, { path, entityId: ENTITY })).rejects.toThrow("not in this project")
+    }
+    expect(mocks.request).not.toHaveBeenCalled()
+  })
+
+  it("refuses the wrong kind of file for the place it is going", async () => {
+    await expect(attachOwnMedia(context(), EPISODE, { path: "user/project/chat/video-1.mp4", entityId: ENTITY })).rejects.toThrow("takes an image")
+    await expect(attachOwnMedia(context(), EPISODE, { path: MINE, shotNumber: 1, as: "video" })).rejects.toThrow("not a video")
+    await expect(attachOwnMedia(context(), EPISODE, { path: "user/project/chat/video-1.mp4", shotNumber: 1 })).rejects.toThrow("not an image")
+    await expect(attachOwnMedia(context(), EPISODE, { path: MINE })).rejects.toThrow()
+    await expect(attachOwnMedia(context(), EPISODE, { path: MINE, entityId: ENTITY, shotNumber: 1 })).rejects.toThrow()
+    expect(mocks.request).not.toHaveBeenCalled()
+  })
+})
+
+describe("reference images on a render", () => {
+  it("passes the user's own files as references and refuses anyone else's", async () => {
+    await proposeOwnGeneration(context(), EPISODE, { kind: "storyboard_image", shotNumbers: [1], referencePaths: [MINE] })
+    expect(mocks.request.mock.calls[0][1].input.request.referencePaths).toEqual([MINE])
+    await expect(proposeOwnGeneration(context(), EPISODE, { kind: "storyboard_image", shotNumbers: [1], referencePaths: ["stranger/project/a.png"] })).rejects.toThrow("not in this project")
+    expect(mocks.request).toHaveBeenCalledTimes(1)
   })
 })
