@@ -21,7 +21,9 @@ const CHARGE_PATHS = [
   // the Supabase Edge Function for the ones it cannot — and a charge copied
   // into each would be two charges to keep in step. Both call this one module.
   "src/lib/studio/project-image-render.ts",
-  "src/app/api/studio/projects/[projectId]/videos/route.ts",
+  // The video charge moved down for the same reason: the route and the
+  // background worker both submit through this one module.
+  "src/lib/studio/project-video-submit.ts",
   "src/lib/studio/tool-registry.ts",
   // The standalone generators. A new surface reaching a model is a new charge
   // path, and the reason this list is written down rather than inferred is that
@@ -57,7 +59,7 @@ describe("every charge path asks who is paying", () => {
     // so that is where its scope lives.
     const rendering = [
       "src/lib/studio/project-image-render.ts",
-      "src/app/api/studio/projects/[projectId]/videos/route.ts",
+      "src/lib/studio/project-video-submit.ts",
       "src/lib/studio/execute-generation.ts",
       "src/app/api/studio/generate/image/route.ts",
       "src/app/api/studio/generate/video/route.ts",
@@ -108,7 +110,7 @@ describe("no refund path can hand back credits that were never taken", () => {
     const refundSites = [
       "src/lib/studio/execute-generation.ts",
       "src/lib/studio/poll-images.ts",
-      "src/app/api/studio/projects/[projectId]/videos/route.ts",
+      "src/lib/studio/project-video-submit.ts",
       "src/app/api/studio/generate/image/route.ts",
       "src/app/api/studio/generate/video/route.ts",
     ]

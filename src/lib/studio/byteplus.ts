@@ -1,3 +1,4 @@
+import { mayWaitLong } from "@/lib/studio/long-budget"
 import { prepareImageModelPrompt } from "./image-prompt-composition"
 import { videoModelMaxDuration, type ImageGenerationModelId, type VideoGenerationModelId } from "@/lib/studio/generation-models"
 
@@ -431,6 +432,17 @@ async function withCreateAssetRetry<T>(work: () => Promise<T>): Promise<T> {
   } catch (error) {
     const message = error instanceof Error ? error.message : ""
     if (!/rate limit/i.test(message)) throw error
+    // The background worker has the time the request does not: the limit is a
+    // one-minute window, so waiting it out clears it. Bounded, because a job
+    // silent for too long is taken to be abandoned.
+    for (let wait = 0; mayWaitLong() && wait < 4; wait += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 62_000))
+      try {
+        return await work()
+      } catch (waitError) {
+        if (!/rate limit/i.test(waitError instanceof Error ? waitError.message : "")) throw waitError
+      }
+    }
     await new Promise((resolve) => setTimeout(resolve, 3_000))
     try {
       return await work()
