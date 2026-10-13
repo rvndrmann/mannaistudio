@@ -463,7 +463,7 @@ export default function BriefOnePage() {
                       </div>
 
                       <div className="grid gap-5 sm:grid-cols-3">
-                        <Field label="Product price" optional><TextField value={brief.price} onChange={(e) => set("price", e.target.value)} placeholder="₹1,499" /></Field>
+                        <Field label="Product price" optional><TextField value={brief.price} onChange={(e) => set("price", e.target.value)} placeholder="$15" /></Field>
                         <Field label="Discount" optional><TextField value={brief.discount} onChange={(e) => set("discount", e.target.value)} placeholder="20% off" /></Field>
                         <Field label="Landing page URL" optional><TextField value={brief.landingPageUrl} onChange={(e) => set("landingPageUrl", e.target.value)} placeholder="https://" /></Field>
                       </div>

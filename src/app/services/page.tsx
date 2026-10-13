@@ -1,5 +1,6 @@
 "use client"
 
+import { formatUsd, formatUsdWithInr } from "@/lib/currency"
 import Navbar from "@/components/Navbar"
 import { motion, AnimatePresence } from "framer-motion"
 import { BriefcaseBusiness, Send, Clock, DollarSign, MessageSquare, CheckCircle2, Loader2, UserCheck, Mail, Phone, Bell, Trophy, X, Search, SlidersHorizontal, Coins, Plus, Minus } from "lucide-react"
@@ -738,7 +739,7 @@ export default function ServicesPage() {
                                 <textarea required rows={5} value={jobForm.projectDescription} onChange={(e) => setJobForm({ ...jobForm, projectDescription: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50 resize-none" placeholder="Project brief, references, deliverables..." />
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <input required value={jobForm.budgetRange} onChange={(e) => setJobForm({ ...jobForm, budgetRange: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50" placeholder="Budget, e.g. ₹10,000" />
+                                    <input required value={jobForm.budgetRange} onChange={(e) => setJobForm({ ...jobForm, budgetRange: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50" placeholder="Budget, e.g. $100" />
                                     <input required value={jobForm.timeline} onChange={(e) => setJobForm({ ...jobForm, timeline: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50" placeholder="Timeline, e.g. 7 days" />
                                 </div>
                             </div>
@@ -796,7 +797,7 @@ export default function ServicesPage() {
                                     <input required type="email" value={bidForm.bidderEmail} onChange={(e) => setBidForm({ ...bidForm, bidderEmail: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50" placeholder="Email" />
                                     <input value={bidForm.bidderPhone} onChange={(e) => setBidForm({ ...bidForm, bidderPhone: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50" placeholder="Phone" />
                                 </div>
-                                <input required value={bidForm.offerAmount} onChange={(e) => setBidForm({ ...bidForm, offerAmount: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50" placeholder="Your offer, e.g. ₹8,000 in 5 days" />
+                                <input required value={bidForm.offerAmount} onChange={(e) => setBidForm({ ...bidForm, offerAmount: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50" placeholder="Your offer, e.g. $80 in 5 days" />
                                 <textarea required rows={5} value={bidForm.message} onChange={(e) => setBidForm({ ...bidForm, message: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary/50 resize-none" placeholder="Custom message, portfolio links, approach..." />
                             </div>
 
@@ -840,7 +841,7 @@ export default function ServicesPage() {
                                 <h3 className="text-xl font-bold flex items-center gap-2"><Coins className="w-5 h-5 text-amber-400" /> Buy Bids</h3>
                                 <button onClick={() => setShowBuyBids(false)} className="p-1.5 rounded-lg hover:bg-white/10"><X className="w-4 h-4" /></button>
                             </div>
-                            <p className="text-sm text-white/50">Bids are ₹{PRICE_PER_BID} each (10 bids = ₹{PRICE_PER_BID * 10}). Each job bid costs {BID_COST} bids.</p>
+                            <p className="text-sm text-white/50">Bids are {formatUsd(PRICE_PER_BID)} each (10 bids = {formatUsd(PRICE_PER_BID * 10)}). Each job bid costs {BID_COST} bids.</p>
 
                             <div className="flex items-center justify-center gap-4">
                                 <button
@@ -878,7 +879,7 @@ export default function ServicesPage() {
 
                             <div className="flex items-center justify-between rounded-xl bg-white/5 border border-white/10 px-4 py-3">
                                 <span className="text-sm text-white/50">Total</span>
-                                <span className="text-2xl font-semibold">₹{buyQty * PRICE_PER_BID}</span>
+                                <span className="text-2xl font-semibold">{formatUsdWithInr(buyQty * PRICE_PER_BID)}</span>
                             </div>
 
                             <button
@@ -887,7 +888,7 @@ export default function ServicesPage() {
                                 className="btn-primary w-full flex items-center justify-center gap-2 py-3 disabled:opacity-60"
                             >
                                 {isBuyingBids ? <Loader2 className="w-4 h-4 animate-spin" /> : <Coins className="w-4 h-4" />}
-                                Pay ₹{buyQty * PRICE_PER_BID}
+                                Pay {formatUsdWithInr(buyQty * PRICE_PER_BID)}
                             </button>
                         </motion.div>
                     </motion.div>

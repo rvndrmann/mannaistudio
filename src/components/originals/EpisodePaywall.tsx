@@ -1,5 +1,6 @@
 "use client"
 
+import { formatUsdWithInr } from "@/lib/currency"
 import { useState } from "react"
 import { Check, Loader2, Lock, Zap } from "lucide-react"
 import { useCreditPackCheckout } from "./use-credit-pack-checkout"
@@ -124,7 +125,7 @@ export default function EpisodePaywall({
                       ) : (
                         <>
                           <span className="block text-sm font-bold text-white">{pack.credits}</span>
-                          <span className="mt-0.5 block text-[11px] text-white/45">₹{pack.priceInr}</span>
+                          <span className="mt-0.5 block text-[11px] text-white/45">{formatUsdWithInr(pack.priceInr)}</span>
                         </>
                       )}
                     </button>

@@ -1,5 +1,6 @@
 "use client"
 
+import { formatUsd, formatUsdWithInr } from "@/lib/currency"
 import { Check, Crown, Loader2, Sparkles } from "lucide-react"
 import { SEASON_PASS_DAYS, earlyPassTimeRemaining, type SeasonPassOffer } from "@/lib/originals"
 import { useSeasonPassCheckout } from "./use-season-pass-checkout"
@@ -91,16 +92,16 @@ export default function SeasonPassCard({
         {pending ? <Loader2 className="h-5 w-5 animate-spin" /> : (
           <>
             <Crown className="h-5 w-5" />
-            {onOffer ? "Early pass" : "Season Pass"} — ₹{offer.priceInr}
+            {onOffer ? "Early pass" : "Season Pass"} — {formatUsdWithInr(offer.priceInr)}
             {onOffer && (
-              <span className="text-[13px] font-semibold text-black/45 line-through">₹{offer.fullPriceInr}</span>
+              <span className="text-[13px] font-semibold text-black/45 line-through">{formatUsd(offer.fullPriceInr)}</span>
             )}
           </>
         )}
       </button>
 
       {onOffer && (
-        <p className="mt-2 text-[12px] text-white/45">₹{offer.fullPriceInr} once the presale closes.</p>
+        <p className="mt-2 text-[12px] text-white/45">{formatUsd(offer.fullPriceInr)} once the presale closes.</p>
       )}
       {error && <p className="mt-2 text-[12px] font-medium text-red-300">{error}</p>}
     </div>
