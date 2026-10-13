@@ -1,5 +1,5 @@
 import { runUserProvider } from "@/lib/byok/run-user-provider"
-import { GENJUTSU_OBJECT_SWAP_MODEL, GENJUTSU_RESTYLE_MODEL, isGenjutsuModel, isHiggsfieldMinimaxH3Model, submitHiggsfieldMinimaxH3Video, isHiggsfieldSeedanceModel, submitHiggsfieldSeedanceVideo, isHiggsfieldWanModel, submitHiggsfieldWanVideo, isHiggsfieldKlingModel, submitHiggsfieldKlingVideo, isHiggsfieldKlingO3Model, submitHiggsfieldKlingO3Video, isHiggsfieldKlingO3VideoModel, submitHiggsfieldKlingO3VideoReference, isHiggsfieldCinemaStudioModel, submitHiggsfieldCinemaStudioVideo, genjutsuInputSchema, genjutsuRestyleInputSchema, getGenjutsuPresets, HiggsfieldProviderError, requireHiggsfieldCredentials, submitGenjutsuVideo } from "@/lib/studio/higgsfield"
+import { GENJUTSU_OBJECT_SWAP_MODEL, GENJUTSU_RESTYLE_MODEL, isGenjutsuModel, isHiggsfieldMinimaxH3Model, submitHiggsfieldMinimaxH3Video, isHiggsfieldSeedance25Model, isHiggsfieldSeedanceModel, submitHiggsfieldSeedanceVideo, isHiggsfieldWanModel, submitHiggsfieldWanVideo, isHiggsfieldKlingModel, submitHiggsfieldKlingVideo, isHiggsfieldKlingO3Model, submitHiggsfieldKlingO3Video, isHiggsfieldKlingO3VideoModel, submitHiggsfieldKlingO3VideoReference, isHiggsfieldCinemaStudioModel, submitHiggsfieldCinemaStudioVideo, genjutsuInputSchema, genjutsuRestyleInputSchema, getGenjutsuPresets, HiggsfieldProviderError, requireHiggsfieldCredentials, submitGenjutsuVideo } from "@/lib/studio/higgsfield"
 import { readSourceVideoDuration } from "@/lib/studio/source-video-duration"
 import { pollVideos } from "@/lib/studio/poll-videos"
 import { createHash, randomUUID } from "node:crypto"
@@ -405,7 +405,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       // shot records the length that is actually asked for.
       input.durationSeconds = Math.min(15, Math.max(5, input.durationSeconds || Number(shot.duration_seconds || 5)))
     }
-    if (isHiggsfieldSeedanceModel(input.model)) {
+    if (isHiggsfieldSeedance25Model(input.model)) {
+      // 2.5 starts from a prompt alone and runs to thirty seconds.
+      input.durationSeconds = Math.min(30, Math.max(4, input.durationSeconds || Number(shot.duration_seconds || 5)))
+    } else if (isHiggsfieldSeedanceModel(input.model)) {
       if (!references.length && !videoReferences.length) throw new HiggsfieldProviderError("Seedance 2.0 on Higgsfield needs a reference image or video. Generate the shot's keyframe or add a reference first.", 400)
       input.durationSeconds = Math.min(15, Math.max(4, input.durationSeconds || Number(shot.duration_seconds || 5)))
     }
@@ -486,7 +489,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (isHiggsfieldMinimaxH3Model(input.model)) {
         task = await submitHiggsfieldMinimaxH3Video({ prompt: resolvedPrompt, duration: input.durationSeconds, aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16" })
       } else if (isHiggsfieldSeedanceModel(input.model)) {
-        task = await submitHiggsfieldSeedanceVideo({ prompt: resolvedPrompt, duration: input.durationSeconds, resolution: input.resolution || shot.resolution || "720p", aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16", imageUrls: references, videoUrls: videoReferences, audioUrls: audioReferences, audioEnabled: input.audioEnabled })
+        task = await submitHiggsfieldSeedanceVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds, resolution: input.resolution || shot.resolution || "720p", aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16", imageUrls: references, videoUrls: videoReferences, audioUrls: audioReferences, audioEnabled: input.audioEnabled })
       } else if (isHiggsfieldKlingModel(input.model)) {
         const [lastImageUrl] = input.endFrame ? await signedReferenceUrls(context, [input.endFrame]) : []
         task = await submitHiggsfieldKlingVideo({ prompt: resolvedPrompt, duration: input.durationSeconds, imageUrl: references[0], lastImageUrl, audioEnabled: input.audioEnabled })

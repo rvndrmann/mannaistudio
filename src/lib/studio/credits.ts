@@ -175,6 +175,9 @@ export const MODEL_CREDIT_RATES: Record<string, ModelCreditRate> = {
   },
   // No Higgsfield quote for this endpoint either; it carries the card's
   // Seedance 2.0 curve, which is the same model at the same resolutions.
+  // No Higgsfield quote for 2.5 either. It carries the one rate the card gives
+  // Seedance 2.5 on the other two providers, to be redone when it is priced.
+  "higgsfield/bytedance/seedance-2.5/reference-to-video": { unit: "per second", base: 87, description: "Seedance 2.5 (Higgsfield, Seedance 2.5 rate)", estimated: true },
   "higgsfield/bytedance/seedance-2.0/reference-to-video": { unit: "per second", base: 32, description: "Seedance 2.0 (Higgsfield, Seedance 2.0 rate)", estimated: true, byResolution: { ...seedanceResolutionCurve } },
   // Not on the card at all: priced at the cheapest quoted video tier, the
   // same figure an unlisted model falls back to, until Higgsfield's rate is known.

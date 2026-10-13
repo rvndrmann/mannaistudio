@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { HIGGSFIELD_MINIMAX_H3_MODEL, HIGGSFIELD_CINEMA_STUDIO_4_MODEL, HIGGSFIELD_KLING_3_STD_MODEL, HIGGSFIELD_KLING_O3_MODEL, HIGGSFIELD_KLING_O3_VIDEO_MODEL, HIGGSFIELD_SEEDANCE_2_MODEL, HIGGSFIELD_WAN_3_PRIME_MODEL, submitHiggsfieldCinemaStudioVideo, submitHiggsfieldKlingO3Video, submitHiggsfieldKlingO3VideoReference, submitHiggsfieldKlingVideo, submitHiggsfieldMinimaxH3Video, submitHiggsfieldSeedanceVideo, submitHiggsfieldWanVideo } from "./higgsfield"
+import { HIGGSFIELD_MINIMAX_H3_MODEL, HIGGSFIELD_CINEMA_STUDIO_4_MODEL, HIGGSFIELD_KLING_3_STD_MODEL, HIGGSFIELD_KLING_O3_MODEL, HIGGSFIELD_KLING_O3_VIDEO_MODEL, HIGGSFIELD_SEEDANCE_2_MODEL, HIGGSFIELD_WAN_3_PRIME_MODEL, submitHiggsfieldCinemaStudioVideo, submitHiggsfieldKlingO3Video, submitHiggsfieldKlingO3VideoReference, submitHiggsfieldKlingVideo, submitHiggsfieldMinimaxH3Video, submitHiggsfieldSeedanceVideo, submitHiggsfieldWanVideo, HIGGSFIELD_SEEDANCE_2_5_MODEL, isHiggsfieldSeedance25Model, isHiggsfieldSeedanceModel } from "./higgsfield"
 import { generationProvider, higgsfieldTakesAudioReferences, isGenjutsuVideoModel, isImageOnlyVideoModel, isTextOnlyVideoModel, isVideoGenerationModel, videoDurationOptions, videoModelMaxDuration, videoModelNeedsSourceVideo } from "./generation-models"
 import { generationModels } from "./model-routing"
+import { calculateCreditCost } from "./credits"
 
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks() })
 
@@ -207,5 +208,54 @@ describe("Kling O3 Video Reference on Higgsfield", () => {
     expect(JSON.parse(String(request.mock.calls[1][1]?.body))).toEqual({ mode: "std", prompt: "Same move, new jersey", duration: 10, image_urls: ["https://cdn.example/jersey.png"], video_urls: ["https://cdn.example/input.mp4"], aspect_ratio: "9:16" })
     await expect(submitHiggsfieldKlingO3VideoReference({ prompt: "No clip", videoUrls: [] })).rejects.toThrow("needs a source video")
     await expect(submitHiggsfieldKlingO3VideoReference({ prompt: " ", videoUrls: ["https://cdn.example/input.mp4"] })).rejects.toThrow("needs a prompt")
+  })
+})
+
+describe("Seedance 2.5 on Higgsfield", () => {
+  // A fresh response each call: a body can be read only once.
+  const accept = () => vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ request_id: "req_25" }), { status: 200 }))
+  const sent = (request: ReturnType<typeof accept>) => JSON.parse(String(request.mock.calls[0][1]?.body))
+
+  it("is offered as a Higgsfield video model that runs to thirty seconds and can start from text", () => {
+    expect(isVideoGenerationModel(HIGGSFIELD_SEEDANCE_2_5_MODEL)).toBe(true)
+    expect(generationProvider(HIGGSFIELD_SEEDANCE_2_5_MODEL)).toBe("higgsfield")
+    expect(isHiggsfieldSeedanceModel(HIGGSFIELD_SEEDANCE_2_5_MODEL)).toBe(true)
+    expect(isHiggsfieldSeedance25Model(HIGGSFIELD_SEEDANCE_2_MODEL)).toBe(false)
+    expect(videoModelMaxDuration(HIGGSFIELD_SEEDANCE_2_5_MODEL)).toBe(30)
+    expect(videoModelMaxDuration(HIGGSFIELD_SEEDANCE_2_MODEL)).toBe(15)
+    expect(higgsfieldTakesAudioReferences(HIGGSFIELD_SEEDANCE_2_5_MODEL)).toBe(true)
+    expect(generationModels.find((model) => model.model === HIGGSFIELD_SEEDANCE_2_5_MODEL)).toMatchObject({ provider: "higgsfield" })
+    expect(calculateCreditCost(HIGGSFIELD_SEEDANCE_2_5_MODEL, "video", 10)).toBe(870)
+  })
+
+  it("posts the documented body to its own path", async () => {
+    vi.stubEnv("HF_CREDENTIALS", "key-id:key-secret")
+    const request = accept()
+    const task = await submitHiggsfieldSeedanceVideo({ model: HIGGSFIELD_SEEDANCE_2_5_MODEL, prompt: " A slow dolly in ", duration: 13, resolution: "1080p", aspectRatio: "16:9", imageUrls: ["https://cdn.example/frame.png"], audioEnabled: false })
+    expect(task.id).toBe("req_25")
+    expect(request.mock.calls[0][0]).toBe("https://api.higgsfield.ai/bytedance/seedance-2.5/reference-to-video")
+    expect(request.mock.calls[0][1]).toMatchObject({ method: "POST", headers: { Authorization: "Key key-id:key-secret" } })
+    expect(sent(request)).toEqual({ prompt: "A slow dolly in", duration: 13, image_urls: ["https://cdn.example/frame.png"], resolution: "1080p", aspect_ratio: "16:9", output_format: "mp4", generate_audio: false })
+  })
+
+  it("starts from a prompt alone, holds the length to 4 to 30 seconds, and has no 4k", async () => {
+    vi.stubEnv("HF_CREDENTIALS", "key-id:key-secret")
+    const request = accept()
+    await submitHiggsfieldSeedanceVideo({ model: HIGGSFIELD_SEEDANCE_2_5_MODEL, prompt: "Just words", duration: 45, resolution: "4K" })
+    expect(sent(request)).toMatchObject({ prompt: "Just words", duration: 30, resolution: "1080p" })
+    expect(sent(request)).not.toHaveProperty("image_urls")
+    request.mockClear()
+    await submitHiggsfieldSeedanceVideo({ model: HIGGSFIELD_SEEDANCE_2_5_MODEL, prompt: "Short", duration: 1 })
+    expect(sent(request).duration).toBe(4)
+    await expect(submitHiggsfieldSeedanceVideo({ model: HIGGSFIELD_SEEDANCE_2_5_MODEL, imageUrls: ["asset://x"] })).rejects.toThrow("needs a prompt or a reference")
+  })
+
+  it("leaves Seedance 2.0 exactly as it was when no model is named", async () => {
+    vi.stubEnv("HF_CREDENTIALS", "key-id:key-secret")
+    const request = accept()
+    await submitHiggsfieldSeedanceVideo({ imageUrls: ["https://cdn.example/a.png"], duration: 30 })
+    expect(request.mock.calls[0][0]).toBe("https://api.higgsfield.ai/bytedance/seedance-2.0/reference-to-video")
+    expect(sent(request).duration).toBe(15)
+    expect(sent(request)).not.toHaveProperty("output_format")
   })
 })

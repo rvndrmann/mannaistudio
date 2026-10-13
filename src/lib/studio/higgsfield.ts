@@ -19,7 +19,13 @@ export const isHiggsfieldMinimaxH3Model = (model: string) => model === HIGGSFIEL
 // in, one clip out. Same prefix rule as above.
 export const HIGGSFIELD_SEEDANCE_2_MODEL = "higgsfield/bytedance/seedance-2.0/reference-to-video"
 const HIGGSFIELD_SEEDANCE_2_PATH = "bytedance/seedance-2.0/reference-to-video"
-export const isHiggsfieldSeedanceModel = (model: string) => model === HIGGSFIELD_SEEDANCE_2_MODEL
+// Seedance 2.5 Reference to Video through Higgsfield. Same endpoint shape as
+// 2.0 with a longer clip, a choice of container, and no required reference.
+export const HIGGSFIELD_SEEDANCE_2_5_MODEL = "higgsfield/bytedance/seedance-2.5/reference-to-video"
+const HIGGSFIELD_SEEDANCE_2_5_PATH = "bytedance/seedance-2.5/reference-to-video"
+export const isHiggsfieldSeedance25Model = (model: string) => model === HIGGSFIELD_SEEDANCE_2_5_MODEL
+/** Either Seedance model served by Higgsfield; they share one submit path. */
+export const isHiggsfieldSeedanceModel = (model: string) => model === HIGGSFIELD_SEEDANCE_2_MODEL || model === HIGGSFIELD_SEEDANCE_2_5_MODEL
 // Wan 3.0 Prime Reference to Video through Higgsfield.
 export const HIGGSFIELD_WAN_3_PRIME_MODEL = "higgsfield/alibaba/wan-3.0-prime/reference-to-video"
 const HIGGSFIELD_WAN_3_PRIME_PATH = "alibaba/wan-3.0-prime/reference-to-video"
@@ -76,6 +82,20 @@ export const higgsfieldSeedanceInputSchema = z.object({
   video_urls: z.array(z.url().max(2083)).min(1).max(3).optional(),
   resolution: z.enum(seedanceResolutions).default("720p"),
   aspect_ratio: z.enum(seedanceAspectRatios).default("16:9"),
+  generate_audio: z.boolean().default(true),
+}).strict()
+// From the parameter table published with the model. Nothing is required, the
+// clip runs 4 to 30 seconds, and there is no 4k. The table gives no limit on
+// how many references it takes, so the 2.0 limits are kept until it does.
+export const higgsfieldSeedance25InputSchema = z.object({
+  prompt: z.string().min(1).optional(),
+  duration: z.number().int().min(4).max(30).default(5),
+  audio_urls: z.array(z.url().max(2083)).min(1).max(3).optional(),
+  image_urls: z.array(z.url().max(2083)).min(1).max(9).optional(),
+  video_urls: z.array(z.url().max(2083)).min(1).max(3).optional(),
+  resolution: z.enum(["480p", "720p", "1080p"]).default("720p"),
+  aspect_ratio: z.enum(seedanceAspectRatios).default("16:9"),
+  output_format: z.enum(["mp4", "mov"]).default("mp4"),
   generate_audio: z.boolean().default(true),
 }).strict()
 const wanAspectRatios = ["16:9", "4:3", "1:1", "3:4", "9:16", "adaptive"] as const
@@ -227,6 +247,8 @@ export async function submitHiggsfieldSeedanceVideo(input: {
   videoUrls?: string[]
   audioUrls?: string[]
   audioEnabled?: boolean
+  /** Which Seedance. Left out, it is 2.0, as every caller before 2.5 existed assumed. */
+  model?: string
 }) {
   const urls = (values: string[] | undefined, limit: number) => {
     const list = Array.from(new Set((values || []).filter((value) => /^https?:\/\//i.test(value)))).slice(0, limit)
@@ -236,8 +258,28 @@ export async function submitHiggsfieldSeedanceVideo(input: {
   const image_urls = urls(input.imageUrls, 9)
   const video_urls = urls(input.videoUrls, 3)
   const audio_urls = urls(input.audioUrls, 3)
-  if (!image_urls && !video_urls) throw new HiggsfieldProviderError("Seedance 2.0 on Higgsfield needs a reference image or video. Generate the shot's keyframe or add a reference first.", 400)
   const resolution = String(input.resolution || "720p").toLowerCase()
+  if (input.model === HIGGSFIELD_SEEDANCE_2_5_MODEL) {
+    // 2.5 will start from words alone, so only a request with neither words
+    // nor a reference is refused. It has no 4k: anything above 1080p asks for 1080p.
+    if (!prompt && !image_urls && !video_urls) throw new HiggsfieldProviderError("Seedance 2.5 on Higgsfield needs a prompt or a reference image or video.", 400)
+    const parsed25 = higgsfieldSeedance25InputSchema.safeParse({
+      ...(prompt ? { prompt } : {}),
+      duration: Math.min(30, Math.max(4, Math.round(Number(input.duration) || 5))),
+      ...(audio_urls ? { audio_urls } : {}),
+      ...(image_urls ? { image_urls } : {}),
+      ...(video_urls ? { video_urls } : {}),
+      resolution: ["480p", "720p", "1080p"].includes(resolution) ? resolution : resolution === "4k" ? "1080p" : "720p",
+      aspect_ratio: (seedanceAspectRatios as readonly string[]).includes(input.aspectRatio || "") ? input.aspectRatio : "16:9",
+      output_format: "mp4",
+      generate_audio: input.audioEnabled !== false,
+    })
+    if (!parsed25.success) throw new HiggsfieldProviderError("Seedance 2.5 on Higgsfield could not accept those references.", 400)
+    const submitted = await call(HIGGSFIELD_SEEDANCE_2_5_PATH, parsed25.data)
+    if (typeof submitted.request_id !== "string" || !submitted.request_id) throw new HiggsfieldProviderError("Higgsfield did not return a request ID")
+    return { id: submitted.request_id, response: submitted }
+  }
+  if (!image_urls && !video_urls) throw new HiggsfieldProviderError("Seedance 2.0 on Higgsfield needs a reference image or video. Generate the shot's keyframe or add a reference first.", 400)
   const parsed = higgsfieldSeedanceInputSchema.safeParse({
     ...(prompt ? { prompt } : {}),
     duration: Math.min(15, Math.max(4, Math.round(Number(input.duration) || 5))),

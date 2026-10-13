@@ -528,6 +528,7 @@ export async function executeGenerationJobs(
                   })
                 : isHiggsfieldSeedanceModel(job.model)
                 ? await submitHiggsfieldSeedanceVideo({
+                    model: job.model,
                     prompt: canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[]),
                     duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 5,
                     resolution: typeof settings.resolution === "string" ? settings.resolution : "720p",

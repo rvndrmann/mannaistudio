@@ -37,6 +37,7 @@ export const videoGenerationModels = [
   { id: "fal-minimax-h3", label: "MiniMax H3 (fal.ai)", provider: "fal" },
   { id: "fal-minimax-video-01", label: "MiniMax Video-01 (fal.ai)", provider: "fal" },
   { id: "higgsfield/cinema-studio/4.0", label: "Cinema Studio 4.0 (Higgsfield)", provider: "higgsfield" },
+  { id: "higgsfield/bytedance/seedance-2.5/reference-to-video", label: "Seedance 2.5 (Higgsfield)", provider: "higgsfield" },
   { id: "higgsfield/bytedance/seedance-2.0/reference-to-video", label: "Seedance 2.0 (Higgsfield)", provider: "higgsfield" },
   { id: "higgsfield/alibaba/wan-3.0-prime/reference-to-video", label: "Wan 3.0 Prime (Higgsfield)", provider: "higgsfield" },
   { id: "higgsfield/kling-video/v3.0/std/image-to-video", label: "Kling 3.0 Standard (Higgsfield)", provider: "higgsfield" },
@@ -112,7 +113,7 @@ export const isImageOnlyVideoModel = (model: string) => model === "higgsfield/kl
 
 /** Higgsfield models whose endpoint takes audio files as references. */
 export const higgsfieldTakesAudioReferences = (model: string) =>
-  model === "higgsfield/bytedance/seedance-2.0/reference-to-video" || model === "higgsfield/alibaba/wan-3.0-prime/reference-to-video" || model === "higgsfield/cinema-studio/4.0"
+  model === "higgsfield/bytedance/seedance-2.0/reference-to-video" || model === "higgsfield/bytedance/seedance-2.5/reference-to-video" || model === "higgsfield/alibaba/wan-3.0-prime/reference-to-video" || model === "higgsfield/cinema-studio/4.0"
 
 export function generationProvider(model: ImageGenerationModelId | VideoGenerationModelId) {
   if (model.startsWith("higgsfield/") || model.startsWith("higgsfield-ai/")) return "higgsfield"
