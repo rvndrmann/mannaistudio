@@ -3924,8 +3924,12 @@ function AssetWorkspace({
           </header>
 
           {/* Central Preview Viewport */}
-          <div className="grid flex-1 place-items-center overflow-auto bg-black/40 p-4 sm:p-8">
-            <div className="flex flex-col items-center overflow-hidden rounded-xl bg-[#151715] shadow-2xl transition max-w-4xl w-full">
+          {/* Centred with an auto margin, not place-items: a card taller than
+              this box was centred anyway, which put its top — the image —
+              above the scroll area where nothing could reach it. An auto
+              margin centres a short card and lets a tall one start at the top. */}
+          <div className="flex min-h-0 flex-1 overflow-auto bg-black/40 p-4 sm:p-8">
+            <div className="m-auto flex w-full max-w-4xl flex-col items-center overflow-hidden rounded-xl bg-[#151715] shadow-2xl transition">
               {activeAttempt?.status === "generating" || (working && !activeImage) ? (
                 <div className={`grid place-items-center p-8 ${aspectRatio === "9:16" ? "aspect-[9/16] h-[55vh] max-h-[580px]" : "aspect-[16/9] w-full max-w-[640px]"}`}>
                   <div className="flex flex-col items-center gap-4">
@@ -3983,7 +3987,7 @@ function AssetWorkspace({
                       </span>
                     </span>
                   </div>
-                  <p className="mt-1.5 text-sm leading-relaxed text-zinc-200">{activeAttempt?.prompt || prompt || asset.description || "—"}</p>
+                  <p className="mt-1.5 max-h-48 overflow-y-auto pr-1 text-sm leading-relaxed text-zinc-200">{activeAttempt?.prompt || prompt || asset.description || "—"}</p>
                 </div>
               )}
             </div>
@@ -6587,8 +6591,12 @@ function ShotMediaWorkspace({
               {genHistory.length > 1 ? `${genHistory.length} generations` : "Private asset"}
             </span>
           </header>
-          <div className="grid flex-1 place-items-center overflow-auto bg-black/40 p-4 sm:p-8">
-            <div className="flex flex-col items-center overflow-hidden rounded-xl bg-[#151715] shadow-2xl transition max-w-4xl w-full">
+          {/* Centred with an auto margin, not place-items: a card taller than
+              this box was centred anyway, which put its top — the image —
+              above the scroll area where nothing could reach it. An auto
+              margin centres a short card and lets a tall one start at the top. */}
+          <div className="flex min-h-0 flex-1 overflow-auto bg-black/40 p-4 sm:p-8">
+            <div className="m-auto flex w-full max-w-4xl flex-col items-center overflow-hidden rounded-xl bg-[#151715] shadow-2xl transition">
               {previewGenerating ? (
                 <div className={`grid place-items-center p-8 ${aspectRatio === "9:16" ? "aspect-[9/16] h-[55vh] max-h-[580px]" : "aspect-[16/9] w-full max-w-[640px]"}`}>
                   <div className="flex flex-col items-center gap-4">
@@ -6669,7 +6677,7 @@ function ShotMediaWorkspace({
                       )}
                     </span>
                   </div>
-                  <div className="mt-1.5 text-sm leading-relaxed text-zinc-200">
+                  <div className="mt-1.5 max-h-48 overflow-y-auto pr-1 text-sm leading-relaxed text-zinc-200">
                     <p className={promptExpanded ? "" : "line-clamp-3"}>
                       {activeGen.prompt || "—"}
                     </p>

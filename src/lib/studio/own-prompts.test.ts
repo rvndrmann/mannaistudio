@@ -218,3 +218,37 @@ describe("reference images on a render", () => {
     expect(mocks.request).toHaveBeenCalledTimes(1)
   })
 })
+
+describe("the camera package on a render", () => {
+  const camera = { camera: "Full-Frame Cine Digital", lens: "Clinical Sharp Prime", focalLength: 50, aperture: "f/4" }
+
+  it("is sent with a storyboard image and with character art", async () => {
+    await proposeOwnGeneration(context(), EPISODE, { kind: "storyboard_image", shotNumbers: [1], camera })
+    expect(mocks.request.mock.calls[0][1].input.request.cameraSettings).toEqual(camera)
+    await proposeOwnGeneration(context(), EPISODE, { kind: "character_or_asset_image", entityIds: [ENTITY], camera })
+    expect(mocks.request.mock.calls[1][1].input.cameraSettings).toEqual(camera)
+  })
+
+  it("is left out entirely when the user did not ask for one", async () => {
+    await proposeOwnGeneration(context(), EPISODE, { kind: "storyboard_image", shotNumbers: [1] })
+    expect(mocks.request.mock.calls[0][1].input.request).not.toHaveProperty("cameraSettings")
+  })
+
+  it("refuses a choice the studio's camera panel does not have, and a camera on a video", async () => {
+    await expect(proposeOwnGeneration(context(), EPISODE, { kind: "storyboard_image", shotNumbers: [1], camera: { ...camera, lens: "Made-up Lens" } })).rejects.toThrow()
+    await expect(proposeOwnGeneration(context(), EPISODE, { kind: "storyboard_image", shotNumbers: [1], camera: { ...camera, focalLength: 63 } })).rejects.toThrow("focalLength must be one of")
+    await expect(proposeOwnGeneration(context(), EPISODE, { kind: "storyboard_video", shotNumbers: [1], camera })).rejects.toThrow("shapes an image")
+    expect(mocks.request).not.toHaveBeenCalled()
+  })
+})
+
+describe("redrawing a character or asset from the words alone", () => {
+  it("keeps the saved images as input unless told otherwise", async () => {
+    await proposeOwnGeneration(context(), EPISODE, { kind: "character_or_asset_image", entityIds: [ENTITY] })
+    expect(mocks.request.mock.calls[0][1].input).not.toHaveProperty("useExistingImages")
+  })
+  it("asks for a text-only draw of the same entity when the user wants a fresh one", async () => {
+    await proposeOwnGeneration(context(), EPISODE, { kind: "character_or_asset_image", entityIds: [ENTITY], useExistingImages: false, prompts: { [ENTITY]: "A new look." } })
+    expect(mocks.request.mock.calls[0][1].input).toMatchObject({ entityIds: [ENTITY], useExistingImages: false, prompts: { [ENTITY]: "A new look." } })
+  })
+})

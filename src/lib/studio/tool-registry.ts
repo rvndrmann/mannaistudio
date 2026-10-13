@@ -11,7 +11,7 @@ import { creativeBriefSchema } from "./domain"
 import { mergeCreativeBrief } from "./creative-brief"
 import { continuityFactSchema, findContinuityConflicts } from "./continuity"
 import { entityHandle, entityKindSchema, legacyEntityType, seriesBibleSchema } from "./story"
-import { generationRequestSchema, routeGeneration } from "./model-routing"
+import { cameraPackageSchema, generationRequestSchema, routeGeneration } from "./model-routing"
 import { revisionRequestSchema } from "./revisions"
 import { deductUserCredits } from "./credits"
 import { decideBilling, OwnKeysOnlyError } from "@/lib/byok/billing"
@@ -989,6 +989,13 @@ export const generateEntityReferenceArtTool = defineDirectorTool({
     // entity's saved description is used for anything left out.
     prompts: z.record(z.string(), z.string().trim().min(1).max(12_000)).default({}),
     model: z.string().trim().max(100).optional(),
+    cameraSettings: cameraPackageSchema.optional(),
+    // An entity's saved images go to the model as input by default, so a new
+    // render stays the same character. That is wrong when the saved image is
+    // the thing being replaced: it drags the new one back toward it, and the
+    // only way round it was to create a second entity. False draws from the
+    // words alone. A paired product photo is a separate input and is kept.
+    useExistingImages: z.boolean().default(true),
     idempotencyKey: z.string().min(8).max(200),
     workflowRunId: z.string().uuid().optional(),
   }),
@@ -1059,8 +1066,11 @@ This applies to the character described as the product wearer/user of @${product
         model: routing.selected.model,
         provider: routing.selected.provider,
         prompt,
-        input_images: pairsProduct ? Array.from(new Set([...(entity.reference_images || []), productReference!])) : entity.reference_images || [],
-        settings: { type: "image", aspectRatio: routing.request.aspectRatio, target: "asset", entityType: entity.type },
+        input_images: (() => {
+          const own = input.useExistingImages ? entity.reference_images || [] : []
+          return pairsProduct ? Array.from(new Set([...own, productReference!])) : own
+        })(),
+        settings: { type: "image", aspectRatio: routing.request.aspectRatio, target: "asset", entityType: entity.type, ...(input.cameraSettings ? { cameraSettings: input.cameraSettings } : {}) },
         estimated_credits: referenceBilling.credits,
         billing_mode: referenceBilling.mode,
         requires_approval: true,

@@ -1,6 +1,21 @@
 import { z } from "zod"
 import { calculateCreditCost } from "./credits"
+import { apertureOptions, cameraOptions, focalLengthOptions, lensOptions } from "./camera-settings"
 import { generationProvider, imageGenerationModels, isCharacterSheetImageModel, isImageOnlyVideoModel, isTextOnlyVideoModel, videoGenerationModels, videoModelNeedsSourceVideo } from "./generation-models"
+
+/**
+ * A camera package named in the studio's own vocabulary.
+ *
+ * Each field is one of the choices the camera panel offers, never free text:
+ * every choice owns a tuned phrase that goes into the prompt, and a value with
+ * no phrase would be dropped silently instead of shaping the image.
+ */
+export const cameraPackageSchema = z.object({
+  camera: z.enum(cameraOptions as [string, ...string[]]),
+  lens: z.enum(lensOptions as [string, ...string[]]),
+  focalLength: z.number().refine((value) => focalLengthOptions.includes(value), { message: `focalLength must be one of ${focalLengthOptions.join(", ")}` }),
+  aperture: z.enum(apertureOptions as [string, ...string[]]),
+}).strict()
 
 export const generationRequestSchema = z.object({
   type: z.enum(["image", "video"]),
@@ -56,6 +71,9 @@ export const generationRequestSchema = z.object({
   // verbatim, so removing an entity sticks even though the prompt still names
   // it — otherwise the derivation would put it straight back.
   entityReferenceIds: z.array(z.string().uuid()).max(20).optional(),
+  // The camera package for these images. Left out, the prompt goes as written,
+  // which is what the camera switch being off means in the studio.
+  cameraSettings: cameraPackageSchema.optional(),
 }).strict().refine(
   (request) => (request.shotNumbers.length === 0 && request.videoReferenceShotNumbers.length === 0) || Boolean(request.episodeId),
   { message: "episodeId is required when target or reference shots are named by number", path: ["episodeId"] },

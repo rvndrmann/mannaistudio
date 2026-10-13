@@ -158,7 +158,7 @@ describe("hosted MCP with the real SDK HTTP client", () => {
       "studio_add_characters_and_assets", "studio_add_shots", "studio_api_keys", "studio_attach_media", "studio_chat", "studio_create_project", "studio_decide_proposal", "studio_generate",
       "studio_list_models", "studio_list_projects", "studio_pending_work", "studio_set_project_models", "studio_set_prompts", "studio_storyboard", "studio_upload_media", "studio_view_media", "studio_write_script",
     ])
-    expect(alice.getServerVersion()).toMatchObject({ name: "creator-studio", version: "1.5.0" })
+    expect(alice.getServerVersion()).toMatchObject({ name: "creator-studio", version: "1.5.1" })
   })
   it("exposes only consented tools and refuses a foreign browser Origin", async () => {
     const reader = await connect("read-only")

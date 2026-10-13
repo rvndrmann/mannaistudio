@@ -36,14 +36,14 @@ class ToolContent {
 
 /**
  * The version this server announces. Raise it whenever a tool is added, removed
- * or renamed.
+ * or renamed, or gains or loses an input.
  *
  * It sat at 1.0.0 while the tool list grew from thirteen to twenty-one, and a
  * client that keeps a copy of the list had nothing to tell it the copy was out
  * of date: new tools were live on the server and missing from every session.
  * A test pins the tool list to this number, so the two cannot drift apart.
  */
-export const MCP_TOOLSET_VERSION = "1.5.0"
+export const MCP_TOOLSET_VERSION = "1.5.1"
 
 /** One server per HTTP request: credentials never live in a singleton or env. */
 export function createAccountMcpServer(token: string, scopes: string[]) {
@@ -196,7 +196,7 @@ export function createAccountMcpServer(token: string, scopes: string[]) {
     await enforceStudioRateLimit(context.supabase, "director_tools", 30, 60, context.user.id)
     return saveOwnPrompts(context, await requireMcpEpisode(context, episodeId), input)
   })
-  register("studio_generate", "Own-prompts mode: render without the agent. kind is storyboard_image or storyboard_video (name shotNumbers) or character_or_asset_image (name entityIds). Give a prompt in prompts to use it for this render, verbatim; anything left out uses the prompt already saved. The studio still attaches the project's style and the cast's saved reference images. Returns a proposal with an estimate of its cost and whose account pays: show that to the user and call studio_decide_proposal only when they approve. If the estimate says blocked, do not approve; tell the user why.", "director:chat", {
+  register("studio_generate", "Own-prompts mode: render without the agent. kind is storyboard_image or storyboard_video (name shotNumbers) or character_or_asset_image (name entityIds). Give a prompt in prompts to use it for this render, verbatim; anything left out uses the prompt already saved. For character_or_asset_image, set useExistingImages false to draw from the prompt alone instead of from the image already saved, rather than creating a second character or asset. For an image, camera sets the studio's camera package (body, lens, focal length, aperture) exactly as its Camera panel does; leave it out to send the prompt unchanged. The studio still attaches the project's style and the cast's saved reference images. Returns a proposal with an estimate of its cost and whose account pays: show that to the user and call studio_decide_proposal only when they approve. If the estimate says blocked, do not approve; tell the user why.", "director:chat", {
     projectId: uuid, ...ownGenerationSchema.shape,
   }, false, async ({ projectId, episodeId, ...input }) => {
     const context = await contextFor(projectId, "director:chat")

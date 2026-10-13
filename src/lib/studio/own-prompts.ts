@@ -3,6 +3,7 @@ import { z } from "zod"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { requestDirectorTool } from "./tool-service"
 import { isImageGenerationModel, isVideoGenerationModel } from "./generation-models"
+import { cameraPackageSchema } from "./model-routing"
 import { parseShotBeats } from "./shot-video-prompt"
 import { entityKindSchema } from "./story"
 import { mediaKind, storeDirectorUpload } from "./director-upload"
@@ -46,6 +47,8 @@ export const ownGenerationSchema = z.object({
   durationSeconds: z.number().positive().max(120).optional(),
   aspectRatio: z.string().trim().max(20).optional(),
   resolution: z.string().trim().max(20).optional(),
+  camera: cameraPackageSchema.optional().describe("For the two image kinds: the studio's camera package for this render (camera body, lens, focal length in mm, aperture), the same four choices as the Camera panel in the studio. It is added to the end of the prompt as lens language. Left out, the prompt goes exactly as written."),
+  useExistingImages: z.boolean().default(true).describe("For character_or_asset_image: whether the character's or asset's saved images are sent to the model as input. True keeps a new render consistent with what is there. False draws from the prompt alone, which is what to use when replacing an image the user did not like."),
   referencePaths: z.array(z.string().trim().min(1).max(2_000)).max(8).default([]).describe("For the two storyboard kinds: stored image paths to use as references for this render, such as one returned by studio_upload_media."),
   idempotencyKey: z.string().min(8).max(200).optional().describe("Reuse the same key when retrying the same request."),
 })
@@ -267,12 +270,16 @@ export async function proposeOwnGeneration(context: AuthenticatedProjectContext,
     throw new Error(`"${input.model}" is not ${input.kind === "storyboard_video" ? "a video" : "an image"} model this studio offers. Call studio_list_models for the ids.`)
   }
 
+  if (input.camera && input.kind === "storyboard_video") {
+    throw new Error("The camera package shapes an image. A clip is filmed from its frame, so set the camera when rendering the storyboard image instead.")
+  }
+
   if (input.kind === "character_or_asset_image") {
     if (!input.entityIds.length) throw new Error("Name the characters or assets to draw in entityIds.")
     const prompts = Object.fromEntries(Object.entries(input.prompts).filter(([key]) => input.entityIds.includes(key)))
     return requestDirectorTool(context, {
       tool: "generate_entity_reference_art",
-      input: { entityIds: input.entityIds, prompts, ...(input.model ? { model: input.model } : {}), idempotencyKey },
+      input: { entityIds: input.entityIds, prompts, ...(input.model ? { model: input.model } : {}), ...(input.camera ? { cameraSettings: input.camera } : {}), ...(input.useExistingImages ? {} : { useExistingImages: false }), idempotencyKey },
       idempotencyKey,
     })
   }
@@ -300,6 +307,7 @@ export async function proposeOwnGeneration(context: AuthenticatedProjectContext,
         ...(input.durationSeconds ? { durationSeconds: input.durationSeconds } : {}),
         ...(aspectRatio ? { aspectRatio } : {}),
         ...(input.resolution ? { resolution: input.resolution } : {}),
+        ...(input.camera ? { cameraSettings: input.camera } : {}),
         ...(input.referencePaths.length ? { referencePaths: input.referencePaths.map((path) => ownPath(context, path)) } : {}),
       },
       prompts,

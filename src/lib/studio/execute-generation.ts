@@ -1,5 +1,6 @@
 import { composeImagePrompt, prepareImageModelPrompt, assertImageReferenceCapacity } from "./image-prompt-composition"
 import { ownKeysOnly } from "@/lib/byok/preferences"
+import { isCameraSettings } from "./camera-settings"
 import { submitGenjutsuVideo, submitHiggsfieldMinimaxH3Video, isHiggsfieldMinimaxH3Model, submitHiggsfieldSeedanceVideo, isHiggsfieldSeedanceModel, submitHiggsfieldWanVideo, isHiggsfieldWanModel, submitHiggsfieldKlingVideo, isHiggsfieldKlingModel, submitHiggsfieldKlingO3Video, isHiggsfieldKlingO3Model, submitHiggsfieldKlingO3VideoReference, isHiggsfieldKlingO3VideoModel, submitHiggsfieldCinemaStudioVideo, isHiggsfieldCinemaStudioModel, genjutsuInputSchema, genjutsuRestyleInputSchema, GENJUTSU_RESTYLE_MODEL, SOUL_V2_IMAGE_TO_IMAGE_MODEL, submitSoulV2Image, isHiggsfieldAiInfluencerModel, submitAiInfluencerSheet } from "./higgsfield"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { generateOpenAIImage, submitOpenAIImage, supportsBackgroundImageResponse, type OpenAIImageModel } from "./openai"
@@ -361,7 +362,7 @@ export async function executeGenerationJobs(
             settings: { ...settings, videoReferencePaths, resolvedReferencePaths: combinedReferencePaths, resolvedEntityIds: mentionedEntities.map((entity) => entity.id) },
           }).eq("id", job.id)
 
-          const resolvedImagePrompt = job.type === "image" ? prepareImageModelPrompt(composeImagePrompt({ prompt: stripIdentityDescriptions(canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[])), aspectRatio: effectiveAspectRatio, style, styleDna: projectStyleDna(context.project), block: typeof job.entity_id === "string" ? (settings.entityType === "character" ? "character" : settings.entityType === "scene" ? "scene" : "asset") : "shot", entityContext: mentionContext }), job.model) : null
+          const resolvedImagePrompt = job.type === "image" ? prepareImageModelPrompt(composeImagePrompt({ prompt: stripIdentityDescriptions(canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[])), aspectRatio: effectiveAspectRatio, style, styleDna: projectStyleDna(context.project), block: typeof job.entity_id === "string" ? (settings.entityType === "character" ? "character" : settings.entityType === "scene" ? "scene" : "asset") : "shot", entityContext: mentionContext, camera: isCameraSettings(settings.cameraSettings) ? settings.cameraSettings : null }), job.model) : null
           if (resolvedImagePrompt) {
             const { error } = await context.supabase.from("creator_generation_jobs").update({ settings: { ...settings, resolvedPrompt: resolvedImagePrompt, imagePromptVersion: 1 } }).eq("id", job.id)
             if (error) throw error
