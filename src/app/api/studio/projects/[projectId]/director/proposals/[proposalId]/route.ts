@@ -6,6 +6,12 @@ import { requireProjectFromRequest } from "@/lib/studio/external-auth"
 import { decideDirectorProposal } from "@/lib/studio/tool-service"
 import { enforceStudioRateLimit, StudioRateLimitError } from "@/lib/studio/rate-limit"
 import { describeError } from "@/lib/studio/errors"
+import "@/lib/studio/next-background"
+
+// An approval starts the render it approves, and that render is kept alive
+// after this route answers. Without a budget of its own the route had the
+// host's default, which is shorter than one image takes.
+export const maxDuration = 300
 
 // `overrides` carries edits made in the chat generation block. It is merged
 // into the stored payload and then validated by the tool's own input schema,

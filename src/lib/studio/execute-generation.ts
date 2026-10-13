@@ -1,6 +1,7 @@
 import { composeImagePrompt, prepareImageModelPrompt, assertImageReferenceCapacity } from "./image-prompt-composition"
 import { ownKeysOnly } from "@/lib/byok/preferences"
 import { isCameraSettings } from "./camera-settings"
+import { runInBackground } from "./background-work"
 import { submitGenjutsuVideo, submitHiggsfieldMinimaxH3Video, isHiggsfieldMinimaxH3Model, submitHiggsfieldSeedanceVideo, isHiggsfieldSeedanceModel, submitHiggsfieldWanVideo, isHiggsfieldWanModel, submitHiggsfieldKlingVideo, isHiggsfieldKlingModel, submitHiggsfieldKlingO3Video, isHiggsfieldKlingO3Model, submitHiggsfieldKlingO3VideoReference, isHiggsfieldKlingO3VideoModel, submitHiggsfieldCinemaStudioVideo, isHiggsfieldCinemaStudioModel, genjutsuInputSchema, genjutsuRestyleInputSchema, GENJUTSU_RESTYLE_MODEL, SOUL_V2_IMAGE_TO_IMAGE_MODEL, submitSoulV2Image, isHiggsfieldAiInfluencerModel, submitAiInfluencerSheet } from "./higgsfield"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { generateOpenAIImage, submitOpenAIImage, supportsBackgroundImageResponse, type OpenAIImageModel } from "./openai"
@@ -721,6 +722,6 @@ export async function executeGenerationJobsInBackground(context: AuthenticatedPr
     const work = executeGenerationJobs(context, local)
     const edge = (globalThis as unknown as { EdgeRuntime?: { waitUntil(promise: Promise<unknown>): void } }).EdgeRuntime
     if (edge) edge.waitUntil(work)
-    else void work
+    else runInBackground(work)
   }
 }

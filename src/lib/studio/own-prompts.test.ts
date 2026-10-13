@@ -229,6 +229,13 @@ describe("the camera package on a render", () => {
     expect(mocks.request.mock.calls[1][1].input.cameraSettings).toEqual(camera)
   })
 
+  it("is read from JSON text, which is how a client with an older copy of the tool sends it", async () => {
+    await proposeOwnGeneration(context(), EPISODE, { kind: "storyboard_image", shotNumbers: [1], camera: JSON.stringify(camera) })
+    expect(mocks.request.mock.calls[0][1].input.request.cameraSettings).toEqual(camera)
+    await expect(proposeOwnGeneration(context(), EPISODE, { kind: "storyboard_image", shotNumbers: [1], camera: "not json" })).rejects.toThrow()
+    await expect(proposeOwnGeneration(context(), EPISODE, { kind: "storyboard_image", shotNumbers: [1], camera: JSON.stringify({ ...camera, lens: "Made-up" }) })).rejects.toThrow()
+  })
+
   it("is left out entirely when the user did not ask for one", async () => {
     await proposeOwnGeneration(context(), EPISODE, { kind: "storyboard_image", shotNumbers: [1] })
     expect(mocks.request.mock.calls[0][1].input.request).not.toHaveProperty("cameraSettings")

@@ -5,6 +5,7 @@ import { studioErrorStatus } from "@/lib/studio/server-context"
 import { requireProjectFromRequest } from "@/lib/studio/external-auth"
 import { requestDirectorTool } from "@/lib/studio/tool-service"
 import { enforceStudioRateLimit, StudioRateLimitError } from "@/lib/studio/rate-limit"
+import "@/lib/studio/next-background"
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   try {

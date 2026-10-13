@@ -54,7 +54,7 @@ export function bearerToken(request: Request) {
  * add a second to every call and lean on an endpoint that rate-limits. One
  * session per user per hour is enough.
  */
-const actingSessions = new Map<string, { client: SupabaseClient; expiresAt: number }>()
+const actingSessions = new Map<string, { client: SupabaseClient; accessToken: string; expiresAt: number }>()
 
 /**
  * A client that genuinely *is* the token's owner, rather than one acting on
@@ -73,9 +73,9 @@ const actingSessions = new Map<string, { client: SupabaseClient; expiresAt: numb
  * changes at all. It is also strictly narrower than what this path had before —
  * a token no longer reaches anything its owner could not.
  */
-async function sessionClientFor(user: User): Promise<SupabaseClient | null> {
+async function sessionClientFor(user: User): Promise<{ client: SupabaseClient; accessToken: string } | null> {
   const cached = actingSessions.get(user.id)
-  if (cached && cached.expiresAt > Date.now() + 60_000) return cached.client
+  if (cached && cached.expiresAt > Date.now() + 60_000) return cached
   if (!user.email) return null
 
   const admin = createServiceClient()
@@ -94,12 +94,13 @@ async function sessionClientFor(user: User): Promise<SupabaseClient | null> {
   const session = verified.data?.session
   if (verified.error || !session || verified.data.user?.id !== user.id) return null
 
-  const client = createTokenClient(session.access_token)
-  actingSessions.set(user.id, {
-    client,
+  const acting = {
+    client: createTokenClient(session.access_token),
+    accessToken: session.access_token,
     expiresAt: (session.expires_at ? session.expires_at * 1000 : Date.now() + 3_600_000),
-  })
-  return client
+  }
+  actingSessions.set(user.id, acting)
+  return acting
 }
 
 export async function validateExternalRequest(request: Request, requiredScope?: string) {
@@ -138,8 +139,9 @@ export async function validateExternalRequest(request: Request, requiredScope?: 
   if (userError || !user.user) throw new StudioAccessError("External token user was not found", 401)
 
   // Fail closed: project operations must NEVER run as the service role.
-  const acting = await sessionClientFor(user.user).catch(() => null)
-  if (!acting) throw new StudioAccessError("Could not authenticate the connected account. Please reconnect or try again.", 401)
+  const session = await sessionClientFor(user.user).catch(() => null)
+  const acting = session?.client
+  if (!session || !acting) throw new StudioAccessError("Could not authenticate the connected account. Please reconnect or try again.", 401)
   if (!requiredScope || !isManagedScope(requiredScope)) {
     if (!await hasCreatorStudioEntitlement(acting, user.user.id)) {
       if (requiredScope) throw new StudioAccessError("Creator Studio access is required.", 403)
@@ -148,7 +150,7 @@ export async function validateExternalRequest(request: Request, requiredScope?: 
     }
   }
   if (!await mcpOpenFor(acting, user.user.id)) throw new StudioAccessError("Assistant connections are currently paused.", 403)
-  return { supabase: acting, user: user.user, scopes, resource: data.resource, connectionId: data.mcp_connection_id, tokenId: data.id }
+  return { supabase: acting, user: user.user, scopes, resource: data.resource, connectionId: data.mcp_connection_id, tokenId: data.id, accessToken: session.accessToken }
 }
 
 export async function requireProjectFromRequest(
@@ -157,7 +159,12 @@ export async function requireProjectFromRequest(
   requiredScope: string,
 ): Promise<AuthenticatedProjectContext> {
   const external = await validateExternalRequest(request, requiredScope)
-  if (external) return requireProjectForUser(external.supabase, external.user, projectId)
+  // The token the image worker is handed. A browser's client can produce its
+  // own session on request; this client is built around a bare token and
+  // cannot, so without this a render started from an external caller was never
+  // passed to the worker — it ran inside a request that had already answered,
+  // and the host froze it part-way through.
+  if (external) return { ...await requireProjectForUser(external.supabase, external.user, projectId), generationAccessToken: external.accessToken }
 
   // A caller that is not a browser and holds the user's own access token — the
   // background worker, which is handed one so the turn it runs is the user's

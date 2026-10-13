@@ -24,6 +24,24 @@ import { fetchPublicMedia } from "./media-import"
 
 const text = (max: number) => z.string().trim().min(1).max(max)
 
+/**
+ * An object input that also accepts itself as JSON text.
+ *
+ * An assistant fills in a tool call from its saved copy of the tool's inputs.
+ * When an input is newer than that copy, the client does not know it is an
+ * object and sends it as a string, and the call failed with "expected object,
+ * received string" for a value that was perfectly well formed. Reading the
+ * string is what lets a new input be used before every client has caught up.
+ */
+function orAsJson<T extends z.ZodTypeAny>(schema: T) {
+  return z.union([schema, z.string().transform((value, context) => {
+    try { return JSON.parse(value) as unknown } catch {
+      context.addIssue({ code: "custom", message: "Expected an object, or the same object as JSON text" })
+      return z.NEVER
+    }
+  }).pipe(schema)])
+}
+
 export const ownPromptsSchema = z.object({
   episodeId: z.string().uuid().optional(),
   shots: z.array(z.object({
@@ -47,7 +65,7 @@ export const ownGenerationSchema = z.object({
   durationSeconds: z.number().positive().max(120).optional(),
   aspectRatio: z.string().trim().max(20).optional(),
   resolution: z.string().trim().max(20).optional(),
-  camera: cameraPackageSchema.optional().describe("For the two image kinds: the studio's camera package for this render (camera body, lens, focal length in mm, aperture), the same four choices as the Camera panel in the studio. It is added to the end of the prompt as lens language. Left out, the prompt goes exactly as written."),
+  camera: orAsJson(cameraPackageSchema).optional().describe("For the two image kinds: the studio's camera package for this render (camera body, lens, focal length in mm, aperture), the same four choices as the Camera panel in the studio. It is added to the end of the prompt as lens language. Left out, the prompt goes exactly as written."),
   useExistingImages: z.boolean().default(true).describe("For character_or_asset_image: whether the character's or asset's saved images are sent to the model as input. True keeps a new render consistent with what is there. False draws from the prompt alone, which is what to use when replacing an image the user did not like."),
   referencePaths: z.array(z.string().trim().min(1).max(2_000)).max(8).default([]).describe("For the two storyboard kinds: stored image paths to use as references for this render, such as one returned by studio_upload_media."),
   idempotencyKey: z.string().min(8).max(200).optional().describe("Reuse the same key when retrying the same request."),

@@ -4,6 +4,7 @@ import { studioErrorStatus } from "@/lib/studio/server-context"
 import { mcpOrigin, mcpResource } from "@/lib/studio/mcp/config"
 import { createAccountMcpServer } from "@/lib/studio/mcp/server"
 import { enforceStudioRateLimit } from "@/lib/studio/rate-limit"
+import "@/lib/studio/next-background"
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
