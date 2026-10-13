@@ -1,5 +1,6 @@
 "use client"
 
+import { PRO_PRICE_USD_LABEL } from "@/lib/display-currency"
 import Footer from "@/components/Footer"
 import { isFreeCourse } from "@/lib/course-price"
 import { isVerticalVideo, youtubeEmbedUrl } from "@/lib/video-embed"
@@ -235,7 +236,7 @@ export default function StudioHome() {
                                 Script. Characters. Storyboard. Images. Video. Your AI Director coordinates the whole workflow while you stay in control.
                             </p>
                             <p className="mt-3 max-w-xl text-sm leading-6 text-white/45 md:mt-4 md:text-base">
-                                Learn AI filmmaking and create with your AI Director Agent: develop scripts, plan storyboards, and generate images and videos with your own OpenAI, Gemini, BytePlus, or fal.ai API keys. Pro includes all courses and Creator Studio for ₹799/month; your provider bills AI usage directly.
+                                Learn AI filmmaking and create with your AI Director Agent: develop scripts, plan storyboards, and generate images and videos with your own OpenAI, Gemini, BytePlus, or fal.ai API keys. Pro includes all courses and Creator Studio for {PRO_PRICE_USD_LABEL}/month; your provider bills AI usage directly.
                             </p>
 
                             <div className="mt-7 flex flex-col gap-3 sm:mt-10 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">

@@ -1,5 +1,6 @@
 "use client"
 
+import { formatInr, formatUsdFromInr } from "@/lib/display-currency"
 import { ALL_ACCESS_NAME } from "@/lib/all-access-plan"
 import Link from "next/link"
 import { useCallback, useEffect, useState } from "react"
@@ -103,7 +104,10 @@ export default function AllAccessSubscriptionCard() {
           <p className="mt-1.5 text-sm text-white/80">{costExample}</p>
         </div>
       )}
-      <p className="mt-4 text-2xl font-semibold">{offer?.priceInr ? `₹${offer.priceInr.toLocaleString("en-IN")} / month` : "Price available when checkout is configured"}</p>
+      <p className="mt-4 text-2xl font-semibold">{offer?.priceInr ? `${formatUsdFromInr(offer.priceInr)} / month` : "Price available when checkout is configured"}</p>
+      {/* The one place money is taken, so the one place the real charge is
+          stated: the dollar figure is a reading of this, not a second price. */}
+      {offer?.priceInr && <p className="mt-1.5 text-sm text-white/60">You are charged <span className="font-semibold text-white/90">{formatInr(offer.priceInr)} per month</span> in Indian rupees. The dollar price is that amount converted, so the rate your bank uses may put a slightly different figure on your statement.</p>}
       {offer?.active && <p className="mt-3 text-primary">Access active until {new Date(offer.paidUntil!).toLocaleDateString("en-IN")}{subscription?.cancel_at_cycle_end || subscription?.status === "cancelled" ? " · Renewal cancelled" : ""}</p>}
       {subscription && !abandoned && !offer?.active && <p className="mt-3 text-white/60">Subscription status: {subscription.status}. Access starts after a confirmed charge.</p>}
       <div className="mt-5 flex flex-wrap gap-4">

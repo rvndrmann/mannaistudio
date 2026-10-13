@@ -1,5 +1,6 @@
 "use client"
 
+import { PRO_PRICE_USD_LABEL } from "@/lib/display-currency"
 import Navbar from "@/components/Navbar"
 import { motion, AnimatePresence } from "framer-motion"
 import { Play, CheckCircle2, Trophy, ArrowLeft, Star, Clock, User, Share2, Info, Download, FileText, Sparkles, ShoppingCart, Loader2, Lock } from "lucide-react"
@@ -394,7 +395,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     </div>
                                     <div className="text-center space-y-2">
                                         <h3 className="text-xl font-bold">Subscribe to access all courses</h3>
-                                        <p className="text-white/50 text-sm">{"Included in AI Director Hub Pro · ₹799/month"}</p>
+                                        <p className="text-white/50 text-sm">{`Included in AI Director Hub Pro · ${PRO_PRICE_USD_LABEL}/month`}</p>
                                     </div>
                                     <button
                                         onClick={handleEnroll}
@@ -406,7 +407,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                         ) : (
                                             <ShoppingCart className="w-5 h-5" />
                                         )}
-                                        {enrollLoading ? 'Processing...' : 'Subscribe · ₹799/month'}
+                                        {enrollLoading ? 'Processing...' : `Subscribe · ${PRO_PRICE_USD_LABEL}/month`}
                                     </button>
                                 </div>
                             ) : activeLessonYouTubeUrl ? (
@@ -497,7 +498,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                             <div className="glass-card p-6 rounded-2xl border border-primary/20 bg-primary/5 flex items-center justify-between">
                                 <div className="space-y-1">
                                     <h3 className="font-bold text-lg">Get access to this course</h3>
-                                    <p className="text-sm text-white/50">{"Included in AI Director Hub Pro · ₹799/month"}</p>
+                                    <p className="text-sm text-white/50">{`Included in AI Director Hub Pro · ${PRO_PRICE_USD_LABEL}/month`}</p>
                                 </div>
                                 <button
                                     onClick={handleEnroll}
@@ -511,7 +512,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                     ) : (
                                         <ShoppingCart className="w-4 h-4" />
                                     )}
-                                    {enrollLoading ? 'Processing...' : 'Subscribe · ₹799/month'}
+                                    {enrollLoading ? 'Processing...' : `Subscribe · ${PRO_PRICE_USD_LABEL}/month`}
                                 </button>
                             </div>
                         )}

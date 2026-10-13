@@ -1,3 +1,4 @@
+import { PRO_PRICE_USD_LABEL } from "@/lib/display-currency"
 import { NextRequest, NextResponse } from 'next/server'
 import Razorpay from 'razorpay'
 import { createClient } from '@/lib/supabase/server'
@@ -97,5 +98,5 @@ async function legacyPOST(request: NextRequest) {
 }
 
 export async function POST() {
-  return NextResponse.json({ error: "This offer is currently unavailable. Subscribe to AI Director Hub Pro for ₹799/month.", billingUrl: "/billing" }, { status: 410 })
+  return NextResponse.json({ error: `This offer is currently unavailable. Subscribe to AI Director Hub Pro for ${PRO_PRICE_USD_LABEL}/month.`, billingUrl: "/billing" }, { status: 410 })
 }

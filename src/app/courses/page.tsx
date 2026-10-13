@@ -1,3 +1,4 @@
+import { PRO_PRICE_USD_LABEL } from "@/lib/display-currency"
 import type { Metadata } from "next"
 import Link from "next/link"
 import { ArrowRight } from "lucide-react"
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
   title: "AI Filmmaking Courses | AI Director Hub",
-  description: "Every AI Director Hub course. Start with the free mini course; all other courses are included in AI Director Hub Pro at ₹799/month.",
+  description: `Every AI Director Hub course. Start with the free mini course; all other courses are included in AI Director Hub Pro at ${PRO_PRICE_USD_LABEL}/month.`,
 }
 
 /**

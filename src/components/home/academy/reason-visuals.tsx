@@ -1,3 +1,4 @@
+import { PRO_PRICE_USD_LABEL } from "@/lib/display-currency"
 import type { ReactNode } from "react"
 import { ArrowRight, Camera, Check, KeyRound, Lightbulb, MessageCircle, Users } from "lucide-react"
 
@@ -76,8 +77,8 @@ export const reasonVisuals = {
       <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.16em] text-primary"><KeyRound className="h-4 w-4" /> Who bills what</p>
       <dl className="mt-4 divide-y divide-white/10 text-sm">
         <div className="flex justify-between gap-4 py-2.5"><dt className="text-white/60">Generation</dt><dd className="text-right font-medium text-white/85">Your provider, at their price</dd></div>
-        <div className="flex justify-between gap-4 py-2.5"><dt className="text-white/60">Our markup on generation</dt><dd className="font-semibold text-primary">₹0</dd></div>
-        <div className="flex justify-between gap-4 py-2.5"><dt className="text-white/60">AI Director Hub Pro</dt><dd className="font-medium text-white/85">₹799/month</dd></div>
+        <div className="flex justify-between gap-4 py-2.5"><dt className="text-white/60">Our markup on generation</dt><dd className="font-semibold text-primary">$0</dd></div>
+        <div className="flex justify-between gap-4 py-2.5"><dt className="text-white/60">AI Director Hub Pro</dt><dd className="font-medium text-white/85">{PRO_PRICE_USD_LABEL}/month</dd></div>
       </dl>
     </Panel>
   ),

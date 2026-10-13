@@ -1,5 +1,6 @@
 "use client"
 
+import { showRupeesAsDollars } from "@/lib/display-currency"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
@@ -100,10 +101,10 @@ export default function Navbar({ academy = false, signedInHint = false }: { acad
                     fetchBillingSettings(supabase),
                     fetchSiteFeatures(supabase),
                 ])
-                setOfferText(settings.offerEnabled ? settings.offerText : "")
+                setOfferText(settings.offerEnabled ? showRupeesAsDollars(settings.offerText) : "")
                 setSiteFeatures(feats)
             } catch {
-                setOfferText(defaultBillingSettings.offerEnabled ? defaultBillingSettings.offerText : "")
+                setOfferText(defaultBillingSettings.offerEnabled ? showRupeesAsDollars(defaultBillingSettings.offerText) : "")
                 // Settings unreadable: fall back to the defaults rather than
                 // leaving the nav permanently empty.
                 setSiteFeatures(defaultSiteFeatures)

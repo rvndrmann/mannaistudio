@@ -1,3 +1,4 @@
+import { PRO_PRICE_USD_LABEL } from "@/lib/display-currency"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { isFreeCourse } from "@/lib/course-price"
 
@@ -71,4 +72,4 @@ export async function fetchCatalogCourses(supabase: SupabaseClient): Promise<Cat
 /** Where "Start the free course" goes: one stable address for every button. */
 export const FREE_COURSE_PATH = "/free-course"
 export const PRO_PATH = "/billing"
-export const PRO_CTA_LABEL = "Get Pro · ₹799/month"
+export const PRO_CTA_LABEL = `Get Pro · ${PRO_PRICE_USD_LABEL}/month`

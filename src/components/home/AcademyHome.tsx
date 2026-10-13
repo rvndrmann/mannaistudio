@@ -1,3 +1,4 @@
+import { formatUsdFromInr, PRO_PRICE_USD_LABEL, showRupeesAsDollars } from "@/lib/display-currency"
 import Link from "next/link"
 import { unstable_cache } from "next/cache"
 import { cookies } from "next/headers"
@@ -43,7 +44,7 @@ import {
 
 export const academyMetadata = {
   title: "AI Director Hub | Learn AI Filmmaking and Direct AI Films",
-  description: "Don't prompt for one lucky clip. Learn the workflow, then direct client-grade AI video in Creator Studio with your own API keys. AI Director Hub Pro: all courses, Creator Studio and the AI Director Agent for ₹799/month.",
+  description: `Don't prompt for one lucky clip. Learn the workflow, then direct client-grade AI video in Creator Studio with your own API keys. AI Director Hub Pro: all courses, Creator Studio and the AI Director Agent for ${PRO_PRICE_USD_LABEL}/month.`,
 }
 
 const transformations = [
@@ -58,9 +59,9 @@ const transformations = [
 
 /** Facts already stated elsewhere on the page — nothing here is a claim about results. */
 const facts = [
-  ["₹799", "per month for everything in Pro"],
+  [PRO_PRICE_USD_LABEL, "per month for everything in Pro"],
   ["4", "model providers in one studio"],
-  ["₹0", "markup on generation"],
+  ["$0", "markup on generation"],
 ]
 
 const offerChecklist = [
@@ -118,7 +119,7 @@ const loadHomeContent = unstable_cache(
       fetchCatalogCourses(supabase),
       fetchBillingSettings(supabase),
     ])
-    return { proof, settings, courses, offerText: billing.offerEnabled ? billing.offerText : "" }
+    return { proof, settings, courses, offerText: billing.offerEnabled ? showRupeesAsDollars(billing.offerText) : "" }
   },
   ["academy-home-content"],
   { revalidate: 60 },
@@ -203,7 +204,7 @@ export default async function AcademyHome() {
         <div className={`grid gap-12 lg:items-center ${heroClips.length ? "lg:grid-cols-[1.1fr_.9fr]" : ""}`}>
           <div>
             <p className="inline-flex items-center gap-2.5 rounded-md border border-white/10 bg-white/[.03] px-3 py-1.5 text-xs text-white/55">
-              Pro <span className="font-medium text-brand">₹799 / month</span><span className="h-3 w-px bg-white/15" />cancel anytime
+              Pro <span className="font-medium text-brand">{PRO_PRICE_USD_LABEL} / month</span><span className="h-3 w-px bg-white/15" />cancel anytime
             </p>
             <h1 className="mt-7 max-w-2xl text-[2.5rem] font-medium leading-[1.08] tracking-[-0.05em] text-white/95 sm:text-[3.25rem]">Don&apos;t prompt for one lucky clip. Direct the whole film.</h1>
             <p className="mt-6 max-w-lg text-base leading-relaxed text-white/60">Learn the workflow, then make client-grade AI video in one studio. Scripts, characters, storyboards, images and video, on your own API keys.</p>
@@ -375,7 +376,7 @@ export default async function AcademyHome() {
         <div className={`mt-10 grid border ${cell} ${settings.showAnnualPlan && settings.annualPrice ? "md:grid-cols-2" : "max-w-xl"}`}>
           <div className="bg-white/[.03] p-7 sm:p-9">
             <p className="flex items-center justify-between text-lg font-medium tracking-[-0.02em]">Monthly <span className="rounded-sm border border-brand/40 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[.12em] text-brand">Pro</span></p>
-            <p className="mt-8 flex items-baseline gap-2"><span className="text-5xl font-medium tracking-[-0.04em]">₹799</span><span className="text-sm text-white/45">/ month</span></p>
+            <p className="mt-8 flex items-baseline gap-2"><span className="text-5xl font-medium tracking-[-0.04em]">{PRO_PRICE_USD_LABEL}</span><span className="text-sm text-white/45">/ month</span></p>
             <ul className={`mt-8 space-y-3.5 border-t ${cell} pt-7`}>
               {offerChecklist.map((line) => (
                 <li key={line} className="flex items-start gap-3 text-sm text-white/75"><Check className="mt-0.5 h-4 w-4 shrink-0 text-white/40" />{line}</li>
@@ -387,7 +388,7 @@ export default async function AcademyHome() {
           {settings.showAnnualPlan && settings.annualPrice && (
             <div className={`flex flex-col border-t ${cell} p-7 sm:p-9 md:border-l md:border-t-0`}>
               <p className="text-lg font-medium tracking-[-0.02em]">Annual</p>
-              <p className="mt-8 flex items-baseline gap-2"><span className="text-5xl font-medium tracking-[-0.04em]">₹{settings.annualPrice.toLocaleString("en-IN")}</span><span className="text-sm text-white/45">/ year</span></p>
+              <p className="mt-8 flex items-baseline gap-2"><span className="text-5xl font-medium tracking-[-0.04em]">{formatUsdFromInr(settings.annualPrice)}</span><span className="text-sm text-white/45">/ year</span></p>
               <p className="mt-4 text-sm leading-relaxed text-white/55">Everything in Pro, billed once a year.</p>
               <ProCta placement="pricing-annual" className={`${outlineButton} mt-auto w-full justify-center bg-transparent text-white hover:bg-white/[.06]`}>Choose annual <ArrowRight className="h-3.5 w-3.5" /></ProCta>
             </div>
