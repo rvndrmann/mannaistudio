@@ -68,11 +68,16 @@ A job already running is not cancelled by disconnecting.
 | --- | --- |
 | `studio_list_projects` | `projects:read` |
 | `studio_create_project` | `projects:write` |
+| `studio_set_project_models` | `projects:write` |
 | `studio_storyboard` | `projects:read` |
 | `studio_pending_work` | `projects:read` |
 | `studio_view_media` | `projects:read` |
+| `studio_api_keys` | `projects:read` |
 | `studio_list_models` | `projects:read` |
 | `studio_chat` | `director:chat` |
+| `studio_write_script` | `director:chat` |
+| `studio_add_characters_and_assets` | `director:chat` |
+| `studio_add_shots` | `director:chat` |
 | `studio_set_prompts` | `director:chat` |
 | `studio_generate` | `director:chat` |
 | `studio_decide_proposal` | `director:proposals` |

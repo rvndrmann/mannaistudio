@@ -3,6 +3,8 @@ import { z } from "zod"
 import type { AuthenticatedProjectContext } from "./server-context"
 import { requestDirectorTool } from "./tool-service"
 import { isImageGenerationModel, isVideoGenerationModel } from "./generation-models"
+import { parseShotBeats } from "./shot-video-prompt"
+import { entityKindSchema } from "./story"
 
 /**
  * Working without the agent.
@@ -45,16 +47,121 @@ export const ownGenerationSchema = z.object({
   idempotencyKey: z.string().min(8).max(200).optional().describe("Reuse the same key when retrying the same request."),
 })
 
+export const ownScriptSchema = z.object({
+  episodeId: z.string().uuid().optional(),
+  script: text(200_000).describe("The whole script for this episode, exactly as the user wrote it. Replaces the episode's current script."),
+})
+
+export const ownEntitiesSchema = z.object({
+  entities: z.array(z.object({
+    kind: entityKindSchema.describe("character, location, prop, product, wardrobe or voice_profile."),
+    name: text(200).describe("How shots will refer to it: a shot prompt names it as @Name."),
+    prompt: text(10_000).describe("Its look, in the user's words. Saved as its description, which its reference art is drawn from."),
+  })).min(1).max(50),
+})
+
+export const ownShotsSchema = z.object({
+  episodeId: z.string().uuid().optional(),
+  insertAfterShotNumber: z.number().int().min(0).max(1_000).optional().describe("Where the new shots go: 1 puts them after shot 1, 0 at the very front. Left out, they are added at the end."),
+  shots: z.array(z.object({
+    title: text(200),
+    imagePrompt: text(20_000).describe("The storyboard frame for this shot: one frame, not a scene. Name characters and assets as @Name."),
+    videoPrompt: text(20_000).optional().describe("What happens across the clip. Left out, the image prompt is used for the clip too."),
+    description: z.string().trim().max(5_000).optional(),
+    scriptText: z.string().trim().max(10_000).optional().describe("The line of script or voiceover this shot covers."),
+    durationSeconds: z.number().positive().max(15).optional(),
+    aspectRatio: z.string().trim().max(20).optional(),
+  })).min(1).max(100),
+})
+
+/**
+ * A video prompt in the form the storyboard stores.
+ *
+ * The studio keeps a clip's action as timed beats and refuses one without them.
+ * A person writing their own prompt has no reason to know that, so words given
+ * without timings are kept whole and placed in a single beat the length of the
+ * shot. Nothing is rewritten; a prompt that already has beats is left alone.
+ */
+function asTimedBeats(prompt: string, seconds: number) {
+  if (parseShotBeats(prompt).length) return prompt
+  return `0-${Math.max(1, Math.round(seconds))}s: ${prompt}`
+}
+
+/** Replaces the episode's script with the user's own. */
+export async function saveOwnScript(context: AuthenticatedProjectContext, episodeId: string, raw: unknown) {
+  const input = ownScriptSchema.parse(raw)
+  await requestDirectorTool(context, {
+    tool: "update_script",
+    input: { episodeId, content: input.script, summary: "Script written by the user" },
+    idempotencyKey: `own-script-${randomUUID()}`,
+  }, { userAuthored: true })
+  return { saved: true, characters: input.script.length, note: "Script saved as written. Nothing else was changed." }
+}
+
+/** Creates characters, locations and assets from the user's own descriptions. */
+export async function createOwnEntities(context: AuthenticatedProjectContext, raw: unknown) {
+  const input = ownEntitiesSchema.parse(raw)
+  const result = await requestDirectorTool(context, {
+    tool: "create_production_entities_batch",
+    // One that already exists is left as it is rather than failing the rest.
+    input: { entities: input.entities.map((entity) => ({ kind: entity.kind, name: entity.name, description: entity.prompt })), skipExisting: true },
+    idempotencyKey: `own-entities-${randomUUID()}`,
+  }, { userAuthored: true }) as { data?: { created?: Array<Record<string, unknown>>; skipped?: Array<Record<string, unknown>> } }
+  const brief = (entity: Record<string, unknown>) => ({ entityId: entity.id, name: entity.name, kind: entity.kind ?? entity.type })
+  return {
+    created: (result.data?.created || []).map(brief),
+    alreadyExisted: (result.data?.skipped || []).map(brief),
+    note: "Created with no reference art yet. Draw it with studio_generate (kind character_or_asset_image): the storyboard cannot be built until every character and asset has art.",
+  }
+}
+
+/** Adds storyboard shots written by the user. */
+export async function createOwnShots(context: AuthenticatedProjectContext, episodeId: string, raw: unknown) {
+  const input = ownShotsSchema.parse(raw)
+  const projectAspect = typeof context.project.default_aspect === "string" && context.project.default_aspect ? context.project.default_aspect : "16:9"
+  const result = await requestDirectorTool(context, {
+    tool: "create_storyboard_batch",
+    input: {
+      episodeId,
+      // Never replaces: adding shots must not be able to delete a storyboard.
+      replaceExisting: false,
+      ...(input.insertAfterShotNumber === undefined ? {} : { insertAfterShotNumber: input.insertAfterShotNumber }),
+      shots: input.shots.map((shot) => {
+        const durationSeconds = shot.durationSeconds ?? 4
+        return {
+          title: shot.title,
+          description: shot.description || "",
+          scriptText: shot.scriptText || "",
+          prompt: shot.imagePrompt,
+          videoPrompt: asTimedBeats(shot.videoPrompt || shot.imagePrompt, durationSeconds),
+          durationSeconds,
+          aspectRatio: shot.aspectRatio || projectAspect,
+        }
+      }),
+    },
+    idempotencyKey: `own-shots-${randomUUID()}`,
+  }, { userAuthored: true }) as { data?: { created?: Array<{ id?: string; order_index?: number; title?: string }> } }
+  const created = [...(result.data?.created || [])].sort((first, second) => Number(first.order_index) - Number(second.order_index))
+  return {
+    // The numbers to use from here on: a shot's number is its place in the
+    // storyboard, which is what every other tool takes.
+    added: created.map((shot) => ({ shotNumber: Number(shot.order_index) + 1, shotId: shot.id, title: shot.title })),
+    totalShots: (await shotsByNumber(context, episodeId)).count,
+    note: "Shots added with the prompts as written. Render frames with studio_generate (kind storyboard_image), then clips (kind storyboard_video).",
+  }
+}
+
 async function shotsByNumber(context: AuthenticatedProjectContext, episodeId: string) {
   const { data, error } = await context.supabase.from("creator_shots").select("id,order_index").eq("episode_id", episodeId).order("order_index")
   if (error) throw error
   const shots = data || []
   const byNumber = new Map(shots.map((shot) => [Number(shot.order_index) + 1, String(shot.id)]))
-  return (number: number) => {
+  const lookup = (number: number) => {
     const id = byNumber.get(number)
     if (!id) throw new Error(`Shot ${number} does not exist in this episode. It has ${shots.length} shots.`)
     return id
   }
+  return Object.assign(lookup, { count: shots.length })
 }
 
 /** Writes the user's own prompts onto shots and entities, as written. */

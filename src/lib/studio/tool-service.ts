@@ -116,10 +116,10 @@ async function resolveVideoBatchDuration(
  *
  * Approval exists so the agent cannot change a project unasked. A person
  * sending their own prompt is the one asking, exactly as when they type it into
- * the studio, so these two plain text edits run directly for them. Nothing that
- * spends credits is ever on this list.
+ * the studio, so their own script, characters, shots and prompts are written
+ * directly for them. Nothing that spends credits is ever on this list.
  */
-const userAuthoredTools = new Set<string>(["update_shot", "update_asset"])
+const userAuthoredTools = new Set<string>(["update_shot", "update_asset", "update_script", "create_production_entities_batch", "create_storyboard_batch"])
 
 export async function requestDirectorTool(context: AuthenticatedProjectContext, raw: unknown, options?: { userAuthored?: boolean }) {
   const request = toolRequestSchema.parse(raw)

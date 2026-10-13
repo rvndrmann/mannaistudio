@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({ request: vi.fn() }))
 vi.mock("./tool-service", () => ({ requestDirectorTool: mocks.request }))
 
-import { proposeOwnGeneration, saveOwnPrompts } from "./own-prompts"
+import { createOwnEntities, createOwnShots, proposeOwnGeneration, saveOwnPrompts, saveOwnScript } from "./own-prompts"
 
 const EPISODE = "11111111-1111-4111-8111-111111111111"
 const ENTITY = "22222222-2222-4222-8222-222222222222"
@@ -93,5 +93,69 @@ describe("proposeOwnGeneration", () => {
   it("says what is missing rather than guessing a target", async () => {
     await expect(proposeOwnGeneration(context(), EPISODE, { kind: "storyboard_video" })).rejects.toThrow("shotNumbers")
     await expect(proposeOwnGeneration(context(), EPISODE, { kind: "character_or_asset_image" })).rejects.toThrow("entityIds")
+  })
+})
+
+describe("saveOwnScript", () => {
+  it("saves the script whole, as the user's own, without an approval card", async () => {
+    const script = "SCENE 1\nA lone player walks out.\n\nSCENE 2\nHe scores."
+    const result = await saveOwnScript(context(), EPISODE, { script })
+    const [, call, options] = mocks.request.mock.calls[0]
+    expect(call).toMatchObject({ tool: "update_script", input: { episodeId: EPISODE, content: script } })
+    expect(options).toEqual({ userAuthored: true })
+    expect(result).toMatchObject({ saved: true, characters: script.length })
+  })
+  it("refuses an empty script", async () => {
+    await expect(saveOwnScript(context(), EPISODE, { script: "   " })).rejects.toThrow()
+    expect(mocks.request).not.toHaveBeenCalled()
+  })
+})
+
+describe("createOwnEntities", () => {
+  it("creates each one from the user's description and reports the ids back", async () => {
+    mocks.request.mockResolvedValue({ data: { created: [{ id: "e1", name: "Runner", kind: "character", metadata: { big: "x".repeat(5_000) } }], skipped: [{ id: "e0", name: "Stadium", type: "scene" }] } })
+    const result = await createOwnEntities(context(), { entities: [{ kind: "character", name: "Runner", prompt: "Tall, grey hoodie." }, { kind: "location", name: "Stadium", prompt: "Empty, at dawn." }] })
+    const [, call, options] = mocks.request.mock.calls[0]
+    expect(call.tool).toBe("create_production_entities_batch")
+    expect(call.input).toEqual({ entities: [{ kind: "character", name: "Runner", description: "Tall, grey hoodie." }, { kind: "location", name: "Stadium", description: "Empty, at dawn." }], skipExisting: true })
+    expect(options).toEqual({ userAuthored: true })
+    expect(result.created).toEqual([{ entityId: "e1", name: "Runner", kind: "character" }])
+    expect(result.alreadyExisted).toEqual([{ entityId: "e0", name: "Stadium", kind: "scene" }])
+    expect(result.note).toContain("studio_generate")
+  })
+  it("refuses a kind the studio does not have", async () => {
+    await expect(createOwnEntities(context(), { entities: [{ kind: "spaceship", name: "X", prompt: "y" }] })).rejects.toThrow()
+  })
+})
+
+describe("createOwnShots", () => {
+  it("adds shots with the user's prompts and never replaces the storyboard", async () => {
+    mocks.request.mockResolvedValue({ data: { created: [{ id: "new-2", order_index: 4, title: "Second" }, { id: "new-1", order_index: 3, title: "First" }] } })
+    const result = await createOwnShots(context(), EPISODE, { shots: [
+      { title: "First", imagePrompt: "A red door, low sun.", videoPrompt: "0-2s: the door opens. 2-5s: she steps through.", durationSeconds: 5 },
+      { title: "Second", imagePrompt: "A wide of the hall." },
+    ] })
+    const [, call, options] = mocks.request.mock.calls[0]
+    expect(options).toEqual({ userAuthored: true })
+    expect(call.tool).toBe("create_storyboard_batch")
+    expect(call.input.replaceExisting).toBe(false)
+    expect(call.input.episodeId).toBe(EPISODE)
+    // A prompt that already has timed beats is passed through untouched.
+    expect(call.input.shots[0]).toMatchObject({ title: "First", prompt: "A red door, low sun.", videoPrompt: "0-2s: the door opens. 2-5s: she steps through.", durationSeconds: 5, aspectRatio: "16:9" })
+    // With no video prompt, the frame's words stand in, whole, as one beat.
+    expect(call.input.shots[1]).toMatchObject({ prompt: "A wide of the hall.", videoPrompt: "0-4s: A wide of the hall.", durationSeconds: 4 })
+    expect(result.added).toEqual([{ shotNumber: 4, shotId: "new-1", title: "First" }, { shotNumber: 5, shotId: "new-2", title: "Second" }])
+    expect(result.totalShots).toBe(3)
+  })
+  it("wraps an untimed video prompt in one beat without changing its words", async () => {
+    mocks.request.mockResolvedValue({ data: { created: [] } })
+    await createOwnShots(context("9:16"), EPISODE, { insertAfterShotNumber: 0, shots: [{ title: "Run", imagePrompt: "He sprints.", videoPrompt: "He sprints down the wing and cuts inside.", durationSeconds: 6 }] })
+    const call = mocks.request.mock.calls[0][1]
+    expect(call.input.insertAfterShotNumber).toBe(0)
+    expect(call.input.shots[0]).toMatchObject({ videoPrompt: "0-6s: He sprints down the wing and cuts inside.", aspectRatio: "9:16" })
+  })
+  it("refuses a shot with no image prompt", async () => {
+    await expect(createOwnShots(context(), EPISODE, { shots: [{ title: "Empty" }] })).rejects.toThrow()
+    expect(mocks.request).not.toHaveBeenCalled()
   })
 })
