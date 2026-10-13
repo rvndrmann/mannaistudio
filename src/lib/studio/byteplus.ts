@@ -1,6 +1,6 @@
 import { mayWaitLong } from "@/lib/studio/long-budget"
 import { prepareImageModelPrompt } from "./image-prompt-composition"
-import { videoModelMaxDuration, type ImageGenerationModelId, type VideoGenerationModelId } from "@/lib/studio/generation-models"
+import { nearestVideoResolution, videoModelMaxDuration, type ImageGenerationModelId, type VideoGenerationModelId } from "@/lib/studio/generation-models"
 
 import { activeCredentialPart, isRunningOnCustomerKey } from "@/lib/byok/active-credential"
 import { bindSeedanceMentions, unboundMentions, type SeedanceSubject } from "./seedance-mentions"
@@ -270,7 +270,10 @@ export async function submitBytePlusVideo(input: { model: VideoGenerationModelId
       content,
       generate_audio: input.audioEnabled ?? true,
       duration: Math.min(maxDuration, Math.max(4, Math.round(input.duration))),
-      resolution: input.resolution === "480p" ? "480p" : "720p",
+      // Whatever the model renders, in the provider's own lowercase. This sent
+      // 720p for everything that was not 480p, so a clip asked for at 1080p
+      // came back at 720p with nothing to say so.
+      resolution: nearestVideoResolution(input.model, input.resolution).toLowerCase(),
       ratio: bytePlusVideoRatio(input.ratio, resolvedVideoUrls.length > 0),
       watermark: false,
     }),

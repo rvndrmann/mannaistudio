@@ -1,6 +1,6 @@
 import { calculateCreditCost } from "./credits"
 import { describe, expect, it } from "vitest"
-import { generationProvider, imageGenerationModels, isImageGenerationModel, isVideoGenerationModel, projectDirectorVideoModel, supportedVideoModel, videoGenerationModels, videoDurationOptions, videoModelMaxDuration, nearestVideoDuration } from "./generation-models"
+import { generationProvider, imageGenerationModels, isImageGenerationModel, isVideoGenerationModel, projectDirectorVideoModel, supportedVideoModel, videoGenerationModels, videoDurationOptions, videoModelMaxDuration, nearestVideoDuration, nearestVideoResolution, videoResolutionOptions } from "./generation-models"
 
 describe("studio generation model registry", () => {
   it("exposes Seedream 5.0 Pro through BytePlus", () => {
@@ -182,5 +182,22 @@ describe("video duration limits", () => {
     expect(videoDurationOptions("fal-seedance-2-5")).toContain(30)
     expect(videoDurationOptions("fal-seedance-2-0").every((s) => s <= 15)).toBe(true)
     expect(videoDurationOptions("fal-seedance-2-0")).not.toContain(30)
+  })
+})
+
+describe("video resolutions", () => {
+  it("offers BytePlus Seedance what its reference lists", () => {
+    expect(videoResolutionOptions("dreamina-seedance-2-5-260628")).toEqual(["480p", "720p", "1080p"])
+    expect(videoResolutionOptions("dreamina-seedance-2-0-260128")).toEqual(["480p", "720p", "1080p", "4K"])
+    expect(videoResolutionOptions("dreamina-seedance-2-0-fast-260128")).toEqual(["480p", "720p"])
+    expect(videoResolutionOptions("dreamina-seedance-2-0-mini-260615")).toEqual(["480p", "720p"])
+  })
+
+  it("keeps a resolution the model renders and steps down from one it does not", () => {
+    expect(nearestVideoResolution("dreamina-seedance-2-5-260628", "1080p")).toBe("1080p")
+    expect(nearestVideoResolution("dreamina-seedance-2-5-260628", "4K")).toBe("1080p")
+    expect(nearestVideoResolution("dreamina-seedance-2-0-fast-260128", "1080p")).toBe("720p")
+    expect(nearestVideoResolution("google-veo-3-1", "480p")).toBe("720p")
+    expect(nearestVideoResolution("dreamina-seedance-2-0-260128", "4k")).toBe("4K")
   })
 })

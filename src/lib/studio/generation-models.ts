@@ -155,6 +155,35 @@ export function getModelLabel(modelId: string) {
   return found ? found.label : modelId
 }
 
+/**
+ * The resolutions a video model renders, lowest first.
+ *
+ * From the providers' own references. BytePlus lists, for its Seedance models:
+ * 2.5 at 480p, 720p and 1080p; 2.0 at those and 4k; 2.0 fast and mini at 480p
+ * and 720p only. fal's Seedance endpoints follow the same split, Veo renders
+ * 720p or 1080p, and Cinema Studio 4.0 480p or 720p. A model not named here
+ * keeps the full list it was always offered, since nothing says otherwise.
+ */
+export function videoResolutionOptions(model: string): string[] {
+  if (/seedance-2[-.]0-(fast|mini)/i.test(model)) return ["480p", "720p"]
+  if (/seedance-2[-.]5/i.test(model)) return ["480p", "720p", "1080p"]
+  if (/^google-veo-/.test(model)) return ["720p", "1080p"]
+  if (model === "higgsfield/cinema-studio/4.0") return ["480p", "720p"]
+  if (model.startsWith("higgsfield/genjutsu/")) return ["480p", "720p", "1080p"]
+  return ["480p", "720p", "1080p", "4K"]
+}
+
+/** The resolution a model renders that is closest to, and not above, the one asked for. */
+export function nearestVideoResolution(model: string, resolution?: string | null) {
+  const options = videoResolutionOptions(model)
+  const wanted = options.findIndex((option) => option.toLowerCase() === String(resolution || "720p").toLowerCase())
+  if (wanted >= 0) return options[wanted]
+  const order = ["480p", "720p", "1080p", "4k"]
+  const asked = order.indexOf(String(resolution || "720p").toLowerCase())
+  const below = options.filter((option) => order.indexOf(option.toLowerCase()) <= asked)
+  return below[below.length - 1] || options[0]
+}
+
 /** The lengths the picker steps through, before a model narrows them. */
 const DURATION_STEPS = [4, 5, 6, 8, 10, 12, 15, 20, 25, 30]
 

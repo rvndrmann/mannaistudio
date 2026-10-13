@@ -14,6 +14,8 @@ import {
   videoDurationOptions,
   videoGenerationModels,
   nearestVideoDuration,
+  nearestVideoResolution,
+  videoResolutionOptions,
   type VideoGenerationModelId,
 } from "@/lib/studio/generation-models";
 import { calculateCreditCost } from "@/lib/studio/credits";
@@ -71,6 +73,13 @@ export default function QuickVideoPage() {
   useEffect(() => {
     setDurationSeconds((current) => nearestVideoDuration(model, current, resolution));
   }, [model, resolution]);
+
+  // Only the resolutions this model renders, and never one left over from the
+  // last model: the provider would refuse it or quietly render a smaller clip.
+  const resolutions = useMemo(() => RESOLUTIONS.filter((option) => videoResolutionOptions(model).includes(option)), [model]);
+  useEffect(() => {
+    setResolution((current) => nearestVideoResolution(model, current) as (typeof RESOLUTIONS)[number]);
+  }, [model]);
 
   const platformCredits = useMemo(
     () => calculateCreditCost(model, "video", durationSeconds, { resolution, aspectRatio }),
@@ -236,7 +245,7 @@ export default function QuickVideoPage() {
           </div>
 
           <PillGroup label="Aspect ratio" options={ASPECT_RATIOS} value={aspectRatio} onChange={setAspectRatio} />
-          <PillGroup label="Resolution" options={RESOLUTIONS} value={resolution} onChange={setResolution} />
+          <PillGroup label="Resolution" options={resolutions} value={resolution} onChange={setResolution} />
           <PillGroup
             label="Duration"
             options={durations}

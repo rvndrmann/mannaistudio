@@ -61,7 +61,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models";
-import { aiInfluencerTiers, type AiInfluencerTier, getModelLabel, imageGenerationModels, isCharacterSheetImageModel, projectDefaultImageModels, supportedVideoModel, videoDurationOptions, videoGenerationModels, nearestVideoDuration, type ImageGenerationModelId, type VideoGenerationModelId, higgsfieldTakesAudioReferences } from "@/lib/studio/generation-models";
+import { aiInfluencerTiers, type AiInfluencerTier, getModelLabel, imageGenerationModels, isCharacterSheetImageModel, projectDefaultImageModels, supportedVideoModel, videoDurationOptions, videoGenerationModels, nearestVideoDuration, nearestVideoResolution, videoResolutionOptions, type ImageGenerationModelId, type VideoGenerationModelId, higgsfieldTakesAudioReferences } from "@/lib/studio/generation-models";
 import { resolveShotSeconds } from "@/lib/studio/shot-duration";
 import { defaultDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows";
 import { isAbandonedRun } from "@/lib/studio/workflow-runs";
@@ -5395,6 +5395,12 @@ function ShotMediaWorkspace({
   useEffect(() => {
     setDurationSeconds((current) => nearestVideoDuration(model, current, resolution));
   }, [model, resolution]);
+  // And the same for resolution: a model that stops at 720p must not be left
+  // holding a 1080p carried over from the last one.
+  useEffect(() => {
+    if (media.type !== "video") return;
+    setResolution((current) => nearestVideoResolution(model, current));
+  }, [model, media.type]);
   const [busy, setBusy] = useState(false);
   // Opt-in here too, and for the same reason as the entity panels: off, the
   // shot prompt reaches the model exactly as written. On, the dial is freely
@@ -7087,7 +7093,10 @@ function ShotMediaWorkspace({
                     <ChevronDown className="absolute right-0 h-3 w-3 opacity-50 pointer-events-none" />
                   </div>
 
-                  <div className="relative flex items-center gap-1.5 text-xs font-semibold text-zinc-400 transition hover:text-white group">
+                  {/* Quality is an image setting: it picks the tier an image model
+                      bills and renders at. No video model reads it — a clip's
+                      quality is its resolution, which has its own control. */}
+                  {isImage && <div className="relative flex items-center gap-1.5 text-xs font-semibold text-zinc-400 transition hover:text-white group">
                     <Sparkles className="h-3.5 w-3.5" />
                     <select
                       value={quality}
@@ -7101,7 +7110,7 @@ function ShotMediaWorkspace({
                       <option className="bg-[#1c1c1c]" value="Max">Max</option>
                     </select>
                     <ChevronDown className="absolute right-0 h-3 w-3 opacity-50 pointer-events-none" />
-                  </div>
+                  </div>}
                   </>}
                   
                   {!isImage && (
@@ -7109,10 +7118,9 @@ function ShotMediaWorkspace({
                       <div className="relative flex items-center gap-1.5 text-xs font-semibold text-zinc-400 transition hover:text-white group">
                         <span className="font-mono text-[10px]">HD</span>
                         <select value={resolution} onChange={(e) => setResolution(e.target.value)} className="appearance-none bg-transparent outline-none cursor-pointer pr-4">
-                          <option className="bg-[#1c1c1c]" value="480p">480p</option>
-                          <option className="bg-[#1c1c1c]" value="720p">720p</option>
-                          <option className="bg-[#1c1c1c]" value="1080p">1080p</option>
-                          {!isGenjutsu && <option className="bg-[#1c1c1c]" value="4K">4K</option>}
+                          {videoResolutionOptions(model).map((option) => (
+                            <option key={option} className="bg-[#1c1c1c]" value={option}>{option}</option>
+                          ))}
                         </select>
                         <ChevronDown className="absolute right-0 h-3 w-3 opacity-50 pointer-events-none" />
                       </div>
@@ -8444,7 +8452,7 @@ function VideoGenerationProposalBlock({
           </select>
           {isVideo ? (
             <select aria-label="Video resolution" value={resolution} onChange={(event) => setResolution(event.target.value)} disabled={!canDecide} className="rounded-md border border-white/10 bg-[#141414] px-2 py-1 text-zinc-300 outline-none disabled:opacity-60">
-              {["480p", "720p", "1080p"].map((option) => <option key={option} value={option}>{option}</option>)}
+              {videoResolutionOptions(model).map((option) => <option key={option} value={option}>{option}</option>)}
             </select>
           ) : (
             <select aria-label="Image quality" value={quality} onChange={(event) => setQuality(event.target.value as CreditQuality)} disabled={!canDecide} className="rounded-md border border-white/10 bg-[#141414] px-2 py-1 text-zinc-300 outline-none disabled:opacity-60">
