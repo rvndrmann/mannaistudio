@@ -2,6 +2,7 @@ import { composeImagePrompt, prepareImageModelPrompt, assertImageReferenceCapaci
 import { ownKeysOnly } from "@/lib/byok/preferences"
 import { isCameraSettings } from "./camera-settings"
 import { runInBackground } from "./background-work"
+import { jobRenderSettings } from "./job-render-settings"
 import { submitGenjutsuVideo, submitHiggsfieldMinimaxH3Video, isHiggsfieldMinimaxH3Model, submitHiggsfieldSeedanceVideo, isHiggsfieldSeedanceModel, submitHiggsfieldWanVideo, isHiggsfieldWanModel, submitHiggsfieldKlingVideo, isHiggsfieldKlingModel, submitHiggsfieldKlingO3Video, isHiggsfieldKlingO3Model, submitHiggsfieldKlingO3VideoReference, isHiggsfieldKlingO3VideoModel, submitHiggsfieldCinemaStudioVideo, isHiggsfieldCinemaStudioModel, genjutsuInputSchema, genjutsuRestyleInputSchema, GENJUTSU_RESTYLE_MODEL, SOUL_V2_IMAGE_TO_IMAGE_MODEL, submitSoulV2Image, isHiggsfieldAiInfluencerModel, submitAiInfluencerSheet } from "./higgsfield"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { generateOpenAIImage, submitOpenAIImage, supportsBackgroundImageResponse, type OpenAIImageModel } from "./openai"
@@ -182,7 +183,7 @@ export async function executeGenerationJobs(
         try {
           const style = projectVisualStyle(context.project)
           const projectDefaultAspect = typeof context.project.default_aspect === "string" ? context.project.default_aspect : null
-          const settings = (job.settings as Record<string, unknown>) || {}
+          const settings = jobRenderSettings(job as { settings?: unknown; provider_request?: unknown })
           const imageQuality = ["Low", "Medium", "High", "Ultra", "Max"].includes(String(settings.quality)) ? settings.quality as ReturnType<typeof projectImageQuality> : projectImageQuality(context.project)
           const effectiveAspectRatio = typeof settings.aspectRatio === "string" ? settings.aspectRatio : projectDefaultAspect || "9:16"
           const referencePaths = Array.isArray(job.input_images) ? (job.input_images as string[]) : []

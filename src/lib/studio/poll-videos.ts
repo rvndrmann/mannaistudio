@@ -20,6 +20,28 @@ import { seedanceCopyrightRefusal } from "./seedance-reference-error"
 import { generationProvider, isVideoGenerationModel } from "./generation-models"
 import type { AuthenticatedProjectContext } from "./server-context"
 
+/**
+ * How long the clip the provider returned is, beside how long it was asked to be.
+ *
+ * A provider can return a shorter clip than requested without calling it a
+ * failure: the same request, sent twice, has come back at twelve seconds and at
+ * four. Nothing recorded the difference, so the result looked like the studio
+ * ignoring the length the user picked. Only providers that state the length of
+ * what they made are compared; the rest say nothing and are left alone.
+ */
+export function deliveredLength(job: { provider_request?: unknown; settings?: unknown }, task: unknown) {
+  const number = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null)
+  const record = (value: unknown) => (value && typeof value === "object" ? value as Record<string, unknown> : {})
+  const delivered = number(record(task).duration)
+  const requested = number(record(job.provider_request).duration) ?? number(record(job.settings).durationSeconds)
+  if (!delivered || !requested) return null
+  return {
+    requestedSeconds: requested,
+    deliveredSeconds: delivered,
+    ...(delivered < requested ? { note: `The provider returned a ${delivered} second clip; ${requested} seconds were requested. The request was sent correctly, so regenerating may return the full length.` } : {}),
+  }
+}
+
 export async function pollVideos(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }, suppliedContext?: AuthenticatedProjectContext, recoverTerminal = false, credentialScoped = false): Promise<NextResponse> {
   try {
     const { projectId } = await params
@@ -173,7 +195,14 @@ export async function pollVideos(request: NextRequest, { params }: { params: Pro
       attachment: verifiedShot?.video_url === storagePath,
     }
     if (Object.values(checks).some((value) => !value)) throw new Error(`Generation verification failed: ${Object.entries(checks).filter(([, value]) => !value).map(([key]) => key).join(", ")}`)
-    const verification = { status: "verified", checkedAt: new Date().toISOString(), checks, resultPath: storagePath }
+    const length = deliveredLength(job, task)
+    const verification = { status: "verified", checkedAt: new Date().toISOString(), checks, resultPath: storagePath, ...(length ? { length } : {}) }
+    // The shot says how long its clip is, and until now it said what was asked
+    // for. When the provider hands back a different length, the shot is told,
+    // so the studio stops labelling a four second clip as ten.
+    if (length && length.deliveredSeconds !== length.requestedSeconds) {
+      await context.supabase.from("creator_shots").update({ duration_seconds: length.deliveredSeconds }).eq("id", job.shot_id)
+    }
     await context.supabase.from("creator_generation_jobs").update({ status: "completed", provider_response: task, result_url: storagePath, verification, completed_at: completedAt }).eq("id", job.id)
     if (job.workflow_run_id) await context.supabase.from("creator_workflow_runs").update({ status: "completed", summary: { generationJobs: 1, completed: 1, failed: 0, verified: 1 }, completed_at: completedAt }).eq("id", job.workflow_run_id)
     // The clip is downloaded, stored, attached and verified. A later poll of the

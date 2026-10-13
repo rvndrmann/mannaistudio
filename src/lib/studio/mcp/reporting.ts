@@ -72,6 +72,12 @@ export function failedJobs(jobs: unknown, now: number = Date.now()) {
  * read in one tool result, so the answer to "is it done yet" could not be read
  * at all.
  */
+function lengthNote(job: Job) {
+  const verification = job.verification && typeof job.verification === "object" ? job.verification as Record<string, unknown> : {}
+  const length = verification.length && typeof verification.length === "object" ? verification.length as Record<string, unknown> : {}
+  return typeof length.note === "string" ? length.note : null
+}
+
 export function summarizeJob(job: Job) {
   const error = typeof job.error === "string" ? job.error.trim() : ""
   return {
@@ -83,6 +89,9 @@ export function summarizeJob(job: Job) {
     ...(job.entity_id ? { entityId: job.entity_id } : {}),
     ...(job.result_url ? { resultPath: job.result_url } : {}),
     ...(error ? { error: error.length > 300 ? `${error.slice(0, 300)}…` : error } : {}),
+    // A clip that came back shorter than asked is not a failure, so it would
+    // otherwise go unmentioned.
+    ...(lengthNote(job) ? { note: lengthNote(job) } : {}),
     creditsUsed: job.credits_used ?? 0,
     createdAt: job.created_at ?? null,
     completedAt: job.completed_at ?? null,

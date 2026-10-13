@@ -28,6 +28,12 @@ import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 import { recordExistingAsset, resolveRegisteredAsset } from "@/lib/studio/byteplus-assets"
 import { parseSeedanceMissingAssetError, parseSeedanceRejectedReference, purgeStaleBytePlusAsset, seedanceReferenceAssetUri, seedanceCopyrightRefusal } from "@/lib/studio/seedance-reference-error"
 
+// Submitting a clip can mean registering its references with the provider
+// first, which takes far longer than the host's default budget. Cut off there,
+// the request never reached the provider, and the clip was only submitted six
+// minutes later by the recovery path.
+export const maxDuration = 300
+
 const submitSchema = z.object({
   shotId: z.string().uuid(),
   prompt: z.string().trim().max(20_000).default(""),
