@@ -145,6 +145,21 @@ describe("hosted MCP with the real SDK HTTP client", () => {
     expect(foreign.isError).toBe(true)
     expect(mocks.advance).toHaveBeenCalledTimes(2)
   })
+  it("announces a version that is pinned to the exact tool list", async () => {
+    const alice = await connect("alice")
+    // The studio's own tools; the Hire Our Team ones are granted separately
+    // and listed in their own test.
+    const names = (await alice.listTools()).tools.map((tool) => tool.name).filter((name) => name.startsWith("studio_")).sort()
+    // Changing this list means changing MCP_TOOLSET_VERSION in server.ts, and
+    // the number below with it. A client decides whether its saved copy of the
+    // tools is stale from the version, so a new tool behind an old number is a
+    // tool nobody is offered.
+    expect(names).toEqual([
+      "studio_add_characters_and_assets", "studio_add_shots", "studio_api_keys", "studio_chat", "studio_create_project", "studio_decide_proposal", "studio_generate",
+      "studio_list_models", "studio_list_projects", "studio_pending_work", "studio_set_project_models", "studio_set_prompts", "studio_storyboard", "studio_view_media", "studio_write_script",
+    ])
+    expect(alice.getServerVersion()).toMatchObject({ name: "creator-studio", version: "1.4.0" })
+  })
   it("exposes only consented tools and refuses a foreign browser Origin", async () => {
     const reader = await connect("read-only")
     const { tools } = await reader.listTools()
