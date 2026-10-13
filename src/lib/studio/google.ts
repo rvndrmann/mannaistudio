@@ -1,6 +1,6 @@
 import { prepareImageModelPrompt, assertImageReferenceCapacity } from "./image-prompt-composition"
 import { GoogleGenAI } from "@google/genai"
-import type { ImageGenerationModelId, VideoGenerationModelId } from "@/lib/studio/generation-models"
+import { nearestVideoDuration, type ImageGenerationModelId, type VideoGenerationModelId } from "@/lib/studio/generation-models"
 import { activeCredentialPart } from "@/lib/byok/active-credential"
 
 export class GoogleProviderError extends Error {
@@ -118,7 +118,9 @@ export async function submitGoogleVideo(input: {
       config: {
         aspectRatio: input.ratio === "16:9" ? "16:9" : "9:16",
         resolution: input.resolution === "1080p" ? "1080p" : "720p",
-        durationSeconds: Math.min(10, Math.max(4, Math.round(input.duration || 4))),
+        // Veo takes 4, 6 or 8 and nothing else, and only 8 at 1080p. Clamping to
+        // a range let five and ten through, which it refuses.
+        durationSeconds: nearestVideoDuration(input.model, input.duration || 4, input.resolution === "1080p" ? "1080p" : "720p"),
       },
     })
 

@@ -13,7 +13,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import {
   videoDurationOptions,
   videoGenerationModels,
-  videoModelMaxDuration,
+  nearestVideoDuration,
   type VideoGenerationModelId,
 } from "@/lib/studio/generation-models";
 import { calculateCreditCost } from "@/lib/studio/credits";
@@ -63,15 +63,14 @@ export default function QuickVideoPage() {
 
   const creditBalance = useCreditBalance(Boolean(user));
 
-  const durations = useMemo(() => videoDurationOptions(model), [model]);
+  const durations = useMemo(() => videoDurationOptions(model, resolution), [model, resolution]);
 
   // A model swap can strand a duration the new model will not render. Left
   // alone the request is priced for a length the provider silently truncates,
   // so the user pays for seconds they never receive.
   useEffect(() => {
-    const max = videoModelMaxDuration(model);
-    setDurationSeconds((current) => (current > max ? max : current));
-  }, [model]);
+    setDurationSeconds((current) => nearestVideoDuration(model, current, resolution));
+  }, [model, resolution]);
 
   const platformCredits = useMemo(
     () => calculateCreditCost(model, "video", durationSeconds, { resolution, aspectRatio }),

@@ -155,23 +155,58 @@ export function getModelLabel(modelId: string) {
   return found ? found.label : modelId
 }
 
+/** The lengths the picker steps through, before a model narrows them. */
+const DURATION_STEPS = [4, 5, 6, 8, 10, 12, 15, 20, 25, 30]
+
 /**
- * Longest clip a video model will produce, in seconds.
+ * The clip lengths a video model will actually render, in seconds.
  *
- * Seedance 2.5 takes 30; 2.0 and its fast and mini variants stop at 15. Asking
- * for more does not fail — the provider silently truncates — so the limit has
- * to be applied before the request is priced or sent, or the user is charged
- * for seconds they never receive.
+ * Read from each provider's own schema rather than assumed, because they do not
+ * agree and a length outside the list is never an honest failure: Veo and
+ * Kling 1.6 reject it, and Seedance quietly renders something shorter while the
+ * user is charged for what they picked.
+ *
+ *   Veo 3.1 (all three)        4, 6 or 8 — and only 8 at 1080p
+ *   Kling 1.6 Pro on fal       5 or 10
+ *   MiniMax Video-01 on fal    no length input; it renders six seconds
+ *   MiniMax H3                 5 to 15
+ *   Kling O3 Video Reference   up to 10
+ *   Seedance 2.5, Wan 3.0 Prime, Cinema Studio 4.0, Genjutsu   up to 30
+ *   everything else            up to 15
+ *
+ * Nothing is offered under four seconds: the submission refuses it whichever
+ * model is asked.
  */
-export function videoModelMaxDuration(model: string) {
-  if (model === "higgsfield/kling-video/o3/video-reference") return 10
-  return model.startsWith("higgsfield/genjutsu/") || model.startsWith("higgsfield/alibaba/wan-3.0-prime/") || model === "higgsfield/cinema-studio/4.0" || /seedance-2[-.]5/i.test(model) ? 30 : 15
+/** Models that render only the lengths listed for them, not any second between. */
+const rendersFixedLengths = (model: string) => /^google-veo-/.test(model) || model === "fal-kling-1-6-pro" || model === "fal-minimax-video-01"
+
+export function videoDurationOptions(model: string, resolution?: string) {
+  if (/^google-veo-/.test(model)) return /^(1080p|4k)$/i.test(resolution || "") ? [8] : [4, 6, 8]
+  if (model === "fal-kling-1-6-pro") return [5, 10]
+  if (model === "fal-minimax-video-01") return [6]
+  const min = isTextOnlyVideoModel(model) || model === "fal-minimax-h3" ? 5 : 4
+  const max = model === "higgsfield/kling-video/o3/video-reference"
+    ? 10
+    : model.startsWith("higgsfield/genjutsu/") || model.startsWith("higgsfield/alibaba/wan-3.0-prime/") || model === "higgsfield/cinema-studio/4.0" || /seedance-2[-.]5/i.test(model) ? 30 : 15
+  return DURATION_STEPS.filter((seconds) => seconds >= min && seconds <= max)
 }
 
-/** Duration choices to offer for a model, never exceeding what it can render. */
-export function videoDurationOptions(model: string) {
-  const max = videoModelMaxDuration(model)
-  // Higgsfield's MiniMax H3 endpoint starts at five seconds.
-  const min = isTextOnlyVideoModel(model) ? 5 : 0
-  return [3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30].filter((seconds) => seconds >= min && seconds <= max)
+/** Longest clip a video model will produce, in seconds. */
+export function videoModelMaxDuration(model: string) {
+  return Math.max(...videoDurationOptions(model))
+}
+
+/**
+ * The length a model will render that is closest to the one asked for.
+ *
+ * A tie goes to the longer clip: a line of dialogue cut short is worse than a
+ * beat held a second longer. A whole number between two offered steps is left
+ * alone when the model takes any second in its range, so a nine-second shot
+ * stays nine seconds on Seedance and becomes eight on Veo.
+ */
+export function nearestVideoDuration(model: string, seconds: number, resolution?: string) {
+  const options = videoDurationOptions(model, resolution)
+  const wanted = Math.round(Number(seconds) || options[0])
+  if (!rendersFixedLengths(model) && wanted >= options[0] && wanted <= options[options.length - 1]) return wanted
+  return options.reduce((best, option) => Math.abs(option - wanted) <= Math.abs(best - wanted) ? option : best, options[0])
 }

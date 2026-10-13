@@ -1,6 +1,6 @@
 import type { AuthenticatedProjectContext } from "@/lib/studio/server-context"
 import { calculateCreditCost, creditRateFor } from "@/lib/studio/credits"
-import { generationProvider, imageGenerationModels, isCharacterSheetImageModel, projectDirectorVideoModel, videoGenerationModels, videoModelMaxDuration } from "@/lib/studio/generation-models"
+import { generationProvider, imageGenerationModels, isCharacterSheetImageModel, projectDirectorVideoModel, videoDurationOptions, videoGenerationModels, videoModelMaxDuration } from "@/lib/studio/generation-models"
 import { projectCharacterImageModel, projectStoryboardImageModel } from "@/lib/studio/project-image-model"
 import { listCredentials } from "@/lib/byok/credential-service"
 import { ownKeysOnly } from "@/lib/byok/preferences"
@@ -219,6 +219,8 @@ export async function describeModels(context: AuthenticatedProjectContext, origi
     id: model.id, label: model.label, provider: model.provider,
     ...(onlyOwnKeys ? {} : { creditsFor5Seconds: calculateCreditCost(model.id, "video", 5), pricedPer: creditRateFor(model.id, "video").unit }),
     maxSeconds: videoModelMaxDuration(model.id),
+    // The lengths it renders, so a client does not ask for one it will refuse.
+    seconds: videoDurationOptions(model.id),
     runsOn: runsOn(model.id),
   }))
   // Grouped by the one thing that would unlock them, so the answer to "why

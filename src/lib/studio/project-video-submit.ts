@@ -8,7 +8,7 @@ import { z, ZodError } from "zod"
 import { BytePlusProviderError, bytePlusVideoRatio, bytePlusVideoReferenceLimit, createBytePlusAsset, getBytePlusAsset, getBytePlusVideoTask, resolveBytePlusReferenceUrl, submitBytePlusVideo } from "@/lib/studio/byteplus"
 import { falVideoEndpoint, FalProviderError, getFalVideoTask, submitFalVideo } from "@/lib/studio/fal"
 import { getGoogleVideoTask, GoogleProviderError, submitGoogleVideo } from "@/lib/studio/google"
-import { generationProvider, isVideoGenerationModel, higgsfieldTakesAudioReferences } from "@/lib/studio/generation-models"
+import { generationProvider, isVideoGenerationModel, higgsfieldTakesAudioReferences, nearestVideoDuration } from "@/lib/studio/generation-models"
 import { byokProviderFor } from "@/lib/byok/providers"
 import { decideBilling, refundableCredits } from "@/lib/byok/billing"
 import { hasCredential, withCredential } from "@/lib/byok/credential-service"
@@ -115,6 +115,10 @@ export async function submitProjectVideo(context: Awaited<ReturnType<typeof requ
   let pendingRefund: { userId: string; amount: number; key: string; client: SupabaseClient } | null = null
   try {
     const input = submitSchema.parse(raw)
+    // Onto a length this model renders, before it is priced: a picker always
+    // sends one, but a caller that does not would be charged for seconds the
+    // provider then refuses or trims.
+    input.durationSeconds = nearestVideoDuration(input.model, input.durationSeconds, input.resolution)
     const shot = await verifyShot(context, projectId, input.shotId)
     if (!shot) return reply({ error: "Shot not found" }, { status: 404 })
     const provider = generationProvider(input.model)

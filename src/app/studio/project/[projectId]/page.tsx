@@ -61,7 +61,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { activeDirectorModels, defaultDirectorModelId, defaultDirectorModels, type DirectorModelConfig } from "@/lib/studio/ai-models";
-import { aiInfluencerTiers, type AiInfluencerTier, getModelLabel, imageGenerationModels, isCharacterSheetImageModel, projectDefaultImageModels, supportedVideoModel, videoDurationOptions, videoGenerationModels, videoModelMaxDuration, type ImageGenerationModelId, type VideoGenerationModelId, higgsfieldTakesAudioReferences } from "@/lib/studio/generation-models";
+import { aiInfluencerTiers, type AiInfluencerTier, getModelLabel, imageGenerationModels, isCharacterSheetImageModel, projectDefaultImageModels, supportedVideoModel, videoDurationOptions, videoGenerationModels, nearestVideoDuration, type ImageGenerationModelId, type VideoGenerationModelId, higgsfieldTakesAudioReferences } from "@/lib/studio/generation-models";
 import { resolveShotSeconds } from "@/lib/studio/shot-duration";
 import { defaultDirectorWorkflows, type DirectorWorkflowConfig } from "@/lib/studio/workflows";
 import { isAbandonedRun } from "@/lib/studio/workflow-runs";
@@ -93,6 +93,7 @@ import {
 } from "@/lib/studio/camera-settings";
 import { CameraSettingsControl, CameraSettingsPicker } from "@/components/studio/CameraSettingsPicker";
 import { StyleDnaPanel } from "@/components/studio/StyleDnaPanel";
+import { assetReferencesNotShown } from "@/lib/studio/reference-strip";
 import { AutopilotModeControl, AutopilotRunner, autopilotActionsFrom } from "@/components/studio/autopilot";
 import { defaultAutopilotBudget, readAutopilotSettings, type AutopilotBudget, type AutopilotMode } from "@/lib/studio/autopilot";
 import { RevisionNotes } from "@/components/studio/RevisionNotes";
@@ -5239,7 +5240,7 @@ function Storyboard({
                     onClick={() => setMedia({ shot, type: "video" })}
                     className="col-start-3 overflow-hidden rounded-lg bg-[#292b2a] text-left transition hover:ring-2 hover:ring-primary lg:col-start-auto"
                   >
-                    <Preview src={shot.video_url} label={renderingVideo ? "Generating video…" : "Generated video"} busy={renderingVideo} type="video" aspectRatio={shot.aspect_ratio || "9:16"} />
+                    <Preview src={shot.video_url} label={renderingVideo ? "Generating video…" : "Generated video"} busy={renderingVideo} type="video" opensOnClick aspectRatio={shot.aspect_ratio || "9:16"} />
                     <div className={`border-t border-white/10 px-1.5 py-1.5 text-[11px] lg:px-2 lg:py-2 lg:text-xs ${renderingVideo ? "text-primary" : "text-zinc-400"}`}>
                       {renderingVideo
                         ? "Generating…"
@@ -5388,13 +5389,12 @@ function ShotMediaWorkspace({
   const [durationSeconds, setDurationSeconds] = useState<number>(
     media.type === "video" ? resolveShotSeconds(media.shot, supportedVideoModel(videoModel)) : Number(media.shot.duration_seconds || 4),
   );
-  // Switching to a model with a shorter ceiling must pull the duration down.
-  // The provider would otherwise truncate the clip while the user is charged
-  // for the length they picked.
+  // Switching model or resolution must move the duration onto a length the
+  // model renders. The provider would otherwise truncate or refuse the clip
+  // while the user is charged for the length they picked.
   useEffect(() => {
-    const max = videoModelMaxDuration(model);
-    setDurationSeconds((current) => (current > max ? max : current));
-  }, [model]);
+    setDurationSeconds((current) => nearestVideoDuration(model, current, resolution));
+  }, [model, resolution]);
   const [busy, setBusy] = useState(false);
   // Opt-in here too, and for the same reason as the entity panels: off, the
   // shot prompt reaches the model exactly as written. On, the dial is freely
@@ -5496,6 +5496,29 @@ function ShotMediaWorkspace({
       return items.filter((_, i) => i !== index);
     });
   };
+
+  // The strip is what the render gets — nothing is attached behind it. An
+  // @mention used to add its asset's picture on the server whether or not it
+  // was shown here, so a tile that had been removed or swapped for another
+  // picture was sent anyway. A newly written mention now puts its tile in the
+  // strip, where it can be seen and taken out; one already seen is left alone,
+  // so removing a tile does not bring it straight back.
+  const seenMentionIds = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const mentioned = findMentionedEntityIds(prompt, entities);
+    const fresh = mentioned.filter((id) => !seenMentionIds.current.has(id));
+    seenMentionIds.current = new Set(mentioned);
+    if (!fresh.length) return;
+    const paths = entities
+      .filter((entity) => fresh.includes(entity.id))
+      .map((entity) => entityPrimaryReference(entity))
+      .filter((path): path is string => typeof path === "string" && path.length > 0 && !referenceExclusions.has(path));
+    if (paths.length) setReferences((current) => Array.from(new Set([...current, ...paths])));
+    // Exclusions are read as they stand when a mention first appears; a later
+    // change to them must not re-run this and re-add a tile.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prompt, entities]);
+  const hiddenAssetReferences = (entityIds: string[], shown: string[]) => assetReferencesNotShown(entities, entityIds, shown);
 
   const referenceLabel = (path: string) => {
     const entity = entities.find((item) => entityPrimaryReference(item) === path);
@@ -5933,7 +5956,7 @@ function ShotMediaWorkspace({
       const characterEntityIds = Array.from(new Set([...mentionedCharacterIds, ...selectedCharacterIds])).slice(0, 10);
       if (isImage) {
         setGenerationStatus("Submitting image generation job…");
-        const response = await requestProjectImage(projectId, { target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, mentionedEntityIds, aspectRatio, quality, ...(cameraEnabled ? { cameraSettings } : {}), ...(styleOverrideEnabled ? { styleDna: styleOverride } : {}), ...(isSoulV2 ? { soulSettings: { ...(soulSeed.trim() ? { seed: Number(soulSeed) } : {}), ...(soulStyleId.trim() ? { styleId: soulStyleId.trim() } : {}), ...(soulReferenceId.trim() ? { customReferenceId: soulReferenceId.trim(), customReferenceStrength: soulReferenceStrength } : {}), enhancePrompt: soulEnhancePrompt, resolution: soulResolution } } : {}), ...(isCharacterSheetImageModel(model) ? { influencerSettings: influencerRequestSettings(influencer) } : {}) });
+        const response = await requestProjectImage(projectId, { target: "shot", targetId: media.shot.id, prompt, model, referenceImages: references, excludedReferenceImages: hiddenAssetReferences(mentionedEntityIds, references), mentionedEntityIds, aspectRatio, quality, ...(cameraEnabled ? { cameraSettings } : {}), ...(styleOverrideEnabled ? { styleDna: styleOverride } : {}), ...(isSoulV2 ? { soulSettings: { ...(soulSeed.trim() ? { seed: Number(soulSeed) } : {}), ...(soulStyleId.trim() ? { styleId: soulStyleId.trim() } : {}), ...(soulReferenceId.trim() ? { customReferenceId: soulReferenceId.trim(), customReferenceStrength: soulReferenceStrength } : {}), enhancePrompt: soulEnhancePrompt, resolution: soulResolution } } : {}), ...(isCharacterSheetImageModel(model) ? { influencerSettings: influencerRequestSettings(influencer) } : {}) });
         const body = await readGenerationResponse(response);
         if (!response.ok) throw new Error(body.error || "Image generation failed");
         notifyCreditBalanceChanged(typeof body.creditBalance === "number" ? body.creditBalance : undefined);
@@ -5954,7 +5977,7 @@ function ShotMediaWorkspace({
         await reload(true);
       } else {
         setGenerationStatus("Submitting video generation job…");
-        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, restylePresetId: isRestyle ? restylePresetId : undefined, referenceImages: isGenjutsu ? Array.from(new Set([...references, ...videoReferenceImages])) : videoReferenceImages, referenceVideos: videoReferencePaths, referenceAudios: isGenjutsu ? [] : audioReferencePaths, excludedReferenceImages: Array.from(referenceExclusions), characterEntityIds, mentionedEntityIds, generationMode: videoInputMode, startFrame: videoInputMode === "keyframe" ? startFrame : null, endFrame: videoInputMode === "keyframe" ? endFrame : null, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
+        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, restylePresetId: isRestyle ? restylePresetId : undefined, referenceImages: isGenjutsu ? Array.from(new Set([...references, ...videoReferenceImages])) : videoReferenceImages, referenceVideos: videoReferencePaths, referenceAudios: isGenjutsu ? [] : audioReferencePaths, excludedReferenceImages: Array.from(new Set([...Array.from(referenceExclusions), ...(videoInputMode === "multi_image" && !isGenjutsu ? hiddenAssetReferences([...characterEntityIds, ...mentionedEntityIds], references) : [])])), characterEntityIds, mentionedEntityIds, generationMode: videoInputMode, startFrame: videoInputMode === "keyframe" ? startFrame : null, endFrame: videoInputMode === "keyframe" ? endFrame : null, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
         const body = await readGenerationResponse(response);
         if (!response.ok) {
           const errorMsg = body.error || "Video generation failed";
@@ -6797,7 +6820,7 @@ function ShotMediaWorkspace({
                         <button
                           type="button"
                           aria-label={`Remove reference image ${index + 1}`}
-                          onClick={() => setReferences(references.filter((_, i) => i !== index))}
+                          onClick={() => removeReferenceAt(index)}
                           className="absolute inset-0 grid place-items-center bg-black/60 opacity-0 transition group-hover:opacity-100"
                         >
                           <Trash2 className="h-4 w-4 text-white" />
@@ -7096,7 +7119,7 @@ function ShotMediaWorkspace({
                       {!isGenjutsu && <div className="relative flex items-center gap-1.5 text-xs font-semibold text-zinc-400 transition hover:text-white group">
                         <span className="font-mono text-[10px]">⏱</span>
                         <select value={`${durationSeconds}s`} onChange={(e) => setDurationSeconds(Number(e.target.value.replace(/s$/, "")))} className="appearance-none bg-transparent outline-none cursor-pointer pr-4">
-                          {videoDurationOptions(model).map((seconds) => (
+                          {videoDurationOptions(model, resolution).map((seconds) => (
                             <option key={seconds} className="bg-[#1c1c1c]" value={`${seconds}s`}>{seconds}s</option>
                           ))}
                         </select>
@@ -8431,7 +8454,7 @@ function VideoGenerationProposalBlock({
           {isVideo && (
             <>
               <select value={durationSeconds} onChange={(event) => setDurationSeconds(Number(event.target.value))} disabled={!canDecide} className="rounded-md border border-white/10 bg-[#141414] px-2 py-1 text-zinc-300 outline-none disabled:opacity-60">
-                {videoDurationOptions(model).map((option) => <option key={option} value={option}>{option}s</option>)}
+                {videoDurationOptions(model, resolution).map((option) => <option key={option} value={option}>{option}s</option>)}
               </select>
               <button
                 type="button"
@@ -10249,6 +10272,7 @@ function Preview({
   aspectRatio = "9:16",
   fit = "contain",
   busy = false,
+  opensOnClick = false,
 }: {
   src: string | null;
   label: string;
@@ -10261,6 +10285,12 @@ function Preview({
    * nothing is being done about — and on a redo, as the old frame unchanged.
    */
   busy?: boolean;
+  /**
+   * The cell is a button that opens the clip. A player's own controls take
+   * every click that lands on the picture, so the cell only opened from the
+   * strip of text underneath it.
+   */
+  opensOnClick?: boolean;
 }) {
   const aspectClass =
     aspectRatio === "16:9"
@@ -10277,6 +10307,7 @@ function Preview({
         <ResolvedMedia
           src={src}
           type={type}
+          controls={!opensOnClick}
           className={`h-full w-full transition ${busy ? "opacity-30" : ""} ${fit === "contain" ? "object-contain bg-black/80" : "object-cover"}`}
         />
       ) : !busy ? (
@@ -10284,6 +10315,11 @@ function Preview({
           {label}
         </div>
       ) : null}
+      {src && type === "video" && opensOnClick && !busy && (
+        <span aria-hidden="true" className="pointer-events-none absolute inset-0 grid place-items-center">
+          <span className="grid h-9 w-9 place-items-center rounded-full bg-black/60"><Play className="h-4 w-4 translate-x-0.5 fill-current text-white" /></span>
+        </span>
+      )}
       {busy && (
         <>
           <span aria-hidden="true" className="pointer-events-none absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
@@ -10298,7 +10334,7 @@ function Preview({
     </div>
   );
 }
-function ResolvedMedia({ src, type, className }: { src: string; type: "image" | "video" | "audio"; className?: string }) {
+function ResolvedMedia({ src, type, className, controls = true }: { src: string; type: "image" | "video" | "audio"; className?: string; controls?: boolean }) {
   const directUrl = src.startsWith("http") ? src : "";
   const [signedUrl, setSignedUrl] = useState("");
   useEffect(() => {
@@ -10315,7 +10351,9 @@ function ResolvedMedia({ src, type, className }: { src: string; type: "image" | 
   }
   if (type === "audio") return <audio src={url} controls preload="metadata" className={className} />;
   if (type === "video") {
-    return <video src={url} controls muted playsInline preload="metadata" className={className} />;
+    // Without its own controls the clip is a still that lets the click
+    // through to whatever it sits in.
+    return <video src={url} controls={controls} muted playsInline preload="metadata" className={`${className || ""} ${controls ? "" : "pointer-events-none"}`} />;
   }
   return <img src={url} alt="" className={className} />;
 }

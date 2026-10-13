@@ -1,6 +1,6 @@
 import { prepareImageModelPrompt, assertImageReferenceCapacity, ImagePromptValidationError } from "./image-prompt-composition"
 import { fal } from "@fal-ai/client"
-import { videoModelMaxDuration, type ImageGenerationModelId, type VideoGenerationModelId } from "@/lib/studio/generation-models"
+import { nearestVideoDuration, type ImageGenerationModelId, type VideoGenerationModelId } from "@/lib/studio/generation-models"
 import type { OpenAIImageQuality } from "@/lib/studio/image-quality"
 import { activeCredentialPart } from "@/lib/byok/active-credential"
 
@@ -358,7 +358,7 @@ export async function submitFalVideo(input: {
     // 2.5 renders up to 30 seconds; the rest stop at 15. Capping at a flat 15
     // silently shortened every long Seedance 2.5 clip. Four is fal's own floor
     // — it rejects anything shorter outright.
-    const duration = Math.min(videoModelMaxDuration(input.model), Math.max(4, Math.round(input.duration || 4)))
+    const duration = nearestVideoDuration(input.model, input.duration || 4)
     const payload: Record<string, unknown> = seedance
       ? {
         prompt: trimFalPrompt(input.prompt),

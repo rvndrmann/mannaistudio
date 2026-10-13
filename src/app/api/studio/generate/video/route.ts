@@ -11,7 +11,7 @@ import {
 } from "@/lib/studio/byteplus"
 import { FalProviderError, getFalVideoTask, submitFalVideo } from "@/lib/studio/fal"
 import { getGoogleVideoTask, GoogleProviderError, submitGoogleVideo } from "@/lib/studio/google"
-import { generationProvider, isVideoGenerationModel, videoModelMaxDuration } from "@/lib/studio/generation-models"
+import { generationProvider, isVideoGenerationModel, nearestVideoDuration } from "@/lib/studio/generation-models"
 import { byokProviderFor } from "@/lib/byok/providers"
 import { decideBilling, refundableCredits } from "@/lib/byok/billing"
 import { hasCredential, withCredential } from "@/lib/byok/credential-service"
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
     // Asking for more seconds than a model renders does not fail — the provider
     // silently truncates — so the cap is applied before the clip is priced, or
     // the user pays for seconds they never receive.
-    const durationSeconds = Math.min(input.durationSeconds, videoModelMaxDuration(input.model))
+    const durationSeconds = nearestVideoDuration(input.model, input.durationSeconds, input.resolution)
 
     const platformCost = calculateCreditCost(input.model, "video", durationSeconds, {
       resolution: input.resolution,

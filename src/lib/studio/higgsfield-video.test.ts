@@ -192,7 +192,7 @@ describe("Kling O3 Video Reference on Higgsfield", () => {
     // Needing a source clip does not make it a Genjutsu model.
     expect(isGenjutsuVideoModel(HIGGSFIELD_KLING_O3_VIDEO_MODEL)).toBe(false)
     expect(videoModelMaxDuration(HIGGSFIELD_KLING_O3_VIDEO_MODEL)).toBe(10)
-    expect(videoDurationOptions(HIGGSFIELD_KLING_O3_VIDEO_MODEL)).toEqual([3, 4, 5, 6, 8, 10])
+    expect(videoDurationOptions(HIGGSFIELD_KLING_O3_VIDEO_MODEL)).toEqual([4, 5, 6, 8, 10])
     const routed = generationModels.find((model) => model.model === HIGGSFIELD_KLING_O3_VIDEO_MODEL)
     expect(routed).toMatchObject({ provider: "higgsfield", sources: ["video"], dialogue: false })
   })

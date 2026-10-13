@@ -116,6 +116,9 @@ export const imageRequestSchema = z.object({
   model: z.string().refine(isImageGenerationModel, "Unsupported image model"),
   referenceImages: z.array(z.string().max(2_000)).max(8).default([]),
   mentionedEntityIds: z.array(z.string().uuid()).max(20).default([]),
+  // Asset pictures the caller took out of its reference strip. A mention still
+  // names the asset in the prompt; it just no longer brings this picture.
+  excludedReferenceImages: z.array(z.string().max(2_000)).max(50).default([]),
   aspectRatio: z.string().max(20).optional(),
   quality: z.enum(["Low", "Medium", "High", "Ultra", "Max"]).optional(),
   // Which episode the request came from. A shot names its own episode, but
@@ -250,7 +253,13 @@ export async function renderProjectImage(
     }
 
     const mentionReferencePaths: string[] = []
+    const excludedReferences = new Set(input.excludedReferenceImages)
     for (const entity of mentionedEntities || []) {
+      // The strip the user sees is what is sent. Attaching a mentioned asset's
+      // picture regardless meant a tile that had been removed, or replaced with
+      // a different picture, went to the model anyway.
+      const shown = entityPrimaryReference(entity as MentionableEntity)
+      if (shown && excludedReferences.has(shown)) continue
       const metadata = entity.metadata && typeof entity.metadata === "object" ? entity.metadata as Record<string, unknown> : {}
       const byteplusAssetId = typeof metadata.byteplus_asset_id === "string" ? metadata.byteplus_asset_id.trim() : ""
       if (provider === "byteplus" && byteplusAssetId) mentionReferencePaths.push(byteplusAssetId)

@@ -1,6 +1,6 @@
 import { calculateCreditCost } from "./credits"
 import { describe, expect, it } from "vitest"
-import { generationProvider, imageGenerationModels, isImageGenerationModel, isVideoGenerationModel, projectDirectorVideoModel, supportedVideoModel, videoGenerationModels, videoDurationOptions, videoModelMaxDuration } from "./generation-models"
+import { generationProvider, imageGenerationModels, isImageGenerationModel, isVideoGenerationModel, projectDirectorVideoModel, supportedVideoModel, videoGenerationModels, videoDurationOptions, videoModelMaxDuration, nearestVideoDuration } from "./generation-models"
 
 describe("studio generation model registry", () => {
   it("exposes Seedream 5.0 Pro through BytePlus", () => {
@@ -129,6 +129,53 @@ describe("video duration limits", () => {
     expect(videoModelMaxDuration("fal-seedance-2-0")).toBe(15)
     expect(videoModelMaxDuration("dreamina-seedance-2-0-fast-260128")).toBe(15)
     expect(videoModelMaxDuration("dreamina-seedance-2-0-mini-260615")).toBe(15)
+  })
+
+  it("offers Veo only the three lengths it renders, and only eight at 1080p", () => {
+    for (const model of ["google-veo-3-1", "google-veo-3-1-fast", "google-veo-3-1-lite"]) {
+      expect(videoDurationOptions(model)).toEqual([4, 6, 8])
+      expect(videoDurationOptions(model, "1080p")).toEqual([8])
+      expect(videoModelMaxDuration(model)).toBe(8)
+    }
+  })
+
+  it("offers the fixed-length fal models what their schemas list", () => {
+    expect(videoDurationOptions("fal-kling-1-6-pro")).toEqual([5, 10])
+    expect(videoDurationOptions("fal-minimax-video-01")).toEqual([6])
+    expect(videoDurationOptions("fal-minimax-h3")[0]).toBe(5)
+    expect(videoModelMaxDuration("fal-minimax-h3")).toBe(15)
+  })
+
+  it("keeps the longer ceilings where the provider has them", () => {
+    expect(videoModelMaxDuration("higgsfield/kling-video/o3/video-reference")).toBe(10)
+    expect(videoModelMaxDuration("higgsfield/cinema-studio/4.0")).toBe(30)
+    expect(videoModelMaxDuration("higgsfield/alibaba/wan-3.0-prime/reference-to-video")).toBe(30)
+    expect(videoModelMaxDuration("fal-kling-3")).toBe(15)
+  })
+
+  it("offers nothing the submission would refuse, on any model", () => {
+    for (const model of videoGenerationModels) {
+      const options = videoDurationOptions(model.id)
+      expect(options.length, model.id).toBeGreaterThan(0)
+      expect(Math.min(...options), model.id).toBeGreaterThanOrEqual(4)
+      expect(Math.max(...options), model.id).toBeLessThanOrEqual(30)
+    }
+  })
+
+  it("moves a length the model cannot render onto the nearest one it can", () => {
+    expect(nearestVideoDuration("google-veo-3-1", 10)).toBe(8)
+    expect(nearestVideoDuration("google-veo-3-1", 5)).toBe(6)
+    expect(nearestVideoDuration("google-veo-3-1", 4, "1080p")).toBe(8)
+    expect(nearestVideoDuration("fal-kling-1-6-pro", 8)).toBe(10)
+    expect(nearestVideoDuration("fal-kling-1-6-pro", 6)).toBe(5)
+    expect(nearestVideoDuration("fal-seedance-2-0", 30)).toBe(15)
+    expect(nearestVideoDuration("fal-minimax-h3", 4)).toBe(5)
+  })
+
+  it("leaves a whole second alone on a model that renders any length in its range", () => {
+    expect(nearestVideoDuration("dreamina-seedance-2-5-260628", 9)).toBe(9)
+    expect(nearestVideoDuration("dreamina-seedance-2-5-260628", 10)).toBe(10)
+    expect(nearestVideoDuration("dreamina-seedance-2-5-260628", 27)).toBe(27)
   })
 
   it("never offers a length the model cannot render", () => {
