@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { createClient } from "@/lib/supabase/server"
 import { fetchHomeVariant, isHomeVariant } from "@/lib/home-variant"
 import AcademyHome, { academyMetadata } from "@/components/home/AcademyHome"
+import { agencyMetadata } from "@/lib/site-metadata"
 
 // The variant is read per request so flipping the switch in Admin takes effect
 // on the next page load. The academy homepage renders its content on the
@@ -17,13 +18,7 @@ export const dynamic = "force-dynamic"
  */
 export async function generateMetadata(): Promise<Metadata> {
   const variant = await fetchHomeVariant(await createClient())
-  if (variant === "hire") {
-    return {
-      title: "AI Director Hub | AI Performance Ads for Brands",
-      description:
-        "AI-powered performance ad creative for brands. Get UGC ads, product videos, direct-response creatives and cinematic campaigns produced through the AI Director Hub creative engine.",
-    }
-  }
+  if (variant === "hire") return agencyMetadata("/")
   if (variant === "creative-agent") {
     return {
       title: "AI Director Hub | Tell us what you want to create",

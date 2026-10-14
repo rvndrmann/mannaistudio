@@ -5,6 +5,7 @@ import "./globals.css";
 import { AuthProvider } from "@/components/auth/auth-provider";
 import AnalyticsTracker from "@/components/AnalyticsTracker";
 import PwaRegister from "@/components/pwa-register";
+import { AGENCY_DESCRIPTION, AGENCY_KEYWORDS, AGENCY_TITLE, SITE_NAME, SITE_URL, socialMetadata } from "@/lib/site-metadata";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -14,9 +15,15 @@ const GADS_ID = "AW-18272552489";
 const CLARITY_ID = "xckmot5rdo";
 const ADSENSE_CLIENT = "ca-pub-9396578512508923";
 
+// The defaults every page inherits, and the site name search results show.
+// Pages with their own pitch (blog, courses, the homepage) override them.
 export const metadata: Metadata = {
-    title: "AI Director Hub — AI Director Agent",
-    description: "An AI Director agent that turns your script into characters, storyboards, and finished video. Generate it yourself, or hire our team to produce it for you.",
+    metadataBase: new URL(SITE_URL),
+    applicationName: SITE_NAME,
+    title: AGENCY_TITLE,
+    description: AGENCY_DESCRIPTION,
+    keywords: AGENCY_KEYWORDS,
+    ...socialMetadata({ title: AGENCY_TITLE, description: AGENCY_DESCRIPTION, path: "/" }),
     icons: {
         icon: "/favicon.png",
         apple: "/favicon.png",

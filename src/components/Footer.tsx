@@ -10,14 +10,13 @@ const legalLinks = [
 ]
 
 // The footer is rendered for everyone, so it can only carry links everyone can
-// follow. The Academy and the old Pricing page are admin-only since the move to
-// a drama catalogue — leaving them here would put two dead ends on every page,
-// because middleware bounces a viewer straight back to /originals.
+// follow. It speaks for the done-for-you offer — the business the site now
+// sells — so it leads with the agency pages rather than the Academy, which a
+// visitor who came to hire a team has no use for.
 const siteLinks = [
-    { href: "/courses", label: "Courses" },
-    { href: "/originals", label: "Originals" },
-    { href: "/hire-us", label: "Hire Our Team" },
-    { href: "/account", label: "My Account" },
+    { href: "/hire-us", label: "Our Services" },
+    { href: "/hire-us/brief", label: "Start a Brief" },
+    { href: "/hire-us/projects", label: "My Projects" },
     { href: "/about", label: "About Us" },
 ]
 
@@ -31,11 +30,11 @@ export default function Footer({ flush = false }: { flush?: boolean }) {
                         <img src="/logo.png" alt="AI Director Hub" className="w-7 h-7 rounded-full" />
                         <span>AI Director Hub</span>
                     </Link>
-                    <p className="max-w-[15rem] text-sm leading-relaxed text-white/45">Learn AI filmmaking, then direct it in one studio.</p>
+                    <p className="max-w-[16rem] text-sm leading-relaxed text-white/45">Done-for-you AI video ads for brands — UGC, product, direct-response and cinematic creatives, made by our team.</p>
                 </div>
 
                 <div>
-                    <h3 className="text-[13px] font-normal text-white/85 mb-4">Explore</h3>
+                    <h3 className="text-[13px] font-normal text-white/85 mb-4">Agency</h3>
                     <ul className="sm:space-y-2">
                         {siteLinks.map((link) => (
                             <li key={link.href}>

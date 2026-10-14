@@ -8,7 +8,9 @@ export const revalidate = 600
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const routes = [
-        "",            // home
+        "",            // home — the done-for-you agency
+        "/hire-us",
+        "/hire-us/brief",
         "/courses",
         "/blog",
         "/billing",
@@ -26,7 +28,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         url: `${BASE_URL}${route}`,
         lastModified: new Date(),
         changeFrequency: route === "" ? "daily" : "weekly",
-        priority: route === "" ? 1 : 0.7,
+        priority: route === "" ? 1 : route.startsWith("/hire-us") ? 0.9 : 0.7,
     }))
 
     const posts = await getPublishedSlugs()
