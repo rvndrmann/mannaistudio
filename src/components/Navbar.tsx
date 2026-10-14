@@ -16,6 +16,7 @@ import { createClient } from "@/lib/supabase/client"
 import { defaultBillingSettings, fetchBillingSettings, isAdminUser } from "@/lib/membership"
 import { defaultSiteFeatures, fetchSiteFeatures, type SiteFeatures } from "@/lib/studio/feature-flags"
 import AcademyNavbar from "@/components/AcademyNavbar"
+import { useProAccess } from "@/lib/use-pro-access"
 
 /**
  * `adminOnly` marks the SaaS-era surfaces that survived the move to a
@@ -39,7 +40,9 @@ const baseNavLinks = [
     { key: "analytics", name: "Analytics", href: "/analytics", icon: CreditCard, adminOnly: true },
     { key: "ads", name: "Ads Manager", href: "/ads", icon: ShieldCheck, adminOnly: true },
     { key: "competitors", name: "Competitors", href: "/competitors", icon: ShieldCheck, adminOnly: true },
-    { key: "courses", name: "AI Director Hub Academy", href: "/courses", icon: Play, adminOnly: true },
+    // The course catalogue, for anyone: the site sells the done-for-you service
+    // first, but the courses are on sale to strangers too.
+    { key: "courses", name: "Courses", href: "/courses", icon: Play, public: true },
     { key: "blog", name: "Blog", href: "/blog", icon: BookOpen, adminOnly: true },
     { key: "billing", name: "Billing", href: "/billing", icon: CreditCard, public: true },
     { key: "mcp", name: "MCP & CLI", href: "/studio/external", icon: PlugZap, adminOnly: true },
@@ -57,6 +60,10 @@ export default function Navbar({ academy = false, signedInHint = false }: { acad
     const [siteFeatures, setSiteFeatures] = useState<SiteFeatures | null>(null)
     const [homeVariant, setHomeVariant] = useState<string>("studio")
     const { user, loading, signInWithGoogle, signOut } = useAuth()
+    // Pro members bring their own keys to Creator Studio, so they get the
+    // studio button and the API keys screen; the operator settings stay admin.
+    const hasPro = useProAccess(user?.id)
+    const canUseStudio = isAdmin || hasPro
     const pathname = usePathname()
     const [moreOpen, setMoreOpen] = useState(false)
     const moreRef = useRef<HTMLDivElement>(null)
@@ -296,7 +303,7 @@ export default function Navbar({ academy = false, signedInHint = false }: { acad
                                                 appear here only when they are not
                                                 already visible. */}
                                             <div className={compactHeader ? "" : "md:hidden"}>
-                                                {isAdmin && (
+                                                {canUseStudio && (
                                                     <>
                                                         <Link
                                                             href="/studio"
@@ -327,12 +334,14 @@ export default function Navbar({ academy = false, signedInHint = false }: { acad
                                             {/* Studio plumbing — the billing-mode switch, connected keys
                                                 and the team roster are all Creator Studio settings, so they
                                                 follow the studio itself out of a viewer's menu. */}
-                                            {isAdmin && (
+                                            {canUseStudio && (
                                                 <>
                                                     {/* Renders its own "My API" label, so it carries the row alone. */}
-                                                    <div className="flex min-h-[44px] items-center px-3">
-                                                        <BillingModeToggle compact />
-                                                    </div>
+                                                    {isAdmin && (
+                                                        <div className="flex min-h-[44px] items-center px-3">
+                                                            <BillingModeToggle compact />
+                                                        </div>
+                                                    )}
                                                     {siteFeatures?.byok !== false && (
                                                         <Link
                                                             href="/studio/integrations"
@@ -342,13 +351,15 @@ export default function Navbar({ academy = false, signedInHint = false }: { acad
                                                             API keys
                                                         </Link>
                                                     )}
-                                                    <Link
-                                                        href="/studio/team"
-                                                        className="flex min-h-[44px] items-center gap-2.5 rounded-md px-3 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
-                                                    >
-                                                        <Users className="h-4 w-4 text-primary" />
-                                                        Team
-                                                    </Link>
+                                                    {isAdmin && (
+                                                        <Link
+                                                            href="/studio/team"
+                                                            className="flex min-h-[44px] items-center gap-2.5 rounded-md px-3 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+                                                        >
+                                                            <Users className="h-4 w-4 text-primary" />
+                                                            Team
+                                                        </Link>
+                                                    )}
 
                                                     <div className="my-1 border-t border-white/10" />
                                                 </>
@@ -399,7 +410,7 @@ export default function Navbar({ academy = false, signedInHint = false }: { acad
                         </Link>
                     ))}
 
-                    {!loading && isAdmin && (
+                    {!loading && canUseStudio && (
                         <Link
                             href="/studio"
                             className="flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md bg-primary px-4 text-sm font-medium text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"

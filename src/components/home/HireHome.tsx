@@ -9,6 +9,7 @@ import {
   Clapperboard,
   Download,
   FileText,
+  GraduationCap,
   Layers,
   LineChart,
   MessageSquare,
@@ -29,6 +30,7 @@ import { cheapestPackage, publishedOffers, type OfferPackage, type OfferService 
 import type { OriginalsSeriesSummary } from "@/lib/originals"
 import { sortShowcase, toShowcaseVideo, type ShowcaseVideo } from "@/lib/showcase"
 import { materialize, springUI } from "@/lib/motion"
+import { useProAccess } from "@/lib/use-pro-access"
 
 /**
  * The homepage of a production company that happens to run on its own software.
@@ -178,10 +180,11 @@ export default function HireHome({ bookCallUrl = "", sales = [], reviews = [] }:
   const startHref = "/hire-us"
 
   const hasProof = sales.length > 0 || reviews.length > 0
+  const hasPro = useProAccess(user?.id)
 
   return (
     <main className="min-h-screen">
-      <SiteHeader user={Boolean(user)} startHref={startHref} hasProof={hasProof} />
+      <SiteHeader user={Boolean(user)} startHref={startHref} hasProof={hasProof} hasPro={hasPro} />
 
       {/* 1 — What we make, who it is for, and what to press. */}
       <section className="mx-auto max-w-6xl px-5 pb-14 pt-28 sm:px-6 sm:pt-36">
@@ -219,6 +222,16 @@ export default function HireHome({ bookCallUrl = "", sales = [], reviews = [] }:
           <p className="mt-5 text-xs text-white/35">
             UGC Ads · Product Ads · Direct Response · Cinematic Ads
           </p>
+          {/* The courses, offered once and quietly: this page sells the
+              service, and someone who would rather learn to make the ads
+              themselves still deserves a way to the other door. */}
+          <Link
+            href="#learn"
+            className="mt-3 inline-flex min-h-9 items-center gap-1.5 text-xs font-medium text-white/50 underline-offset-4 transition hover:text-white hover:underline"
+          >
+            <GraduationCap className="h-3.5 w-3.5" />
+            Rather make them yourself? See our course
+          </Link>
         </motion.div>
       </section>
 
@@ -489,6 +502,31 @@ export default function HireHome({ bookCallUrl = "", sales = [], reviews = [] }:
         </section>
       )}
 
+      {/* 9b — The course, for the visitor who wants to learn rather than hire.
+             Below everything the service has to say, and smaller than it. */}
+      <section id="learn" className="mx-auto max-w-6xl scroll-mt-20 px-5 pb-20 sm:px-6">
+        <div className="glass-card flex flex-col items-start gap-5 rounded-2xl border-white/10 p-7 sm:flex-row sm:items-center sm:justify-between sm:p-9">
+          <div className="flex items-start gap-4">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/15 text-primary">
+              <GraduationCap className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="text-xl font-bold tracking-tight sm:text-2xl">Want to make these ads yourself?</h2>
+              <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/50">
+                Learn the workflow our team uses, then make your own in Creator Studio with your own API keys.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/courses"
+            className="flex h-11 shrink-0 items-center gap-2 rounded-md border border-white/15 px-5 text-sm font-semibold text-white/85 transition duration-press ease-out hover:bg-white/[0.06] hover:text-white active:scale-[0.97]"
+          >
+            See the course
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      </section>
+
       {/* 10 — The ask. */}
       <section className="mx-auto max-w-6xl px-5 pb-24 sm:px-6">
         <motion.div
@@ -536,7 +574,7 @@ export default function HireHome({ bookCallUrl = "", sales = [], reviews = [] }:
  * makes them. Neither route is removed; both stay exactly where the team
  * reaches them.
  */
-function SiteHeader({ user, startHref, hasProof }: { user: boolean; startHref: string; hasProof: boolean }) {
+function SiteHeader({ user, startHref, hasProof, hasPro }: { user: boolean; startHref: string; hasProof: boolean; hasPro: boolean }) {
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-black/75 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5 sm:px-6">
@@ -582,20 +620,37 @@ function SiteHeader({ user, startHref, hasProof }: { user: boolean; startHref: s
             <a
               key={link.href}
               href={link.href}
-              className="hidden rounded-md px-3 py-2 text-sm font-medium text-white/55 transition hover:text-white lg:block"
+              className="hidden whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-white/55 transition hover:text-white lg:block"
             >
               {link.label}
             </a>
           ))}
           <Link
+            href="/courses"
+            className="hidden whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-white/55 transition hover:text-white sm:block"
+          >
+            Courses
+          </Link>
+          <Link
             href="/originals"
-            className="hidden rounded-md px-3 py-2 text-sm font-medium text-white/55 transition hover:text-white sm:block"
+            className="hidden whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-white/55 transition hover:text-white xl:block"
           >
             Originals
           </Link>
         </nav>
 
         <div className="flex items-center gap-2">
+          {/* A Pro member has paid for the studio with their own keys; the one
+              door this header otherwise keeps shut is theirs to use. */}
+          {hasPro && (
+            <Link
+              href="/studio"
+              className="hidden h-10 items-center gap-1.5 rounded-md border border-primary/40 px-3 text-sm font-semibold text-primary transition hover:bg-primary/10 sm:flex"
+            >
+              <Sparkles className="h-4 w-4" />
+              Creator Studio
+            </Link>
+          )}
           <Link
             href={user ? "/account" : "/login"}
             className="hidden h-10 items-center rounded-md px-3 text-sm font-medium text-white/55 transition hover:text-white sm:flex"
