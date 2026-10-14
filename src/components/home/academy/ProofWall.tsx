@@ -33,11 +33,18 @@ const LONG_QUOTE = 160
  * by the page when both are empty — there is no state of this component that
  * shows a placeholder.
  */
-export default function ProofWall({ students, sales }: { students: WallItem[]; sales: WallItem[] }) {
+export default function ProofWall({ students, sales, lead = "students" }: {
+  students: WallItem[]
+  sales: WallItem[]
+  /** Which tab opens first: the academy leads with students, Hire Us with clients. */
+  lead?: "students" | "sales"
+}) {
   const tabs = [
     { key: "students", label: "Student results", items: students },
     { key: "sales", label: "Client sales", items: sales },
-  ].filter((tab) => tab.items.length > 0)
+  ]
+    .sort((a, b) => Number(b.key === lead) - Number(a.key === lead))
+    .filter((tab) => tab.items.length > 0)
   const [tab, setTab] = useState(tabs[0]?.key)
   const [shown, setShown] = useState(PAGE)
   const [opened, setOpened] = useState<Opened | null>(null)

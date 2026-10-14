@@ -7,7 +7,7 @@ import { ArrowRight, ArrowUpRight, Check, Plus, Quote } from "lucide-react"
 import Footer from "@/components/Footer"
 import AcademyNavbar from "@/components/AcademyNavbar"
 import HeroReel from "@/components/home/academy/HeroReel"
-import ProofWall, { type WallItem } from "@/components/home/academy/ProofWall"
+import ProofWall from "@/components/home/academy/ProofWall"
 import WorkGallery from "@/components/home/academy/WorkGallery"
 import { FreeCourseCta, ProCta, StickyProBar, ViewContentBeacon } from "@/components/home/academy/cta"
 import { reasonVisuals } from "@/components/home/academy/reason-visuals"
@@ -21,6 +21,7 @@ import {
   isPlayableFile,
   proofCategoryLabel,
   proofPoster,
+  toWallItem,
   type ProofItem,
 } from "@/lib/proof"
 
@@ -85,22 +86,6 @@ const reasons: Reason[] = [
   { key: "founder", title: "Learn from client work", body: "Founder Ravinder has spent 2 years producing AI video for brands in India and the US. The courses teach the workflow that work runs on." },
   { key: "community", title: "Work alongside other directors", body: "A community for Pro members. Share work in progress, compare workflows and get unstuck faster." },
 ]
-
-function toWallItem(item: ProofItem): WallItem {
-  return {
-    id: item.id,
-    title: item.title,
-    personName: item.personName,
-    personRole: item.personRole,
-    avatar: item.avatarImage,
-    quote: item.quote,
-    screenshots: item.screenshots,
-    video: item.video,
-    poster: proofPoster(item),
-    amount: formatProofAmount(item.amount, item.currency),
-    date: item.date ? new Date(`${item.date}T00:00:00Z`).toLocaleDateString("en-IN", { month: "short", year: "numeric", timeZone: "UTC" }) : "",
-  }
-}
 
 /**
  * Everything the page reads, held for a minute.

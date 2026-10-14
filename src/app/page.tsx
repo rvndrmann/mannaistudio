@@ -67,8 +67,12 @@ export default async function Home({ searchParams }: {
     return <OriginalsHome />
   }
   if (variant === "hire") {
-    const { default: HireHome } = await import("@/components/home/HireHome")
-    return <HireHome />
+    const [{ default: HireHome }, { loadHireProof }] = await Promise.all([
+      import("@/components/home/HireHome"),
+      import("@/lib/hire-proof"),
+    ])
+    const { bookCallUrl, sales, reviews } = await loadHireProof()
+    return <HireHome bookCallUrl={bookCallUrl} sales={sales} reviews={reviews} />
   }
   if (variant === "creative-agent") {
     const { default: CreativeAgentHome } = await import("@/components/home/CreativeAgentHome")

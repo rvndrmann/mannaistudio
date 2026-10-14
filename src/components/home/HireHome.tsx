@@ -12,6 +12,7 @@ import {
   Layers,
   LineChart,
   MessageSquare,
+  PhoneCall,
   Search,
   Sparkles,
   Star,
@@ -19,6 +20,8 @@ import {
 } from "lucide-react"
 import Footer from "@/components/Footer"
 import ShowcaseReel from "@/components/home/ShowcaseReel"
+import ProofWall, { type WallItem } from "@/components/home/academy/ProofWall"
+import BookCallButton from "@/components/managed/BookCallButton"
 import { useAuth } from "@/components/auth/auth-provider"
 import { createClient } from "@/lib/supabase/client"
 import { formatUsd } from "@/lib/currency"
@@ -93,7 +96,16 @@ const DASHBOARD_POINTS = [
 
 const PIPELINE = ["Brief", "Research", "Concepts", "Production", "Review", "Delivery"]
 
-export default function HireHome() {
+/**
+ * `sales`, `reviews` and `bookCallUrl` are read on the server by app/page.tsx
+ * (lib/hire-proof) and are all optional: with nothing published there is no
+ * proof section, and with no link there are no call buttons.
+ */
+export default function HireHome({ bookCallUrl = "", sales = [], reviews = [] }: {
+  bookCallUrl?: string
+  sales?: WallItem[]
+  reviews?: WallItem[]
+} = {}) {
   const { user } = useAuth()
   const [videos, setVideos] = useState<ShowcaseVideo[]>([])
   const [services, setServices] = useState<OfferService[] | null>(null)
@@ -165,9 +177,11 @@ export default function HireHome() {
   // question, so /hire-us is where it gets asked.
   const startHref = "/hire-us"
 
+  const hasProof = sales.length > 0 || reviews.length > 0
+
   return (
     <main className="min-h-screen">
-      <SiteHeader user={Boolean(user)} startHref={startHref} />
+      <SiteHeader user={Boolean(user)} startHref={startHref} hasProof={hasProof} />
 
       {/* 1 — What we make, who it is for, and what to press. */}
       <section className="mx-auto max-w-6xl px-5 pb-14 pt-28 sm:px-6 sm:pt-36">
@@ -200,6 +214,7 @@ export default function HireHome() {
             >
               See Our Ads
             </a>
+            {bookCallUrl && <BookCallButton href={bookCallUrl} placement="home-hero" className="h-12 px-6" />}
           </div>
           <p className="mt-5 text-xs text-white/35">
             UGC Ads · Product Ads · Direct Response · Cinematic Ads
@@ -223,6 +238,18 @@ export default function HireHome() {
           )}
         </div>
       </section>
+
+      {/* 2b — What clients paid and what they said, as published in
+             /admin/proof. Nothing published, no section. */}
+      {hasProof && (
+        <section id="proof" className="mx-auto max-w-6xl scroll-mt-20 px-5 pb-20 sm:px-6">
+          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Results and Reviews</h2>
+          <p className="mt-2 text-sm text-white/45">
+            Real payments and real words, shared with the permission of the people shown.
+          </p>
+          <ProofWall students={reviews} sales={sales} lead="sales" />
+        </section>
+      )}
 
       {/* 3 — The pain, named in the media buyer's own words. */}
       <section className="mx-auto max-w-6xl px-5 pb-20 sm:px-6">
@@ -258,7 +285,7 @@ export default function HireHome() {
         </div>
       </section>
 
-      {/* 4 — Something to buy, not a call to book. */}
+      {/* 4 — Something to buy, with a call on offer for whoever wants to talk first. */}
       <section id="pricing" className="mx-auto max-w-6xl scroll-mt-20 px-5 pb-20 sm:px-6">
         {/* The heading follows whichever grid renders. With the volume plans
             published it is a choice of how many ads a month; without them it is
@@ -282,13 +309,13 @@ export default function HireHome() {
         ) : plans.length ? (
           <div className="mt-8 grid gap-4 md:grid-cols-3">
             {plans.map((plan) => (
-              <PlanCard key={plan.key} plan={plan} serviceKey={PLAN_SERVICE_KEY} />
+              <PlanCard key={plan.key} plan={plan} serviceKey={PLAN_SERVICE_KEY} bookCallUrl={bookCallUrl} />
             ))}
           </div>
         ) : fallbackServices.length ? (
           <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {fallbackServices.map((service) => (
-              <ServiceCard key={service.key} service={service} />
+              <ServiceCard key={service.key} service={service} bookCallUrl={bookCallUrl} />
             ))}
           </div>
         ) : (
@@ -488,7 +515,11 @@ export default function HireHome() {
             >
               See Our Work
             </a>
+            {bookCallUrl && <BookCallButton href={bookCallUrl} placement="home-closing" className="h-12 px-7" />}
           </div>
+          {bookCallUrl && (
+            <p className="mt-4 text-xs text-white/40">Not sure what to order? Book a free call and we will tell you what fits.</p>
+          )}
         </motion.div>
       </section>
 
@@ -505,7 +536,7 @@ export default function HireHome() {
  * makes them. Neither route is removed; both stay exactly where the team
  * reaches them.
  */
-function SiteHeader({ user, startHref }: { user: boolean; startHref: string }) {
+function SiteHeader({ user, startHref, hasProof }: { user: boolean; startHref: string; hasProof: boolean }) {
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-black/75 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5 sm:px-6">
@@ -544,6 +575,7 @@ function SiteHeader({ user, startHref }: { user: boolean; startHref: string }) {
           )}
           {[
             { href: "#work", label: "Work" },
+            ...(hasProof ? [{ href: "#proof", label: "Reviews" }] : []),
             { href: "#how", label: "How It Works" },
             { href: "#pricing", label: "Pricing" },
           ].map((link) => (
@@ -583,7 +615,7 @@ function SiteHeader({ user, startHref }: { user: boolean; startHref: string }) {
 }
 
 /** One volume plan, priced by the catalogue. */
-function PlanCard({ plan, serviceKey }: { plan: OfferPackage; serviceKey: string }) {
+function PlanCard({ plan, serviceKey, bookCallUrl }: { plan: OfferPackage; serviceKey: string; bookCallUrl: string }) {
   return (
     <motion.div
       {...materialize}
@@ -623,12 +655,21 @@ function PlanCard({ plan, serviceKey }: { plan: OfferPackage; serviceKey: string
         Start {plan.name}
         <ArrowRight className="h-4 w-4" />
       </Link>
+      {bookCallUrl && (
+        <BookCallButton
+          href={bookCallUrl}
+          placement={`home-plan:${plan.key}`}
+          className="mt-2 h-10 border-transparent bg-transparent text-white/55"
+        >
+          <PhoneCall className="h-3.5 w-3.5" /> Questions first? Book a call
+        </BookCallButton>
+      )}
     </motion.div>
   )
 }
 
 /** What is on sale when the volume plans have not been published yet. */
-function ServiceCard({ service }: { service: OfferService }) {
+function ServiceCard({ service, bookCallUrl }: { service: OfferService; bookCallUrl: string }) {
   const cheapest = cheapestPackage(service)
   return (
     <motion.div {...materialize} className="glass-card flex flex-col rounded-2xl border-white/10 p-6">
@@ -652,6 +693,15 @@ function ServiceCard({ service }: { service: OfferService }) {
         {service.cta}
         <ArrowRight className="h-4 w-4" />
       </Link>
+      {bookCallUrl && (
+        <BookCallButton
+          href={bookCallUrl}
+          placement={`home-service:${service.key}`}
+          className="mt-2 h-10 border-transparent bg-transparent text-white/55"
+        >
+          <PhoneCall className="h-3.5 w-3.5" /> Questions first? Book a call
+        </BookCallButton>
+      )}
     </motion.div>
   )
 }

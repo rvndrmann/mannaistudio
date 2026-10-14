@@ -1,5 +1,6 @@
 import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js"
 import { embedThumbnailUrl, isEmbeddedVideo } from "@/lib/video-embed"
+import type { WallItem } from "@/components/home/academy/ProofWall"
 
 /**
  * Proof: the three kinds of evidence the homepage is allowed to show.
@@ -164,6 +165,23 @@ export function isPlayableFile(item: Pick<ProofItem, "video">): boolean {
   return Boolean(item.video) && !isEmbeddedVideo(item.video)
 }
 
+/** A review or sale as the proof wall draws it. */
+export function toWallItem(item: ProofItem): WallItem {
+  return {
+    id: item.id,
+    title: item.title,
+    personName: item.personName,
+    personRole: item.personRole,
+    avatar: item.avatarImage,
+    quote: item.quote,
+    screenshots: item.screenshots,
+    video: item.video,
+    poster: proofPoster(item),
+    amount: formatProofAmount(item.amount, item.currency),
+    date: item.date ? new Date(`${item.date}T00:00:00Z`).toLocaleDateString("en-IN", { month: "short", year: "numeric", timeZone: "UTC" }) : "",
+  }
+}
+
 export function formatProofAmount(amount: number | null, currency: ProofCurrency | null): string {
   if (amount === null) return ""
   return currency === "USD"
@@ -186,6 +204,8 @@ export type ProofPageSettings = {
   /** A screenshot or screen recording of Creator Studio, for the Agent block. */
   studioDemoUrl: string
   studioDemoPoster: string
+  /** Calendly, Cal.com or similar, for the Hire Us page. Empty hides every "Book a call" button. */
+  bookCallUrl: string
 }
 
 export const defaultProofPageSettings: ProofPageSettings = {
@@ -196,6 +216,7 @@ export const defaultProofPageSettings: ProofPageSettings = {
   annualPrice: null,
   studioDemoUrl: "",
   studioDemoPoster: "",
+  bookCallUrl: "",
 }
 
 export function toProofPageSettings(value: unknown): ProofPageSettings {
@@ -209,6 +230,9 @@ export function toProofPageSettings(value: unknown): ProofPageSettings {
     annualPrice: raw.annual_price !== null && raw.annual_price !== undefined && Number.isFinite(price) && price > 0 ? price : null,
     studioDemoUrl: text(raw.studio_demo_url).trim(),
     studioDemoPoster: text(raw.studio_demo_poster).trim(),
+    // An outside page, so only a full https link: a bare "calendly.com/…"
+    // would be read as a path on this site.
+    bookCallUrl: /^https?:\/\//i.test(text(raw.book_call_url).trim()) ? text(raw.book_call_url).trim() : "",
   }
 }
 
@@ -221,6 +245,7 @@ export function toProofPageSettingsRow(settings: ProofPageSettings) {
     annual_price: settings.annualPrice === null ? "" : String(settings.annualPrice),
     studio_demo_url: settings.studioDemoUrl,
     studio_demo_poster: settings.studioDemoPoster,
+    book_call_url: settings.bookCallUrl,
   }
 }
 

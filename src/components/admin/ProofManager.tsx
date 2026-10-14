@@ -511,6 +511,11 @@ function PageSettings({ onMessage }: { onMessage: (message: { tone: "ok" | "erro
           <p className="mt-1.5 text-xs text-white/40">Shown under reason 5 and in the FAQ. Use a number you can back up.</p>
         </div>
         <div className="sm:col-span-2">
+          <label className={label} htmlFor="settings-call">Book a call link</label>
+          <input id="settings-call" type="url" value={settings.bookCallUrl} onChange={(event) => set({ bookCallUrl: event.target.value })} placeholder="https://calendly.com/… or https://cal.com/…" className={field} />
+          <p className="mt-1.5 text-xs text-white/40">Adds &ldquo;Book a free call&rdquo; buttons to the Hire Us homepage and /hire-us. Must start with https://. Empty hides them.</p>
+        </div>
+        <div className="sm:col-span-2">
           <label className={label} htmlFor="settings-guide">API key setup guide link</label>
           <input id="settings-guide" value={settings.apiGuideUrl} onChange={(event) => set({ apiGuideUrl: event.target.value })} placeholder="https://… or /blog/…" className={field} />
         </div>
