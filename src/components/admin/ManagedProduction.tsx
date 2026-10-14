@@ -12,6 +12,7 @@ import ManagedOffers from "@/components/admin/ManagedOffers"
 import ManagedDeliveryPlan from "@/components/admin/ManagedDeliveryPlan"
 import AbandonedBriefs from "@/components/admin/AbandonedBriefs"
 import BriefAttachments from "@/components/admin/BriefAttachments"
+import ManagedStoryboardSend from "@/components/admin/ManagedStoryboardSend"
 import ProjectChat from "@/components/managed/ProjectChat"
 import { briefDigest, parseManagedBrief } from "@/lib/managed-brief"
 import type { ManagedProjectPayload } from "@/components/managed/types"
@@ -377,6 +378,10 @@ function OrderPanel({ projectId, onChanged }: { projectId: string; onChanged: ()
           </>
         )}
       </section>
+
+      {project.studio_project_id && (
+        <ManagedStoryboardSend projectId={project.id} onSent={() => { load({ quiet: true }); onChanged() }} />
+      )}
 
       <section>
         <div className="flex items-center justify-between gap-3">

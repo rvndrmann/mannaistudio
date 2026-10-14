@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { requireAuthenticatedProject, studioErrorMessage, studioErrorStatus } from "@/lib/studio/server-context"
 import { enterpriseNotesActive } from "@/lib/enterprise"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 /**
  * Revision notes, shared by an enterprise client and the producing team.
@@ -19,6 +20,25 @@ import { enterpriseNotesActive } from "@/lib/enterprise"
  * on a project nobody hired us for is a description of the service rather than a
  * conversation with nobody on the other end.
  */
+
+/**
+ * The managed order this production is being made for, if any.
+ *
+ * A managed production is owned by the producing admin and has no enterprise
+ * status, but it does have a client: their storyboard verdicts are filed into
+ * these threads by `managed_submit_storyboard_review`. So notes are open on it,
+ * and the panel says where the client's words came from. RLS lets only admins
+ * (and the order's owner, who never reaches this route) read the order.
+ */
+async function linkedManagedProject(supabase: SupabaseClient, studioProjectId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("managed_projects")
+    .select("id")
+    .eq("studio_project_id", studioProjectId)
+    .limit(1)
+    .maybeSingle()
+  return data?.id ?? null
+}
 
 const targetSchema = {
   shotId: z.string().uuid().optional(),
@@ -80,14 +100,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       name: profile.full_name || profile.email || "Someone",
     }]))
 
+    const managedProjectId = await linkedManagedProject(context.supabase, projectId)
+
     return NextResponse.json({
       comments: comments || [],
       authors,
       viewerId: context.user.id,
       // The panel renders itself from this rather than deciding locally, so the
       // rule about who may leave a note lives in one place.
-      notesActive: enterpriseNotesActive(context.project.enterprise_status),
+      notesActive: enterpriseNotesActive(context.project.enterprise_status) || Boolean(managedProjectId),
       enterpriseStatus: context.project.enterprise_status ?? null,
+      managedProjectId,
     })
   } catch (error) {
     return NextResponse.json({ error: studioErrorMessage(error, "Could not load revision notes") }, { status: studioErrorStatus(error) })
@@ -100,7 +123,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const context = await requireAuthenticatedProject(projectId)
     const input = createSchema.parse(await request.json())
 
-    if (!enterpriseNotesActive(context.project.enterprise_status)) {
+    if (!enterpriseNotesActive(context.project.enterprise_status) && !await linkedManagedProject(context.supabase, projectId)) {
       return NextResponse.json(
         { error: "Revision notes open once our team accepts your project. Hire the team to start a conversation here." },
         { status: 403 },
@@ -186,7 +209,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const context = await requireAuthenticatedProject(projectId)
     const input = patchSchema.parse(await request.json())
 
-    if (!enterpriseNotesActive(context.project.enterprise_status)) {
+    if (!enterpriseNotesActive(context.project.enterprise_status) && !await linkedManagedProject(context.supabase, projectId)) {
       return NextResponse.json({ error: "Revision notes are not open on this project." }, { status: 403 })
     }
 

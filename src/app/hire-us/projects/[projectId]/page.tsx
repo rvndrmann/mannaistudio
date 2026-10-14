@@ -10,6 +10,7 @@ import DeliveryPlan from "@/components/managed/DeliveryPlan"
 import ProjectChat from "@/components/managed/ProjectChat"
 import Deliverables, { FinalDelivery } from "@/components/managed/Deliverables"
 import ReviewSheet from "@/components/managed/ReviewSheet"
+import StoryboardReview from "@/components/managed/StoryboardReview"
 import type { ManagedDeliverable, ManagedProjectPayload } from "@/components/managed/types"
 import { MANAGED_STATUS_LABELS } from "@/lib/managed-production"
 import { offerServiceName } from "@/lib/managed-offers"
@@ -19,9 +20,9 @@ import { formatUsdWithInr } from "@/lib/currency"
  * One managed project, as the client sees it.
  *
  * Everything about the engagement in one place: where production has got to,
- * the videos, the conversation, the finals. Nothing about how the work is made
- * — no Studio, no Director, no storyboard — because a client who hired a team
- * did so to not operate one.
+ * the storyboard frames sent for sign-off, the videos, the conversation, the
+ * finals. Nothing about how the work is made — no Studio, no Director, no
+ * prompts — because a client who hired a team did so to not operate one.
  *
  * Admins open the same page, which is deliberate: the producer should be
  * reading exactly what the client reads. Their own controls live in Admin →
@@ -92,6 +93,8 @@ export default function ManagedProjectPage({ params }: { params: Promise<{ proje
   }
 
   const { project, deliverables, versions, messages, comments, viewer } = data
+  const storyboard = data.storyboard || []
+  const framesAwaiting = storyboard.filter((item) => item.status === "pending").length
   const awaitingReview = deliverables.filter((deliverable) => deliverable.status === "ready_for_review").length
 
   return (
@@ -136,6 +139,14 @@ export default function ManagedProjectPage({ params }: { params: Promise<{ proje
                 {awaitingReview} awaiting your review
               </span>
             )}
+            {framesAwaiting > 0 && (
+              <a
+                href="#storyboard"
+                className="rounded-full border border-sky-400/40 bg-sky-500/10 px-3 py-1.5 text-[11px] font-bold text-sky-300"
+              >
+                {framesAwaiting} storyboard frame{framesAwaiting === 1 ? "" : "s"} to review
+              </a>
+            )}
             <button
               type="button"
               onClick={load}
@@ -165,6 +176,17 @@ export default function ManagedProjectPage({ params }: { params: Promise<{ proje
           <div className="space-y-6">
             <DeliveryPlan project={project} />
             <FinalDelivery deliverables={deliverables} versions={versions} />
+
+            {storyboard.length > 0 && (
+              <div id="storyboard" className="scroll-mt-28">
+                <StoryboardReview
+                  projectId={project.id}
+                  items={storyboard}
+                  canAct={viewer.isOwner}
+                  onSubmitted={load}
+                />
+              </div>
+            )}
 
             <section>
               <div className="mb-3 flex items-baseline justify-between gap-3">

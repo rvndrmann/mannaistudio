@@ -101,6 +101,7 @@ export function RevisionNotes({
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [notesActive, setNotesActive] = useState(false);
   const [enterpriseStatus, setEnterpriseStatus] = useState<string | null>(null);
+  const [managedProjectId, setManagedProjectId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [replyDraft, setReplyDraft] = useState("");
@@ -120,6 +121,7 @@ export function RevisionNotes({
       setViewerId(json.viewerId || null);
       setNotesActive(Boolean(json.notesActive));
       setEnterpriseStatus(json.enterpriseStatus ?? null);
+      setManagedProjectId(json.managedProjectId ?? null);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load revision notes");
@@ -225,6 +227,16 @@ export function RevisionNotes({
 
       {open && (
         <div className="mt-3">
+          {/* A managed production: the client is not on this project, so
+              their storyboard verdicts arrive here and replies stay internal. */}
+          {managedProjectId && (
+            <p className="mb-3 rounded-lg border border-sky-400/20 bg-sky-500/[0.06] px-2.5 py-2 text-[11px] leading-relaxed text-sky-200/80">
+              The client&apos;s storyboard review lands here. They don&apos;t see this thread —{" "}
+              <a href={`/hire-us/projects/${managedProjectId}`} target="_blank" rel="noreferrer" className="font-bold underline">
+                answer them in the order chat
+              </a>.
+            </p>
+          )}
           {loading ? (
             <p className="text-[11px] text-zinc-500">Loading…</p>
           ) : threads.length === 0 ? (

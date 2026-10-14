@@ -22,11 +22,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { projectId } = await params
     const { supabase, project, isAdmin, user } = await requireManagedProject(projectId, request)
 
-    const [{ data: deliverables }, { data: versions }, { data: messages }, { data: comments }] = await Promise.all([
+    const [{ data: deliverables }, { data: versions }, { data: messages }, { data: comments }, { data: storyboard }] = await Promise.all([
       supabase.from("managed_deliverables").select("*").eq("project_id", projectId).order("position"),
       supabase.from("managed_deliverable_versions").select("*").eq("project_id", projectId).order("version_number"),
       supabase.from("managed_messages").select("*").eq("project_id", projectId).order("created_at"),
       supabase.from("managed_revision_comments").select("*").eq("project_id", projectId).order("created_at"),
+      // The Studio ids are for the producer; the client reads frames, not
+      // references into a project they have no access to.
+      supabase
+        .from("managed_storyboard_items")
+        .select("id,project_id,round,position,source_kind,title,caption,media_type,storage_path,status,feedback,responded_at,created_at")
+        .eq("project_id", projectId)
+        .order("round", { ascending: false })
+        .order("position"),
     ])
 
     // Reading it is what marks it read; a separate "mark read" call would fire
@@ -48,6 +56,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       versions: versions || [],
       messages: messages || [],
       comments: comments || [],
+      storyboard: storyboard || [],
       viewer: { id: user.id, isAdmin, isOwner: project.user_id === user.id },
     })
   } catch (error) {

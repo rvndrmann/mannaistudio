@@ -77,11 +77,29 @@ export type ManagedComment = {
   created_at: string
 }
 
+/** A frame sent for storyboard review. */
+export type ManagedStoryboardItem = {
+  id: string
+  project_id: string
+  round: number
+  position: number
+  source_kind: "keyframe" | "clip" | "asset"
+  title: string
+  caption: string
+  media_type: "image" | "video"
+  storage_path: string
+  status: "pending" | "approved" | "changes_requested"
+  feedback: string
+  responded_at: string | null
+  created_at: string
+}
+
 export type ManagedProjectPayload = {
   project: ManagedProject
   deliverables: ManagedDeliverable[]
   versions: ManagedVersion[]
   messages: ManagedMessage[]
   comments: ManagedComment[]
+  storyboard: ManagedStoryboardItem[]
   viewer: { id: string; isAdmin: boolean; isOwner: boolean }
 }

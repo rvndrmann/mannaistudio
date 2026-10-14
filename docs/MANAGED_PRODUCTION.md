@@ -42,6 +42,7 @@ mean one status vocabulary describing two different jobs.
 | `managed_deliverable_versions` | V1, V2, FINAL. Nothing is ever overwritten |
 | `managed_messages` | the project conversation, `kind` of `chat` or `delivery` |
 | `managed_revision_comments` | timestamped feedback, pinned to the version it was left on |
+| `managed_storyboard_items` | frames sent for storyboard sign-off, by round, with the client's verdict |
 
 `notifications` gains `managed_project_id`; the bell routes anything carrying one
 to `/hire-us/projects/{id}`.
@@ -100,6 +101,8 @@ Every write that carries value goes through a function, not a policy:
 | `admin_managed_set_status` | admins | notifies the client only at the four stages worth hearing about |
 | `admin_managed_publish_version` | admins | refuses a path outside `managed/{project_id}/` |
 | `admin_managed_link_studio_project` | admins | the bridge |
+| `admin_managed_send_storyboard` | admins | a round of frames; refuses paths outside `managed/{id}/storyboard/` |
+| `managed_submit_storyboard_review` | the owner | approve / change per frame; also writes the Studio revision notes |
 | `admin_upsert_managed_service` / `_package` | admins | the catalogue; the key cannot be changed on update |
 | `admin_delete_managed_service` / `_package` | admins | orders keep the name they were sold under |
 | `admin_managed_overview` | admins | the queue |
@@ -120,6 +123,7 @@ One bucket, two prefixes:
 {owner_id}/{studio_project_id}/…     internal — prompts, takes, keyframes, shots
 managed/{project_id}/uploads/…       the client's brief assets and chat files
 managed/{project_id}/deliverables/…  versions published to the client
+managed/{project_id}/storyboard/…    frames sent for storyboard review
 ```
 
 The client's storage policy matches `managed/{project_id}/` and nothing else, so
@@ -157,7 +161,30 @@ The client is deliberately **not** added to `creator_project_members`. Sharing
 would put the internal project in their Studio — the one thing a managed service
 exists to spare them — and expose every unused take.
 
-## Money
+## Storyboard review
+
+Before a cut exists, the producer can send frames for sign-off: from
+**Admin → Managed Production → an order → Storyboard review**, tick any shot
+keyframe, shot clip, or character/product image in the linked Studio
+production and send them as a numbered round. Migration
+`20261014120000_managed_storyboard_review.sql`.
+
+- **Same line as deliverables.** The browser names shots and assets, never
+  paths; the route reads each source back from the production and copies it to
+  `managed/{project_id}/storyboard/`. `admin_managed_send_storyboard` refuses a
+  path outside that prefix or a shot/asset from another production.
+- **The client** sees the round at the top of `/hire-us/projects/[id]`, marks
+  each frame Approve or Change (a note is required for Change), and sends the
+  whole round at once through `managed_submit_storyboard_review` — owner only,
+  one chat message, one notification for the team. Earlier rounds stay readable.
+- **Back in the Studio**, the same function files every answer in
+  `creator_shot_comments` on the shot (image track for a keyframe, video track
+  for a clip) or the asset, so it shows in that shot's Revision notes. Approvals
+  arrive already resolved. The storyboard also shows a *Client storyboard review*
+  panel and a marker on each row the client has answered
+  (`/api/studio/projects/[id]/client-review`). Revision notes are open on any
+  production linked to a managed order; replies there stay internal.
+
 
 Razorpay, following the season pass exactly: the browser never sends a price.
 `/api/managed/checkout` looks the package up in `MANAGED_SERVICES`, prices it,

@@ -113,6 +113,11 @@ export function managedDeliverablePrefix(projectId: string): string {
   return `managed/${projectId}/deliverables`
 }
 
+/** Frames sent for storyboard review — copies, never the studio originals. */
+export function managedStoryboardPrefix(projectId: string): string {
+  return `managed/${projectId}/storyboard`
+}
+
 export function isManagedClientPath(projectId: string, path: string): boolean {
   return typeof path === "string" && path.startsWith(`managed/${projectId}/`) && !path.includes("..")
 }

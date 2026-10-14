@@ -164,6 +164,7 @@ operating the studio themselves. Migration
 | `managed_deliverable_versions` | V1, V2, FINAL — never overwritten |
 | `managed_messages` | the project conversation (`kind`: `chat` or `delivery`) |
 | `managed_revision_comments` | timestamped feedback, pinned to its version |
+| `managed_storyboard_items` | frames sent for storyboard sign-off (keyframe, clip, asset), by round, with the client's verdict |
 
 - **Public:** `/hire-us`, `/hire-us/brief`. **Client:** `/hire-us/projects[/id]`.
   **Admin:** `/admin?tab=managed`. `/hire-us` is not admin-only — unlike the
@@ -188,6 +189,10 @@ operating the studio themselves. Migration
   `{owner_id}/{studio_project_id}/…`; the client can only read
   `managed/{project_id}/…`. Publishing **copies** the bytes across, so an
   unpublished take has no path a client could be handed.
+- **Storyboard review:** admin ticks frames from the Studio production and sends
+  a round (copied to `managed/{id}/storyboard/`); the client approves or asks for
+  changes per frame, and each answer is also written to that shot's Studio
+  revision notes. Migration `20261014120000_managed_storyboard_review.sql`.
 - **Pausing:** `site_features.hireUs` hides the nav entry *and* closes the
   checkout route. Running projects stay deliverable.
 

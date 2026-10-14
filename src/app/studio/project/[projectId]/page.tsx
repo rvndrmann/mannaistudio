@@ -97,6 +97,7 @@ import { assetReferencesNotShown } from "@/lib/studio/reference-strip";
 import { AutopilotModeControl, AutopilotRunner, autopilotActionsFrom } from "@/components/studio/autopilot";
 import { defaultAutopilotBudget, readAutopilotSettings, type AutopilotBudget, type AutopilotMode } from "@/lib/studio/autopilot";
 import { RevisionNotes } from "@/components/studio/RevisionNotes";
+import { ClientStoryboardFeedback, ShotClientBadge, useClientStoryboardReview } from "@/components/studio/ClientStoryboardFeedback";
 import { describeStyleDna, normalizeStyleDna, projectStyleDna, type StyleDna } from "@/lib/studio/style-dna";
 import { notifyCreditBalanceChanged } from "@/lib/credit-balance-events";
 import { parseVoiceToolCall, type VoiceToolCall } from "@/lib/studio/voice";
@@ -4719,6 +4720,9 @@ function Storyboard({
     type: "image" | "video";
   } | null>(null);
   const [expandedShots, setExpandedShots] = useState<Set<string>>(new Set());
+  // On a production made for a managed order, what the client said about the
+  // frames they were sent. Empty on every other project.
+  const clientReview = useClientStoryboardReview(projectId);
   // The Edit button had no handler at all, so a prompt could only be changed
   // from the media workspace. Editing here uses the same mention autocomplete
   // as Director chat, and the mentions decide the shot's cast on save.
@@ -4870,6 +4874,15 @@ function Storyboard({
           + Add shot
         </button>
       </div>
+      <ClientStoryboardFeedback
+        orders={clientReview.orders}
+        items={clientReview.items}
+        reload={() => void clientReview.reload()}
+        onOpenShot={(shotId, track) => {
+          const target = shots.find((candidate) => candidate.id === shotId);
+          if (target) setMedia({ shot: target, type: track });
+        }}
+      />
       {adding !== null && (
         <ShotForm
           entities={entities}
@@ -4967,6 +4980,9 @@ function Storyboard({
                     <span className={`grid h-8 w-8 place-items-center rounded-lg font-bold text-primary ${rendering ? "bg-primary/25" : "bg-primary/12"}`}>
                       {index + 1}
                     </span>
+                    {clientReview.byShot.get(shot.id) && (
+                      <ShotClientBadge {...clientReview.byShot.get(shot.id)!} />
+                    )}
                     {rendering ? (
                       <span className="flex flex-col items-center gap-1 text-primary">
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
