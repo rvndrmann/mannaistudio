@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { HIGGSFIELD_MINIMAX_H3_MODEL, HIGGSFIELD_CINEMA_STUDIO_4_MODEL, HIGGSFIELD_KLING_3_STD_MODEL, HIGGSFIELD_KLING_O3_MODEL, HIGGSFIELD_KLING_O3_VIDEO_MODEL, HIGGSFIELD_SEEDANCE_2_MODEL, HIGGSFIELD_WAN_3_PRIME_MODEL, submitHiggsfieldCinemaStudioVideo, submitHiggsfieldKlingO3Video, submitHiggsfieldKlingO3VideoReference, submitHiggsfieldKlingVideo, submitHiggsfieldMinimaxH3Video, submitHiggsfieldSeedanceVideo, submitHiggsfieldWanVideo, HIGGSFIELD_SEEDANCE_2_5_MODEL, isHiggsfieldSeedance25Model, isHiggsfieldSeedanceModel } from "./higgsfield"
+import { HIGGSFIELD_MINIMAX_H3_MODEL, HIGGSFIELD_MINIMAX_H3_REFERENCE_MODEL, isHiggsfieldMinimaxH3Model, HIGGSFIELD_CINEMA_STUDIO_4_MODEL, HIGGSFIELD_KLING_3_STD_MODEL, HIGGSFIELD_KLING_O3_MODEL, HIGGSFIELD_KLING_O3_VIDEO_MODEL, HIGGSFIELD_SEEDANCE_2_MODEL, HIGGSFIELD_WAN_3_PRIME_MODEL, submitHiggsfieldCinemaStudioVideo, submitHiggsfieldKlingO3Video, submitHiggsfieldKlingO3VideoReference, submitHiggsfieldKlingVideo, submitHiggsfieldMinimaxH3Video, submitHiggsfieldSeedanceVideo, submitHiggsfieldWanVideo, HIGGSFIELD_SEEDANCE_2_5_MODEL, isHiggsfieldSeedance25Model, isHiggsfieldSeedanceModel } from "./higgsfield"
 import { generationProvider, higgsfieldTakesAudioReferences, isGenjutsuVideoModel, isImageOnlyVideoModel, isTextOnlyVideoModel, isVideoGenerationModel, videoDurationOptions, videoModelMaxDuration, videoModelNeedsSourceVideo } from "./generation-models"
 import { generationModels } from "./model-routing"
 import { calculateCreditCost } from "./credits"
@@ -257,5 +257,30 @@ describe("Seedance 2.5 on Higgsfield", () => {
     expect(request.mock.calls[0][0]).toBe("https://api.higgsfield.ai/bytedance/seedance-2.0/reference-to-video")
     expect(sent(request).duration).toBe(15)
     expect(sent(request)).not.toHaveProperty("output_format")
+  })
+})
+
+describe("MiniMax H3 Reference on Higgsfield", () => {
+  it("is offered as a Higgsfield model that takes references", () => {
+    expect(isVideoGenerationModel(HIGGSFIELD_MINIMAX_H3_REFERENCE_MODEL)).toBe(true)
+    expect(isHiggsfieldMinimaxH3Model(HIGGSFIELD_MINIMAX_H3_REFERENCE_MODEL)).toBe(true)
+    expect(isTextOnlyVideoModel(HIGGSFIELD_MINIMAX_H3_REFERENCE_MODEL)).toBe(false)
+    expect(higgsfieldTakesAudioReferences(HIGGSFIELD_MINIMAX_H3_REFERENCE_MODEL)).toBe(true)
+    expect(videoDurationOptions(HIGGSFIELD_MINIMAX_H3_REFERENCE_MODEL)).toEqual([5, 6, 8, 10, 12, 15])
+    const routed = generationModels.find((model) => model.model === HIGGSFIELD_MINIMAX_H3_REFERENCE_MODEL)
+    expect(routed).toMatchObject({ provider: "higgsfield", sources: ["text", "image"], referenceImages: true })
+  })
+
+  it("posts references to the reference path and leaves empty lists out", async () => {
+    vi.stubEnv("HF_CREDENTIALS", "key-id:key-secret")
+    const request = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ request_id: "req_r" }), { status: 200 }))
+    await submitHiggsfieldMinimaxH3Video({ model: HIGGSFIELD_MINIMAX_H3_REFERENCE_MODEL, prompt: "A cinematic scene at sunset", duration: 20, aspectRatio: "16:9", imageUrls: ["https://cdn.test/a.png", "asset://byteplus/x", "https://cdn.test/a.png"], videoUrls: [], audioUrls: ["https://cdn.test/v.mp3"] })
+    const [url, init] = request.mock.calls[0]
+    expect(url).toBe("https://api.higgsfield.ai/minimax/h3/reference-to-video")
+    expect(JSON.parse(String(init?.body))).toEqual({ prompt: "A cinematic scene at sunset", duration: 15, resolution: "2K", aspect_ratio: "16:9", aigc_watermark: false, image_urls: ["https://cdn.test/a.png"], audio_urls: ["https://cdn.test/v.mp3"] })
+    // The text endpoint never receives references, even when they are passed.
+    await submitHiggsfieldMinimaxH3Video({ prompt: "A runner", imageUrls: ["https://cdn.test/a.png"] })
+    expect(request.mock.calls[1][0]).toBe("https://api.higgsfield.ai/minimax/h3/text-to-video")
+    expect(JSON.parse(String(request.mock.calls[1][1]?.body))).not.toHaveProperty("image_urls")
   })
 })

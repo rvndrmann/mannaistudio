@@ -125,7 +125,7 @@ export async function submitProjectVideo(context: Awaited<ReturnType<typeof requ
     if (!isGenjutsuModel(input.model) && !input.prompt) return reply({ error: "A prompt is required for this model." }, { status: 400 })
     if (provider === "higgsfield") await runUserProvider(context.user.id, "higgsfield", async () => requireHiggsfieldCredentials())
     if (input.referenceAudios.length) {
-      if (!higgsfieldTakesAudioReferences(input.model) && (provider !== "byteplus" || !/seedance-2-[05]/.test(input.model))) return reply({ error: "Audio references require a Seedance 2.0 or 2.5 model on BytePlus Direct, or Seedance 2.0, Wan 3.0 Prime or Cinema Studio 4.0 on Higgsfield." }, { status: 400 })
+      if (!higgsfieldTakesAudioReferences(input.model) && (provider !== "byteplus" || !/seedance-2-[05]/.test(input.model))) return reply({ error: "Audio references require a Seedance 2.0 or 2.5 model on BytePlus Direct, or Seedance 2.0 or 2.5, Wan 3.0 Prime, Cinema Studio 4.0 or MiniMax H3 Reference on Higgsfield." }, { status: 400 })
       const maxAudios = input.model.includes("seedance-2-5") ? 10 : 3
       if (input.referenceAudios.length > maxAudios) return reply({ error: `This model accepts at most ${maxAudios} audio references.` }, { status: 400 })
       if (!input.audioEnabled) return reply({ error: "Turn Audio On to use audio references." }, { status: 400 })
@@ -534,7 +534,7 @@ export async function submitProjectVideo(context: Awaited<ReturnType<typeof requ
       const task: { id: string; response?: unknown } = await runOnBillingAccount(async () => {
       let task: { id: string; response?: unknown }
       if (isHiggsfieldMinimaxH3Model(input.model)) {
-        task = await submitHiggsfieldMinimaxH3Video({ prompt: resolvedPrompt, duration: input.durationSeconds, aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16" })
+        task = await submitHiggsfieldMinimaxH3Video({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds, aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16", imageUrls: references, videoUrls: videoReferences, audioUrls: audioReferences })
       } else if (isHiggsfieldSeedanceModel(input.model)) {
         task = await submitHiggsfieldSeedanceVideo({ model: input.model, prompt: resolvedPrompt, duration: input.durationSeconds, resolution: input.resolution || shot.resolution || "720p", aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16", imageUrls: references, videoUrls: videoReferences, audioUrls: audioReferences, audioEnabled: input.audioEnabled })
       } else if (isHiggsfieldKlingModel(input.model)) {

@@ -191,6 +191,7 @@ export const MODEL_CREDIT_RATES: Record<string, ModelCreditRate> = {
   // No Higgsfield quote for this endpoint yet. It renders at 2K only, so every
   // resolution carries the card's 2K MiniMax H3 figure until one exists.
   "higgsfield/minimax/h3/text-to-video": { unit: "per second", base: 220 / 8, description: "MiniMax H3 2K (Higgsfield, MiniMax H3 rate)", estimated: true },
+  "higgsfield/minimax/h3/reference-to-video": { unit: "per second", base: 220 / 8, description: "MiniMax H3 Reference 2K (Higgsfield, MiniMax H3 rate)", estimated: true },
   "fal-minimax-video-01": { unit: "per second", base: 135 / 8, description: "MiniMax Video-01 (MiniMax H3 rate)", estimated: true },
   "fal-kling-3": { unit: "per second", base: 135 / 8, description: "Kling 3.0 (MiniMax H3 rate)", estimated: true },
   "fal-kling-o3": { unit: "per second", base: 135 / 8, description: "Kling O3 (MiniMax H3 rate)", estimated: true },

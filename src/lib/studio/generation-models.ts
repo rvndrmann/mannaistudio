@@ -43,7 +43,8 @@ export const videoGenerationModels = [
   { id: "higgsfield/kling-video/v3.0/std/image-to-video", label: "Kling 3.0 Standard (Higgsfield)", provider: "higgsfield" },
   { id: "higgsfield/kling-video/o3/image-reference", label: "Kling O3 (Higgsfield)", provider: "higgsfield" },
   { id: "higgsfield/kling-video/o3/video-reference", label: "Kling O3 Video Reference (Higgsfield)", provider: "higgsfield" },
-  { id: "higgsfield/minimax/h3/text-to-video", label: "MiniMax H3 (Higgsfield)", provider: "higgsfield" },
+  { id: "higgsfield/minimax/h3/text-to-video", label: "MiniMax H3 Text (Higgsfield)", provider: "higgsfield" },
+  { id: "higgsfield/minimax/h3/reference-to-video", label: "MiniMax H3 Reference (Higgsfield)", provider: "higgsfield" },
   { id: "higgsfield/genjutsu/motion-transfer/v1.0", label: "Genjutsu Motion Transfer (Higgsfield)", provider: "higgsfield" },
   { id: "higgsfield/genjutsu/object-swap/v1.0", label: "Genjutsu Object Swap (Higgsfield)", provider: "higgsfield" },
   { id: "higgsfield/genjutsu/restyle/v1.0", label: "Genjutsu Restyle (Higgsfield)", provider: "higgsfield" },
@@ -113,7 +114,7 @@ export const isImageOnlyVideoModel = (model: string) => model === "higgsfield/kl
 
 /** Higgsfield models whose endpoint takes audio files as references. */
 export const higgsfieldTakesAudioReferences = (model: string) =>
-  model === "higgsfield/bytedance/seedance-2.0/reference-to-video" || model === "higgsfield/bytedance/seedance-2.5/reference-to-video" || model === "higgsfield/alibaba/wan-3.0-prime/reference-to-video" || model === "higgsfield/cinema-studio/4.0"
+  model === "higgsfield/bytedance/seedance-2.0/reference-to-video" || model === "higgsfield/bytedance/seedance-2.5/reference-to-video" || model === "higgsfield/alibaba/wan-3.0-prime/reference-to-video" || model === "higgsfield/cinema-studio/4.0" || model === "higgsfield/minimax/h3/reference-to-video"
 
 export function generationProvider(model: ImageGenerationModelId | VideoGenerationModelId) {
   if (model.startsWith("higgsfield/") || model.startsWith("higgsfield-ai/")) return "higgsfield"
@@ -213,7 +214,7 @@ export function videoDurationOptions(model: string, resolution?: string) {
   if (/^google-veo-/.test(model)) return /^(1080p|4k)$/i.test(resolution || "") ? [8] : [4, 6, 8]
   if (model === "fal-kling-1-6-pro") return [5, 10]
   if (model === "fal-minimax-video-01") return [6]
-  const min = isTextOnlyVideoModel(model) || model === "fal-minimax-h3" ? 5 : 4
+  const min = /minimax\/h3\//.test(model) || model === "fal-minimax-h3" ? 5 : 4
   const max = model === "higgsfield/kling-video/o3/video-reference"
     ? 10
     : model.startsWith("higgsfield/genjutsu/") || model.startsWith("higgsfield/alibaba/wan-3.0-prime/") || model === "higgsfield/cinema-studio/4.0" || /seedance-2[-.]5/i.test(model) ? 30 : 15

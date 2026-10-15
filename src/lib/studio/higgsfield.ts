@@ -14,7 +14,12 @@ export const SOUL_V2_IMAGE_TO_IMAGE_MODEL = "higgsfield-ai/soul/v2/image-to-imag
 // the API path is the same id without it.
 export const HIGGSFIELD_MINIMAX_H3_MODEL = "higgsfield/minimax/h3/text-to-video"
 const HIGGSFIELD_MINIMAX_H3_PATH = "minimax/h3/text-to-video"
-export const isHiggsfieldMinimaxH3Model = (model: string) => model === HIGGSFIELD_MINIMAX_H3_MODEL
+// The same model steered by reference images, clips and audio.
+export const HIGGSFIELD_MINIMAX_H3_REFERENCE_MODEL = "higgsfield/minimax/h3/reference-to-video"
+const HIGGSFIELD_MINIMAX_H3_REFERENCE_PATH = "minimax/h3/reference-to-video"
+export const isHiggsfieldMinimaxH3ReferenceModel = (model: string) => model === HIGGSFIELD_MINIMAX_H3_REFERENCE_MODEL
+/** Either MiniMax H3 endpoint served by Higgsfield; they share one submit path. */
+export const isHiggsfieldMinimaxH3Model = (model: string) => model === HIGGSFIELD_MINIMAX_H3_MODEL || model === HIGGSFIELD_MINIMAX_H3_REFERENCE_MODEL
 // Seedance 2.0 Reference to Video through Higgsfield: images, clips and audio
 // in, one clip out. Same prefix rule as above.
 export const HIGGSFIELD_SEEDANCE_2_MODEL = "higgsfield/bytedance/seedance-2.0/reference-to-video"
@@ -70,6 +75,13 @@ export const minimaxH3InputSchema = z.object({
   resolution: z.literal("2K").default("2K"),
   aspect_ratio: z.enum(minimaxH3AspectRatios).default("auto"),
   aigc_watermark: z.boolean().default(false),
+}).strict()
+// The reference endpoint's table gives no limit on how many references it
+// takes, so Seedance 2.0's limits are kept until it does.
+export const minimaxH3ReferenceInputSchema = minimaxH3InputSchema.extend({
+  audio_urls: z.array(z.url().max(2083)).min(1).max(3).optional(),
+  image_urls: z.array(z.url().max(2083)).min(1).max(9).optional(),
+  video_urls: z.array(z.url().max(2083)).min(1).max(3).optional(),
 }).strict()
 const seedanceAspectRatios = ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"] as const
 const seedanceResolutions = ["480p", "720p", "1080p", "4k"] as const
@@ -216,15 +228,48 @@ export async function submitGenjutsuVideo(model: string, input: z.input<typeof g
 }
 
 /**
- * Text to video only: the endpoint takes no image or video input, so a shot's
- * keyframe and references are not sent. It renders at 2K and between 5 and 15
+ * The text endpoint takes no image or video input, so a shot's keyframe and
+ * references are not sent to it. The reference endpoint takes images, clips
+ * and audio, all optional; an empty list is left out rather than sent, and
+ * only fetchable URLs are passed. Both render at 2K and between 5 and 15
  * whole seconds; a request outside that is brought inside it rather than
  * refused, since the studio's own duration picker starts lower.
  */
-export async function submitHiggsfieldMinimaxH3Video(input: { prompt: string; duration?: number; aspectRatio?: string }) {
+export async function submitHiggsfieldMinimaxH3Video(input: {
+  prompt: string
+  duration?: number
+  aspectRatio?: string
+  imageUrls?: string[]
+  videoUrls?: string[]
+  audioUrls?: string[]
+  /** Which endpoint. Left out, it is text to video, as every caller before the reference one existed assumed. */
+  model?: string
+}) {
   const ratio = (minimaxH3AspectRatios as readonly string[]).includes(input.aspectRatio || "") ? input.aspectRatio : "auto"
   const seconds = Math.min(15, Math.max(5, Math.round(Number(input.duration) || 5)))
-  const parsed = minimaxH3InputSchema.safeParse({ prompt: input.prompt.trim(), duration: seconds, aspect_ratio: ratio })
+  const prompt = input.prompt.trim()
+  if (input.model === HIGGSFIELD_MINIMAX_H3_REFERENCE_MODEL) {
+    const urls = (values: string[] | undefined, limit: number) => {
+      const list = Array.from(new Set((values || []).filter((value) => /^https?:\/\//i.test(value)))).slice(0, limit)
+      return list.length ? list : undefined
+    }
+    const image_urls = urls(input.imageUrls, 9)
+    const video_urls = urls(input.videoUrls, 3)
+    const audio_urls = urls(input.audioUrls, 3)
+    const parsedReference = minimaxH3ReferenceInputSchema.safeParse({
+      prompt,
+      duration: seconds,
+      ...(audio_urls ? { audio_urls } : {}),
+      ...(image_urls ? { image_urls } : {}),
+      ...(video_urls ? { video_urls } : {}),
+      aspect_ratio: ratio,
+    })
+    if (!parsedReference.success) throw new HiggsfieldProviderError("MiniMax H3 Reference needs a prompt.", 400)
+    const submitted = await call(HIGGSFIELD_MINIMAX_H3_REFERENCE_PATH, parsedReference.data)
+    if (typeof submitted.request_id !== "string" || !submitted.request_id) throw new HiggsfieldProviderError("Higgsfield did not return a request ID")
+    return { id: submitted.request_id, response: submitted }
+  }
+  const parsed = minimaxH3InputSchema.safeParse({ prompt, duration: seconds, aspect_ratio: ratio })
   if (!parsed.success) throw new HiggsfieldProviderError("MiniMax H3 needs a prompt.", 400)
   const response = await call(HIGGSFIELD_MINIMAX_H3_PATH, parsed.data)
   if (typeof response.request_id !== "string" || !response.request_id) throw new HiggsfieldProviderError("Higgsfield did not return a request ID")

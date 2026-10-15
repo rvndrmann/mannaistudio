@@ -473,9 +473,13 @@ export async function executeGenerationJobs(
               if (job.provider === "higgsfield" && !isHiggsfieldMinimaxH3Model(job.model) && !isHiggsfieldSeedanceModel(job.model) && !isHiggsfieldWanModel(job.model) && !isHiggsfieldKlingModel(job.model) && !isHiggsfieldKlingO3Model(job.model) && !isHiggsfieldKlingO3VideoModel(job.model) && !isHiggsfieldCinemaStudioModel(job.model) && videoReferenceUrls.length !== 1) throw new Error("Genjutsu requires exactly one source video.")
               task = isHiggsfieldMinimaxH3Model(job.model)
                 ? await submitHiggsfieldMinimaxH3Video({
+                    model: job.model,
                     prompt: canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[]),
                     duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 5,
                     aspectRatio: effectiveAspectRatio,
+                    imageUrls: referenceUrls,
+                    videoUrls: videoReferenceUrls,
+                    audioUrls: audioReferenceUrls,
                   })
                 : isHiggsfieldKlingModel(job.model)
                 ? await submitHiggsfieldKlingVideo({
