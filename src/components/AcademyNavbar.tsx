@@ -17,8 +17,8 @@ import { cn } from "@/lib/utils"
  * It sells one thing, so it carries one button. A visitor gets where the
  * courses are, what the studio is, what it costs and a way in; a member gets
  * their three working pages and everything else about their account behind one
- * menu. Originals is in the footer. Hire Our Team sits in the bar as a plain
- * link — the site sells courses, but it should be obvious we also take on
+ * menu. Originals and Hire Our Team sit in the bar as plain links — the site
+ * sells courses, but it should be obvious we also make films and take on
  * custom work — while the Pro button keeps the only seat a phone has.
  *
  * `signedInHint` is the server's guess from the session cookie, used until the
@@ -29,6 +29,7 @@ const visitorLinks = [
   { name: "Courses", href: "/courses" },
   { name: "Creator Studio", href: "/studio" },
   { name: "Pricing", href: "/#pricing" },
+  { name: "Originals", href: "/originals" },
   { name: "Hire Our Team", href: "/hire-us" },
 ]
 
@@ -36,12 +37,13 @@ const memberLinks = [
   { name: "My Courses", href: "/my-courses" },
   { name: "Creator Studio", href: "/studio" },
   { name: "My Projects", href: "/hire-us/projects" },
+  { name: "Originals", href: "/originals" },
   { name: "Hire Our Team", href: "/hire-us" },
 ]
 
 const menuRow = "flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-3 text-left text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
 
-export default function AcademyNavbar({ offerText = "", signedInHint = false, hireUs = true }: { offerText?: string; signedInHint?: boolean; hireUs?: boolean }) {
+export default function AcademyNavbar({ offerText = "", signedInHint = false, hireUs = true, originals = true }: { offerText?: string; signedInHint?: boolean; hireUs?: boolean; originals?: boolean }) {
   const { user, loading, signOut } = useAuth()
   const pathname = usePathname()
   // Whose admin row was found, rather than a bare flag: signing out or
@@ -77,8 +79,9 @@ export default function AcademyNavbar({ offerText = "", signedInHint = false, hi
     }
   }, [open])
 
-  // Paused in /admin → Pause Features: the link goes, like the rest of the offer.
-  const links = (signedIn ? memberLinks : visitorLinks).filter((link) => hireUs || link.href !== "/hire-us")
+  // Paused in /admin → Pause Features: the link goes, like the rest of the feature.
+  const links = (signedIn ? memberLinks : visitorLinks).filter((link) =>
+    (hireUs || link.href !== "/hire-us") && (originals || link.href !== "/originals"))
   const accountLinks = [
     { name: "My Account", href: "/account" },
     { name: "Billing", href: "/billing" },
@@ -95,7 +98,7 @@ export default function AcademyNavbar({ offerText = "", signedInHint = false, hi
           <span className="hidden whitespace-nowrap text-base font-medium tracking-[-0.03em] text-white min-[400px]:inline">AI Director Hub</span>
         </Link>
 
-        <div className="ml-auto hidden min-w-0 items-center gap-7 md:flex">
+        <div className="ml-auto hidden min-w-0 items-center gap-5 md:flex lg:gap-7">
           {links.map((link) => (
             <Link key={link.href} href={link.href} className="whitespace-nowrap text-[13px] text-white/55 transition-colors hover:text-white">{link.name}</Link>
           ))}

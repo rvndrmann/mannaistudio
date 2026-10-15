@@ -120,6 +120,7 @@ const loadHomeContent = unstable_cache(
       courses,
       offerText: billing.offerEnabled ? showRupeesAsDollars(billing.offerText) : "",
       hireUs: features.hireUs,
+      originals: features.originals,
       services: features.hireUs ? publishedOffers(catalogue).slice(0, 3) : [],
     }
   },
@@ -128,7 +129,7 @@ const loadHomeContent = unstable_cache(
 )
 
 export default async function AcademyHome() {
-  const [{ proof, settings, courses, offerText, hireUs, services }, cookieStore] = await Promise.all([loadHomeContent(), cookies()])
+  const [{ proof, settings, courses, offerText, hireUs, originals, services }, cookieStore] = await Promise.all([loadHomeContent(), cookies()])
 
   // Whether a session cookie exists, not whether it is valid: enough to draw
   // the right navigation on the first paint without a round trip to verify it.
@@ -213,7 +214,7 @@ export default async function AcademyHome() {
       {/* The academy bar directly, not the shared Navbar that would hand over
           to it: that one carries the other site's menu, its animation library
           and three settings requests, none of which this page uses. */}
-      <AcademyNavbar offerText={offerText} signedInHint={signedInHint} hireUs={hireUs} />
+      <AcademyNavbar offerText={offerText} signedInHint={signedInHint} hireUs={hireUs} originals={originals} />
       <ViewContentBeacon name="Homepage" />
       <StickyProBar watch="hero" />
 

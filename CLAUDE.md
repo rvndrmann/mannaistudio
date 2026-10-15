@@ -226,7 +226,7 @@ Migration `20261012120000_proof_items.sql`.
   `/free-course`, which redirects to the current free course, fires `Lead`).
 - **Courses:** `/courses` is the public catalogue; `/my-courses` is what a
   signed-in student owns. `courseDurationLabel` hides zero durations.
-- **Nav:** `AcademyNavbar`. Originals is footer-only; Hire Our Team is a nav link, a line under the hero and a "Done for you" section (published `managed_offer_services`, max 3), all hidden when `site_features.hireUs` is paused.
+- **Nav:** `AcademyNavbar`. Originals is a nav link (hidden when `site_features.originals` is paused); Hire Our Team is a nav link, a line under the hero and a "Done for you" section (published `managed_offer_services`, max 3), all hidden when `site_features.hireUs` is paused.
 
 ## MCP bridge (control the studio from an MCP client)
 
