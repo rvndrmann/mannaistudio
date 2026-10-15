@@ -6,6 +6,7 @@ import type { ReactNode } from "react"
 import { ArrowRight, ArrowUpRight, Check, Plus, Quote } from "lucide-react"
 import Footer from "@/components/Footer"
 import AcademyNavbar from "@/components/AcademyNavbar"
+import FeaturedStrip, { type FeaturedEntry } from "@/components/home/academy/FeaturedStrip"
 import HeroReel from "@/components/home/academy/HeroReel"
 import ProofWall from "@/components/home/academy/ProofWall"
 import WorkGallery from "@/components/home/academy/WorkGallery"
@@ -13,6 +14,10 @@ import { FreeCourseCta, ProCta, StickyProBar, ViewContentBeacon } from "@/compon
 import { reasonVisuals } from "@/components/home/academy/reason-visuals"
 import { courseMetaLine, fetchCatalogCourses, type CatalogCourse } from "@/lib/course-catalog"
 import { fetchBillingSettings } from "@/lib/membership"
+import { formatUsd } from "@/lib/currency"
+import { loadCatalogue } from "@/lib/managed/catalogue"
+import { cheapestPackage, publishedOffers, type OfferService } from "@/lib/managed-offers"
+import { fetchSiteFeatures } from "@/lib/studio/feature-flags"
 import {
   createPublicClient,
   fetchProofPageSettings,
@@ -39,8 +44,10 @@ import {
  *   with no rows behind it is not rendered — there is no placeholder to fall
  *   back to, because a placeholder testimonial is an invented one.
  *
- *   One thing is for sale. Every primary button is the Pro subscription and
- *   every secondary link is the free course.
+ *   One thing is for sale here. Every primary button is the Pro subscription
+ *   and every secondary link is the free course. The done-for-you service gets
+ *   a nav link, a line under the hero and one section of its own — enough that
+ *   nobody leaves thinking we only teach — but never the primary button.
  */
 
 export const academyMetadata = {
@@ -98,20 +105,30 @@ const reasons: Reason[] = [
 const loadHomeContent = unstable_cache(
   async () => {
     const supabase = createPublicClient()
-    const [proof, settings, courses, billing] = await Promise.all([
+    const [proof, settings, courses, billing, features, catalogue] = await Promise.all([
       fetchPublishedProof(supabase, { limit: 100 }),
       fetchProofPageSettings(supabase),
       fetchCatalogCourses(supabase),
       fetchBillingSettings(supabase),
+      fetchSiteFeatures(supabase),
+      // The course page must not fail because the services catalogue did.
+      loadCatalogue(supabase).catch((): OfferService[] => []),
     ])
-    return { proof, settings, courses, offerText: billing.offerEnabled ? showRupeesAsDollars(billing.offerText) : "" }
+    return {
+      proof,
+      settings,
+      courses,
+      offerText: billing.offerEnabled ? showRupeesAsDollars(billing.offerText) : "",
+      hireUs: features.hireUs,
+      services: features.hireUs ? publishedOffers(catalogue).slice(0, 3) : [],
+    }
   },
   ["academy-home-content"],
   { revalidate: 60 },
 )
 
 export default async function AcademyHome() {
-  const [{ proof, settings, courses, offerText }, cookieStore] = await Promise.all([loadHomeContent(), cookies()])
+  const [{ proof, settings, courses, offerText, hireUs, services }, cookieStore] = await Promise.all([loadHomeContent(), cookies()])
 
   // Whether a session cookie exists, not whether it is valid: enough to draw
   // the right navigation on the first paint without a round trip to verify it.
@@ -120,7 +137,23 @@ export default async function AcademyHome() {
   const portfolio = proof.filter((item) => item.type === "portfolio" && item.video && proofPoster(item))
   const students = proof.filter((item) => item.type === "student_review")
   const sales = proof.filter((item) => item.type === "sale_proof")
-  const featured = proof.filter((item) => item.featured).slice(0, 6)
+  // In the order set in /admin/proof (its Featured filter shows just these).
+  const featured: FeaturedEntry[] = proof
+    .filter((item) => item.featured)
+    .slice(0, 6)
+    .map((item) => {
+      const isWork = item.type === "portfolio"
+      const poster = proofPoster(item)
+      return {
+        id: item.id,
+        label: isWork ? proofCategoryLabel(item.category) : item.type === "sale_proof" ? "Client sale" : "Student result",
+        amount: item.type === "sale_proof" ? formatProofAmount(item.amount, item.currency) : "",
+        name: isWork ? item.title : item.personName || item.title,
+        image: isWork ? poster : item.avatarImage || poster,
+        review: isWork ? null : toWallItem(item),
+        video: isWork && item.video ? { url: item.video, poster, title: item.title } : null,
+      }
+    })
 
   const reelSource = portfolio.filter(isPlayableFile)
   const heroClips = (reelSource.some((item) => item.featured) ? reelSource.filter((item) => item.featured) : reelSource)
@@ -180,7 +213,7 @@ export default async function AcademyHome() {
       {/* The academy bar directly, not the shared Navbar that would hand over
           to it: that one carries the other site's menu, its animation library
           and three settings requests, none of which this page uses. */}
-      <AcademyNavbar offerText={offerText} signedInHint={signedInHint} />
+      <AcademyNavbar offerText={offerText} signedInHint={signedInHint} hireUs={hireUs} />
       <ViewContentBeacon name="Homepage" />
       <StickyProBar watch="hero" />
 
@@ -197,6 +230,12 @@ export default async function AcademyHome() {
               <ProCta placement="hero" className="w-full sm:w-auto" />
               <FreeCourseCta placement="hero" className={`${outlineButton} w-full justify-center sm:w-auto`}>Start the free course</FreeCourseCta>
             </div>
+            {hireUs && (
+              <p className="mt-5 text-sm text-white/50">
+                Rather have it made for you?{" "}
+                <Link href="/hire-us" className="inline-flex items-center gap-1 text-white/85 underline decoration-white/25 underline-offset-4 transition hover:text-white hover:decoration-white/60">Hire our team <ArrowUpRight className="h-3.5 w-3.5" /></Link>
+              </p>
+            )}
             {settings.costExample && (
               <div className="mt-8 max-w-lg border-l border-white/20 pl-4">
                 <p className="text-sm font-medium text-white/90">Your own API key means you pay the real price.</p>
@@ -212,25 +251,7 @@ export default async function AcademyHome() {
       {featured.length > 0 && (
         <section aria-label="Featured proof" className="frame frame-row">
           <p className="py-6 text-center text-[11px] font-medium uppercase tracking-[.22em] text-white/35">Featured work and results</p>
-          <ul className={`flex snap-x overflow-x-auto border-t ${cell} [scrollbar-width:none] lg:grid lg:grid-cols-6 lg:overflow-visible [&::-webkit-scrollbar]:hidden`}>
-            {featured.map((item) => {
-              const image = item.type === "portfolio" ? proofPoster(item) : item.avatarImage || proofPoster(item)
-              const amount = formatProofAmount(item.amount, item.currency)
-              return (
-                <li key={item.id} className={`w-56 shrink-0 snap-start border-r ${cell} last:border-r-0 lg:w-auto`}>
-                  <a href={item.type === "portfolio" ? "#work" : "#proof"} className="flex h-full items-center gap-3 p-4 transition hover:bg-white/[.03]">
-                    {image
-                      ? <img src={image} alt="" loading="lazy" decoding="async" className="h-12 w-12 shrink-0 rounded-md object-cover" />
-                      : <span className="grid h-12 w-12 shrink-0 place-items-center rounded-md bg-white/[.06] text-white/60"><Quote className="h-4 w-4" /></span>}
-                    <span className="min-w-0">
-                      <span className="block text-[11px] text-white/40">{item.type === "portfolio" ? proofCategoryLabel(item.category) : item.type === "sale_proof" ? <>Client sale{amount && <> · <span className="text-brand">{amount}</span></>}</> : "Student result"}</span>
-                      <span className="mt-0.5 line-clamp-2 text-xs leading-snug text-white/85">{item.type === "portfolio" ? item.title : item.personName || item.title}</span>
-                    </span>
-                  </a>
-                </li>
-              )
-            })}
-          </ul>
+          <FeaturedStrip items={featured} cellClass={cell} />
         </section>
       )}
 
@@ -381,6 +402,24 @@ export default async function AcademyHome() {
         </div>
       </section>
 
+      {/* Done for you — the custom work, for visitors who want the video, not the skill */}
+      {hireUs && (
+        <section id="hire" className={`frame frame-row scroll-mt-24 ${pad} py-20`}>
+          <div className="flex flex-wrap items-end justify-between gap-6">
+            <SectionTitle eyebrow="Done for you" title="Need the video made? Hire our team." body="The same team that teaches the workflow takes on custom work: UGC, direct-response and cinematic ads for your brand. Send a brief, review the cut, ask for revisions, get the finished files." />
+            <div className="flex w-full flex-wrap gap-3 sm:w-auto">
+              <Link href="/hire-us" className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-primary px-5 text-[13px] font-medium text-primary-foreground transition hover:bg-white sm:w-auto">Hire our team <ArrowUpRight className="h-3.5 w-3.5" /></Link>
+              <Link href="/hire-us/brief" className={`${outlineButton} inline-flex w-full items-center justify-center gap-2 sm:w-auto`}>Send a brief <ArrowRight className="h-3.5 w-3.5" /></Link>
+            </div>
+          </div>
+          {services.length > 0 && (
+            <ul className={`mt-10 grid border-l border-t ${cell} sm:grid-cols-2 lg:grid-cols-3`}>
+              {services.map((service) => <ServiceCard key={service.id} service={service} />)}
+            </ul>
+          )}
+        </section>
+      )}
+
       {/* 10. FAQ */}
       <section id="faq" className={`frame frame-row scroll-mt-24 ${pad} py-20`}>
         <div className="grid gap-10 lg:grid-cols-[.8fr_1.2fr] lg:gap-16">
@@ -454,6 +493,31 @@ function CourseCard({ course }: { course: CatalogCourse }) {
         </div>
       </div>
     </article>
+  )
+}
+
+function ServiceCard({ service }: { service: OfferService }) {
+  const from = cheapestPackage(service)
+  return (
+    <li className="border-b border-r border-white/[.08]">
+      <Link href="/hire-us" className="group flex h-full flex-col bg-white/[.02] transition hover:bg-white/[.04]">
+        {(service.thumbnailUrl || service.videoUrl) && (
+          <div className="aspect-video overflow-hidden bg-[#111]">
+            {service.thumbnailUrl
+              ? <img src={service.thumbnailUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]" />
+              : <video src={`${service.videoUrl}#t=0.1`} muted playsInline preload="metadata" aria-hidden className="h-full w-full object-cover" />}
+          </div>
+        )}
+        <div className="flex flex-1 flex-col p-5 sm:p-6">
+          <h3 className="text-lg font-medium tracking-[-0.02em]">{service.name}</h3>
+          {service.tagline && <p className="mt-2 text-sm leading-relaxed text-white/55">{service.tagline}</p>}
+          <p className="mt-auto flex items-center justify-between pt-6 text-sm">
+            <span className="text-white/45">{service.quoteOnly || !from ? "Custom quote" : <>From <span className="font-medium text-white/90">{formatUsd(from.priceInr)}</span></>}</span>
+            <ArrowRight className="h-3.5 w-3.5 text-white/40 transition group-hover:translate-x-0.5 group-hover:text-white" />
+          </p>
+        </div>
+      </Link>
+    </li>
   )
 }
 

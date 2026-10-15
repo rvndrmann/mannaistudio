@@ -85,7 +85,7 @@ export default function ProofManager() {
   const supabase = useMemo(() => createClient(), [])
   const [items, setItems] = useState<ProofItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<ProofType | "all">("all")
+  const [filter, setFilter] = useState<ProofType | "all" | "featured">("all")
   const [draft, setDraft] = useState<Draft | null>(null)
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null)
   const [dragging, setDragging] = useState<string | null>(null)
@@ -110,7 +110,9 @@ export default function ProofManager() {
     return () => { active = false }
   }, [supabase, revision])
 
-  const visible = filter === "all" ? items : items.filter((item) => item.type === filter)
+  // "Featured" is the strip under the homepage hero, in the order it is drawn:
+  // arranging this view arranges the strip.
+  const visible = filter === "all" ? items : filter === "featured" ? items.filter((item) => item.featured) : items.filter((item) => item.type === filter)
 
   const patch = async (item: ProofItem, change: Partial<Pick<ProofItem, "published" | "featured">>) => {
     const next = { ...item, ...change }
@@ -166,15 +168,15 @@ export default function ProofManager() {
           <h1 className="text-3xl font-semibold">Proof manager</h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/55">Portfolio work, student reviews and client sales. The homepage shows only what is published here; a section with nothing published is hidden.</p>
         </div>
-        <button type="button" onClick={() => setDraft(blankDraft(filter === "all" ? "portfolio" : filter, items.length))} className="inline-flex h-11 items-center gap-2 rounded-md bg-primary px-5 text-sm font-semibold text-black hover:brightness-110"><Plus className="h-4 w-4" /> Add proof</button>
+        <button type="button" onClick={() => setDraft(blankDraft(filter === "all" || filter === "featured" ? "portfolio" : filter, items.length))} className="inline-flex h-11 items-center gap-2 rounded-md bg-primary px-5 text-sm font-semibold text-black hover:brightness-110"><Plus className="h-4 w-4" /> Add proof</button>
       </div>
 
       {message && <p role="status" className={cn("mt-5 rounded-lg border px-4 py-3 text-sm", message.tone === "error" ? "border-red-400/30 bg-red-400/5 text-red-200" : "border-primary/30 bg-primary/5 text-primary")}>{message.text}</p>}
 
       <div className="mt-6 flex flex-wrap gap-2">
-        {[{ key: "all" as const, label: "All" }, ...proofTypes].map((type) => (
+        {[{ key: "all" as const, label: "All" }, { key: "featured" as const, label: "Featured" }, ...proofTypes].map((type) => (
           <button key={type.key} type="button" onClick={() => setFilter(type.key)} className={cn("min-h-9 rounded-full border px-4 text-sm font-medium transition", filter === type.key ? "border-primary bg-primary text-black" : "border-white/15 text-white/65 hover:text-white")}>
-            {type.label} <span className="opacity-60">{type.key === "all" ? items.length : items.filter((item) => item.type === type.key).length}</span>
+            {type.label} <span className="opacity-60">{type.key === "all" ? items.length : type.key === "featured" ? items.filter((item) => item.featured).length : items.filter((item) => item.type === type.key).length}</span>
           </button>
         ))}
       </div>

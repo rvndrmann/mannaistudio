@@ -17,8 +17,9 @@ import { cn } from "@/lib/utils"
  * It sells one thing, so it carries one button. A visitor gets where the
  * courses are, what the studio is, what it costs and a way in; a member gets
  * their three working pages and everything else about their account behind one
- * menu. Originals and Hire Our Team are in the footer — still reachable, no
- * longer competing with the Pro button for the only seat a phone has.
+ * menu. Originals is in the footer. Hire Our Team sits in the bar as a plain
+ * link — the site sells courses, but it should be obvious we also take on
+ * custom work — while the Pro button keeps the only seat a phone has.
  *
  * `signedInHint` is the server's guess from the session cookie, used until the
  * browser has confirmed it, so the first paint is already the right bar.
@@ -28,17 +29,19 @@ const visitorLinks = [
   { name: "Courses", href: "/courses" },
   { name: "Creator Studio", href: "/studio" },
   { name: "Pricing", href: "/#pricing" },
+  { name: "Hire Our Team", href: "/hire-us" },
 ]
 
 const memberLinks = [
   { name: "My Courses", href: "/my-courses" },
   { name: "Creator Studio", href: "/studio" },
   { name: "My Projects", href: "/hire-us/projects" },
+  { name: "Hire Our Team", href: "/hire-us" },
 ]
 
 const menuRow = "flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-3 text-left text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
 
-export default function AcademyNavbar({ offerText = "", signedInHint = false }: { offerText?: string; signedInHint?: boolean }) {
+export default function AcademyNavbar({ offerText = "", signedInHint = false, hireUs = true }: { offerText?: string; signedInHint?: boolean; hireUs?: boolean }) {
   const { user, loading, signOut } = useAuth()
   const pathname = usePathname()
   // Whose admin row was found, rather than a bare flag: signing out or
@@ -74,7 +77,8 @@ export default function AcademyNavbar({ offerText = "", signedInHint = false }: 
     }
   }, [open])
 
-  const links = signedIn ? memberLinks : visitorLinks
+  // Paused in /admin → Pause Features: the link goes, like the rest of the offer.
+  const links = (signedIn ? memberLinks : visitorLinks).filter((link) => hireUs || link.href !== "/hire-us")
   const accountLinks = [
     { name: "My Account", href: "/account" },
     { name: "Billing", href: "/billing" },

@@ -57,7 +57,7 @@ export const homeVariants: Array<{
   {
     id: "academy",
     label: "AI Video Academy",
-    description: "Sells AI Director Hub Pro: hero reel, proof from the Proof manager, the free mini course, pricing and FAQ. Server-rendered.",
+    description: "Sells AI Director Hub Pro: hero reel, proof from the Proof manager, the free mini course, pricing and FAQ, plus a Hire Our Team link and section for custom work. Server-rendered.",
     confirmation: "Homepage now shows AI Video Academy.",
   },
 ]
