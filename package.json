@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack --hostname 0.0.0.0",
-    "build": "node scripts/build-netlify-functions.mjs && next build",
+    "build": "node scripts/build-openreel.mjs && node scripts/build-netlify-functions.mjs && next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "edge:build": "node scripts/build-edge-bundles.mjs",
+    "editor:build": "node scripts/build-openreel.mjs",
     "netlify:build": "node scripts/build-netlify-functions.mjs",
     "director:cli": "node scripts/ai-director-cli.mjs",
     "director:mcp": "node mcp/server.mjs"

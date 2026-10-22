@@ -8,6 +8,7 @@ import { assetVerificationFor } from "@/lib/studio/asset-verification"
 import { assertShotPromptShape, normalizeShotColumns } from "@/lib/studio/shot-writes"
 import { normalizeEntityColumns } from "@/lib/studio/entity-writes"
 import { defaultAutopilotBudget, isAutopilotMode, writeAutopilotSettings } from "@/lib/studio/autopilot"
+import { parseFinalCutSave } from "@/lib/studio/final-cut"
 
 async function context(projectId: string) {
   const supabase = await createClient()
@@ -278,6 +279,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           : supabase.from("creator_shots").update({ order_index }).eq("id", shot.id))
         .filter(Boolean))
       return NextResponse.json({ success: true })
+    }
+    if (body.action === "saveFinalCut") {
+      const finalCut = parseFinalCutSave(body, { userId: user.id, projectId, episodeId: String(body.episodeId || "") })
+      const { data, error } = await supabase.from("creator_episodes").update({ final_cut: finalCut }).eq("id", body.episodeId).eq("project_id", projectId).select("id,final_cut").single(); if (error) throw error
+      return NextResponse.json(data)
     }
     if (body.action === "saveMediaDraft") {
       const { data: current, error: currentError } = await supabase.from("creator_shots").select("metadata").eq("id", body.shotId).single(); if (currentError) throw currentError

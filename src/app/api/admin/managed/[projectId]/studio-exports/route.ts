@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import { managedErrorMessage, managedErrorStatus, requireManagedAdmin } from "@/lib/managed/server"
 import { MANAGED_MEDIA_BUCKET } from "@/lib/managed-production"
+import { readFinalCut } from "@/lib/studio/final-cut"
 
 export const dynamic = "force-dynamic"
 
 /**
  * What is available to send to the client.
  *
- * Finished shot videos from the order's linked production, plus anything the
- * admin has uploaded into the order's own folder — which is how a browser-side
- * timeline export, stitched from several shots, gets published: it is saved to
- * disk by the studio's export modal, then re-uploaded here as the finished cut.
+ * Each episode's edited cut from the Timeline, the finished shot videos from
+ * the order's linked production, and anything the admin has uploaded into the
+ * order's own folder.
  *
  * Signed for preview so a producer can watch a clip before handing it over.
  * These are internal paths; the response goes to an admin only, and nothing in
@@ -26,9 +26,20 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     if (project.studio_project_id) {
       const { data: episodes } = await supabase
         .from("creator_episodes")
-        .select("id,name,order_index")
+        .select("id,name,order_index,final_cut")
         .eq("project_id", project.studio_project_id)
         .order("order_index")
+
+      for (const episode of episodes || []) {
+        const cut = readFinalCut(episode.final_cut)
+        if (!cut) continue
+        clips.push({
+          path: cut.path,
+          label: `${episode.name || "Episode"} — Edited cut`,
+          source: "studio",
+          durationSeconds: cut.duration_seconds,
+        })
+      }
 
       const episodeIds = (episodes || []).map((episode) => episode.id)
       if (episodeIds.length) {

@@ -228,6 +228,31 @@ Migration `20261012120000_proof_items.sql`.
   signed-in student owns. `courseDurationLabel` hides zero durations.
 - **Nav:** `AcademyNavbar`. Originals is a nav link (hidden when `site_features.originals` is paused); Hire Our Team is a nav link, a line under the hero and a "Done for you" section (published `managed_offer_services`, max 3), all hidden when `site_features.hireUs` is paused.
 
+## Timeline editor (OpenReel)
+
+The studio's Timeline tab is OpenReel (MIT, github.com/Augani/openreel-video)
+in a same-origin iframe. `scripts/build-openreel.mjs` fetches the commit in
+`editor/openreel/UPSTREAM`, lays `editor/openreel/overlay` over it, applies a
+few checked string edits, and builds into `public/editor` (gitignored; run
+`npm run editor:build`, also part of `npm run build`). Each edit fails the build
+if its upstream text moves, so bumping UPSTREAM cannot silently drop the bridge.
+
+- **Protocol:** `src/lib/studio/openreel-protocol.ts`, copied into the build.
+  The studio sends the episode's shots (signed URLs + trims); the editor
+  reopens its saved edit for that episode (browser IndexedDB, id
+  `studio-{project}-{episode}`) or lays the shots out on a new track.
+- **Exports:** OpenReel's download step hands the file to the studio, which
+  uploads it to `{user}/{project}/final-cuts/{episode}/` and records it in
+  `creator_episodes.final_cut` (workspace action `saveFinalCut`). If the save
+  fails, the editor downloads the file instead. Managed production lists and
+  can publish these edited cuts.
+- **AI Editor:** runs on the user's own BYOK key (OpenAI, else Gemini) through
+  `/api/studio/editor-ai/chat/completions`. The editor sends the Supabase access
+  token in place of an API key; the key never reaches the browser and no
+  credits are charged.
+- Upstream's service worker is disabled (it would claim the whole origin), and
+  `editor/` is excluded from middleware, tsc and eslint.
+
 ## MCP bridge (control the studio from an MCP client)
 
 `mcp/server.mjs` — a dependency-free stdio MCP server registered in `.mcp.json`.

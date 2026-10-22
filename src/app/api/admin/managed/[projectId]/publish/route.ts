@@ -62,9 +62,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .eq("video_url", input.sourcePath)
         .eq("creator_episodes.project_id", project.studio_project_id)
         .maybeSingle()
-      if (!shot) {
+      // Or the edited cut an episode's Timeline exported.
+      const { data: editedCut } = shot
+        ? { data: null }
+        : await supabase
+          .from("creator_episodes")
+          .select("id")
+          .eq("project_id", project.studio_project_id)
+          .eq("final_cut->>path", input.sourcePath)
+          .maybeSingle()
+      if (!shot && !editedCut) {
         return NextResponse.json(
-          { error: "That file is not a finished shot in this order's production." },
+          { error: "That file is not a finished shot or edited cut in this order's production." },
           { status: 403 },
         )
       }
