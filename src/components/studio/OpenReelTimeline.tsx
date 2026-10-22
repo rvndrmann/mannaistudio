@@ -308,7 +308,7 @@ export function OpenReelTimeline({
           )}
           {upload.kind === "failed" && (
             <span className="flex items-center gap-1.5 text-xs text-red-300" title={upload.message}>
-              <AlertTriangle className="h-3.5 w-3.5" /> Cut not saved — downloaded instead
+              <AlertTriangle className="h-3.5 w-3.5" /> Cut not saved to the project — the download still has it
             </span>
           )}
           {finalCut && upload.kind !== "uploading" && (

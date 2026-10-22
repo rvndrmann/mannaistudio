@@ -106,8 +106,9 @@ edit(
   `registerServiceWorker().then((registration) => {\n  if (registration) {\n  }\n});`,
   `void registerServiceWorker;`,
 )
-// A browser export ends in triggerAnchorDownload. In the studio a video goes
-// to the project instead, and is downloaded only if the studio could not keep it.
+// A browser export ends in triggerAnchorDownload. In the studio a video is
+// both downloaded and handed to the project; the temporary export file is
+// released only once both are done with it.
 edit(
   "apps/web/src/services/export-runner.ts",
   `function triggerAnchorDownload(data: Blob, filename: string, onRelease?: () => void): void {`,
@@ -116,10 +117,13 @@ edit(
     ? null
     : (window as { __openreelStudioExport?: (file: Blob, name: string) => Promise<boolean> | null }).__openreelStudioExport?.(data, filename);
   if (studioHandoff) {
-    void studioHandoff.then((saved) => {
-      if (saved) onRelease?.();
-      else triggerAnchorDownload(data, filename, onRelease, true);
-    });
+    let holders = 2;
+    const releaseShared = () => {
+      holders -= 1;
+      if (holders === 0) onRelease?.();
+    };
+    triggerAnchorDownload(data, filename, releaseShared, true);
+    void studioHandoff.then(releaseShared, releaseShared);
     return;
   }`,
 )
@@ -133,7 +137,7 @@ edit(
 edit(
   "apps/web/src/components/editor/ExportDialog.tsx",
   `            {!isDesktop && (\n              <div className="space-y-1.5">\n                <Selector label="Save video"`,
-  `            {!isDesktop && "__openreelStudioExport" in window && (\n              <p className="text-[11px] text-fg-muted">The video is saved to this episode in your studio project.</p>\n            )}\n            {!isDesktop && !("__openreelStudioExport" in window) && (\n              <div className="space-y-1.5">\n                <Selector label="Save video"`,
+  `            {!isDesktop && "__openreelStudioExport" in window && (\n              <p className="text-[11px] text-fg-muted">The video downloads to your computer and is saved to this episode in your studio project.</p>\n            )}\n            {!isDesktop && !("__openreelStudioExport" in window) && (\n              <div className="space-y-1.5">\n                <Selector label="Save video"`,
 )
 // Compact layout (a narrow editor, as it is beside the Director panel): the
 // player's share of the height becomes a draggable split instead of a fixed 48%.

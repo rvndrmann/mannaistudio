@@ -243,8 +243,8 @@ if its upstream text moves, so bumping UPSTREAM cannot silently drop the bridge.
   `studio-{project}-{episode}`) or lays the shots out on a new track.
 - **Exports:** OpenReel's download step hands the file to the studio, which
   uploads it to `{user}/{project}/final-cuts/{episode}/` and records it in
-  `creator_episodes.final_cut` (workspace action `saveFinalCut`). If the save
-  fails, the editor downloads the file instead. Managed production lists and
+  `creator_episodes.final_cut` (workspace action `saveFinalCut`). Every
+  export also downloads to the user's computer. Managed production lists and
   can publish these edited cuts.
 - **AI Editor:** runs on the user's own BYOK key (OpenAI, else Gemini) through
   `/api/studio/editor-ai/chat/completions`. The editor sends the Supabase access

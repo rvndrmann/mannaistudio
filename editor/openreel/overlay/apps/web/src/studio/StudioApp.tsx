@@ -187,14 +187,13 @@ async function openEdit(message: LoadMessage, onProgress: (done: number, label: 
 const pendingExports = new Map<string, (saved: boolean) => void>();
 
 /**
- * Hands a finished video export to the studio instead of downloading it.
+ * Hands a finished video export to the studio as well as downloading it.
  *
  * Called by OpenReel's export runner (patched by scripts/build-openreel.mjs)
  * with the file it was about to download. Returns null for anything that is
  * not a video export, which then downloads as usual — an audio-only WAV is not
  * a cut of the episode. The promise settles once the studio has answered, so
- * the runner keeps the temporary file alive until then; false means it was not
- * stored, and the runner downloads it instead so the export is never lost.
+ * the runner keeps the temporary file alive until then.
  */
 function installStudioExportHandoff() {
   (window as { __openreelStudioExport?: (file: Blob, filename: string) => Promise<boolean> | null }).__openreelStudioExport = (
@@ -208,7 +207,7 @@ function installStudioExportHandoff() {
     return new Promise<boolean>((resolve) => {
       const timeout = window.setTimeout(() => {
         pendingExports.delete(exportId);
-        toast.error("The studio did not confirm the upload", "The video was downloaded to your computer instead.");
+        toast.error("The studio did not confirm the upload", "The video is in your downloads; export again to save it to the project.");
         resolve(false);
       }, EXPORT_ACK_TIMEOUT_MS);
       pendingExports.set(exportId, (saved) => {
@@ -268,8 +267,8 @@ export function StudioApp() {
         const settle = pendingExports.get(message.exportId);
         pendingExports.delete(message.exportId);
         settle?.(message.ok);
-        if (message.ok) toast.success("Cut saved to your project");
-        else toast.error("The cut could not be saved to your project", `${message.message || "Upload failed."} The video was downloaded to your computer instead.`);
+        if (message.ok) toast.success("Cut saved to your project", "A copy is in your downloads.");
+        else toast.error("The cut could not be saved to your project", `${message.message || "Upload failed."} The video is in your downloads.`);
         return;
       }
 
