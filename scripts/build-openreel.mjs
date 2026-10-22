@@ -164,6 +164,30 @@ edit(
   `const DEFAULT_3D_FONT_URL = \`\${import.meta.env.BASE_URL}fonts/helvetiker_regular.typeface.json\`;\nconst DEFAULT_3D_BOLD_FONT_URL = \`\${import.meta.env.BASE_URL}fonts/helvetiker_bold.typeface.json\`;`,
 )
 
+// --- Our name on it ----------------------------------------------------------
+// To users this is the studio's own editor. Every "OpenReel" in the sources is
+// display text (titles, labels, messages, prompts) rather than an identifier,
+// so a whole-word, case-sensitive rename is safe; OpenReelMark and the
+// lowercase window.openreel bridge do not match. The MIT notice still ships as
+// public/editor/LICENSE.txt.
+const BRAND = "AI Director Editor"
+edit("apps/web/index.html", `<title>OpenReel Video - Professional Video Editor</title>`, `<title>${BRAND}</title>`)
+const brandRoots = ["apps/web/src", "apps/web/index.html", "apps/web/public/manifest.json", ...readdirSync(join(cacheDir, "packages")).map((name) => `packages/${name}/src`)]
+let rebranded = 0
+for (const rootPath of brandRoots) {
+  const absolute = join(cacheDir, rootPath)
+  if (!existsSync(absolute)) continue
+  const files = statSync(absolute).isDirectory() ? filesUnder(absolute) : [absolute]
+  for (const file of files) {
+    if (!/\.(tsx?|html|json|css)$/.test(file) || /\.test\.|__tests__/.test(file)) continue
+    const source = readFileSync(file, "utf8")
+    if (!/\bOpenReel\b/.test(source)) continue
+    writeFileSync(file, source.replace(/\bOpenReel\b/g, BRAND))
+    rebranded += 1
+  }
+}
+console.log(`[openreel] named ${rebranded} files "${BRAND}"`)
+
 // --- Install and build -------------------------------------------------------
 // pnpm 11, which the upstream lockfile names, needs Node 22.13+. pnpm 10 reads
 // the same lockfile, so an older Node (a build image's default) still builds.

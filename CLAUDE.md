@@ -250,6 +250,9 @@ if its upstream text moves, so bumping UPSTREAM cannot silently drop the bridge.
   `/api/studio/editor-ai/chat/completions`. The editor sends the Supabase access
   token in place of an API key; the key never reaches the browser and no
   credits are charged.
+- Users never see the OpenReel name: the build renames it to "AI Director
+  Editor" (the `BRAND` constant in the script); the MIT notice ships as
+  `public/editor/LICENSE.txt`.
 - Upstream's service worker is disabled (it would claim the whole origin), and
   `editor/` is excluded from middleware, tsc and eslint.
 
