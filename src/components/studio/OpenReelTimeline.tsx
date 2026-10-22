@@ -181,9 +181,13 @@ export function OpenReelTimeline({
       const userId = (await client.auth.getUser()).data.user?.id;
       if (!userId) throw new Error("Please sign in again before saving the cut.");
       const path = finalCutStoragePath({ userId, projectId, episodeId: active.id, filename });
-      // The export arrives as a browser-storage file with no type of its own.
-      const contentType = file.type || (path.endsWith(".webm") ? "video/webm" : path.endsWith(".mov") ? "video/quicktime" : "video/mp4");
-      const { error } = await client.storage.from("creator-studio-media").upload(path, file, { contentType, upsert: false });
+      // The export arrives as a browser-storage file with no type of its own,
+      // and supabase-js sends a Blob with the Blob's type, ignoring the
+      // contentType option — so the type goes on the Blob. Re-wrapping a Blob
+      // references its bytes; it does not copy them.
+      const contentType = path.endsWith(".webm") ? "video/webm" : path.endsWith(".mov") ? "video/quicktime" : "video/mp4";
+      const typed = file.type === contentType ? file : new Blob([file], { type: contentType });
+      const { error } = await client.storage.from("creator-studio-media").upload(path, typed, { contentType, upsert: false });
       if (error) throw new Error(error.message);
       await persist({ action: "saveFinalCut", episodeId: active.id, path, filename, durationSeconds, sizeBytes: file.size });
       setUpload({ kind: "saved" });
