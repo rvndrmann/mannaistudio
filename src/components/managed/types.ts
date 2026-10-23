@@ -26,6 +26,10 @@ export type ManagedProject = {
   client_update?: string
   remaining_tasks?: string[]
   completed_at?: string | null
+  /** `queued`: paid, waiting for a production slot. */
+  queue_state?: "slot" | "queued"
+  queue_position?: number | null
+  queue_length?: number | null
 }
 
 export type ManagedDeliverable = {

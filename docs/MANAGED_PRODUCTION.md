@@ -83,6 +83,68 @@ Pricing still never comes from the browser. `/api/managed/checkout` calls
 `loadCatalogue` with the caller's own client — so RLS decides what is on sale —
 and prices the order from the row it finds.
 
+## Capacity and the queue
+
+The team can only run so many productions at once, so each package can carry
+two limits, set per tier in **Admin → Managed Production → Offers**. Migration
+`20261023120000_managed_package_capacity.sql`.
+
+| Field | Meaning | Blank |
+| :--- | :--- | :--- |
+| `slot_limit` | orders of this package in production at once | unlimited |
+| `queue_limit` | paid orders that can wait for a slot | unlimited |
+
+`0` is a real value for both: zero slots sends every order to the queue, a zero
+queue sells the package out the moment its slots are full.
+
+**What occupies a slot.** An order of the package that is paid, sits in a slot
+(`queue_state = 'slot'`), and is not `completed` or `cancelled`. A slot is
+freed by delivering the work or cancelling the order — not by the client
+approving one ad of three. On top of that, a checkout in progress **holds** its
+place for 30 minutes: an unpaid order created in that window counts, once per
+buyer, and never against the buyer themself, so someone who closes the
+Razorpay sheet and tries again is not blocked by their own first attempt.
+
+**Queued bookings pay upfront.** A queue place is a paid order with
+`queue_state = 'queued'`. An unpaid place in line would be a reservation anyone
+could make for free and walk away from, and paying later would need a second
+checkout. The client's place shows on `/hire-us/projects` and on the project
+page (`managed_queue_positions`, which answers only for orders the caller can
+read). Refunds for a client who will not wait are handled by hand, as any other
+refund.
+
+**Where a new order lands** — `managed_package_load`, the one count every
+caller uses:
+
+1. a slot, if one is free **and nobody is already waiting** — a freed slot
+   belongs to the head of the queue, not to whoever checks out next;
+2. otherwise the queue, if it has room;
+3. otherwise `sold_out`.
+
+**Enforcement.** `create_managed_project` locks the package row
+(`select … for update`) before counting, so two buyers racing for the last slot
+are decided one at a time. The browser sends `joinQueue`, which is consent, not
+a count: a buyer who saw a free slot and finds it gone gets `409 slots_full`
+and is asked, rather than charged for a place in line; a full queue is
+`409 sold_out` regardless. `mark_managed_project_paid` locks and counts again —
+a buyer who took longer than their hold may find their slot sold, and is then
+queued rather than refused, because the money is already taken. That is the one
+way a queue can exceed its limit, deliberately.
+
+**Moving the queue.** Nothing promotes automatically: a freed slot is a planning
+decision. Admin → Orders shows a *Waiting for a Slot* bucket in queue order;
+**Move to live slot** calls `admin_managed_promote_from_queue`, which refuses
+while every slot of the package is running (raise the limit to take on more)
+and notifies the client. Checkout holds are not counted against a promotion.
+
+**Showing it.** `/api/managed/offers` attaches `availability` to every limited
+package (`managed_offer_availability()`, public, counts only, the caller's own
+holds left out). `/hire-us` shows "N slots left", "Slots full — join the queue"
+or "Sold out" per gig; the brief shows it per tier, disables sold-out tiers,
+and relabels Pay as *Book queue place*. These numbers are for display only —
+checkout always counts again under the lock. The Offers screen shows the live
+numbers from `admin_managed_capacity()`, holds included.
+
 ## Who may do what
 
 Reads are policy-driven: `managed projects read` is the owner or an admin, and
@@ -94,8 +156,8 @@ Every write that carries value goes through a function, not a policy:
 
 | Function | Caller | Notes |
 | :--- | :--- | :--- |
-| `create_managed_project` | **service role only** | takes the owner and the price as arguments, because the route that priced the order is the one calling |
-| `mark_managed_project_paid` | **service role only** | idempotent; creates the empty deliverable rows |
+| `create_managed_project` | **service role only** | takes the owner and the price as arguments, because the route that priced the order is the one calling; places the order in a slot or the queue under a package lock |
+| `mark_managed_project_paid` | **service role only** | idempotent; creates the empty deliverable rows; re-counts capacity and may queue |
 | `managed_approve_deliverable` | the owner | an admin approving their own work is not an approval |
 | `managed_request_revision` | the owner | notes and timestamped comments in one statement |
 | `admin_managed_set_status` | admins | notifies the client only at the four stages worth hearing about |
@@ -105,7 +167,12 @@ Every write that carries value goes through a function, not a policy:
 | `managed_submit_storyboard_review` | the owner | approve / change per frame; also writes the Studio revision notes |
 | `admin_upsert_managed_service` / `_package` | admins | the catalogue; the key cannot be changed on update |
 | `admin_delete_managed_service` / `_package` | admins | orders keep the name they were sold under |
-| `admin_managed_overview` | admins | the queue |
+| `admin_managed_overview` | admins | the order list, with `queue_state` and queue position |
+| `admin_set_managed_package_capacity` | admins | slot and queue limits; null is unlimited |
+| `admin_managed_capacity` | admins | live slot/queue counts per package |
+| `admin_managed_promote_from_queue` | admins | queued → live slot, refused while slots are full |
+| `managed_offer_availability` | anyone | counts per limited package, for the public page |
+| `managed_queue_positions` | signed in | place in the queue, for orders the caller can read |
 
 The two service-role functions carry an `auth.role()` check in the body as well
 as the revoked grant — the same two-layer rule
@@ -205,7 +272,9 @@ not stand behind.
 | Pipeline vocabulary, brief options, storage paths | [`src/lib/managed-production.ts`](../src/lib/managed-production.ts) |
 | Catalogue shapes, pricing, offer snapshots | [`src/lib/managed-offers.ts`](../src/lib/managed-offers.ts) |
 | Catalogue read (server) | [`src/lib/managed/catalogue.ts`](../src/lib/managed/catalogue.ts) |
-| Gig editor | [`src/components/admin/ManagedOffers.tsx`](../src/components/admin/ManagedOffers.tsx) |
+| Gig editor (and slot/queue limits) | [`src/components/admin/ManagedOffers.tsx`](../src/components/admin/ManagedOffers.tsx) |
+| Capacity helpers (placement, notes, 409 mapping) | [`src/lib/managed-offers.ts`](../src/lib/managed-offers.ts) |
+| Capacity migration and its tests | [`supabase/migrations/20261023120000_managed_package_capacity.sql`](../supabase/migrations/20261023120000_managed_package_capacity.sql), [`src/lib/managed/capacity-database.test.ts`](../src/lib/managed/capacity-database.test.ts) |
 | Brief schema and the mapping into `creative_brief` | [`src/lib/managed-brief.ts`](../src/lib/managed-brief.ts) |
 | Access helper | [`src/lib/managed/server.ts`](../src/lib/managed/server.ts) |
 | Studio bridge | [`src/lib/managed/studio-bridge.ts`](../src/lib/managed/studio-bridge.ts) |

@@ -19,6 +19,9 @@ export function useManagedCheckout(options: { onDone?: (projectId: string, mode:
   const { onDone } = options
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Set when checkout refused on capacity (409): "slots_full" means the buyer
+  // can still book a queue place, "sold_out" means they cannot.
+  const [refusal, setRefusal] = useState<"slots_full" | "sold_out" | null>(null)
 
   const loadGateway = () =>
     new Promise<boolean>((resolve) => {
@@ -36,10 +39,13 @@ export function useManagedCheckout(options: { onDone?: (projectId: string, mode:
     name: string
     aspectRatio: string
     brandId?: string | null
+    /** The buyer agreed to wait in the queue. Consent only — the server counts. */
+    joinQueue?: boolean
     brief: ManagedBrief
   }) => {
     setPending(true)
     setError(null)
+    setRefusal(null)
     try {
       const res = await fetch("/api/managed/checkout", {
         method: "POST",
@@ -47,7 +53,10 @@ export function useManagedCheckout(options: { onDone?: (projectId: string, mode:
         body: JSON.stringify(payload),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Could not start checkout")
+      if (!res.ok) {
+        if (res.status === 409 && (data.code === "slots_full" || data.code === "sold_out")) setRefusal(data.code)
+        throw new Error(data.error || "Could not start checkout")
+      }
 
       if (data.mode === "proposal") {
         onDone?.(data.projectId, "proposal")
@@ -65,7 +74,7 @@ export function useManagedCheckout(options: { onDone?: (projectId: string, mode:
         amount: data.amount,
         currency: "INR",
         name: "AI Director Hub",
-        description: `${data.serviceName} — ${data.packageName}`,
+        description: `${data.serviceName} — ${data.packageName}${data.queued ? " (queue booking)" : ""}`,
         prefill: { email: data.email, name: data.name },
         theme: { color: "#b9f42e" },
         handler: async (response: {
@@ -101,5 +110,5 @@ export function useManagedCheckout(options: { onDone?: (projectId: string, mode:
     }
   }, [onDone])
 
-  return { submit, pending, error, setError }
+  return { submit, pending, error, setError, refusal }
 }

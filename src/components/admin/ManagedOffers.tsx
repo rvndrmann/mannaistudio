@@ -8,7 +8,10 @@ import {
 import OfferMediaFrame, { offerMediaFit } from "@/components/managed/OfferMedia"
 import { createClient } from "@/lib/supabase/client"
 import { formatUsdWithInr } from "@/lib/currency"
-import { buildCatalogue, type OfferPackage, type OfferService } from "@/lib/managed-offers"
+import {
+  availabilityNote, buildCatalogue, toAvailability,
+  type AvailabilityRow, type OfferPackage, type OfferService, type PackageAvailability,
+} from "@/lib/managed-offers"
 import { inspectVideoFile, videoUploadProblems } from "@/lib/video-upload-check"
 import { embedThumbnailUrl, isEmbeddedVideo, videoEmbedUrl } from "@/lib/video-embed"
 
@@ -40,6 +43,7 @@ const BLANK_SERVICE: Draft = {
 const BLANK_PACKAGE: OfferPackage = {
   id: "", key: "", name: "", summary: "", videoCount: 1, durationSeconds: 30,
   revisions: 2, priceInr: 0, includes: [], popular: false, isPublished: true, position: 0,
+  slotLimit: null, queueLimit: null, availability: null,
 }
 
 /**
@@ -96,17 +100,27 @@ export default function ManagedOffers() {
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState("")
   const [moving, setMoving] = useState(false)
+  // Live slot and queue counts by package key, from the same function the
+  // checkout lock counts with — so what this screen says is what a buyer meets.
+  const [capacity, setCapacity] = useState<Map<string, PackageAvailability>>(new Map())
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [{ data: rows, error: rowsError }, { data: packs, error: packsError }] = await Promise.all([
+      const [{ data: rows, error: rowsError }, { data: packs, error: packsError }, { data: counts }] = await Promise.all([
         supabase.from("managed_offer_services").select("*").order("position"),
         supabase.from("managed_offer_packages").select("*").order("position"),
+        supabase.rpc("admin_managed_capacity"),
       ])
       if (rowsError) throw rowsError
       if (packsError) throw packsError
       setServices(buildCatalogue(rows ?? [], packs ?? []))
+      const next = new Map<string, PackageAvailability>()
+      for (const row of (counts ?? []) as AvailabilityRow[]) {
+        const availability = toAvailability(row)
+        if (availability) next.set(row.package_key, availability)
+      }
+      setCapacity(next)
       setError("")
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load the catalogue.")
@@ -234,9 +248,9 @@ export default function ManagedOffers() {
 
           <div>
             {creating ? (
-              <ServiceEditor key="new" draft={BLANK_SERVICE} onSaved={(id) => { setCreating(false); setOpenId(id); load() }} onCancel={() => setCreating(false)} onDeleted={load} />
+              <ServiceEditor key="new" draft={BLANK_SERVICE} capacity={capacity} onSaved={(id) => { setCreating(false); setOpenId(id); load() }} onCancel={() => setCreating(false)} onDeleted={load} />
             ) : open ? (
-              <ServiceEditor key={open.id} draft={open} onSaved={load} onCancel={() => setOpenId(null)} onDeleted={() => { setOpenId(null); load() }} />
+              <ServiceEditor key={open.id} draft={open} capacity={capacity} onSaved={load} onCancel={() => setOpenId(null)} onDeleted={() => { setOpenId(null); load() }} />
             ) : (
               <div className="grid h-full min-h-[220px] place-items-center rounded-2xl border border-dashed border-white/12 text-sm text-white/30">
                 Pick a gig to edit it, or create one.
@@ -250,9 +264,10 @@ export default function ManagedOffers() {
 }
 
 function ServiceEditor({
-  draft, onSaved, onCancel, onDeleted,
+  draft, capacity, onSaved, onCancel, onDeleted,
 }: {
   draft: Draft
+  capacity: Map<string, PackageAvailability>
   onSaved: (id: string) => void
   onCancel: () => void
   onDeleted: () => void
@@ -438,15 +453,20 @@ function ServiceEditor({
       </div>
 
       {!isNew && !form.quoteOnly && (
-        <PackageEditor serviceId={form.id} packages={form.packages} onChanged={() => onSaved(form.id)} />
+        <PackageEditor serviceId={form.id} packages={form.packages} capacity={capacity} onChanged={() => onSaved(form.id)} />
       )}
     </div>
   )
 }
 
 function PackageEditor({
-  serviceId, packages, onChanged,
-}: { serviceId: string; packages: OfferPackage[]; onChanged: () => void }) {
+  serviceId, packages, capacity, onChanged,
+}: {
+  serviceId: string
+  packages: OfferPackage[]
+  capacity: Map<string, PackageAvailability>
+  onChanged: () => void
+}) {
   const supabase = createClient()
   const [drafts, setDrafts] = useState<OfferPackage[]>(packages)
   const [busy, setBusy] = useState("")
@@ -492,7 +512,7 @@ function PackageEditor({
     setBusy(option.id || "new")
     setMessage("")
     try {
-      const { error } = await supabase.rpc("admin_upsert_managed_package", {
+      const { data: saved, error } = await supabase.rpc("admin_upsert_managed_package", {
         p_id: option.id || null,
         p_service_id: serviceId,
         p_key: option.id ? option.key : toKey(option.key || option.name),
@@ -508,6 +528,20 @@ function PackageEditor({
         p_position: option.position || null,
       })
       if (error) throw error
+      // Its own call because null means "unlimited" here, where the upsert
+      // reads null as "leave as it is".
+      const savedId = (Array.isArray(saved) ? saved[0] : saved)?.id ?? option.id
+      const { error: capacityError } = await supabase.rpc("admin_set_managed_package_capacity", {
+        p_id: savedId,
+        p_slot_limit: option.slotLimit,
+        p_queue_limit: option.queueLimit,
+      })
+      if (capacityError) throw capacityError
+      // A new tier now has a row; keep it, so a second Save updates rather
+      // than tries to insert the same key again.
+      if (!option.id && savedId) {
+        setDrafts((current) => current.map((entry) => (entry === option ? { ...entry, id: savedId } : entry)))
+      }
       onChanged()
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "Could not save that tier.")
@@ -567,6 +601,19 @@ function PackageEditor({
               <NumberField label="Videos" value={option.videoCount} onChange={(value) => update(index, { videoCount: value })} />
               <NumberField label="Seconds" value={option.durationSeconds} onChange={(value) => update(index, { durationSeconds: value })} />
               <NumberField label="Revisions" value={option.revisions} onChange={(value) => update(index, { revisions: value })} />
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <LimitField
+                label="Live slots"
+                value={option.slotLimit}
+                onChange={(value) => update(index, { slotLimit: value })}
+              />
+              <LimitField
+                label="Queue places"
+                value={option.queueLimit}
+                onChange={(value) => update(index, { queueLimit: value })}
+              />
+              <CapacityReadout availability={option.id ? capacity.get(option.key) ?? null : null} />
             </div>
             <TextArea
               className="mt-2"
@@ -858,6 +905,64 @@ function TextArea({ value, onChange, placeholder, className }: {
       onChange={(event) => onChange(event.target.value)}
       className={`${fieldClass} min-h-[80px] resize-y ${className ?? ""}`}
     />
+  )
+}
+
+/**
+ * A limit, where blank is a real answer: unlimited. Kept apart from
+ * NumberField, which turns an emptied box into 0 — and 0 slots means every
+ * order goes to the queue, which is the opposite of what clearing it meant.
+ */
+function LimitField({ label, value, onChange }: { label: string; value: number | null; onChange: (value: number | null) => void }) {
+  return (
+    <label className="block">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-white/35">{label}</span>
+      <input
+        type="number"
+        min={0}
+        step={1}
+        value={value ?? ""}
+        placeholder="Unlimited"
+        onChange={(event) => {
+          const raw = event.target.value.trim()
+          onChange(raw === "" ? null : Math.max(0, Math.floor(Number(raw) || 0)))
+        }}
+        className={`${fieldClass} mt-1 placeholder:text-white/25`}
+      />
+    </label>
+  )
+}
+
+/**
+ * What the package is doing right now, as a buyer would meet it. Counts
+ * include checkouts still inside their 30-minute hold.
+ */
+function CapacityReadout({ availability }: { availability: PackageAvailability | null }) {
+  if (!availability || (availability.slotLimit === null && availability.queueLimit === null)) {
+    return (
+      <p className="col-span-2 self-end pb-2 text-[11px] text-white/30">
+        No limits — every order starts straight away.
+        {availability ? ` ${availability.slotsTaken} running.` : ""}
+      </p>
+    )
+  }
+  const { slotLimit, slotsTaken, queueLimit, queueTaken, queueWaiting, placement } = availability
+  const tone = placement === "sold_out" ? "text-red-300" : placement === "queue" ? "text-amber-200" : "text-primary"
+  return (
+    <div className="col-span-2 self-end pb-1 text-[11px] leading-relaxed text-white/45">
+      <p>
+        Slots <span className="font-semibold text-white/75">{slotsTaken}/{slotLimit ?? "∞"}</span>
+        {" · "}
+        Queue <span className="font-semibold text-white/75">{queueTaken}/{queueLimit ?? "∞"}</span>
+        {queueWaiting !== queueTaken && <span className="text-white/30"> ({queueWaiting} paid)</span>}
+      </p>
+      <p className={`font-semibold ${tone}`}>
+        {placement === "slot" ? "Next order: live slot" : placement === "queue" ? "Next order: queue" : "Sold out"}
+        {availabilityNote(availability) && placement === "slot" && (
+          <span className="font-normal text-white/35"> · {availabilityNote(availability)}</span>
+        )}
+      </p>
+    </div>
   )
 }
 

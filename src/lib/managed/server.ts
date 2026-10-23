@@ -45,6 +45,9 @@ export type ManagedProjectRow = {
   admin_last_read_at: string | null
   created_at: string
   updated_at: string
+  /** `queued`: paid, waiting for a production slot (20261023120000). */
+  queue_state: "slot" | "queued"
+  promoted_at: string | null
   delivery_due_at?: string | null
   client_update?: string
   remaining_tasks?: string[]
@@ -144,4 +147,28 @@ export async function ensureProfile(supabase: SupabaseClient, user: User) {
 export async function managedServiceOpen(supabase: SupabaseClient): Promise<boolean> {
   const { fetchSiteFeatures } = await import("@/lib/studio/feature-flags")
   return (await fetchSiteFeatures(supabase)).hireUs
+}
+
+export type QueuePlace = { position: number; length: number }
+
+/**
+ * Where each of these orders stands in its package's queue, by project id.
+ *
+ * Counted by `managed_queue_positions`, which can see the whole queue but only
+ * answers for orders the caller may already read — a client learns their own
+ * place and nothing about the orders ahead of them. Orders not in a queue are
+ * simply absent from the map.
+ */
+export async function queuePlaces(supabase: SupabaseClient, projectIds: string[]): Promise<Map<string, QueuePlace>> {
+  const places = new Map<string, QueuePlace>()
+  if (!projectIds.length) return places
+  const { data, error } = await supabase.rpc("managed_queue_positions", { p_project_ids: projectIds })
+  if (error) {
+    console.warn("Could not read queue positions:", error.message)
+    return places
+  }
+  for (const row of (data ?? []) as Array<{ project_id: string; queue_position: number; queue_length: number }>) {
+    places.set(row.project_id, { position: row.queue_position, length: row.queue_length })
+  }
+  return places
 }

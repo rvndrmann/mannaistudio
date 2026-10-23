@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { managedErrorMessage, managedErrorStatus, requireUser } from "@/lib/managed/server"
+import { managedErrorMessage, managedErrorStatus, queuePlaces, requireUser } from "@/lib/managed/server"
 
 export const dynamic = "force-dynamic"
 
@@ -10,6 +10,8 @@ export const dynamic = "force-dynamic"
  * leaves a `pending` project behind, and showing it on the dashboard as a live
  * campaign would be a lie about work nobody paid for. A proposal request is
  * different — it is a real thing we owe them an answer on, so it stays.
+ *
+ * A paid order waiting for a production slot carries its place in the queue.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -17,7 +19,7 @@ export async function GET(request: NextRequest) {
 
     const { data: projects, error } = await supabase
       .from("managed_projects")
-      .select("id,name,service_type,status,payment_status,video_count,aspect_ratio,price_inr,created_at,updated_at,client_last_read_at,delivery_due_at,client_update,remaining_tasks,completed_at")
+      .select("id,name,service_type,offer_snapshot,status,payment_status,queue_state,video_count,aspect_ratio,price_inr,created_at,updated_at,client_last_read_at,delivery_due_at,client_update,remaining_tasks,completed_at")
       .eq("user_id", user.id)
       .in("payment_status", ["paid", "proposal_requested"])
       .order("created_at", { ascending: false })
@@ -28,9 +30,11 @@ export async function GET(request: NextRequest) {
 
     // Two fan-out queries rather than one per card: a client with a dozen
     // campaigns should not cost two dozen round trips to paint a list.
-    const [{ data: deliverables }, { data: messages }] = await Promise.all([
+    const queuedIds = (projects || []).filter((project) => project.queue_state === "queued").map((project) => project.id)
+    const [{ data: deliverables }, { data: messages }, places] = await Promise.all([
       supabase.from("managed_deliverables").select("id,project_id,status").in("project_id", ids),
       supabase.from("managed_messages").select("project_id,created_at,sender_is_admin").in("project_id", ids),
+      queuePlaces(supabase, queuedIds),
     ])
 
     const summary = (projects || []).map((project) => {
@@ -47,6 +51,8 @@ export async function GET(request: NextRequest) {
         readyCount: own.filter((row) => row.status === "ready_for_review").length,
         approvedCount: own.filter((row) => row.status === "approved").length,
         unreadMessages: unread,
+        queuePosition: places.get(project.id)?.position ?? null,
+        queueLength: places.get(project.id)?.length ?? null,
       }
     })
 

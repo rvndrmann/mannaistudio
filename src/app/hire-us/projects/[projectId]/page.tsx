@@ -166,6 +166,19 @@ export default function ManagedProjectPage({ params }: { params: Promise<{ proje
               episode count, scope and a price before anything is charged.
             </p>
           </div>
+        ) : project.queue_state === "queued" && project.payment_status === "paid" ? (
+          <div className="mt-6 rounded-2xl border border-amber-400/30 bg-amber-400/[0.07] p-5">
+            <p className="text-sm font-bold text-amber-200">
+              {project.queue_position
+                ? `You are number ${project.queue_position} in the queue`
+                : "You are in the queue"}
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-white/50">
+              Your payment is confirmed and your brief is with us. Every production slot for this package is in
+              use right now; yours starts as soon as one opens, and we will tell you the moment it does. You can
+              message the team below in the meantime.
+            </p>
+          </div>
         ) : (
           <div className="mt-6">
             <StatusTimeline status={project.status} />

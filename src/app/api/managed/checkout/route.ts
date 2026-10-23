@@ -6,7 +6,7 @@ import { ensureProfile, managedErrorMessage, managedErrorStatus, managedServiceO
 import { managedBriefSchema, managedServiceKeySchema } from "@/lib/managed-brief"
 import { MANAGED_ASPECT_RATIOS, MANAGED_MEDIA_BUCKET, managedUploadPrefix } from "@/lib/managed-production"
 import { loadCatalogue } from "@/lib/managed/catalogue"
-import { packageFromCatalogue, serviceFromCatalogue, snapshotFor, type OfferSnapshot } from "@/lib/managed-offers"
+import { capacityRefusal, packageFromCatalogue, serviceFromCatalogue, snapshotFor, type OfferSnapshot } from "@/lib/managed-offers"
 import type { ManagedBrief } from "@/lib/managed-brief"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
@@ -26,6 +26,12 @@ export const dynamic = "force-dynamic"
  * `proposal_requested` and skips the gateway entirely, because quoting a
  * serialised show before agreeing its length would be a number we could not
  * stand behind.
+ *
+ * A package with a slot limit is placed by `create_managed_project`, which
+ * counts with the package row locked: in a live slot, in the paid queue, or
+ * refused. `joinQueue` is the buyer's consent to wait, never a count — someone
+ * who saw a free slot and finds it gone by the time they pay is answered 409
+ * `slots_full` and asked, rather than charged for a place in line.
  */
 
 /**
@@ -76,6 +82,7 @@ const checkoutSchema = z.object({
   name: z.string().trim().max(160).default(""),
   aspectRatio: z.string().trim().max(20).default("9:16"),
   brandId: z.string().uuid().nullable().optional(),
+  joinQueue: z.boolean().default(false),
   brief: managedBriefSchema,
 }).strict()
 
@@ -170,10 +177,16 @@ export async function POST(request: NextRequest) {
       p_price_inr: selected.priceInr,
       p_payment_status: "pending",
       p_brand_id: brandId,
+      p_allow_queue: input.joinQueue,
     })
-    if (error) throw error
+    if (error) {
+      const refusal = capacityRefusal(error)
+      if (refusal) return NextResponse.json({ error: refusal.message, code: refusal.code }, { status: 409 })
+      throw error
+    }
     const project = Array.isArray(data) ? data[0] : data
     if (!project?.id) throw new Error("Could not open the project")
+    const queued = project.queue_state === "queued"
 
     await finaliseNewProject(admin, project.id, user.id, input.brief, snapshotFor(service, selected))
 
@@ -187,6 +200,7 @@ export async function POST(request: NextRequest) {
         profile_id: user.id,
         managed_project_id: project.id,
         package_key: selected.key,
+        queue: queued ? "yes" : "no",
         email: user.email || "",
       },
     })
@@ -200,6 +214,7 @@ export async function POST(request: NextRequest) {
       keyId,
       packageName: selected.name,
       serviceName: service.name,
+      queued,
       email: user.email || "",
       name: user.user_metadata?.full_name || input.brief.brandName || "Client",
     })

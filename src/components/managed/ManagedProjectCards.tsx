@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { ArrowRight, Loader2, MessageSquare, Plus } from "lucide-react"
+import { ArrowRight, Hourglass, Loader2, MessageSquare, Plus } from "lucide-react"
 import { MANAGED_STATUS_LABELS } from "@/lib/managed-production"
 import { offerServiceName } from "@/lib/managed-offers"
 
@@ -29,6 +29,10 @@ export type ManagedProjectCard = {
   readyCount: number
   approvedCount: number
   unreadMessages: number
+  queue_state?: "slot" | "queued"
+  /** 1 is next. Null unless the order is paid and waiting for a slot. */
+  queuePosition?: number | null
+  queueLength?: number | null
 }
 
 export function useManagedProjects() {
@@ -107,11 +111,18 @@ export default function ManagedProjectCards({
               )}
             </p>
 
-            <p className="mt-3 text-xs font-semibold text-white/60">
-              {project.payment_status === "proposal_requested"
-                ? "Proposal requested"
-                : MANAGED_STATUS_LABELS[project.status] || project.status}
-            </p>
+            {project.queuePosition ? (
+              <p className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-amber-200">
+                <Hourglass className="h-3.5 w-3.5" />
+                In the queue — #{project.queuePosition} of {project.queueLength}
+              </p>
+            ) : (
+              <p className="mt-3 text-xs font-semibold text-white/60">
+                {project.payment_status === "proposal_requested"
+                  ? "Proposal requested"
+                  : MANAGED_STATUS_LABELS[project.status] || project.status}
+              </p>
+            )}
 
             <div className="mt-4 flex items-center justify-between gap-2">
               {actionRequired ? (

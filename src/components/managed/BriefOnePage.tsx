@@ -4,14 +4,17 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { AnimatePresence, motion } from "framer-motion"
-import { ArrowLeft, Check, ChevronDown, Loader2, LogIn, Lock, Sparkles } from "lucide-react"
+import { ArrowLeft, Check, ChevronDown, Hourglass, Loader2, LogIn, Lock, Sparkles } from "lucide-react"
 import { useAuth } from "@/components/auth/auth-provider"
 import { getVisitorId } from "@/lib/analytics"
 import { AttachmentPicker, ChipPicker, Field, LinkList, TextArea, TextField } from "@/components/managed/BriefFields"
 import { useManagedCheckout } from "@/components/managed/useManagedCheckout"
 import { emptyManagedBrief, managedBriefSchema, type ManagedBrief } from "@/lib/managed-brief"
 import { MANAGED_ASPECT_RATIOS, MANAGED_CTAS, MANAGED_GOALS, MANAGED_PLATFORMS } from "@/lib/managed-production"
-import { cheapestPackage, defaultPackageFor, publishedOffers, serviceFromCatalogue, type OfferService } from "@/lib/managed-offers"
+import {
+  availabilityNote, cheapestPackage, defaultPackageFor, nextQueuePlace, packagePlacement, publishedOffers,
+  serviceAvailabilityNote, serviceFromCatalogue, servicePlacement, type OfferService,
+} from "@/lib/managed-offers"
 import { formatUsdWithInr } from "@/lib/currency"
 import { embedThumbnailUrl, isEmbeddedVideo } from "@/lib/video-embed"
 import { fadeIn } from "@/lib/motion"
@@ -110,26 +113,12 @@ export default function BriefOnePage() {
 
   const service = catalogue ? serviceFromCatalogue(catalogue, serviceKey) : null
 
-  // The catalogue is editable, so the brief asks what is currently on sale
-  // rather than shipping a copy of the gigs and their packages — and only what
-  // is published, because this is the page that takes the money and checkout
-  // refuses to price a draft. A `?service=` naming one falls through to the
-  // picker, which is the right answer: it is not for sale.
-  useEffect(() => {
-    let active = true
-    fetch("/api/managed/offers")
-      .then((response) => (response.ok ? response.json() : { services: [] }))
-      .then((data) => { if (active) setCatalogue(publishedOffers(data.services ?? [])) })
-      .catch(() => { if (active) setCatalogue([]) })
-    return () => { active = false }
-  }, [])
-
   // Pre-select the popular tier, but never overwrite a choice already made —
   // the fetch can finish after someone has picked. Derived rather than stored,
   // so no effect writes state on the render after the catalogue arrives.
   const activePackageKey = packageKey || defaultPackageFor(service)?.key || ""
 
-  const { submit, pending, error } = useManagedCheckout({
+  const { submit, pending, error, refusal } = useManagedCheckout({
     onDone: (projectId) => {
       clearStashedBrief()
       // Same browser, same service: the draft this order came from stops
@@ -150,6 +139,28 @@ export default function BriefOnePage() {
     () => service?.packages.find((option) => option.key === activePackageKey) ?? null,
     [service, activePackageKey],
   )
+
+  // The catalogue is editable, so the brief asks what is currently on sale
+  // rather than shipping a copy of the gigs and their packages — and only what
+  // is published, because this is the page that takes the money and checkout
+  // refuses to price a draft. A `?service=` naming one falls through to the
+  // picker, which is the right answer: it is not for sale.
+  //
+  // Also re-read when checkout refuses on capacity, so the tiers show the
+  // counts that refused it rather than the ones the page opened with.
+  useEffect(() => {
+    let active = true
+    fetch("/api/managed/offers", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : { services: [] }))
+      .then((data) => { if (active) setCatalogue(publishedOffers(data.services ?? [])) })
+      .catch(() => { if (active) setCatalogue((current) => current ?? []) })
+    return () => { active = false }
+  }, [refusal])
+
+  // Where this order would land. Shown, never sent: the server counts again
+  // under a lock, and all the browser says is whether the buyer agreed to wait.
+  const placement = selected ? packagePlacement(selected) : "slot"
+  const queueBooking = Boolean(selected) && (placement === "queue" || (refusal === "slots_full" && placement !== "sold_out"))
 
   // Spent, now that it is in state. The prefill below only fills blanks, so
   // what they typed before signing in still outranks what we know about them.
@@ -266,7 +277,7 @@ export default function BriefOnePage() {
   // let someone press Pay and meet "That service is not available" from the
   // gateway — which is exactly what the old flow did.
   const draft = Boolean(service && !service.isPublished) || Boolean(selected && !selected.isPublished)
-  const canCheckout = Boolean(service && (service.quoteOnly || selected)) && !draft
+  const canCheckout = Boolean(service && (service.quoteOnly || selected)) && !draft && placement !== "sold_out"
 
   const handleSubmit = () => {
     if (chatDraftId && user && !chatDraftState.loaded) return
@@ -281,6 +292,7 @@ export default function BriefOnePage() {
       packageKey: service.quoteOnly ? "" : activePackageKey,
       name: [brief.brandName, service.name].filter(Boolean).join(" — "),
       aspectRatio: brief.aspectRatio,
+      joinQueue: !service.quoteOnly && queueBooking,
       brief,
     })
   }
@@ -513,12 +525,16 @@ export default function BriefOnePage() {
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {service.packages.map((option) => (
+                    {service.packages.map((option) => {
+                      const soldOut = packagePlacement(option) === "sold_out"
+                      const note = availabilityNote(option.availability)
+                      return (
                       <button
                         key={option.key}
                         type="button"
+                        disabled={soldOut}
                         onClick={() => { setTouched(true); setPackageKey(option.key) }}
-                        className={`flex w-full items-start justify-between gap-3 rounded-xl border p-3.5 text-left transition duration-press ease-out active:scale-[0.99] ${
+                        className={`flex w-full items-start justify-between gap-3 rounded-xl border p-3.5 text-left transition duration-press ease-out active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45 disabled:active:scale-100 ${
                           activePackageKey === option.key
                             ? "border-primary bg-primary/10"
                             : "border-white/10 bg-white/[0.04] hover:bg-white/[0.07]"
@@ -532,10 +548,20 @@ export default function BriefOnePage() {
                             )}
                           </span>
                           <span className="mt-0.5 block text-xs text-white/45">{option.summary}</span>
+                          {note && (
+                            <span
+                              className={`mt-1 block text-[11px] font-semibold ${
+                                soldOut ? "text-red-300" : packagePlacement(option) === "queue" ? "text-amber-200" : "text-primary/80"
+                              }`}
+                            >
+                              {note}
+                            </span>
+                          )}
                         </span>
                         <span className="shrink-0 text-right text-xs font-bold text-white">{formatUsdWithInr(option.priceInr)}</span>
                       </button>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
 
@@ -560,7 +586,22 @@ export default function BriefOnePage() {
                   </p>
                 )}
 
-                {error && <p className="rounded-xl border border-red-400/25 bg-red-500/10 p-3 text-xs text-red-200">{error}</p>}
+                {queueBooking && selected && (
+                  <div className="rounded-xl border border-amber-400/30 bg-amber-400/[0.08] p-3 text-[11px] leading-relaxed text-amber-100/90">
+                    <p className="flex items-center gap-1.5 font-bold text-amber-200">
+                      <Hourglass className="h-3.5 w-3.5" />
+                      Every live slot is taken — you would be number {nextQueuePlace(selected.availability)} in the queue
+                    </p>
+                    <p className="mt-1">
+                      You pay now to hold your place. Production starts as soon as a slot opens, and we will tell you
+                      the moment it does. Your place shows on your projects page.
+                    </p>
+                  </div>
+                )}
+
+                {error && !(refusal === "slots_full" && queueBooking) && (
+                  <p className="rounded-xl border border-red-400/25 bg-red-500/10 p-3 text-xs text-red-200">{error}</p>
+                )}
 
                 {!authLoading && !user ? (
                   <>
@@ -587,9 +628,13 @@ export default function BriefOnePage() {
                     {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                     {service.quoteOnly
                       ? "Send my brief"
-                      : selected
-                        ? `Pay ${formatUsdWithInr(selected.priceInr)}`
-                        : "Choose a package"}
+                      : !selected
+                        ? "Choose a package"
+                        : placement === "sold_out"
+                          ? "Sold out"
+                          : queueBooking
+                            ? `Book queue place · Pay ${formatUsdWithInr(selected.priceInr)}`
+                            : `Pay ${formatUsdWithInr(selected.priceInr)}`}
                   </button>
                 )}
 
@@ -676,7 +721,20 @@ function ServiceOption({ service, active, onPick }: {
           ) : service.quoteOnly ? (
             "Quoted for you"
           ) : cheapest ? (
-            `From ${formatUsdWithInr(cheapest.priceInr)}`
+            <>
+              From {formatUsdWithInr(cheapest.priceInr)}
+              {serviceAvailabilityNote(service) && (
+                <span
+                  className={
+                    servicePlacement(service) === "sold_out"
+                      ? "text-red-300"
+                      : servicePlacement(service) === "queue" ? "text-amber-200/80" : "text-primary/80"
+                  }
+                >
+                  {" "}· {serviceAvailabilityNote(service)}
+                </span>
+              )}
+            </>
           ) : ""}
         </span>
       </span>

@@ -36,6 +36,7 @@ const bodySchema = z.discriminatedUnion("action", [
     aspectRatio: z.string().trim().max(20).default(""),
   }).strict(),
   z.object({ action: z.literal("open_studio") }).strict(),
+  z.object({ action: z.literal("promote") }).strict(),
   z.object({ action: z.literal("link_studio"), studioProjectId: z.string().uuid() }).strict(),
 ])
 
@@ -60,6 +61,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         p_status: input.status,
         p_note: input.note ?? null,
       })
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ project: Array.isArray(data) ? data[0] : data })
+    }
+
+    // Out of the queue and into a live slot. The function refuses while every
+    // slot of the package is in production, so the limit set in Offers holds.
+    if (input.action === "promote") {
+      const { data, error } = await supabase.rpc("admin_managed_promote_from_queue", { p_project_id: projectId })
       if (error) return NextResponse.json({ error: error.message }, { status: 400 })
       return NextResponse.json({ project: Array.isArray(data) ? data[0] : data })
     }

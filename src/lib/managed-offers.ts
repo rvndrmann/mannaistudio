@@ -13,6 +13,19 @@ import { z } from "zod"
  * an order with.
  */
 
+export const packagePlacementSchema = z.enum(["slot", "queue", "sold_out"])
+export type PackagePlacement = z.infer<typeof packagePlacementSchema>
+
+export const packageAvailabilitySchema = z.object({
+  slotLimit: z.number().int().nullable(),
+  queueLimit: z.number().int().nullable(),
+  slotsTaken: z.number().int(),
+  queueTaken: z.number().int(),
+  queueWaiting: z.number().int(),
+  placement: packagePlacementSchema,
+})
+export type PackageAvailability = z.infer<typeof packageAvailabilitySchema>
+
 export const offerPackageSchema = z.object({
   // Not `.uuid()`: these are our own primary keys coming back out of our own
   // database, so version-checking them buys nothing — and a row that failed the
@@ -30,6 +43,13 @@ export const offerPackageSchema = z.object({
   popular: z.boolean().default(false),
   isPublished: z.boolean().default(true),
   position: z.number().int().default(0),
+  // Capacity, set in Admin → Offers. Null is unlimited. See
+  // 20261023120000_managed_package_capacity.sql for what occupies a slot.
+  slotLimit: z.number().int().nonnegative().nullable().default(null),
+  queueLimit: z.number().int().nonnegative().nullable().default(null),
+  // Live counts, attached by the offers route; absent means unlimited or not
+  // read. Display only — checkout counts again under a lock.
+  availability: packageAvailabilitySchema.nullable().default(null),
 })
 
 export const offerServiceSchema = z.object({
@@ -83,6 +103,8 @@ type PackageRow = {
   popular: boolean | null
   is_published: boolean | null
   position: number | null
+  slot_limit?: number | null
+  queue_limit?: number | null
 }
 
 export function toOfferPackage(row: PackageRow): OfferPackage {
@@ -99,6 +121,8 @@ export function toOfferPackage(row: PackageRow): OfferPackage {
     popular: row.popular ?? false,
     isPublished: row.is_published ?? true,
     position: row.position ?? 0,
+    slotLimit: row.slot_limit ?? null,
+    queueLimit: row.queue_limit ?? null,
   })
 }
 
@@ -187,15 +211,139 @@ export function packageFromCatalogue(
   return option ? { service, option } : null
 }
 
+/**
+ * The tier a brief opens on: the popular one, unless it is sold out, in which
+ * case the popular one among those that can still be bought.
+ */
 export function defaultPackageFor(service: OfferService | null): OfferPackage | null {
   if (!service?.packages.length) return null
-  return service.packages.find((option) => option.popular) ?? service.packages[0]
+  const buyable = service.packages.filter((option) => packagePlacement(option) !== "sold_out")
+  const pool = buyable.length ? buyable : service.packages
+  return pool.find((option) => option.popular) ?? pool[0]
 }
 
 /** The cheapest tier, for the "FROM" price on a gig card. */
 export function cheapestPackage(service: OfferService): OfferPackage | null {
   if (!service.packages.length) return null
   return service.packages.reduce((low, option) => (option.priceInr < low.priceInr ? option : low))
+}
+
+/* -------------------------------------------------------------------------- */
+/* Capacity                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/** A row of `managed_offer_availability()` / `admin_managed_capacity()`. */
+export type AvailabilityRow = {
+  package_key: string
+  slot_limit: number | null
+  queue_limit: number | null
+  slots_taken: number
+  queue_taken: number
+  queue_waiting: number
+  placement: string
+}
+
+export function toAvailability(row: AvailabilityRow): PackageAvailability | null {
+  const parsed = packageAvailabilitySchema.safeParse({
+    slotLimit: row.slot_limit,
+    queueLimit: row.queue_limit,
+    slotsTaken: Number(row.slots_taken) || 0,
+    queueTaken: Number(row.queue_taken) || 0,
+    queueWaiting: Number(row.queue_waiting) || 0,
+    placement: row.placement,
+  })
+  return parsed.success ? parsed.data : null
+}
+
+/** The catalogue with each limited package's live counts attached. */
+export function withAvailability(catalogue: OfferService[], rows: AvailabilityRow[]): OfferService[] {
+  const byKey = new Map<string, PackageAvailability>()
+  for (const row of rows) {
+    const availability = toAvailability(row)
+    if (availability) byKey.set(row.package_key, availability)
+  }
+  return catalogue.map((service) => ({
+    ...service,
+    packages: service.packages.map((option) => ({ ...option, availability: byKey.get(option.key) ?? null })),
+  }))
+}
+
+/** Where a new order of this package would land. No counts means unlimited. */
+export function packagePlacement(option: Pick<OfferPackage, "availability">): PackagePlacement {
+  return option.availability?.placement ?? "slot"
+}
+
+/**
+ * The gig's best answer across its tiers, for the card on /hire-us: open if
+ * any tier has a live slot, queueing if any can still be booked, sold out only
+ * when none can.
+ */
+export function servicePlacement(service: Pick<OfferService, "packages" | "quoteOnly">): PackagePlacement {
+  if (service.quoteOnly || !service.packages.length) return "slot"
+  const placements = service.packages.map(packagePlacement)
+  if (placements.includes("slot")) return "slot"
+  if (placements.includes("queue")) return "queue"
+  return "sold_out"
+}
+
+/**
+ * One line for a gig card. Counts slots only when every tier still selling a
+ * slot is limited — "3 slots left" next to an unlimited tier would be untrue.
+ */
+export function serviceAvailabilityNote(service: Pick<OfferService, "packages" | "quoteOnly">): string {
+  const placement = servicePlacement(service)
+  if (placement === "sold_out") return "Sold out"
+  if (placement === "queue") return "Slots full — join the queue"
+  const open = service.packages.filter((option) => packagePlacement(option) === "slot")
+  const left = open.map((option) => slotsLeft(option.availability))
+  if (!left.length || left.some((count) => count === null)) return ""
+  const total = (left as number[]).reduce((sum, count) => sum + count, 0)
+  return `${total} slot${total === 1 ? "" : "s"} left`
+}
+
+/** Live slots still free, or null when the package is unlimited. */
+export function slotsLeft(availability: PackageAvailability | null): number | null {
+  if (!availability || availability.slotLimit === null) return null
+  return Math.max(availability.slotLimit - availability.slotsTaken, 0)
+}
+
+/**
+ * The place a new queue booking would take: everyone already waiting, plus
+ * checkouts in progress for a queue place, plus one.
+ */
+export function nextQueuePlace(availability: PackageAvailability | null): number {
+  return (availability?.queueTaken ?? 0) + 1
+}
+
+/** One line under a tier, or "" when there is nothing worth saying. */
+export function availabilityNote(availability: PackageAvailability | null): string {
+  if (!availability) return ""
+  if (availability.placement === "sold_out") return "Sold out"
+  if (availability.placement === "queue") {
+    const left = availability.queueLimit === null ? null : Math.max(availability.queueLimit - availability.queueTaken, 0)
+    return left === null ? "Slots full — join the queue" : `Slots full — ${left} queue place${left === 1 ? "" : "s"} left`
+  }
+  const left = slotsLeft(availability)
+  return left === null ? "" : `${left} slot${left === 1 ? "" : "s"} left`
+}
+
+export type CapacityRefusal = { code: "slots_full" | "sold_out"; message: string }
+
+/**
+ * Turns the two refusals `create_managed_project` raises into what the buyer
+ * is told. Anything else is not a capacity problem and returns null.
+ */
+export function capacityRefusal(error: unknown): CapacityRefusal | null {
+  const message = typeof error === "object" && error !== null && "message" in error
+    ? String((error as { message?: unknown }).message ?? "")
+    : ""
+  if (message.includes("managed_sold_out")) {
+    return { code: "sold_out", message: "This package is sold out — every slot and queue place is taken. Choose another package or check back soon." }
+  }
+  if (message.includes("managed_slots_full")) {
+    return { code: "slots_full", message: "The last live slot was just taken. You can still book a place in the queue." }
+  }
+  return null
 }
 
 /* -------------------------------------------------------------------------- */

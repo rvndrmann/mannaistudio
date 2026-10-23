@@ -99,6 +99,15 @@ export async function POST(request: NextRequest) {
     const result = Array.isArray(data) ? data[0] : data
     const granted = Boolean(result?.granted)
 
+    // Read back after settling: payment can move an order into the queue if its
+    // slot went to someone else while the sheet was open.
+    const { data: settled } = await admin
+      .from("managed_projects")
+      .select("queue_state")
+      .eq("id", project.id)
+      .maybeSingle()
+    const queued = settled?.queue_state === "queued"
+
     if (granted) {
       await admin.rpc("record_payment", {
         p_email: user.email || "",
@@ -118,9 +127,12 @@ export async function POST(request: NextRequest) {
       success: true,
       granted,
       projectId: project.id,
-      message: granted
-        ? "Your project is confirmed. The creative team has your brief."
-        : "This payment was already applied to your project.",
+      queued,
+      message: !granted
+        ? "This payment was already applied to your project."
+        : queued
+          ? "Payment confirmed. Your project is in the queue, and we will tell you when a production slot opens."
+          : "Your project is confirmed. The creative team has your brief.",
     })
   } catch (error) {
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid verification payload" }, { status: 400 })

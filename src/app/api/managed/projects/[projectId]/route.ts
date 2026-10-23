@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { managedErrorMessage, managedErrorStatus, requireManagedProject } from "@/lib/managed/server"
+import { managedErrorMessage, managedErrorStatus, queuePlaces, requireManagedProject } from "@/lib/managed/server"
 import { parseManagedBrief } from "@/lib/managed-brief"
 
 export const dynamic = "force-dynamic"
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { projectId } = await params
     const { supabase, project, isAdmin, user } = await requireManagedProject(projectId, request)
 
-    const [{ data: deliverables }, { data: versions }, { data: messages }, { data: comments }, { data: storyboard }] = await Promise.all([
+    const [{ data: deliverables }, { data: versions }, { data: messages }, { data: comments }, { data: storyboard }, places] = await Promise.all([
       supabase.from("managed_deliverables").select("*").eq("project_id", projectId).order("position"),
       supabase.from("managed_deliverable_versions").select("*").eq("project_id", projectId).order("version_number"),
       supabase.from("managed_messages").select("*").eq("project_id", projectId).order("created_at"),
@@ -35,6 +35,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .eq("project_id", projectId)
         .order("round", { ascending: false })
         .order("position"),
+      project.queue_state === "queued" ? queuePlaces(supabase, [projectId]) : Promise.resolve(new Map()),
     ])
 
     // Reading it is what marks it read; a separate "mark read" call would fire
@@ -51,6 +52,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         // Internal reference, admin eyes only.
         studio_project_id: isAdmin ? project.studio_project_id : null,
         admin_note: isAdmin ? project.admin_note : "",
+        queue_position: places.get(projectId)?.position ?? null,
+        queue_length: places.get(projectId)?.length ?? null,
       },
       deliverables: deliverables || [],
       versions: versions || [],

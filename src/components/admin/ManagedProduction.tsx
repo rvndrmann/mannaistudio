@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
-  Clapperboard, ExternalLink, File, Film, Inbox, Loader2, Plus, RefreshCcw, Send, Tags, Wand2,
+  CircleArrowUp, Clapperboard, ExternalLink, File, Film, Hourglass, Inbox, Loader2, Plus, RefreshCcw, Send, Tags, Wand2,
 } from "lucide-react"
 import { formatUsdWithInr } from "@/lib/currency"
 import { MANAGED_STATUSES, MANAGED_STATUS_LABELS } from "@/lib/managed-production"
@@ -49,9 +49,15 @@ type QueueRow = {
   approved: number
   unread_messages: number
   created_at: string
+  queue_state: "slot" | "queued"
+  queue_position: number | null
 }
 
+/** Paid, open, and waiting for a slot — its own bucket whatever its status says. */
+const isWaiting = (row: QueueRow) => row.queue_state === "queued" && row.queue_position !== null
+
 const BUCKETS = [
+  { key: "queued", label: "Waiting for a Slot", statuses: [] },
   { key: "new", label: "New Orders", statuses: ["brief_received"] },
   { key: "production", label: "In Production", statuses: ["creative_research", "script_in_progress", "production", "finalizing"] },
   { key: "waiting", label: "Waiting for Client", statuses: ["script_review", "first_cut"] },
@@ -85,7 +91,9 @@ export default function ManagedProduction() {
   const grouped = useMemo(
     () => BUCKETS.map((bucket) => ({
       ...bucket,
-      rows: rows.filter((row) => (bucket.statuses as readonly string[]).includes(row.status)),
+      rows: bucket.key === "queued"
+        ? rows.filter(isWaiting).sort((a, b) => (a.queue_position ?? 0) - (b.queue_position ?? 0))
+        : rows.filter((row) => !isWaiting(row) && (bucket.statuses as readonly string[]).includes(row.status)),
     })),
     [rows],
   )
@@ -181,6 +189,12 @@ export default function ManagedProduction() {
                           <span>{row.video_count} × {row.duration_seconds}s</span>
                           <span aria-hidden>·</span>
                           <span>{row.price_inr > 0 ? formatUsdWithInr(row.price_inr) : "Quote"}</span>
+                          {isWaiting(row) && (
+                            <>
+                              <span aria-hidden>·</span>
+                              <span className="text-amber-300">#{row.queue_position} in queue</span>
+                            </>
+                          )}
                           {row.ready_for_review > 0 && (
                             <>
                               <span aria-hidden>·</span>
@@ -309,6 +323,32 @@ function OrderPanel({ projectId, onChanged }: { projectId: string; onChanged: ()
       </header>
 
       {error && <p className="rounded-xl border border-red-400/25 bg-red-500/10 p-3 text-xs text-red-200">{error}</p>}
+
+      {project.queue_state === "queued" && project.payment_status === "paid" && (
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/30 bg-amber-400/[0.07] p-4">
+          <div className="min-w-0">
+            <h4 className="flex items-center gap-2 text-sm font-bold text-amber-200">
+              <Hourglass className="h-4 w-4" />
+              {project.queue_position
+                ? `Waiting for a slot — #${project.queue_position} of ${project.queue_length}`
+                : "Waiting for a slot"}
+            </h4>
+            <p className="mt-1 text-[11px] text-white/45">
+              Paid and queued. Moving it into a live slot tells the client production has started; it is refused
+              while every slot of this package is running.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={Boolean(busy)}
+            onClick={() => act({ action: "promote" }, "promote")}
+            className="flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-primary px-3.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-40"
+          >
+            {busy === "promote" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CircleArrowUp className="h-3.5 w-3.5" />}
+            Move to live slot
+          </button>
+        </section>
+      )}
 
       <ManagedDeliveryPlan key={project.id} project={project} busy={Boolean(busy)} save={act} />
 

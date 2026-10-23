@@ -193,6 +193,16 @@ operating the studio themselves. Migration
   a round (copied to `managed/{id}/storyboard/`); the client approves or asks for
   changes per frame, and each answer is also written to that shot's Studio
   revision notes. Migration `20261014120000_managed_storyboard_review.sql`.
+- **Capacity and queue:** each package may set `slot_limit` (orders in
+  production at once) and `queue_limit` (paid orders waiting); blank is
+  unlimited. A slot is occupied by a paid, slot-placed order not `completed` or
+  `cancelled`, plus 30-minute checkout holds. Queued bookings pay upfront
+  (`managed_projects.queue_state = 'queued'`); an admin promotes them by hand
+  (Orders → Waiting for a Slot → Move to live slot). `create_managed_project`
+  and `mark_managed_project_paid` count under a package-row lock; the browser
+  only sends `joinQueue` consent and gets `409 slots_full` / `sold_out`.
+  Migration `20261023120000_managed_package_capacity.sql`; details in
+  docs/MANAGED_PRODUCTION.md → Capacity and the queue.
 - **Pausing:** `site_features.hireUs` hides the nav entry *and* closes the
   checkout route. Running projects stay deliverable.
 

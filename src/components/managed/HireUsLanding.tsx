@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
-import { ArrowRight, Check, Clapperboard, Loader2, MessageSquare, Play, Sparkles, Film, Zap, Download, PhoneCall } from "lucide-react"
+import { ArrowRight, Check, Clapperboard, Hourglass, Loader2, MessageSquare, Play, Sparkles, Film, Zap, Download, PhoneCall } from "lucide-react"
 import Navbar from "@/components/Navbar"
 import Footer from "@/components/Footer"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -11,7 +11,7 @@ import ProofWall, { type WallItem } from "@/components/home/academy/ProofWall"
 import WorkGallery, { type WorkItem } from "@/components/home/academy/WorkGallery"
 import BookCallButton from "@/components/managed/BookCallButton"
 import { formatUsd } from "@/lib/currency"
-import { cheapestPackage, publishedOffers, type OfferService } from "@/lib/managed-offers"
+import { cheapestPackage, publishedOffers, serviceAvailabilityNote, servicePlacement, type OfferService } from "@/lib/managed-offers"
 import { materialize, springUI } from "@/lib/motion"
 import OfferMediaFrame, { offerMediaFit } from "@/components/managed/OfferMedia"
 import {
@@ -195,6 +195,10 @@ export default function HireUsLanding({ bookCallUrl, sales, reviews, work }: {
 
 function ServiceCard({ service, index, bookCallUrl }: { service: OfferService; index: number; bookCallUrl: string }) {
   const cheapest = cheapestPackage(service)
+  // Slots are counted per tier; the card shows the gig's best answer — open if
+  // any tier has a live slot, queueing if any can still be booked.
+  const placement = servicePlacement(service)
+  const availability = serviceAvailabilityNote(service)
   const [playing, setPlaying] = useState(false)
   const [posterMissing, setPosterMissing] = useState(false)
 
@@ -290,6 +294,21 @@ function ServiceCard({ service, index, bookCallUrl }: { service: OfferService; i
           )}
         </div>
 
+        {availability && (
+          <p
+            className={`mt-3 inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+              placement === "sold_out"
+                ? "border-red-400/30 bg-red-500/10 text-red-200"
+                : placement === "queue"
+                  ? "border-amber-400/30 bg-amber-400/10 text-amber-200"
+                  : "border-primary/30 bg-primary/10 text-primary"
+            }`}
+          >
+            {placement === "queue" ? <Hourglass className="h-3 w-3" /> : null}
+            {availability}
+          </p>
+        )}
+
         {service.description && (
           <p className="mt-4 text-sm leading-relaxed text-white/50">{service.description}</p>
         )}
@@ -305,13 +324,22 @@ function ServiceCard({ service, index, bookCallUrl }: { service: OfferService; i
           </ul>
         )}
 
-        <Link
-          href={`/hire-us/brief?service=${service.key}`}
-          className="mt-6 flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-semibold text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"
-        >
-          {service.cta}
-          <ArrowRight className="h-4 w-4" />
-        </Link>
+        {placement === "sold_out" ? (
+          <span
+            aria-disabled="true"
+            className="mt-6 flex h-11 cursor-not-allowed items-center justify-center rounded-md border border-white/12 px-5 text-sm font-semibold text-white/40"
+          >
+            Sold out
+          </span>
+        ) : (
+          <Link
+            href={`/hire-us/brief?service=${service.key}`}
+            className="mt-6 flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-semibold text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"
+          >
+            {placement === "queue" ? "Book a place in the queue" : service.cta}
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        )}
         {bookCallUrl && (
           <BookCallButton
             href={bookCallUrl}

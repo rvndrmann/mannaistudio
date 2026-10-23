@@ -5,7 +5,7 @@ import { GET as list } from "@/app/api/managed/projects/route"
 import { GET as context } from "@/app/api/managed/projects/[projectId]/chat-context/route"
 import { POST as message } from "@/app/api/managed/projects/[projectId]/messages/route"
 import { POST as createDraft, orderDraftSchema } from "@/app/api/managed/order-drafts/route"
-import { loadCatalogue } from "@/lib/managed/catalogue"
+import { loadCatalogueWithAvailability } from "@/lib/managed/catalogue"
 import { publishedOffers } from "@/lib/managed-offers"
 import { requireUser } from "@/lib/managed/server"
 import { mcpOrigin } from "./config"
@@ -28,7 +28,7 @@ export function registerManagedMcpTools(server: McpServer, token: string, scopes
   }
   const read = { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
   if (scopes.includes("managed:read")) {
-    server.registerTool("managed_list_offers", { description: "Read the current published Hire Our Team services, package keys, prices in INR, video counts and included revisions. Use these exact service and package keys before saving an order brief. Quote-only services require the website enquiry flow.", annotations: read }, () => result(async () => { const { supabase } = await requireUser(request("/api/managed/offers")); return { services: publishedOffers(await loadCatalogue(supabase)) } }))
+    server.registerTool("managed_list_offers", { description: "Read the current published Hire Our Team services, package keys, prices in INR, video counts and included revisions. Use these exact service and package keys before saving an order brief. Quote-only services require the website enquiry flow. A package whose availability.placement is \"queue\" has no live slot (the client books a paid place in the queue); \"sold_out\" cannot be ordered.", annotations: read }, () => result(async () => { const { supabase } = await requireUser(request("/api/managed/offers")); return { services: publishedOffers(await loadCatalogueWithAvailability(supabase)) } }))
     server.registerTool("managed_list_projects", { description: "List your own Hire Our Team orders and their production status and delivery dates. These are made on your behalf by the creative team.", annotations: read }, () => result(async () => ({ ...await payload(await list(request("/api/managed/projects"))), hireTeamUrl: `${mcpOrigin()}/hire-us` })))
     server.registerTool("managed_project_status", { description: "See what the team is working on, what is left, the expected delivery date, and recent project chat. An unset date is unconfirmed; do not invent a delivery promise.", inputSchema: { projectId: z.string().uuid() }, annotations: read }, ({ projectId }) => result(async () => project(projectId)))
     server.registerTool("managed_project_delivery", { description: "Show a completed hired project: customer brief, final published videos with viewing links, and project chat. The internal team workspace is private; this tool returns the approved client delivery.", inputSchema: { projectId: z.string().uuid() }, annotations: read }, ({ projectId }) => result(async () => {
