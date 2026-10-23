@@ -591,11 +591,11 @@ export default function HireHome({ bookCallUrl = "", sales = [], reviews = [] }:
 }
 
 /**
- * The public navigation: the service first, then the courses, Originals and
+ * The public navigation: the service first, then the courses and
  * Creator Studio, and one button.
  *
- * Creator Studio is shown to everyone so people know it exists; for anyone
- * without Pro it carries a "Pro" tag, and /studio shows them the subscription.
+ * Creator Studio is shown to everyone so people know it exists; /studio shows
+ * anyone without Pro the subscription.
  */
 function SiteHeader({ user, authLoading, onSignOut, startHref, hasPro }: { user: boolean; authLoading: boolean; onSignOut: () => void; startHref: string; hasPro: boolean }) {
   return (
@@ -634,10 +634,11 @@ function SiteHeader({ user, authLoading, onSignOut, startHref, hasPro }: { user:
               Projects
             </Link>
           )}
-          {/* Reviews and How It Works left the bar when Courses and Creator
-              Studio joined it: the header is capped at max-w-6xl, and with all
-              of them the links ran over each other at every width. Both
-              sections are a scroll away. */}
+          {/* The bar is capped at max-w-6xl, so it cannot grow to fit more
+              links; every one added has to be paid for. Reviews, How It Works
+              and Originals left when Courses, Creator Studio and Log out
+              joined, and the in-page anchors wait for xl. Both sections are a
+              scroll away, and Originals has its own section further down. */}
           {[
             { href: "#work", label: "Work" },
             { href: "#pricing", label: "Pricing" },
@@ -645,7 +646,7 @@ function SiteHeader({ user, authLoading, onSignOut, startHref, hasPro }: { user:
             <a
               key={link.href}
               href={link.href}
-              className="hidden whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-white/55 transition hover:text-white lg:block"
+              className="hidden whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-white/55 transition hover:text-white xl:block"
             >
               {link.label}
             </a>
@@ -664,16 +665,10 @@ function SiteHeader({ user, authLoading, onSignOut, startHref, hasPro }: { user:
           >
             Creator Studio
           </Link>
-          <Link
-            href="/originals"
-            className="hidden whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-white/55 transition hover:text-white xl:block"
-          >
-            Originals
-          </Link>
         </nav>
 
         {/* Login and Log out are in the bar at every width — they are what
-            people look for by muscle memory. On a phone Log out is an icon,
+            people look for by muscle memory. Below lg Log out is an icon,
             and when signed in the button shortens to "Start" to make room. Nothing
             is drawn until the session is known, so a signed-in visitor never
             sees Login flash first. */}
@@ -681,7 +676,7 @@ function SiteHeader({ user, authLoading, onSignOut, startHref, hasPro }: { user:
           {!authLoading && user && (
             <Link
               href="/account"
-              className="hidden h-10 items-center rounded-md px-3 text-sm font-medium text-white/55 transition hover:text-white sm:flex"
+              className="hidden h-10 items-center rounded-md px-3 text-sm font-medium text-white/55 transition hover:text-white xl:flex"
             >
               Account
             </Link>
@@ -692,10 +687,10 @@ function SiteHeader({ user, authLoading, onSignOut, startHref, hasPro }: { user:
               onClick={onSignOut}
               title="Log out"
               aria-label="Log out"
-              className="flex h-10 items-center gap-1.5 rounded-md border border-white/15 px-2.5 text-sm font-medium text-white/70 transition hover:bg-white/[0.06] hover:text-white sm:px-3"
+              className="flex h-10 items-center gap-1.5 rounded-md border border-white/15 px-2.5 text-sm font-medium text-white/70 transition hover:bg-white/[0.06] hover:text-white lg:px-3"
             >
               <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline">Log out</span>
+              <span className="hidden lg:inline">Log out</span>
             </button>
           ) : (
             <Link
