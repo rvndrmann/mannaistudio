@@ -11,6 +11,8 @@ import {
   FileText,
   GraduationCap,
   Layers,
+  LogIn,
+  LogOut,
   LineChart,
   MessageSquare,
   PhoneCall,
@@ -109,7 +111,7 @@ export default function HireHome({ bookCallUrl = "", sales = [], reviews = [] }:
   sales?: WallItem[]
   reviews?: WallItem[]
 } = {}) {
-  const { user } = useAuth()
+  const { user, loading: authLoading, signOut } = useAuth()
   const [videos, setVideos] = useState<ShowcaseVideo[]>([])
   const [services, setServices] = useState<OfferService[] | null>(null)
   const [originals, setOriginals] = useState<OriginalsSeriesSummary[]>([])
@@ -185,7 +187,7 @@ export default function HireHome({ bookCallUrl = "", sales = [], reviews = [] }:
 
   return (
     <main className="min-h-screen">
-      <SiteHeader user={Boolean(user)} startHref={startHref} hasPro={hasPro} />
+      <SiteHeader user={Boolean(user)} authLoading={authLoading} onSignOut={signOut} startHref={startHref} hasPro={hasPro} />
 
       {/* 1 — What we make, who it is for, and what to press. */}
       <section className="mx-auto max-w-6xl px-5 pb-14 pt-28 sm:px-6 sm:pt-36">
@@ -595,7 +597,7 @@ export default function HireHome({ bookCallUrl = "", sales = [], reviews = [] }:
  * Creator Studio is shown to everyone so people know it exists; for anyone
  * without Pro it carries a "Pro" tag, and /studio shows them the subscription.
  */
-function SiteHeader({ user, startHref, hasPro }: { user: boolean; startHref: string; hasPro: boolean }) {
+function SiteHeader({ user, authLoading, onSignOut, startHref, hasPro }: { user: boolean; authLoading: boolean; onSignOut: () => void; startHref: string; hasPro: boolean }) {
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-black/75 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5 sm:px-6">
@@ -670,18 +672,50 @@ function SiteHeader({ user, startHref, hasPro }: { user: boolean; startHref: str
           </Link>
         </nav>
 
-        <div className="flex items-center gap-2">
-          <Link
-            href={user ? "/account" : "/login"}
-            className="hidden h-10 items-center rounded-md px-3 text-sm font-medium text-white/55 transition hover:text-white sm:flex"
-          >
-            {user ? "Account" : "Login"}
-          </Link>
+        {/* Login and Log out are in the bar at every width — they are what
+            people look for by muscle memory. On a phone Log out is an icon,
+            and when signed in the button shortens to "Start" to make room. Nothing
+            is drawn until the session is known, so a signed-in visitor never
+            sees Login flash first. */}
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          {!authLoading && user && (
+            <Link
+              href="/account"
+              className="hidden h-10 items-center rounded-md px-3 text-sm font-medium text-white/55 transition hover:text-white sm:flex"
+            >
+              Account
+            </Link>
+          )}
+          {!authLoading && (user ? (
+            <button
+              type="button"
+              onClick={onSignOut}
+              title="Log out"
+              aria-label="Log out"
+              className="flex h-10 items-center gap-1.5 rounded-md border border-white/15 px-2.5 text-sm font-medium text-white/70 transition hover:bg-white/[0.06] hover:text-white sm:px-3"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">Log out</span>
+            </button>
+          ) : (
+            <Link
+              href="/login"
+              className="flex h-10 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-sm font-medium text-white/70 transition hover:text-white sm:px-3"
+            >
+              <LogIn className="hidden h-4 w-4 sm:block" />
+              Login
+            </Link>
+          ))}
           <Link
             href={startHref}
-            className="flex h-10 shrink-0 items-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97] sm:px-4"
+            className="flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-md bg-primary px-3 text-sm font-semibold text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97] sm:px-4"
           >
-            Start a Project
+            {user ? (
+              <>
+                <span className="min-[420px]:hidden">Start</span>
+                <span className="hidden min-[420px]:inline">Start a Project</span>
+              </>
+            ) : "Start a Project"}
           </Link>
         </div>
       </div>
