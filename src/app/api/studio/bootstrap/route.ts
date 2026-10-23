@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { hasCreatorStudioEntitlement } from "@/lib/studio/entitlement"
 
 export async function GET() {
   try {
     const supabase = await createClient(); const { data: { user } } = await supabase.auth.getUser(); if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+    if (!await hasCreatorStudioEntitlement(supabase, user.id)) return NextResponse.json({ ok: false, error: "Subscribe to AI Director Hub Pro to use the Studio." }, { status: 403 })
     await supabase.from("profiles").upsert({ id: user.id, full_name: user.user_metadata?.full_name || "Creator", avatar_url: user.user_metadata?.avatar_url || "", email: user.email || "" }, { onConflict: "id" })
     let { data: project } = await supabase.from("creator_projects").select("*").eq("user_id", user.id).order("created_at").limit(1).maybeSingle()
     if (!project) { const { data, error } = await supabase.from("creator_projects").insert({ user_id: user.id, name: "My first base", description: "Your AI video production workspace" }).select().single(); if (error) throw error; project = data }

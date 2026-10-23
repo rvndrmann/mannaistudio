@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/service"
 import { requireProjectForUser, validateExternalRequest } from "@/lib/studio/external-auth"
 import { fetchStudioFeatureFlags } from "@/lib/studio/feature-flags"
+import { hasCreatorStudioEntitlement, isCreatorProjectMember } from "@/lib/studio/entitlement"
 import { fetchDirectorWorkflows } from "@/lib/studio/workflows"
 import { failAbandonedRuns } from "@/lib/studio/workflow-runs"
 import { summarizeSpendByEpisode } from "@/lib/studio/cost-estimate"
@@ -61,6 +62,9 @@ async function ownedProject(projectId: string, level: ProjectAccess = "read", re
     return { supabase: external.supabase, user: external.user, project, db: external.supabase }
   }
   const supabase = await createClient(); const { data: { user } } = await supabase.auth.getUser(); if (!user) throw new Error("Unauthorized")
+  if (!await hasCreatorStudioEntitlement(supabase, user.id) && !await isCreatorProjectMember(supabase, user.id, projectId)) {
+    throw new Error("Subscribe to AI Director Hub Pro to open this project.")
+  }
   await assertProjectAccess(supabase, projectId, level)
   const { data: { session } } = await supabase.auth.getSession()
   const db = getDbClient(supabase, session?.access_token)

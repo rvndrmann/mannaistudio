@@ -1,6 +1,6 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase/server"
-import { hasCreatorStudioEntitlement } from "@/lib/studio/entitlement"
+import { hasCreatorStudioEntitlement, isCreatorProjectMember } from "@/lib/studio/entitlement"
 
 export class StudioAccessError extends Error {
   constructor(message: string, public readonly status: 401 | 403 | 404) {
@@ -23,7 +23,7 @@ export async function requireAuthenticatedProject(
   const supabase = client ?? await createClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) throw new StudioAccessError("Unauthorized", 401)
-  if (!await hasCreatorStudioEntitlement(supabase, user.id)) {
+  if (!await hasCreatorStudioEntitlement(supabase, user.id) && !await isCreatorProjectMember(supabase, user.id, projectId)) {
     throw new StudioAccessError("Subscribe to All Courses + Creator Studio to access this feature.", 403)
   }
 

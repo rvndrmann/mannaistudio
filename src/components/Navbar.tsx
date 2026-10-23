@@ -303,19 +303,17 @@ export default function Navbar({ academy = false, signedInHint = false }: { acad
                                                 appear here only when they are not
                                                 already visible. */}
                                             <div className={compactHeader ? "" : "md:hidden"}>
-                                                {canUseStudio && (
-                                                    <>
-                                                        <Link
-                                                            href="/studio"
-                                                            className="mb-1 flex min-h-[44px] items-center gap-2.5 rounded-md bg-primary px-3 text-sm font-semibold text-black transition hover:brightness-110"
-                                                        >
-                                                            <Sparkles className="h-4 w-4" />
-                                                            Creator Studio
-                                                        </Link>
+                                                {/* Offered to everyone; /studio sells Pro to anyone without it. */}
+                                                <Link
+                                                    href="/studio"
+                                                    className="mb-1 flex min-h-[44px] items-center gap-2.5 rounded-md bg-primary px-3 text-sm font-semibold text-black transition hover:brightness-110"
+                                                >
+                                                    <Sparkles className="h-4 w-4" />
+                                                    Creator Studio
+                                                    {!canUseStudio && <span className="ml-auto rounded bg-black/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">Pro</span>}
+                                                </Link>
 
-                                                        <div className="my-1 border-t border-white/10" />
-                                                    </>
-                                                )}
+                                                <div className="my-1 border-t border-white/10" />
 
                                                 {visibleNavLinks.map((link) => (
                                                     <Link
@@ -410,13 +408,17 @@ export default function Navbar({ academy = false, signedInHint = false }: { acad
                         </Link>
                     ))}
 
-                    {!loading && canUseStudio && (
+                    {/* Shown to everyone so people know it is there. Without Pro it
+                        carries the tag, and /studio shows the subscription. */}
+                    {!loading && (
                         <Link
                             href="/studio"
+                            title={canUseStudio ? undefined : "Included with AI Director Hub Pro"}
                             className="flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md bg-primary px-4 text-sm font-medium text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"
                         >
                             <Sparkles className="h-4 w-4" />
                             Creator Studio
+                            {!canUseStudio && <span className="rounded bg-black/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">Pro</span>}
                         </Link>
                     )}
 

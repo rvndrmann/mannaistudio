@@ -6,6 +6,8 @@ import { createStudioProjectInputSchema, isMissingProductionModeSchema } from "@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import { hasCreatorStudioEntitlement } from "@/lib/studio/entitlement"
 
+const STUDIO_SUBSCRIPTION_REQUIRED = "Subscribe to AI Director Hub Pro to create Studio projects."
+
 function getDbClient(fallback: any, accessToken?: string) {
   try {
     if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -55,8 +57,11 @@ function extractErrorMessage(err: unknown): string {
 export async function GET() {
   try {
     const { supabase, user } = await currentUser()
-    if (!await hasCreatorStudioEntitlement(supabase, user.id)) return NextResponse.json({ error: "Creator Studio access is included with eligible courses and coaching." }, { status: 403 })
-    const { data, error } = await supabase.from("creator_projects").select("*").order("created_at", { ascending: false })
+    // Without access an account still sees the projects others shared with it
+    // (RLS returns owned and shared rows; the owned ones are left out).
+    const entitled = await hasCreatorStudioEntitlement(supabase, user.id)
+    const query = supabase.from("creator_projects").select("*")
+    const { data, error } = await (entitled ? query : query.neq("user_id", user.id)).order("created_at", { ascending: false })
     if (error) throw error
 
     const { data: owners } = await supabase.rpc("accessible_project_owners")
@@ -110,7 +115,9 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const { supabase, user, db } = await currentUser()
-    if (!await hasCreatorStudioEntitlement(supabase, user.id)) return NextResponse.json({ error: "Creator Studio access is included with eligible courses and coaching." }, { status: 403 })
+    // The insert below runs as the service role, so this check is what stops a
+    // direct call; the creator_projects trigger is the backstop.
+    if (!await hasCreatorStudioEntitlement(supabase, user.id)) return NextResponse.json({ error: STUDIO_SUBSCRIPTION_REQUIRED }, { status: 403 })
     const rawBody = await request.json().catch(() => ({}))
     const parsed = createStudioProjectInputSchema.safeParse(rawBody)
     if (!parsed.success) {

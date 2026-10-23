@@ -1,8 +1,12 @@
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { requireAuthenticatedProject, StudioAccessError } from "./server-context"
 
-vi.mock("./entitlement", () => ({ hasCreatorStudioEntitlement: vi.fn(async () => true) }))
+const access = vi.hoisted(() => ({ entitled: true, member: false }))
+vi.mock("./entitlement", () => ({
+  hasCreatorStudioEntitlement: vi.fn(async () => access.entitled),
+  isCreatorProjectMember: vi.fn(async () => access.member),
+}))
 
 function fakeClient(options: { userId?: string; project?: Record<string, unknown> | null }) {
   const filters: Array<[string, string]> = []
@@ -19,6 +23,8 @@ function fakeClient(options: { userId?: string; project?: Record<string, unknown
 }
 
 describe("requireAuthenticatedProject", () => {
+  beforeEach(() => { access.entitled = true; access.member = false })
+
   it("rejects unauthenticated access before querying projects", async () => {
     const { client } = fakeClient({})
     await expect(requireAuthenticatedProject("project-id", client)).rejects.toEqual(new StudioAccessError("Unauthorized", 401))
@@ -44,5 +50,20 @@ describe("requireAuthenticatedProject", () => {
   it("returns not found when row level security hides the project", async () => {
     const { client } = fakeClient({ userId: "user-1", project: null })
     await expect(requireAuthenticatedProject("other-project", client)).rejects.toMatchObject({ status: 404 })
+  })
+
+  it("turns away an account without Studio access before reading the project", async () => {
+    access.entitled = false
+    const { client } = fakeClient({ userId: "user-1", project: { id: "project-1", user_id: "user-1" } })
+    await expect(requireAuthenticatedProject("project-1", client)).rejects.toMatchObject({ status: 403 })
+    expect(client.from).not.toHaveBeenCalled()
+  })
+
+  it("lets a member open a project shared with them without a subscription of their own", async () => {
+    access.entitled = false
+    access.member = true
+    const { client } = fakeClient({ userId: "member-1", project: { id: "project-1", user_id: "owner-1" } })
+    const context = await requireAuthenticatedProject("project-1", client)
+    expect(context.project.id).toBe("project-1")
   })
 })

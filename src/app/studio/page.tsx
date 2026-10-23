@@ -101,10 +101,12 @@ export default function StudioHome() {
     return () => window.clearTimeout(timer)
   }, [purchaseWindowExpiresAt])
 
+  // Without access the list holds only projects other people shared with this
+  // account; the route leaves out its own.
   useEffect(() => {
-    if (user && studioEntitled === true) {
+    if (user && studioEntitled !== null) {
       load();
-    } else if (!user || studioEntitled === false) {
+    } else if (!user) {
       setLoading(false);
     }
   }, [user, studioEntitled]);
@@ -112,6 +114,10 @@ export default function StudioHome() {
   const handleCreateProject = async (name: string = "Untitled production") => {
     if (!user) {
       signInWithGoogle();
+      return;
+    }
+    if (studioEntitled === false) {
+      router.push("/billing");
       return;
     }
 
@@ -164,18 +170,16 @@ export default function StudioHome() {
       <section className="min-h-screen pt-[124px] lg:pl-[156px] xl:pt-[84px]">
         <div className="mx-auto max-w-[1500px] px-5 pb-16 lg:px-10">
           {!user && (
-            <div className="mx-auto my-8 max-w-2xl rounded-2xl border border-primary/30 bg-primary/[0.05] p-8 text-center">
-              <Sparkles className="mx-auto h-10 w-10 text-primary mb-3" />
-              <h2 className="text-2xl font-semibold text-white">Sign In to Access Studio</h2>
-              <p className="mt-2 text-sm text-zinc-400">
-                Sign in with Google to create AI projects, generate videos, and chat with your AI Director Agent.
-              </p>
-              <button
-                onClick={() => signInWithGoogle()}
-                className="mt-6 rounded-xl bg-primary px-8 py-3.5 text-sm font-semibold text-black hover:bg-[#a5de25] transition"
-              >
-                Sign In with Google
-              </button>
+            <div className="mx-auto my-12 max-w-3xl rounded-3xl border border-primary/25 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,.12),transparent_65%)] p-8 text-center sm:p-12">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10"><Sparkles className="h-7 w-7 text-primary"/></div>
+              <p className="mt-6 text-xs font-semibold tracking-[.22em] text-primary">AI DIRECTOR HUB CREATOR STUDIO</p>
+              <h1 className="mt-3 text-3xl font-semibold text-white sm:text-4xl">Plan, storyboard and create AI video in one studio.</h1>
+              <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-zinc-300">Creator Studio is included with AI Director Hub Pro, together with every published course. Connect your own OpenAI, Gemini, fal.ai, or BytePlus API keys; your provider bills you directly.</p>
+              <p className="mx-auto mt-3 flex max-w-xl items-center justify-center gap-2 text-xs text-zinc-400"><KeyRound className="h-3.5 w-3.5 shrink-0 text-primary"/>Your keys are encrypted the moment you save them. Nobody on our team can see them.</p>
+              <div className="mt-8 flex flex-wrap justify-center gap-3">
+                <Link href="/billing" className="rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-black">See AI Director Hub Pro</Link>
+                <button onClick={() => signInWithGoogle()} className="rounded-xl border border-white/15 px-6 py-3 text-sm font-semibold text-white">Sign in</button>
+              </div>
             </div>
           )}
 
@@ -184,9 +188,10 @@ export default function StudioHome() {
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10"><Sparkles className="h-7 w-7 text-primary"/></div>
               <p className="mt-6 text-xs font-semibold tracking-[.22em] text-primary">AI DIRECTOR HUB CREATOR STUDIO</p>
               <h1 className="mt-3 text-3xl font-semibold text-white sm:text-4xl">Create with your own AI accounts.</h1>
-              <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-zinc-300">Subscribe to All Courses + Creator Studio to start creating and access every published course. Connect your own OpenAI, Gemini, fal.ai, or BytePlus API keys. Your provider bills you directly; no Studio credits are included or used.</p>
+              <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-zinc-300">Subscribe to AI Director Hub Pro to start creating and access every published course. Connect your own OpenAI, Gemini, fal.ai, or BytePlus API keys. Your provider bills you directly; no Studio credits are included or used.</p>
+              <p className="mx-auto mt-3 flex max-w-xl items-center justify-center gap-2 text-xs text-zinc-400"><KeyRound className="h-3.5 w-3.5 shrink-0 text-primary"/>Your keys are encrypted the moment you save them. Nobody on our team can see them.</p>
               <div className="mt-8 grid gap-3 text-left sm:grid-cols-3">{["Plan complete video projects", "Develop characters and storyboards", "Create and organize your shots"].map((feature)=><div key={feature} className="rounded-xl border border-white/10 bg-black/30 p-4 text-sm text-zinc-300">{feature}</div>)}</div>
-              <div className="mt-8 flex flex-wrap justify-center gap-3"><Link href="/billing" className="rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-black">Get All Access</Link><Link href="/courses" className="rounded-xl border border-white/15 px-6 py-3 text-sm font-semibold text-white">Explore Courses</Link></div>
+              <div className="mt-8 flex flex-wrap justify-center gap-3"><Link href="/billing" className="rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-black">Get AI Director Hub Pro</Link><Link href="/courses" className="rounded-xl border border-white/15 px-6 py-3 text-sm font-semibold text-white">Explore Courses</Link></div>
             </div>
           )}
 
@@ -202,7 +207,16 @@ export default function StudioHome() {
             </p>
           )}
 
-          {(!user || studioEntitled === true) && <section className="mt-6">
+          {user && studioEntitled === false && projects.length > 0 && (
+            <section className="mx-auto mt-2 max-w-5xl">
+              <h2 className="mb-4 text-lg font-semibold">Shared with you</h2>
+              <div style={{ gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }} className="grid gap-5 pb-4">
+                {projects.map((project) => <ProjectGalleryCard key={project.id} project={project} />)}
+              </div>
+            </section>
+          )}
+
+          {user && studioEntitled === true && <section className="mt-6">
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
               <h1 className="text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">
                 Recent projects

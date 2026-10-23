@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { hasCreatorStudioEntitlement } from '@/lib/studio/entitlement'
+import { hasCreatorStudioEntitlement, isCreatorProjectMember } from '@/lib/studio/entitlement'
 
 // Routes that require authentication (everything else is public).
 //
@@ -49,7 +49,13 @@ function isAdminOnlyRoute(pathname: string): boolean {
     return matchesPath(pathname, adminOnlyPaths)
 }
 
+// /studio itself is the Creator Studio shop window: a stranger who followed the
+// header button reads what it is and what it costs before being asked to sign
+// in. Everything under it stays behind sign-in and the subscription check.
+const publicExactPaths = ['/studio']
+
 function isProtectedRoute(pathname: string): boolean {
+    if (publicExactPaths.includes(pathname)) return false
     return matchesPath(pathname, protectedPaths) || isAdminOnlyRoute(pathname)
 }
 
@@ -136,8 +142,14 @@ export async function middleware(request: NextRequest) {
             if (!admin) return NextResponse.redirect(new URL('/originals', request.url))
         }
 
+        // /studio itself is the subscribe page for anyone without access; every
+        // page under it is the product. The one exception is a project someone
+        // shared with this user — sharing is the owner's call.
         if (request.nextUrl.pathname.startsWith('/studio/') && !await hasCreatorStudioEntitlement(supabase, user.id)) {
-            return NextResponse.redirect(new URL('/studio', request.url))
+            const sharedProjectId = request.nextUrl.pathname.match(/^\/studio\/project\/([^/]+)/)?.[1]
+            if (!sharedProjectId || !await isCreatorProjectMember(supabase, user.id, sharedProjectId)) {
+                return NextResponse.redirect(new URL('/studio', request.url))
+            }
         }
 
         return res

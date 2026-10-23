@@ -42,9 +42,10 @@ import { useProAccess } from "@/lib/use-pro-access"
  * factory, not the product: the client orders what comes out of it, and the
  * team operates it.
  *
- * It carries its own header rather than the shared Navbar, which leads with a
- * Creator Studio button — the one door this visitor should never be pushed
- * through.
+ * It carries its own header rather than the shared Navbar. Creator Studio is
+ * offered in it, and lower down for the visitor who would rather make the ads
+ * themselves, but never ahead of the service: it is sold on AI Director Hub Pro,
+ * and /studio is where a non-subscriber learns that.
  */
 
 /** The service the volume plans are sold under, seeded in the catalogue. */
@@ -184,7 +185,7 @@ export default function HireHome({ bookCallUrl = "", sales = [], reviews = [] }:
 
   return (
     <main className="min-h-screen">
-      <SiteHeader user={Boolean(user)} startHref={startHref} hasProof={hasProof} hasPro={hasPro} />
+      <SiteHeader user={Boolean(user)} startHref={startHref} hasPro={hasPro} />
 
       {/* 1 — What we make, who it is for, and what to press. */}
       <section className="mx-auto max-w-6xl px-5 pb-14 pt-28 sm:px-6 sm:pt-36">
@@ -222,16 +223,27 @@ export default function HireHome({ bookCallUrl = "", sales = [], reviews = [] }:
           <p className="mt-5 text-xs text-white/35">
             UGC Ads · Product Ads · Direct Response · Cinematic Ads
           </p>
-          {/* The courses, offered once and quietly: this page sells the
-              service, and someone who would rather learn to make the ads
-              themselves still deserves a way to the other door. */}
-          <Link
-            href="#learn"
-            className="mt-3 inline-flex min-h-9 items-center gap-1.5 text-xs font-medium text-white/50 underline-offset-4 transition hover:text-white hover:underline"
-          >
-            <GraduationCap className="h-3.5 w-3.5" />
-            Rather make them yourself? See our course
-          </Link>
+          {/* The other two doors, for someone who would rather make the ads
+              themselves. Smaller than the service buttons above and after
+              them: this page sells the service first. */}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-white/45">Rather make them yourself?</span>
+            <Link
+              href="/courses"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-white/15 px-3 text-xs font-semibold text-white/80 transition hover:bg-white/[0.06] hover:text-white"
+            >
+              <GraduationCap className="h-3.5 w-3.5 text-primary" />
+              Courses
+            </Link>
+            <Link
+              href="/studio"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-white/15 px-3 text-xs font-semibold text-white/80 transition hover:bg-white/[0.06] hover:text-white"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              Creator Studio
+              {!hasPro && <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">Pro</span>}
+            </Link>
+          </div>
         </motion.div>
       </section>
 
@@ -514,16 +526,26 @@ export default function HireHome({ bookCallUrl = "", sales = [], reviews = [] }:
               <h2 className="text-xl font-bold tracking-tight sm:text-2xl">Want to make these ads yourself?</h2>
               <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/50">
                 Learn the workflow our team uses, then make your own in Creator Studio with your own API keys.
+                Creator Studio is included with AI Director Hub Pro.
               </p>
             </div>
           </div>
-          <Link
-            href="/courses"
-            className="flex h-11 shrink-0 items-center gap-2 rounded-md border border-white/15 px-5 text-sm font-semibold text-white/85 transition duration-press ease-out hover:bg-white/[0.06] hover:text-white active:scale-[0.97]"
-          >
-            See the course
-            <ArrowRight className="h-4 w-4" />
-          </Link>
+          <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
+            <Link
+              href="/studio"
+              className="flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-semibold text-black transition duration-press ease-out hover:brightness-110 active:scale-[0.97]"
+            >
+              <Sparkles className="h-4 w-4" />
+              Creator Studio
+            </Link>
+            <Link
+              href="/courses"
+              className="flex h-11 items-center justify-center gap-2 rounded-md border border-white/15 px-5 text-sm font-semibold text-white/85 transition duration-press ease-out hover:bg-white/[0.06] hover:text-white active:scale-[0.97]"
+            >
+              See the course
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -567,14 +589,13 @@ export default function HireHome({ bookCallUrl = "", sales = [], reviews = [] }:
 }
 
 /**
- * The public navigation: five links and one button.
+ * The public navigation: the service first, then the courses, Originals and
+ * Creator Studio, and one button.
  *
- * Studio and Courses are absent by design — they are internal tooling, and a
- * visitor who has come to buy ads should never be offered the machine that
- * makes them. Neither route is removed; both stay exactly where the team
- * reaches them.
+ * Creator Studio is shown to everyone so people know it exists; for anyone
+ * without Pro it carries a "Pro" tag, and /studio shows them the subscription.
  */
-function SiteHeader({ user, startHref, hasProof, hasPro }: { user: boolean; startHref: string; hasProof: boolean; hasPro: boolean }) {
+function SiteHeader({ user, startHref, hasPro }: { user: boolean; startHref: string; hasPro: boolean }) {
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-black/75 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5 sm:px-6">
@@ -611,10 +632,12 @@ function SiteHeader({ user, startHref, hasProof, hasPro }: { user: boolean; star
               Projects
             </Link>
           )}
+          {/* Reviews and How It Works left the bar when Courses and Creator
+              Studio joined it: the header is capped at max-w-6xl, and with all
+              of them the links ran over each other at every width. Both
+              sections are a scroll away. */}
           {[
             { href: "#work", label: "Work" },
-            ...(hasProof ? [{ href: "#proof", label: "Reviews" }] : []),
-            { href: "#how", label: "How It Works" },
             { href: "#pricing", label: "Pricing" },
           ].map((link) => (
             <a
@@ -625,11 +648,19 @@ function SiteHeader({ user, startHref, hasProof, hasPro }: { user: boolean; star
               {link.label}
             </a>
           ))}
+          {/* Below lg the hero's Courses and Creator Studio buttons carry them. */}
           <Link
             href="/courses"
-            className="hidden whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-white/55 transition hover:text-white sm:block"
+            className="hidden whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-white/55 transition hover:text-white lg:block"
           >
             Courses
+          </Link>
+          <Link
+            href="/studio"
+            title={hasPro ? undefined : "Included with AI Director Hub Pro"}
+            className="hidden whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-white/55 transition hover:text-white lg:block"
+          >
+            Creator Studio
           </Link>
           <Link
             href="/originals"
@@ -640,17 +671,6 @@ function SiteHeader({ user, startHref, hasProof, hasPro }: { user: boolean; star
         </nav>
 
         <div className="flex items-center gap-2">
-          {/* A Pro member has paid for the studio with their own keys; the one
-              door this header otherwise keeps shut is theirs to use. */}
-          {hasPro && (
-            <Link
-              href="/studio"
-              className="hidden h-10 items-center gap-1.5 rounded-md border border-primary/40 px-3 text-sm font-semibold text-primary transition hover:bg-primary/10 sm:flex"
-            >
-              <Sparkles className="h-4 w-4" />
-              Creator Studio
-            </Link>
-          )}
           <Link
             href={user ? "/account" : "/login"}
             className="hidden h-10 items-center rounded-md px-3 text-sm font-medium text-white/55 transition hover:text-white sm:flex"
