@@ -187,6 +187,9 @@ export const MODEL_CREDIT_RATES: Record<string, ModelCreditRate> = {
   "higgsfield/cinema-studio/4.0": { unit: "per second", base: 0.4623 * 95.4 * 2.2, description: "Cinema Studio 4.0 (Higgsfield)", estimated: true, byResolution: { "480p": 0.2057 * 95.4 * 2.2, "720p": 0.4623 * 95.4 * 2.2, "1080p": 0.4623 * 95.4 * 2.2, "4K": 0.4623 * 95.4 * 2.2 } },
   "higgsfield/kling-video/o3/video-reference": { unit: "per second", base: 135 / 8, description: "Kling O3 Video Reference (Higgsfield, MiniMax H3 rate)", estimated: true },
   "higgsfield/kling-video/o3/image-reference": { unit: "per second", base: 135 / 8, description: "Kling O3 (Higgsfield, MiniMax H3 rate)", estimated: true },
+  // No Higgsfield quote for this endpoint yet; it carries the other Kling
+  // endpoints' estimate until one exists.
+  "higgsfield/kling-video/v4.0/reference-to-video": { unit: "per second", base: 135 / 8, description: "Kling 4.0 Reference (Higgsfield, MiniMax H3 rate)", estimated: true },
   "higgsfield/kling-video/v3.0/std/image-to-video": { unit: "per second", base: 135 / 8, description: "Kling 3.0 Standard (Higgsfield, MiniMax H3 rate)", estimated: true },
   // No Higgsfield quote for this endpoint yet. It renders at 2K only, so every
   // resolution carries the card's 2K MiniMax H3 figure until one exists.

@@ -1,5 +1,5 @@
 import { runUserProvider } from "@/lib/byok/run-user-provider"
-import { GENJUTSU_OBJECT_SWAP_MODEL, GENJUTSU_RESTYLE_MODEL, isGenjutsuModel, isHiggsfieldMinimaxH3Model, submitHiggsfieldMinimaxH3Video, isHiggsfieldSeedance25Model, isHiggsfieldSeedanceModel, submitHiggsfieldSeedanceVideo, isHiggsfieldWanModel, submitHiggsfieldWanVideo, isHiggsfieldKlingModel, submitHiggsfieldKlingVideo, isHiggsfieldKlingO3Model, submitHiggsfieldKlingO3Video, isHiggsfieldKlingO3VideoModel, submitHiggsfieldKlingO3VideoReference, isHiggsfieldCinemaStudioModel, submitHiggsfieldCinemaStudioVideo, genjutsuInputSchema, genjutsuRestyleInputSchema, getGenjutsuPresets, HiggsfieldProviderError, requireHiggsfieldCredentials, submitGenjutsuVideo } from "@/lib/studio/higgsfield"
+import { GENJUTSU_OBJECT_SWAP_MODEL, GENJUTSU_RESTYLE_MODEL, isGenjutsuModel, isHiggsfieldMinimaxH3Model, submitHiggsfieldMinimaxH3Video, isHiggsfieldSeedance25Model, isHiggsfieldSeedanceModel, submitHiggsfieldSeedanceVideo, isHiggsfieldWanModel, submitHiggsfieldWanVideo, isHiggsfieldKling4ReferenceModel, submitHiggsfieldKling4ReferenceVideo, isHiggsfieldKlingModel, submitHiggsfieldKlingVideo, isHiggsfieldKlingO3Model, submitHiggsfieldKlingO3Video, isHiggsfieldKlingO3VideoModel, submitHiggsfieldKlingO3VideoReference, isHiggsfieldCinemaStudioModel, submitHiggsfieldCinemaStudioVideo, genjutsuInputSchema, genjutsuRestyleInputSchema, getGenjutsuPresets, HiggsfieldProviderError, requireHiggsfieldCredentials, submitGenjutsuVideo } from "@/lib/studio/higgsfield"
 import { readSourceVideoDuration } from "@/lib/studio/source-video-duration"
 import { createHash, randomUUID } from "node:crypto"
 import type { SupabaseClient } from "@supabase/supabase-js"
@@ -460,6 +460,10 @@ export async function submitProjectVideo(context: Awaited<ReturnType<typeof requ
       input.durationSeconds = Math.min(15, Math.max(4, input.durationSeconds || Number(shot.duration_seconds || 5)))
     }
     if (isHiggsfieldWanModel(input.model) && input.resolution === "4K") input.resolution = "1080p"
+    if (isHiggsfieldKling4ReferenceModel(input.model)) {
+      if (!references.length && !videoReferences.length) throw new HiggsfieldProviderError("Kling 4.0 Reference needs a reference image or video. Generate the shot's keyframe or add a reference first.", 400)
+      input.resolution = input.resolution === "480p" || input.resolution === "720p" ? "720p" : "1080p"
+    }
     if (isHiggsfieldCinemaStudioModel(input.model) && input.resolution !== "480p") input.resolution = "720p"
     if (isHiggsfieldKlingO3Model(input.model)) input.durationSeconds = Math.min(15, input.durationSeconds || Number(shot.duration_seconds || 5))
     if (isHiggsfieldKlingO3VideoModel(input.model)) {
@@ -548,6 +552,8 @@ export async function submitProjectVideo(context: Awaited<ReturnType<typeof requ
         task = await submitHiggsfieldKlingO3Video({ prompt: resolvedPrompt, duration: input.durationSeconds, resolution: input.resolution || shot.resolution || "720p", aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16", imageUrls: keyframe ? references.slice(1) : references, firstFrameUrl: keyframe ? references[0] : undefined, lastFrameUrl, audioEnabled: input.audioEnabled })
       } else if (isHiggsfieldCinemaStudioModel(input.model)) {
         task = await submitHiggsfieldCinemaStudioVideo({ prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "720p", aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16", imageUrls: references, videoUrls: videoReferences, audioUrls: audioReferences, audioEnabled: input.audioEnabled })
+      } else if (isHiggsfieldKling4ReferenceModel(input.model)) {
+        task = await submitHiggsfieldKling4ReferenceVideo({ prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 10), resolution: input.resolution, aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16", imageUrls: references, videoUrls: videoReferences })
       } else if (isHiggsfieldWanModel(input.model)) {
         task = await submitHiggsfieldWanVideo({ prompt: resolvedPrompt, duration: input.durationSeconds || Number(shot.duration_seconds || 5), resolution: input.resolution || shot.resolution || "1080p", aspectRatio: input.aspectRatio || shot.aspect_ratio || "9:16", imageUrls: references, videoUrls: videoReferences, audioUrls: audioReferences, audioEnabled: input.audioEnabled })
       } else if (provider === "higgsfield") {

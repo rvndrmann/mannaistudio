@@ -3,7 +3,7 @@ import { ownKeysOnly } from "@/lib/byok/preferences"
 import { isCameraSettings } from "./camera-settings"
 import { runInBackground } from "./background-work"
 import { jobRenderSettings } from "./job-render-settings"
-import { submitGenjutsuVideo, submitHiggsfieldMinimaxH3Video, isHiggsfieldMinimaxH3Model, submitHiggsfieldSeedanceVideo, isHiggsfieldSeedanceModel, submitHiggsfieldWanVideo, isHiggsfieldWanModel, submitHiggsfieldKlingVideo, isHiggsfieldKlingModel, submitHiggsfieldKlingO3Video, isHiggsfieldKlingO3Model, submitHiggsfieldKlingO3VideoReference, isHiggsfieldKlingO3VideoModel, submitHiggsfieldCinemaStudioVideo, isHiggsfieldCinemaStudioModel, genjutsuInputSchema, genjutsuRestyleInputSchema, GENJUTSU_RESTYLE_MODEL, SOUL_V2_IMAGE_TO_IMAGE_MODEL, submitSoulV2Image, isHiggsfieldAiInfluencerModel, submitAiInfluencerSheet } from "./higgsfield"
+import { submitGenjutsuVideo, submitHiggsfieldMinimaxH3Video, isHiggsfieldMinimaxH3Model, submitHiggsfieldSeedanceVideo, isHiggsfieldSeedanceModel, submitHiggsfieldWanVideo, isHiggsfieldWanModel, submitHiggsfieldKlingVideo, isHiggsfieldKlingModel, submitHiggsfieldKlingO3Video, isHiggsfieldKlingO3Model, submitHiggsfieldKlingO3VideoReference, isHiggsfieldKlingO3VideoModel, submitHiggsfieldKling4ReferenceVideo, isHiggsfieldKling4ReferenceModel, submitHiggsfieldCinemaStudioVideo, isHiggsfieldCinemaStudioModel, genjutsuInputSchema, genjutsuRestyleInputSchema, GENJUTSU_RESTYLE_MODEL, SOUL_V2_IMAGE_TO_IMAGE_MODEL, submitSoulV2Image, isHiggsfieldAiInfluencerModel, submitAiInfluencerSheet } from "./higgsfield"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { generateOpenAIImage, submitOpenAIImage, supportsBackgroundImageResponse, type OpenAIImageModel } from "./openai"
 import { submitBytePlusVideo, generateBytePlusImage, createBytePlusAsset } from "./byteplus"
@@ -470,7 +470,7 @@ export async function executeGenerationJobs(
           } else if (job.type === "video" && ["byteplus", "fal", "google", "higgsfield"].includes(job.provider)) {
             let task: { id: string; response?: unknown }
             try {
-              if (job.provider === "higgsfield" && !isHiggsfieldMinimaxH3Model(job.model) && !isHiggsfieldSeedanceModel(job.model) && !isHiggsfieldWanModel(job.model) && !isHiggsfieldKlingModel(job.model) && !isHiggsfieldKlingO3Model(job.model) && !isHiggsfieldKlingO3VideoModel(job.model) && !isHiggsfieldCinemaStudioModel(job.model) && videoReferenceUrls.length !== 1) throw new Error("Genjutsu requires exactly one source video.")
+              if (job.provider === "higgsfield" && !isHiggsfieldMinimaxH3Model(job.model) && !isHiggsfieldSeedanceModel(job.model) && !isHiggsfieldWanModel(job.model) && !isHiggsfieldKlingModel(job.model) && !isHiggsfieldKlingO3Model(job.model) && !isHiggsfieldKlingO3VideoModel(job.model) && !isHiggsfieldKling4ReferenceModel(job.model) && !isHiggsfieldCinemaStudioModel(job.model) && videoReferenceUrls.length !== 1) throw new Error("Genjutsu requires exactly one source video.")
               task = isHiggsfieldMinimaxH3Model(job.model)
                 ? await submitHiggsfieldMinimaxH3Video({
                     model: job.model,
@@ -519,6 +519,15 @@ export async function executeGenerationJobs(
                     videoUrls: videoReferenceUrls,
                     audioUrls: audioReferenceUrls,
                     audioEnabled: typeof settings.audioEnabled === "boolean" ? settings.audioEnabled : true,
+                  })
+                : isHiggsfieldKling4ReferenceModel(job.model)
+                ? await submitHiggsfieldKling4ReferenceVideo({
+                    prompt: canonicalizeEntityMentions(job.prompt || "", (projectEntities || []) as MentionableEntity[]),
+                    duration: typeof settings.durationSeconds === "number" ? settings.durationSeconds : 10,
+                    resolution: typeof settings.resolution === "string" ? settings.resolution : "1080p",
+                    aspectRatio: effectiveAspectRatio,
+                    imageUrls: referenceUrls,
+                    videoUrls: videoReferenceUrls,
                   })
                 : isHiggsfieldWanModel(job.model)
                 ? await submitHiggsfieldWanVideo({

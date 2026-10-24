@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { HIGGSFIELD_MINIMAX_H3_MODEL, HIGGSFIELD_MINIMAX_H3_REFERENCE_MODEL, isHiggsfieldMinimaxH3Model, HIGGSFIELD_CINEMA_STUDIO_4_MODEL, HIGGSFIELD_KLING_3_STD_MODEL, HIGGSFIELD_KLING_O3_MODEL, HIGGSFIELD_KLING_O3_VIDEO_MODEL, HIGGSFIELD_SEEDANCE_2_MODEL, HIGGSFIELD_WAN_3_PRIME_MODEL, submitHiggsfieldCinemaStudioVideo, submitHiggsfieldKlingO3Video, submitHiggsfieldKlingO3VideoReference, submitHiggsfieldKlingVideo, submitHiggsfieldMinimaxH3Video, submitHiggsfieldSeedanceVideo, submitHiggsfieldWanVideo, HIGGSFIELD_SEEDANCE_2_5_MODEL, isHiggsfieldSeedance25Model, isHiggsfieldSeedanceModel } from "./higgsfield"
-import { generationProvider, higgsfieldTakesAudioReferences, isGenjutsuVideoModel, isImageOnlyVideoModel, isTextOnlyVideoModel, isVideoGenerationModel, videoDurationOptions, videoModelMaxDuration, videoModelNeedsSourceVideo } from "./generation-models"
+import { HIGGSFIELD_KLING_4_REFERENCE_MODEL, isHiggsfieldKling4ReferenceModel, submitHiggsfieldKling4ReferenceVideo, HIGGSFIELD_MINIMAX_H3_MODEL, HIGGSFIELD_MINIMAX_H3_REFERENCE_MODEL, isHiggsfieldMinimaxH3Model, HIGGSFIELD_CINEMA_STUDIO_4_MODEL, HIGGSFIELD_KLING_3_STD_MODEL, HIGGSFIELD_KLING_O3_MODEL, HIGGSFIELD_KLING_O3_VIDEO_MODEL, HIGGSFIELD_SEEDANCE_2_MODEL, HIGGSFIELD_WAN_3_PRIME_MODEL, submitHiggsfieldCinemaStudioVideo, submitHiggsfieldKlingO3Video, submitHiggsfieldKlingO3VideoReference, submitHiggsfieldKlingVideo, submitHiggsfieldMinimaxH3Video, submitHiggsfieldSeedanceVideo, submitHiggsfieldWanVideo, HIGGSFIELD_SEEDANCE_2_5_MODEL, isHiggsfieldSeedance25Model, isHiggsfieldSeedanceModel } from "./higgsfield"
+import { generationProvider, higgsfieldTakesAudioReferences, videoResolutionOptions, isGenjutsuVideoModel, isImageOnlyVideoModel, isTextOnlyVideoModel, isVideoGenerationModel, videoDurationOptions, videoModelMaxDuration, videoModelNeedsSourceVideo } from "./generation-models"
 import { generationModels } from "./model-routing"
 import { calculateCreditCost } from "./credits"
 
@@ -282,5 +282,40 @@ describe("MiniMax H3 Reference on Higgsfield", () => {
     await submitHiggsfieldMinimaxH3Video({ prompt: "A runner", imageUrls: ["https://cdn.test/a.png"] })
     expect(request.mock.calls[1][0]).toBe("https://api.higgsfield.ai/minimax/h3/text-to-video")
     expect(JSON.parse(String(request.mock.calls[1][1]?.body))).not.toHaveProperty("image_urls")
+  })
+})
+
+describe("Kling 4.0 Reference on Higgsfield", () => {
+  it("is offered as a Higgsfield model that takes image and clip references", () => {
+    expect(isVideoGenerationModel(HIGGSFIELD_KLING_4_REFERENCE_MODEL)).toBe(true)
+    expect(generationProvider(HIGGSFIELD_KLING_4_REFERENCE_MODEL)).toBe("higgsfield")
+    expect(isHiggsfieldKling4ReferenceModel(HIGGSFIELD_KLING_4_REFERENCE_MODEL)).toBe(true)
+    expect(videoModelNeedsSourceVideo(HIGGSFIELD_KLING_4_REFERENCE_MODEL)).toBe(false)
+    expect(higgsfieldTakesAudioReferences(HIGGSFIELD_KLING_4_REFERENCE_MODEL)).toBe(false)
+    expect(videoModelMaxDuration(HIGGSFIELD_KLING_4_REFERENCE_MODEL)).toBe(30)
+    expect(videoResolutionOptions(HIGGSFIELD_KLING_4_REFERENCE_MODEL)).toEqual(["720p", "1080p"])
+    expect(calculateCreditCost(HIGGSFIELD_KLING_4_REFERENCE_MODEL, "video", 10)).toBeGreaterThan(0)
+    const routed = generationModels.find((model) => model.model === HIGGSFIELD_KLING_4_REFERENCE_MODEL)
+    expect(routed).toMatchObject({ provider: "higgsfield", sources: ["text", "image"], referenceImages: true })
+  })
+
+  it("posts the documented fields, cut to the endpoint's limits", async () => {
+    vi.stubEnv("HF_CREDENTIALS", "key-id:key-secret")
+    const request = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ request_id: "req_k4" }), { status: 200 }))
+    const images = Array.from({ length: 12 }, (_, n) => `https://cdn.test/${n}.png`)
+    await submitHiggsfieldKling4ReferenceVideo({ prompt: " Use @image_1 in a sunlit market ", duration: 45, resolution: "4K", aspectRatio: "21:9", imageUrls: [...images, "asset://byteplus/x"], videoUrls: [] })
+    const [url, init] = request.mock.calls[0]
+    expect(url).toBe("https://api.higgsfield.ai/kling-video/v4.0/reference-to-video")
+    expect(JSON.parse(String(init?.body))).toEqual({ prompt: "Use @image_1 in a sunlit market", image_urls: images.slice(0, 10), duration: 30, resolution: "1080p", aspect_ratio: "21:9" })
+    await submitHiggsfieldKling4ReferenceVideo({ prompt: "Follow the camera in @video_1", duration: 1, resolution: "480p", aspectRatio: "4:3", videoUrls: [1, 2, 3, 4, 5, 6].map((n) => `https://cdn.test/${n}.mp4`) })
+    expect(JSON.parse(String(request.mock.calls[1][1]?.body))).toEqual({ prompt: "Follow the camera in @video_1", video_urls: [1, 2, 3, 4, 5].map((n) => `https://cdn.test/${n}.mp4`), duration: 3, resolution: "720p", aspect_ratio: "adaptive" })
+  })
+
+  it("refuses a prompt with no usable reference before calling Higgsfield", async () => {
+    vi.stubEnv("HF_CREDENTIALS", "key-id:key-secret")
+    const request = vi.spyOn(globalThis, "fetch")
+    await expect(submitHiggsfieldKling4ReferenceVideo({ prompt: "A runner", imageUrls: [], videoUrls: ["asset://byteplus/x"] })).rejects.toThrow("needs a reference image or video")
+    await expect(submitHiggsfieldKling4ReferenceVideo({ prompt: "  ", imageUrls: ["https://cdn.test/a.png"] })).rejects.toThrow("needs a prompt")
+    expect(request).not.toHaveBeenCalled()
   })
 })

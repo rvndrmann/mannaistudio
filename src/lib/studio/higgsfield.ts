@@ -47,6 +47,12 @@ export const isHiggsfieldKlingO3Model = (model: string) => model === HIGGSFIELD_
 export const HIGGSFIELD_KLING_O3_VIDEO_MODEL = "higgsfield/kling-video/o3/video-reference"
 const HIGGSFIELD_KLING_O3_VIDEO_PATH = "kling-video/o3/video-reference"
 export const isHiggsfieldKlingO3VideoModel = (model: string) => model === HIGGSFIELD_KLING_O3_VIDEO_MODEL
+// Kling 4.0 Reference to Video through Higgsfield: a new clip steered by
+// reference images and clips. Unlike O3 Video Reference, a clip here is a
+// motion or content reference, not a source to re-render.
+export const HIGGSFIELD_KLING_4_REFERENCE_MODEL = "higgsfield/kling-video/v4.0/reference-to-video"
+const HIGGSFIELD_KLING_4_REFERENCE_PATH = "kling-video/v4.0/reference-to-video"
+export const isHiggsfieldKling4ReferenceModel = (model: string) => model === HIGGSFIELD_KLING_4_REFERENCE_MODEL
 // Cinema Studio 4.0 is Higgsfield's own model, so its API path already starts
 // with the provider name and is used as the studio id unchanged.
 export const HIGGSFIELD_CINEMA_STUDIO_4_MODEL = "higgsfield/cinema-studio/4.0"
@@ -151,6 +157,17 @@ export const higgsfieldKlingO3VideoInputSchema = z.object({
   image_urls: z.array(z.url().max(2083)).min(1).max(4).optional(),
   video_urls: z.array(z.url().max(2083)).min(1).max(1),
   aspect_ratio: z.enum(["16:9", "9:16", "1:1"]).optional(),
+}).strict()
+// From the parameter table published with the model. A prompt and at least
+// one reference image or clip are required; it has no sound setting.
+const kling4ReferenceAspectRatios = ["21:9", "16:9", "9:16", "1:1", "adaptive"] as const
+export const higgsfieldKling4ReferenceInputSchema = z.object({
+  prompt: z.string().min(1),
+  image_urls: z.array(z.url().max(2083)).min(1).max(10).optional(),
+  video_urls: z.array(z.url().max(2083)).min(1).max(5).optional(),
+  duration: z.number().int().min(3).max(30).default(10),
+  resolution: z.enum(["720p", "1080p"]).default("1080p"),
+  aspect_ratio: z.enum(kling4ReferenceAspectRatios).default("adaptive"),
 }).strict()
 // From the input schema published with the model. It refuses unknown fields.
 // Its optional era, genre, light, pacing, palette and camera controls are not
@@ -496,6 +513,38 @@ export async function submitHiggsfieldCinemaStudioVideo(input: { prompt: string;
   })
   if (!parsed.success) throw new HiggsfieldProviderError("Cinema Studio 4.0 could not accept those references.", 400)
   const response = await call(HIGGSFIELD_CINEMA_STUDIO_4_MODEL, parsed.data)
+  if (typeof response.request_id !== "string" || !response.request_id) throw new HiggsfieldProviderError("Higgsfield did not return a request ID")
+  return { id: response.request_id, response }
+}
+
+/**
+ * A prompt and at least one reference image or clip are both required; an
+ * empty list does not count and is left out rather than sent. Lists are cut to
+ * what the endpoint takes (10 images, 5 clips) and only fetchable URLs are
+ * passed. It renders 720p or 1080p, so 480p asks for 720p and 4K for 1080p,
+ * and a ratio it does not offer is left to "adaptive".
+ */
+export async function submitHiggsfieldKling4ReferenceVideo(input: { prompt: string; duration?: number; resolution?: string; aspectRatio?: string; imageUrls?: string[]; videoUrls?: string[] }) {
+  const urls = (values: string[] | undefined, limit: number) => {
+    const list = Array.from(new Set((values || []).filter((value) => /^https?:\/\//i.test(value)))).slice(0, limit)
+    return list.length ? list : undefined
+  }
+  const prompt = input.prompt?.trim()
+  if (!prompt) throw new HiggsfieldProviderError("Kling 4.0 Reference needs a prompt.", 400)
+  const image_urls = urls(input.imageUrls, 10)
+  const video_urls = urls(input.videoUrls, 5)
+  if (!image_urls && !video_urls) throw new HiggsfieldProviderError("Kling 4.0 Reference needs a reference image or video. Generate the shot's keyframe or add a reference first.", 400)
+  const resolution = String(input.resolution || "1080p").toLowerCase()
+  const parsed = higgsfieldKling4ReferenceInputSchema.safeParse({
+    prompt,
+    ...(image_urls ? { image_urls } : {}),
+    ...(video_urls ? { video_urls } : {}),
+    duration: Math.min(30, Math.max(3, Math.round(Number(input.duration) || 10))),
+    resolution: resolution === "480p" || resolution === "720p" ? "720p" : "1080p",
+    aspect_ratio: (kling4ReferenceAspectRatios as readonly string[]).includes(input.aspectRatio || "") ? input.aspectRatio : "adaptive",
+  })
+  if (!parsed.success) throw new HiggsfieldProviderError("Kling 4.0 Reference on Higgsfield could not accept those references.", 400)
+  const response = await call(HIGGSFIELD_KLING_4_REFERENCE_PATH, parsed.data)
   if (typeof response.request_id !== "string" || !response.request_id) throw new HiggsfieldProviderError("Higgsfield did not return a request ID")
   return { id: response.request_id, response }
 }

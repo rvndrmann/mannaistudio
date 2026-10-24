@@ -40,6 +40,7 @@ export const videoGenerationModels = [
   { id: "higgsfield/bytedance/seedance-2.5/reference-to-video", label: "Seedance 2.5 (Higgsfield)", provider: "higgsfield" },
   { id: "higgsfield/bytedance/seedance-2.0/reference-to-video", label: "Seedance 2.0 (Higgsfield)", provider: "higgsfield" },
   { id: "higgsfield/alibaba/wan-3.0-prime/reference-to-video", label: "Wan 3.0 Prime (Higgsfield)", provider: "higgsfield" },
+  { id: "higgsfield/kling-video/v4.0/reference-to-video", label: "Kling 4.0 Reference (Higgsfield)", provider: "higgsfield" },
   { id: "higgsfield/kling-video/v3.0/std/image-to-video", label: "Kling 3.0 Standard (Higgsfield)", provider: "higgsfield" },
   { id: "higgsfield/kling-video/o3/image-reference", label: "Kling O3 (Higgsfield)", provider: "higgsfield" },
   { id: "higgsfield/kling-video/o3/video-reference", label: "Kling O3 Video Reference (Higgsfield)", provider: "higgsfield" },
@@ -162,7 +163,8 @@ export function getModelLabel(modelId: string) {
  * From the providers' own references. BytePlus lists, for its Seedance models:
  * 2.5 at 480p, 720p and 1080p; 2.0 at those and 4k; 2.0 fast and mini at 480p
  * and 720p only. fal's Seedance endpoints follow the same split, Veo renders
- * 720p or 1080p, and Cinema Studio 4.0 480p or 720p. A model not named here
+ * 720p or 1080p, Cinema Studio 4.0 480p or 720p, and Kling 4.0 Reference on
+ * Higgsfield 720p or 1080p. A model not named here
  * keeps the full list it was always offered, since nothing says otherwise.
  */
 export function videoResolutionOptions(model: string): string[] {
@@ -170,6 +172,7 @@ export function videoResolutionOptions(model: string): string[] {
   if (/seedance-2[-.]5/i.test(model)) return ["480p", "720p", "1080p"]
   if (/^google-veo-/.test(model)) return ["720p", "1080p"]
   if (model === "higgsfield/cinema-studio/4.0") return ["480p", "720p"]
+  if (model === "higgsfield/kling-video/v4.0/reference-to-video") return ["720p", "1080p"]
   if (model.startsWith("higgsfield/genjutsu/")) return ["480p", "720p", "1080p"]
   return ["480p", "720p", "1080p", "4K"]
 }
@@ -201,7 +204,8 @@ const DURATION_STEPS = [4, 5, 6, 8, 10, 12, 15, 20, 25, 30]
  *   MiniMax Video-01 on fal    no length input; it renders six seconds
  *   MiniMax H3                 5 to 15
  *   Kling O3 Video Reference   up to 10
- *   Seedance 2.5, Wan 3.0 Prime, Cinema Studio 4.0, Genjutsu   up to 30
+ *   Seedance 2.5, Wan 3.0 Prime, Cinema Studio 4.0, Kling 4.0 Reference,
+ *   Genjutsu                   up to 30
  *   everything else            up to 15
  *
  * Nothing is offered under four seconds: the submission refuses it whichever
@@ -217,7 +221,7 @@ export function videoDurationOptions(model: string, resolution?: string) {
   const min = /minimax\/h3\//.test(model) || model === "fal-minimax-h3" ? 5 : 4
   const max = model === "higgsfield/kling-video/o3/video-reference"
     ? 10
-    : model.startsWith("higgsfield/genjutsu/") || model.startsWith("higgsfield/alibaba/wan-3.0-prime/") || model === "higgsfield/cinema-studio/4.0" || /seedance-2[-.]5/i.test(model) ? 30 : 15
+    : model.startsWith("higgsfield/genjutsu/") || model.startsWith("higgsfield/alibaba/wan-3.0-prime/") || model === "higgsfield/cinema-studio/4.0" || model === "higgsfield/kling-video/v4.0/reference-to-video" || /seedance-2[-.]5/i.test(model) ? 30 : 15
   return DURATION_STEPS.filter((seconds) => seconds >= min && seconds <= max)
 }
 
