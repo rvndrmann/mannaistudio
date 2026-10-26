@@ -45,6 +45,18 @@ describe("catching an asset the prompt describes instead of tagging", () => {
     expect(findUntaggedEntities("It was always there.", [entity("Al", "character")])).toEqual([])
   })
 
+  it("ignores a name spoken in a line of dialogue or voiceover", () => {
+    // The storyboard this was written for: the narrator says "Matt" while the
+    // frame shows @Ethan. A spoken name has no picture to bind to.
+    const prompt = "0-4s: @Sara gives a small relaxed wave. {Sara spends the same ten grand as the Sleek Luxury Car,}"
+    expect(findUntaggedEntities(prompt, cast)).toEqual([])
+  })
+
+  it("still finds an untagged asset outside the spoken line", () => {
+    const prompt = "0-4s: The Sleek Luxury Car idles. @Sara says: {\"Get in.\"}"
+    expect(findUntaggedEntities(prompt, cast).map((e) => e.name)).toEqual(["Sleek Luxury Car"])
+  })
+
   it("matches case-insensitively", () => {
     expect(findUntaggedEntities("the sleek luxury car pulls away", cast).map((e) => e.name)).toEqual(["Sleek Luxury Car"])
   })

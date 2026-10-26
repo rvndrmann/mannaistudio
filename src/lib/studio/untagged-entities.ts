@@ -37,6 +37,19 @@ function proseMention(name: string) {
   return new RegExp(`(^|[^\\w@])${escapeRegExp(name)}($|[^\\w])`, "i")
 }
 
+/**
+ * The prompt with its spoken lines taken out.
+ *
+ * Dialogue and voiceover go in braces — `{This is Matt.}` — and a name said
+ * aloud is a word in the soundtrack, not a subject in the frame. There is no
+ * picture for it to bind to, and tagging it would put `@Matt` into the line the
+ * voice reads. Left in, the check refused a whole storyboard because the
+ * narrator said a character's name.
+ */
+function withoutSpokenLines(prompt: string) {
+  return prompt.replace(/\{[^{}]*\}/g, " ")
+}
+
 export type UntaggedEntity = {
   id: string
   name: string
@@ -53,6 +66,7 @@ export function findUntaggedEntities(prompt: string, entities: MentionableEntity
   const text = (prompt || "").trim()
   if (!text) return []
   const tagged = new Set(findMentionedEntityIds(text, entities))
+  const visual = withoutSpokenLines(text)
 
   return entities
     .filter((entity) => !tagged.has(entity.id))
@@ -62,7 +76,7 @@ export function findUntaggedEntities(prompt: string, entities: MentionableEntity
       // Two characters is not a name worth matching — "Al" would fire on
       // "always", and the false positive blocks work that is perfectly correct.
       if (name.length < 3) return false
-      return proseMention(name).test(text)
+      return proseMention(name).test(visual)
     })
     .map((entity) => ({ id: entity.id, name: entity.name, type: entity.type }))
 }
