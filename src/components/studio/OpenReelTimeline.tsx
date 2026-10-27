@@ -6,8 +6,10 @@
  * The editor is built from editor/openreel into public/editor and served from
  * this site, so the two windows share an origin and talk by postMessage (see
  * lib/studio/openreel-protocol). This side hands over the episode's shots with
- * their trims; the editor lays them out, or reopens the edit it saved for this
- * episode in the browser. An export from the editor comes back here as a file,
+ * their trims; the editor reopens the edit it saved for this episode in the
+ * browser and brings its Storyboard track up to date. While it is open, every
+ * change to the shots (a finished generation, a new shot) is sent as a sync,
+ * so new takes join the timeline in storyboard order. An export from the editor comes back here as a file,
  * is uploaded to the project's storage and recorded as the episode's edited
  * cut.
  */
@@ -103,7 +105,8 @@ export function OpenReelTimeline({
   // Expanded, the editor covers the window: beside the Director panel it is
   // narrow enough for OpenReel to fall back to its compact layout.
   const [expanded, setExpanded] = useState(false);
-  const aiRef = useRef<{ connected: true; model: string; label: string } | null>(null);
+  const aiRef = useRef<{ connected: true; model: string; label: string; transcription: boolean } | null>(null);
+  const [synced, setSynced] = useState<string | null>(null);
   const finalCut = readFinalCut(episode.final_cut);
   // The handlers below are bound once per iframe; they read the latest props.
   const latest = useRef({ shots, projectName, defaultAspect, episode, save, reload });
@@ -127,7 +130,7 @@ export function OpenReelTimeline({
         send({ source: STUDIO_MESSAGE_SOURCE, type: "aiConnection", connection: { connected: false, reason: data?.reason || "Your API keys could not be checked." } });
         return;
       }
-      connection = { connected: true, model: String(data.model), label: String(data.label) };
+      connection = { connected: true, model: String(data.model), label: String(data.label), transcription: data.transcription === true };
       aiRef.current = connection;
       setAiLabel(connection.label);
     }
@@ -136,14 +139,18 @@ export function OpenReelTimeline({
     send({
       source: STUDIO_MESSAGE_SOURCE,
       type: "aiConnection",
-      connection: { connected: true, baseUrl: `${window.location.origin}/api/studio/editor-ai`, model: connection.model, token: accessToken, label: connection.label },
+      connection: { connected: true, baseUrl: `${window.location.origin}/api/studio/editor-ai`, model: connection.model, token: accessToken, label: connection.label, transcription: connection.transcription },
     });
   }, [send]);
 
-  const loadEditor = useCallback(async (rebuild: boolean) => {
-    const { shots: current, projectName: name, defaultAspect: aspect, episode: active } = latest.current;
+  // The storyboard the editor was last handed; a change while it is open is
+  // sent as a sync, so a new take lands on the timeline without a rebuild.
+  const sentStoryboard = useRef<string | null>(null);
+  const editorProjectId = `studio-${projectId}-${episode.id}`;
+
+  const prepareClips = useCallback(async () => {
+    const { shots: current } = latest.current;
     const withVideo = [...current].filter((shot) => shot.video_url).sort((a, b) => a.order_index - b.order_index);
-    setStatus({ kind: "loading", done: 0, total: withVideo.length, label: "Preparing shots" });
     const urls = await Promise.all(withVideo.map((shot) => getSignedMediaUrl(shot.video_url!)));
     const clips: EditorClip[] = [];
     const paths: string[] = [];
@@ -154,24 +161,39 @@ export function OpenReelTimeline({
         unsigned.push(shot.title);
         return;
       }
-      clips.push({ shotId: shot.id, title: shot.title || `Shot ${index + 1}`, url, trimStart: getShotTrimStart(shot), trimEnd: getShotTrimEnd(shot) });
+      clips.push({ shotId: shot.id, title: shot.title || `Shot ${index + 1}`, url, videoKey: shot.video_url!, trimStart: getShotTrimStart(shot), trimEnd: getShotTrimEnd(shot) });
       paths.push(shot.video_url!);
     });
-    const canvas = canvasFor(withVideo[0]?.aspect_ratio || aspect);
+    if (unsigned.length) console.warn("[timeline] Could not sign these shot videos:", unsigned);
+    return { clips, storyboardKey: fingerprint(clips, paths), aspect: withVideo[0]?.aspect_ratio };
+  }, []);
+
+  const loadEditor = useCallback(async (rebuild: boolean) => {
+    const { shots: current, projectName: name, defaultAspect: aspect, episode: active } = latest.current;
+    setStatus({ kind: "loading", done: 0, total: current.filter((shot) => shot.video_url).length, label: "Preparing shots" });
+    const { clips, storyboardKey, aspect: firstAspect } = await prepareClips();
+    const canvas = canvasFor(firstAspect || aspect);
+    sentStoryboard.current = storyboardKey;
     send({
       source: STUDIO_MESSAGE_SOURCE,
       type: "load",
-      editorProjectId: `studio-${projectId}-${active.id}`,
+      editorProjectId,
       name: `${name} — ${active.name}`,
       width: canvas.width,
       height: canvas.height,
       frameRate: 30,
       clips,
-      storyboardKey: fingerprint(clips, paths),
+      storyboardKey,
       rebuild,
     });
-    if (unsigned.length) console.warn("[timeline] Could not sign these shot videos:", unsigned);
-  }, [projectId, send]);
+  }, [editorProjectId, prepareClips, send]);
+
+  const syncEditor = useCallback(async () => {
+    const { clips, storyboardKey } = await prepareClips();
+    if (storyboardKey === sentStoryboard.current) return;
+    sentStoryboard.current = storyboardKey;
+    send({ source: STUDIO_MESSAGE_SOURCE, type: "sync", editorProjectId, clips, storyboardKey });
+  }, [editorProjectId, prepareClips, send]);
 
   const storeExport = useCallback(async (exportId: string, file: Blob, filename: string, durationSeconds: number) => {
     const { episode: active, save: persist, reload: refresh } = latest.current;
@@ -231,6 +253,15 @@ export function OpenReelTimeline({
             built: previous.kind === "loading" ? previous.total - message.failed.length : 0,
           }));
           break;
+        case "synced": {
+          const parts = [
+            message.added.length ? `Added ${message.added.join(", ")}` : "",
+            message.replaced.length ? `New take of ${message.replaced.join(", ")}` : "",
+            message.failed.length ? `Could not add ${message.failed.join(", ")}` : "",
+          ].filter(Boolean);
+          if (parts.length) setSynced(parts.join(" · "));
+          break;
+        }
         case "export":
           void storeExport(message.exportId, message.file, message.filename, message.durationSeconds);
           break;
@@ -250,6 +281,24 @@ export function OpenReelTimeline({
     };
   }, [loadEditor, storeExport, sendAiConnection]);
 
+  // Shots refresh while this tab is open (a generation finishing, a new shot);
+  // the open editor places them as they come.
+  const shotsKey = shots
+    .filter((shot) => shot.video_url)
+    .map((shot) => `${shot.id}|${shot.video_url}|${shot.order_index}|${getShotTrimStart(shot)}|${getShotTrimEnd(shot)}`)
+    .join("\n");
+  const editorReady = status.kind === "ready";
+  useEffect(() => {
+    if (!editorReady) return;
+    void syncEditor();
+  }, [editorReady, shotsKey, syncEditor]);
+
+  useEffect(() => {
+    if (!synced) return;
+    const timer = window.setTimeout(() => setSynced(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [synced]);
+
   useEffect(() => {
     if (!expanded) return;
     const onKey = (event: KeyboardEvent) => {
@@ -260,7 +309,7 @@ export function OpenReelTimeline({
   }, [expanded]);
 
   const rebuild = () => {
-    if (!window.confirm("Replace this edit with the current storyboard? Changes made in the editor will be lost.")) return;
+    if (!window.confirm("Lay the Storyboard track out again from the current shots? Edits to the shot clips are replaced; your other tracks, captions and imported media stay.")) return;
     void loadEditor(true);
   };
 
@@ -285,9 +334,11 @@ export function OpenReelTimeline({
               {status.kind === "loading"
                 ? `${status.label} · ${Math.min(status.done, status.total)} of ${status.total} shots`
                 : status.kind === "ready"
-                  ? status.restored
-                    ? "Reopened your saved edit · Export in the editor to save the cut here"
-                    : `Built from ${status.built} shot${status.built === 1 ? "" : "s"} · Export in the editor to save the cut here`
+                  ? synced
+                    ? `${synced} · New videos join the timeline as they finish`
+                    : status.restored
+                      ? "Reopened your saved edit · New videos join the timeline as they finish"
+                      : `Built from ${status.built} shot${status.built === 1 ? "" : "s"} · New videos join the timeline as they finish`
                   : status.kind === "error"
                     ? status.message
                     : "Opening the editor…"}
@@ -333,7 +384,7 @@ export function OpenReelTimeline({
             onClick={rebuild}
             disabled={status.kind === "loading" || status.kind === "starting" || status.kind === "missing"}
             className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition hover:bg-white/10 disabled:opacity-50"
-            title="Lay the current storyboard out again, replacing this edit"
+            title="Lay the Storyboard track out again; other tracks and imported media stay"
           >
             <RefreshCw className="h-3.5 w-3.5" /> Rebuild from storyboard
           </button>

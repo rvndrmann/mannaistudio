@@ -248,16 +248,35 @@ few checked string edits, and builds into `public/editor` (gitignored; run
 if its upstream text moves, so bumping UPSTREAM cannot silently drop the bridge.
 
 - **Protocol:** `src/lib/studio/openreel-protocol.ts`, copied into the build.
-  The studio sends the episode's shots (signed URLs + trims); the editor
-  reopens its saved edit for that episode (browser IndexedDB, id
-  `studio-{project}-{episode}`) or lays the shots out on a new track.
+  The studio sends the episode's shots (signed URLs + trims + `videoKey`, the
+  storage path); the editor reopens its saved edit for that episode (browser
+  IndexedDB, id `studio-{project}-{episode}`) and brings its Storyboard track
+  up to date.
+- **Live sync:** while the Timeline is open, every change to the shots is sent
+  as `sync`. A new shot is placed after the nearest earlier shot; a new take
+  replaces the old clip where it stood; later clips on that track ripple.
+  Which media item holds which shot lives in localStorage
+  `openreel-studio:placements:{editorProjectId}` — only those clips are ever
+  touched. Rebuild re-lays just the Storyboard track; other tracks, captions
+  and imported media stay.
+- **Saving:** OpenReel's own App starts autosave; StudioApp does not use it, so
+  `keepSaving` force-saves ~1s after every change and on tab hide. Without it
+  anything added after the initial build was lost on reload.
+- **Project menu:** shows only the open episode (no New Project, recent
+  projects or backup packages) — opening anything else would desync from the
+  studio.
+- **Captions:** Auto Captions can run on the saved OpenAI key
+  (`/api/studio/editor-ai/audio/transcriptions`, whisper-1, 60s WAV pieces)
+  instead of the ~760 MB in-browser Whisper model (`studio-captions.tsx`).
 - **Exports:** OpenReel's download step hands the file to the studio, which
   uploads it to `{user}/{project}/final-cuts/{episode}/` and records it in
   `creator_episodes.final_cut` (workspace action `saveFinalCut`). Every
   export also downloads to the user's computer. Managed production lists and
   can publish these edited cuts.
 - **AI Editor:** runs on the user's own BYOK key (OpenAI, else Gemini) through
-  `/api/studio/editor-ai/chat/completions`. The editor sends the Supabase access
+  `/api/studio/editor-ai/chat/completions` (captions: `…/audio/transcriptions`,
+  OpenAI only). gpt-5 models refuse tools on chat completions at default
+  reasoning, so the proxy sends `reasoning_effort: "none"` with tools. The editor sends the Supabase access
   token in place of an API key; the key never reaches the browser and no
   credits are charged.
 - Users never see the OpenReel name: the build renames it to "AI Director

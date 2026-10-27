@@ -6,7 +6,7 @@ import { BYOK_PAUSED_MESSAGE, byokPaused } from "@/lib/byok/paused"
 import { EDITOR_AI_DEFAULT_MODEL, EDITOR_AI_LABEL, EDITOR_AI_PROVIDERS, type EditorAiProvider } from "./editor-ai"
 
 export type EditorAiConnection =
-  | { connected: true; provider: EditorAiProvider; label: string; model: string; models: string[] }
+  | { connected: true; provider: EditorAiProvider; label: string; model: string; models: string[]; transcription: boolean }
   | { connected: false; reason: string }
 
 /**
@@ -43,5 +43,7 @@ export async function editorAiConnection(userId: string): Promise<EditorAiConnec
     label: EDITOR_AI_LABEL[provider],
     model: EDITOR_AI_DEFAULT_MODEL[provider],
     models: held.map((entry) => EDITOR_AI_DEFAULT_MODEL[entry]),
+    // Captions need OpenAI's transcription API; Gemini's compatibility layer has none.
+    transcription: held.includes("openai"),
   }
 }

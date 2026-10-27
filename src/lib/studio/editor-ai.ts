@@ -67,5 +67,11 @@ export function editorAiRequestBody(body: unknown, provider: EditorAiProvider): 
   // OpenAI's current models take only max_completion_tokens; Google's
   // compatibility layer documents max_tokens.
   forwarded[provider === "gemini" ? "max_tokens" : "max_completion_tokens"] = budget
+  // OpenAI's gpt-5 models refuse function tools on /chat/completions at their
+  // default reasoning effort (HTTP 400, param reasoning_effort); without it
+  // the editor's AI cannot run at all on an OpenAI key.
+  if (provider === "openai" && /^gpt-5/i.test(model) && Array.isArray(forwarded.tools) && forwarded.tools.length) {
+    forwarded.reasoning_effort = "none"
+  }
   return forwarded
 }

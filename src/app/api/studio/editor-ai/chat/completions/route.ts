@@ -60,13 +60,22 @@ export async function POST(request: NextRequest) {
         },
         body: JSON.stringify(body),
       })
-      // A provider's error body can echo the request's credentials; only the
-      // status is passed on.
-      if (!response.ok) return { status: response.status, json: null }
-      return { status: 200, json: await response.json() as unknown }
+      // A provider's error message can echo the request's credentials; only
+      // the status and the error's code and parameter name are passed on.
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null) as { error?: { code?: unknown; param?: unknown } } | Array<{ error?: { code?: unknown; param?: unknown } }> | null
+        const error = Array.isArray(detail) ? detail[0]?.error : detail?.error
+        const safe = (value: unknown) => typeof value === "string" && /^[\w.[\]-]{1,80}$/.test(value) ? value : null
+        return { status: response.status, json: null, code: safe(error?.code), param: safe(error?.param) }
+      }
+      return { status: 200, json: await response.json() as unknown, code: null, param: null }
     })
     if (!result) return failure(403, `Your ${EDITOR_AI_LABEL[provider]} key is not available right now. Check API keys.`)
-    if (!result.json) return failure(result.status, `${EDITOR_AI_LABEL[provider]} returned HTTP ${result.status}. Check the key's quota and that it can use ${model}.`)
+    if (!result.json) {
+      console.error("[editor-ai] Upstream refused:", result.status, model, result.code, result.param)
+      const reason = [result.code, result.param && `parameter ${result.param}`].filter(Boolean).join(", ")
+      return failure(result.status, `${EDITOR_AI_LABEL[provider]} returned HTTP ${result.status}${reason ? ` (${reason})` : ""}. Check the key's quota and that it can use ${model}.`)
+    }
     return NextResponse.json(result.json)
   } catch (error) {
     const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")

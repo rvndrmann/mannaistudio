@@ -167,6 +167,63 @@ edit(
   `const DEFAULT_3D_FONT_URL = "/fonts/helvetiker_regular.typeface.json";\nconst DEFAULT_3D_BOLD_FONT_URL = "/fonts/helvetiker_bold.typeface.json";`,
   `const DEFAULT_3D_FONT_URL = \`\${import.meta.env.BASE_URL}fonts/helvetiker_regular.typeface.json\`;\nconst DEFAULT_3D_BOLD_FONT_URL = \`\${import.meta.env.BASE_URL}fonts/helvetiker_bold.typeface.json\`;`,
 )
+// Auto Captions can run on the user's saved OpenAI key through the studio
+// (studio/studio-captions) instead of downloading a Whisper model first.
+const captionPanel = "apps/web/src/components/editor/inspector/AutoCaptionPanel.tsx"
+edit(
+  captionPanel,
+  `} from "../../../workers/whisper-models";`,
+  `} from "../../../workers/whisper-models";\nimport { StudioCaptionSource, transcribeWithStudioKey, useStudioCaptionSource } from "../../../studio/studio-captions";`,
+)
+edit(
+  captionPanel,
+  `  const [error, setError] = useState<string | null>(null);\n`,
+  `  const [error, setError] = useState<string | null>(null);\n  const [captionSource, setCaptionSource] = useStudioCaptionSource();\n`,
+)
+edit(
+  captionPanel,
+  `      setProgressMessage(\n        workerState === "ready"`,
+  `      setProgressMessage(\n        captionSource === "studio"\n          ? "Transcribing with your OpenAI key…"\n          : workerState === "ready"`,
+)
+edit(
+  captionPanel,
+  `      const result = await runWorker("transcribe", samples);`,
+  `      const result = captionSource === "studio"\n        ? await transcribeWithStudioKey(samples, selectedLanguage, (fraction) => setProgress(0.2 + fraction * 0.8))\n        : await runWorker("transcribe", samples);`,
+)
+edit(
+  captionPanel,
+  `  }, [clip, mediaItem, runWorker, selectedModel, workerState]);`,
+  `  }, [captionSource, clip, mediaItem, runWorker, selectedLanguage, selectedModel, workerState]);`,
+)
+edit(
+  captionPanel,
+  `    <div className="w-full min-w-0 space-y-3">\n      <Card variant="muted" padding={3} className="space-y-2 border border-primary/30 bg-primary/5">`,
+  `    <div className="w-full min-w-0 space-y-3">\n      <StudioCaptionSource value={captionSource} onChange={setCaptionSource} disabled={isTranscribing} />\n      <Card variant="muted" padding={3} className={\`space-y-2 border border-primary/30 bg-primary/5 \${captionSource === "studio" ? "hidden" : ""}\`}>`,
+)
+edit(
+  captionPanel,
+  `label={isTranscribing ? "Transcribing Locally…" : "Transcribe Selected Clip"}`,
+  `label={isTranscribing ? (captionSource === "studio" ? "Transcribing…" : "Transcribing Locally…") : "Transcribe Selected Clip"}`,
+)
+// The project menu offers only the episode the studio opened: every other
+// edit in this browser (other projects, other episodes), New Project and
+// backup packages would open something the studio does not know is open.
+const projectSwitcher = "apps/web/src/components/editor/ProjectSwitcher.tsx"
+edit(
+  projectSwitcher,
+  `  const otherProjects = savedProjects.filter((s) => s.projectId !== project.id);`,
+  `  const studioEmbed = "__openreelStudioExport" in window;\n  const otherProjects = studioEmbed ? [] : savedProjects.filter((s) => s.projectId !== project.id);`,
+)
+edit(
+  projectSwitcher,
+  `          <div className="p-2">\n            <ClickableCard label="Project backups"`,
+  `          {!studioEmbed && <div className="p-2">\n            <ClickableCard label="Project backups"`,
+)
+edit(
+  projectSwitcher,
+  `            </ClickableCard>\n          </div>\n\n          {otherProjects.length > 0 && (`,
+  `            </ClickableCard>\n          </div>}\n\n          {otherProjects.length > 0 && (`,
+)
 
 // --- Our name on it ----------------------------------------------------------
 // To users this is the studio's own editor. Every "OpenReel" in the sources is

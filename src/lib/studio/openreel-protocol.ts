@@ -18,6 +18,8 @@ export type EditorClip = {
   title: string
   /** A signed URL the editor can fetch. */
   url: string
+  /** The stored video's path: changes with every new take, unlike `url`. */
+  videoKey: string
   /** The shot's saved trim, in seconds into its own video. */
   trimStart: number
   trimEnd: number
@@ -34,10 +36,25 @@ export type StudioToEditorMessage =
       height: number
       frameRate: number
       clips: EditorClip[]
-      /** Fingerprint of the storyboard; a change is reported back on restore. */
+      /** Fingerprint of the storyboard. */
       storyboardKey: string
-      /** Discard the saved edit and lay the storyboard out again. */
+      /**
+       * Lay the Storyboard track out again from the shots. The rest of the
+       * saved edit (other tracks, captions, imported media) is kept.
+       */
       rebuild: boolean
+    }
+  | {
+      source: typeof STUDIO_MESSAGE_SOURCE
+      /**
+       * The storyboard changed while the editor is open (a new take, a new
+       * shot). The editor places new shots in storyboard order and swaps
+       * new takes in where the old ones were, rippling later clips.
+       */
+      type: "sync"
+      editorProjectId: string
+      clips: EditorClip[]
+      storyboardKey: string
     }
   | {
       source: typeof STUDIO_MESSAGE_SOURCE
@@ -45,9 +62,11 @@ export type StudioToEditorMessage =
        * Where the editor's AI should send its requests: our proxy, which runs
        * them on the user's saved provider key. `token` is the user's session
        * token, sent in place of an API key and re-sent whenever it refreshes.
+       * `transcription` is whether captions can run on the saved OpenAI key
+       * (`${baseUrl}/audio/transcriptions`).
        */
       type: "aiConnection"
-      connection: { connected: true; baseUrl: string; model: string; token: string; label: string } | { connected: false; reason: string }
+      connection: { connected: true; baseUrl: string; model: string; token: string; label: string; transcription: boolean } | { connected: false; reason: string }
     }
   | {
       source: typeof STUDIO_MESSAGE_SOURCE
@@ -68,6 +87,14 @@ export type EditorToStudioMessage =
       /** The storyboard has changed since that saved edit was built. */
       storyboardChanged: boolean
       /** Shots whose video could not be fetched or decoded. */
+      failed: string[]
+    }
+  | {
+      source: typeof EDITOR_MESSAGE_SOURCE
+      /** Answer to a "sync": shot titles placed, swapped to a new take, or skipped. */
+      type: "synced"
+      added: string[]
+      replaced: string[]
       failed: string[]
     }
   | {
