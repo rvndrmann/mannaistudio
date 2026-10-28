@@ -23,6 +23,10 @@ export const packageAvailabilitySchema = z.object({
   queueTaken: z.number().int(),
   queueWaiting: z.number().int(),
   placement: packagePlacementSchema,
+  // Slots held by other buyers' unpaid checkouts, and when the first of those
+  // holds lapses (ISO). A hold is 15 minutes; an unpaid one gives the slot back.
+  slotsHeld: z.number().int().default(0),
+  heldUntil: z.string().nullable().default(null),
 })
 export type PackageAvailability = z.infer<typeof packageAvailabilitySchema>
 
@@ -241,6 +245,8 @@ export type AvailabilityRow = {
   queue_taken: number
   queue_waiting: number
   placement: string
+  slots_held?: number | null
+  held_until?: string | null
 }
 
 export function toAvailability(row: AvailabilityRow): PackageAvailability | null {
@@ -251,6 +257,8 @@ export function toAvailability(row: AvailabilityRow): PackageAvailability | null
     queueTaken: Number(row.queue_taken) || 0,
     queueWaiting: Number(row.queue_waiting) || 0,
     placement: row.placement,
+    slotsHeld: Number(row.slots_held) || 0,
+    heldUntil: row.held_until ?? null,
   })
   return parsed.success ? parsed.data : null
 }
@@ -320,11 +328,26 @@ export function availabilityNote(availability: PackageAvailability | null): stri
   if (!availability) return ""
   if (availability.placement === "sold_out") return "Sold out"
   if (availability.placement === "queue") {
+    const hold = holdNote(availability)
+    if (hold) return hold
     const left = availability.queueLimit === null ? null : Math.max(availability.queueLimit - availability.queueTaken, 0)
     return left === null ? "Slots full — join the queue" : `Slots full — ${left} queue place${left === 1 ? "" : "s"} left`
   }
   const left = slotsLeft(availability)
   return left === null ? "" : `${left} slot${left === 1 ? "" : "s"} left`
+}
+
+/**
+ * "Held by a buyer at checkout — free again at 14:25 if unpaid", when the only
+ * thing keeping a buyer out of a live slot is someone else's unpaid checkout.
+ */
+export function holdNote(availability: PackageAvailability | null): string {
+  if (!availability?.heldUntil || availability.slotsHeld <= 0 || availability.queueWaiting > 0) return ""
+  const until = new Date(availability.heldUntil)
+  if (Number.isNaN(until.getTime()) || until.getTime() <= Date.now()) return ""
+  const time = until.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+  const who = availability.slotsHeld === 1 ? "another buyer" : `${availability.slotsHeld} buyers`
+  return `Slot held by ${who} at checkout — free again at ${time} if unpaid`
 }
 
 export type CapacityRefusal = { code: "slots_full" | "sold_out"; message: string }
@@ -341,7 +364,7 @@ export function capacityRefusal(error: unknown): CapacityRefusal | null {
     return { code: "sold_out", message: "This package is sold out — every slot and queue place is taken. Choose another package or check back soon." }
   }
   if (message.includes("managed_slots_full")) {
-    return { code: "slots_full", message: "The last live slot was just taken. You can still book a place in the queue." }
+    return { code: "slots_full", message: "The last live slot is held by another buyer at checkout. It frees up within 15 minutes if they don't pay — or book a place in the queue now." }
   }
   return null
 }

@@ -935,7 +935,7 @@ function LimitField({ label, value, onChange }: { label: string; value: number |
 
 /**
  * What the package is doing right now, as a buyer would meet it. Counts
- * include checkouts still inside their 30-minute hold.
+ * include checkouts still inside their 15-minute hold.
  */
 function CapacityReadout({ availability }: { availability: PackageAvailability | null }) {
   if (!availability || (availability.slotLimit === null && availability.queueLimit === null)) {

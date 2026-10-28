@@ -86,12 +86,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     if (input.action === "link_studio") {
-      // Only a production this admin can actually open, so a typo cannot point
-      // the order at a stranger's project.
+      // Only a production this admin owns — the same rule as one opened from
+      // the order — so a typo cannot point the order at someone else's project.
       const { data: existing } = await supabase
         .from("creator_projects")
         .select("id")
         .eq("id", input.studioProjectId)
+        .eq("user_id", user.id)
         .maybeSingle()
       if (!existing) return NextResponse.json({ error: "That production was not found." }, { status: 404 })
 
@@ -110,8 +111,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         alreadyOpen: true,
       })
     }
-    if (project.payment_status !== "paid") {
-      return NextResponse.json({ error: "This order has not been paid for yet." }, { status: 400 })
+    // Unpaid is allowed: an admin may start pre-production while a client is
+    // still paying. The studio project is the admin's own and the client sees
+    // nothing from it until something is published, so starting early costs
+    // the client nothing and charges them nothing.
+    if (project.status === "cancelled") {
+      return NextResponse.json({ error: "This order was cancelled." }, { status: 400 })
     }
 
     const admin = createServiceClient()

@@ -196,7 +196,7 @@ operating the studio themselves. Migration
 - **Capacity and queue:** each package may set `slot_limit` (orders in
   production at once) and `queue_limit` (paid orders waiting); blank is
   unlimited. A slot is occupied by a paid, slot-placed order not `completed` or
-  `cancelled`, plus 30-minute checkout holds. Queued bookings pay upfront
+  `cancelled`, plus 15-minute checkout holds. Queued bookings pay upfront
   (`managed_projects.queue_state = 'queued'`); an admin promotes them by hand
   (Orders → Waiting for a Slot → Move to live slot). `create_managed_project`
   and `mark_managed_project_paid` count under a package-row lock; the browser

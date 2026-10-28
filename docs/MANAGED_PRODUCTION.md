@@ -101,7 +101,7 @@ queue sells the package out the moment its slots are full.
 (`queue_state = 'slot'`), and is not `completed` or `cancelled`. A slot is
 freed by delivering the work or cancelling the order — not by the client
 approving one ad of three. On top of that, a checkout in progress **holds** its
-place for 30 minutes: an unpaid order created in that window counts, once per
+place for 15 minutes: an unpaid order created in that window counts, once per
 buyer, and never against the buyer themself, so someone who closes the
 Razorpay sheet and tries again is not blocked by their own first attempt.
 

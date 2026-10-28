@@ -14,6 +14,7 @@ import AbandonedBriefs from "@/components/admin/AbandonedBriefs"
 import BriefAttachments from "@/components/admin/BriefAttachments"
 import ManagedStoryboardSend from "@/components/admin/ManagedStoryboardSend"
 import ProjectChat from "@/components/managed/ProjectChat"
+import { createClient } from "@/lib/supabase/client"
 import { briefDigest, parseManagedBrief } from "@/lib/managed-brief"
 import type { ManagedProjectPayload } from "@/components/managed/types"
 
@@ -396,6 +397,12 @@ function OrderPanel({ projectId, onChanged }: { projectId: string; onChanged: ()
             <span className="text-[11px] text-white/30">
               The client never sees this project, its prompts, or its unused takes.
             </span>
+            <StudioProjectPicker
+              currentId={project.studio_project_id}
+              busy={busy === "link"}
+              label="Switch to another of my projects"
+              onPick={(id) => act({ action: "link_studio", studioProjectId: id }, "link")}
+            />
           </div>
         ) : (
           <>
@@ -405,15 +412,21 @@ function OrderPanel({ projectId, onChanged }: { projectId: string; onChanged: ()
             </p>
             <button
               type="button"
-              disabled={Boolean(busy) || project.payment_status !== "paid"}
+              disabled={Boolean(busy) || project.status === "cancelled"}
               onClick={() => act({ action: "open_studio" }, "studio")}
               className="mt-2.5 flex h-9 items-center gap-1.5 rounded-md bg-primary px-3.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-40"
             >
               {busy === "studio" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
               Create in Creator Studio
             </button>
+            <StudioProjectPicker
+              currentId={null}
+              busy={busy === "link"}
+              label="Or attach one of my existing projects"
+              onPick={(id) => act({ action: "link_studio", studioProjectId: id }, "link")}
+            />
             {project.payment_status !== "paid" && (
-              <p className="mt-2 text-[11px] text-white/30">Available once the order is paid.</p>
+              <p className="mt-2 text-[11px] text-amber-300/70">Not paid yet — you can start pre-production now; the client sees nothing until you publish.</p>
             )}
           </>
         )}
@@ -640,6 +653,62 @@ function PublishForm({
       >
         {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Film className="h-3.5 w-3.5" />}
         Publish to client
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Attach a Studio production the admin already has to this order, instead of
+ * opening a fresh one — work started before the order came in, or a project
+ * being reused. Only the admin's own projects are listed; the route checks
+ * ownership again.
+ */
+function StudioProjectPicker({ currentId, busy, label, onPick }: {
+  currentId: string | null
+  busy: boolean
+  label: string
+  onPick: (id: string) => void
+}) {
+  const [projects, setProjects] = useState<Array<{ id: string; name: string }> | null>(null)
+  const [choice, setChoice] = useState("")
+
+  const loadProjects = async () => {
+    if (projects) return
+    const supabase = createClient()
+    const userId = (await supabase.auth.getUser()).data.user?.id
+    if (!userId) { setProjects([]); return }
+    const { data } = await supabase
+      .from("creator_projects")
+      .select("id, name")
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
+      .limit(200)
+    setProjects((data ?? []).filter((row) => row.id !== currentId))
+  }
+
+  return (
+    <div className="mt-2.5 flex w-full flex-wrap items-center gap-2">
+      <select
+        value={choice}
+        onFocus={() => { void loadProjects() }}
+        onMouseDown={() => { void loadProjects() }}
+        onChange={(event) => setChoice(event.target.value)}
+        className="h-9 min-w-0 flex-1 rounded-md border border-white/10 bg-white/5 px-2.5 text-xs text-white focus:border-primary focus:outline-none"
+      >
+        <option value="">{label}</option>
+        {projects === null && <option disabled>Loading…</option>}
+        {projects?.length === 0 && <option disabled>No other projects</option>}
+        {projects?.map((row) => <option key={row.id} value={row.id}>{row.name || "Untitled project"}</option>)}
+      </select>
+      <button
+        type="button"
+        disabled={!choice || busy}
+        onClick={() => onPick(choice)}
+        className="flex h-9 items-center gap-1.5 rounded-md border border-white/15 px-3.5 text-xs font-semibold text-white transition hover:bg-white/5 disabled:opacity-40"
+      >
+        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+        Attach
       </button>
     </div>
   )
