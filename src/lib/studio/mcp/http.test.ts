@@ -142,7 +142,9 @@ describe("hosted MCP with the real SDK HTTP client", () => {
     }))
     const alice = await connect("alice")
     const tool = (await alice.listTools()).tools.find((item) => item.name === "studio_show_storyboard")
-    expect(tool?._meta).toMatchObject({ ui: { resourceUri: "ui://creator-studio/storyboard-gallery.html" } })
+    const resourceUri = (tool?._meta as { ui?: { resourceUri?: string } } | undefined)?.ui?.resourceUri
+    // Versioned by content, so a host that caches by URI fetches a changed page.
+    expect(resourceUri).toMatch(/^ui:\/\/creator-studio\/storyboard-gallery-[0-9a-f]{12}\.html$/)
     const shown = await alice.callTool({ name: "studio_show_storyboard", arguments: { projectId: aliceProject } }) as { content: Array<{ text: string }>; structuredContent: Record<string, any> }
     // Hosts hand structuredContent to the view; Claude's Code tab drops _meta.
     const gallery = shown.structuredContent
@@ -153,7 +155,7 @@ describe("hosted MCP with the real SDK HTTP client", () => {
     expect(gallery.finalCut).toMatchObject({ path: "alice/p/final.mp4", filename: "cut.mp4" })
     expect(gallery.mediaBase).toMatch(/^https:\/\/studio\.example\/api\/mcp\/media\?pass=[\w-]+\.[\w-]+&path=$/)
     expect(gallery.refresh).toEqual({ tool: "studio_show_storyboard", arguments: { projectId: aliceProject } })
-    const page = await alice.readResource({ uri: "ui://creator-studio/storyboard-gallery.html" })
+    const page = await alice.readResource({ uri: resourceUri! })
     expect(page.contents[0]).toMatchObject({ mimeType: "text/html;profile=mcp-app" })
     expect(String((page.contents[0] as { text: string }).text)).toContain("ui/initialize")
     const foreign = await alice.callTool({ name: "studio_show_storyboard", arguments: { projectId: bobProject } })
@@ -188,7 +190,7 @@ describe("hosted MCP with the real SDK HTTP client", () => {
       "studio_add_characters_and_assets", "studio_add_shots", "studio_api_keys", "studio_attach_media", "studio_chat", "studio_create_project", "studio_decide_proposal", "studio_generate",
       "studio_list_models", "studio_list_projects", "studio_pending_work", "studio_set_project_models", "studio_set_prompts", "studio_set_visual_style", "studio_show_storyboard", "studio_storyboard", "studio_upload_media", "studio_view_media", "studio_write_script",
     ])
-    expect(alice.getServerVersion()).toMatchObject({ name: "creator-studio", version: "1.7.0" })
+    expect(alice.getServerVersion()).toMatchObject({ name: "creator-studio", version: "1.8.0" })
   })
   it("exposes only consented tools and refuses a foreign browser Origin", async () => {
     const reader = await connect("read-only")

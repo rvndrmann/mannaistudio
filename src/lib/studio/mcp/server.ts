@@ -64,7 +64,7 @@ const mediaKind = (path: string) => {
  * of date: new tools were live on the server and missing from every session.
  * A test pins the tool list to this number, so the two cannot drift apart.
  */
-export const MCP_TOOLSET_VERSION = "1.7.0"
+export const MCP_TOOLSET_VERSION = "1.8.0"
 
 /** One server per HTTP request: credentials never live in a singleton or env. */
 export function createAccountMcpServer(token: string, scopes: string[]) {
@@ -153,7 +153,7 @@ export function createAccountMcpServer(token: string, scopes: string[]) {
     const data = await state(projectId, episodeId)
     const gallery = { ...buildStoryboardGallery(context, data, mcpOrigin()), refresh: { tool: "studio_show_storyboard", arguments: { projectId, ...(episodeId ? { episodeId } : {}) } } }
     return new ToolContent([{ type: "text", text: JSON.stringify(gallery) }], gallery)
-  }, storyboardWidgetToolMeta)
+  }, storyboardWidgetToolMeta())
   register("studio_view_media", "Show one of your own stored files in the chat: a character reference, a storyboard frame, a generated image, a clip. An image comes back as the picture itself; in chat apps that draw the studio's viewer a video or audio file plays there, otherwise it comes back as a temporary link. Use a media path returned by your storyboard or a generation job.", "projects:read", {
     projectId: uuid, path: z.string().min(1).max(4096),
   }, true, async ({ projectId, path }) => {
@@ -167,7 +167,7 @@ export function createAccountMcpServer(token: string, scopes: string[]) {
     const bytes = Buffer.from(await download.arrayBuffer())
     if (bytes.byteLength > INLINE_IMAGE_LIMIT) return linkOnly("Too large to show inline. Give the user this link to open.")
     return new ToolContent([{ type: "image", data: bytes.toString("base64"), mimeType: imageTypes[path.split("?")[0].split(".").pop()!.toLowerCase()] }, { type: "text", text: JSON.stringify(signed) }], viewer)
-  }, storyboardWidgetToolMeta)
+  }, storyboardWidgetToolMeta())
   register("studio_api_keys", "Check which provider API keys the account has connected, which are missing or invalid, what each one unlocks (models, and the Director chat), and the two links for each: where to get the key and where to add it. Call it before the first creative step, and whenever a generation is blocked or fails on a key, then tell the user exactly which key to add and where.", "projects:read", {}, true, async () => {
     const account = await validateExternalRequest(request("/api/mcp"))
     if (!account) throw new StudioAccessError("Connect your Creator Studio account", 401)

@@ -95,7 +95,7 @@ autopilot settings continue to govern Director behavior.
 ## Showing media in the chat
 
 `studio_show_storyboard` and `studio_view_media` carry an MCP Apps view
-(`_meta.ui.resourceUri` → `ui://creator-studio/storyboard-gallery.html`,
+(`_meta.ui.resourceUri` → `ui://creator-studio/storyboard-gallery-{hash}.html`,
 `src/lib/studio/mcp/storyboard-widget.ts`). Clients that support MCP Apps
 (claude.ai, Claude Desktop, Claude's Code tab) draw it from the result's
 `structuredContent`: the shot grid with frame/clip toggles and inline playback,
@@ -111,6 +111,9 @@ file.
   (`media-pass.ts`). The route signs a path only under the pass holder's own
   prefix and redirects to it. A view whose media fail to load calls its tool
   again once through the host to get a fresh pass.
+- The URI carries a hash of the page and its CSP. Hosts cache UI resources by
+  URI, and under a fixed name the Code tab kept an old page that drew broken
+  images; a changed page now arrives as a new resource.
 - The page is self-contained; its CSP admits media from the studio origin and
   the Supabase origin only, and it makes no network requests itself.
 

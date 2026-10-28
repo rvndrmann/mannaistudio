@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 
 /**
@@ -12,11 +13,24 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
  * The page is self-contained: no bundler, no CDN. It talks to the host over
  * postMessage JSON-RPC (ui/initialize, then ui/notifications/tool-result).
  */
-export const STORYBOARD_WIDGET_URI = "ui://creator-studio/storyboard-gallery.html"
 const MCP_APP_MIME = "text/html;profile=mcp-app"
 
+/**
+ * The page's URI carries a hash of the page and its CSP. Hosts cache a UI
+ * resource by URI: under a fixed name, Claude's Code tab kept drawing an older
+ * page that did not know how to load gallery media, and showed broken images.
+ * Any change to either now reaches clients as a new resource.
+ */
+export function storyboardWidgetUri() {
+  const hash = createHash("sha256").update(STORYBOARD_WIDGET_HTML).update(JSON.stringify(mediaOrigins())).digest("hex").slice(0, 12)
+  return `ui://creator-studio/storyboard-gallery-${hash}.html`
+}
+
 /** Tool `_meta` that tells the host to render the gallery. Both keys, for hosts on the older spelling. */
-export const storyboardWidgetToolMeta = { ui: { resourceUri: STORYBOARD_WIDGET_URI }, "ui/resourceUri": STORYBOARD_WIDGET_URI }
+export function storyboardWidgetToolMeta() {
+  const uri = storyboardWidgetUri()
+  return { ui: { resourceUri: uri }, "ui/resourceUri": uri }
+}
 
 /**
  * Where the page may load images and video from: the studio, whose
@@ -33,10 +47,11 @@ function mediaOrigins() {
 
 export function registerStoryboardWidget(server: McpServer) {
   const ui = { csp: { resourceDomains: mediaOrigins(), connectDomains: [] }, prefersBorder: true }
-  server.registerResource("Storyboard gallery", STORYBOARD_WIDGET_URI, {
+  const uri = storyboardWidgetUri()
+  server.registerResource("Storyboard gallery", uri, {
     title: "Storyboard gallery", description: "Shows a project's storyboard frames, clips, cast and final cut.",
     mimeType: MCP_APP_MIME, _meta: { ui },
-  }, async () => ({ contents: [{ uri: STORYBOARD_WIDGET_URI, mimeType: MCP_APP_MIME, text: STORYBOARD_WIDGET_HTML, _meta: { ui } }] }))
+  }, async () => ({ contents: [{ uri, mimeType: MCP_APP_MIME, text: STORYBOARD_WIDGET_HTML, _meta: { ui } }] }))
 }
 
 export const STORYBOARD_WIDGET_HTML = `<!doctype html>
