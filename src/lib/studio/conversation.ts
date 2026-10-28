@@ -2,6 +2,7 @@ import { ENTITY_REFERENCE_AUTHORING_INSTRUCTIONS } from "./entity-mentions"
 import { IMAGE_REALISM_AUTHORING_INSTRUCTIONS } from "./image-prompt-composition"
 import { z } from "zod"
 import { revisionRoutingInstructions } from "./revision-routing"
+import { CLAYMATION_AGENT_INSTRUCTIONS, isClaymationStyle } from "./visual-style"
 import type { ProjectContext } from "./domain"
 import { defaultDirectorGlobalInstructions } from "./instructions"
 import { serializeToolOutput } from "./tool-result-budget"
@@ -66,7 +67,7 @@ export function buildDirectorInstructions(project: ProjectContext, globalInstruc
     revisionRoutingInstructions(),
     "Global admin instructions:",
     globalInstructions,
-    IMAGE_REALISM_AUTHORING_INSTRUCTIONS,
+    isClaymationStyle(project.defaultStyle) ? CLAYMATION_AGENT_INSTRUCTIONS : IMAGE_REALISM_AUTHORING_INSTRUCTIONS,
     ENTITY_REFERENCE_AUTHORING_INSTRUCTIONS,
     `Project: ${project.name}`,
     `Production mode: ${project.productionMode}`,

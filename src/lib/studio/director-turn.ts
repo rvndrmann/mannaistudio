@@ -28,6 +28,7 @@ import { OwnKeysOnlyError } from "@/lib/byok/billing"
 import { chatTurnCredits, type TokenUsage } from "@/lib/byok/chat-pricing"
 import { hasTokenCounts } from "@/lib/byok/usage"
 import { deductUserCredits } from "./credits"
+import { adoptClaymationIfAsked } from "./project-style"
 
 /**
  * One Director turn, from the reads it needs to the reply it persists.
@@ -189,6 +190,11 @@ const droppedBefore = Math.max(0, (totalRes.count ?? history.length) - history.l
 
 const { data: userMessage, error: userError } = await context.supabase.from("creator_chat_messages").insert({ session_id: sessionId, workflow_run_id: workflowRun.id, role: "user", content: body.message, referenced_entity_ids: uniqueMentionIds }).select().single()
 if (userError) throw userError
+
+// "Make a claymation ad" as the opening request of a new project sets the
+// Visual style, and this turn's briefs read it from the project in hand.
+const adopted = await adoptClaymationIfAsked(context.supabase, projectId, body.message).catch(() => null)
+if (adopted) Object.assign(context.project, { default_style: adopted.style })
 
 const buildAgentInput = async () => {
   const productVideo = readProductVideo(context.project.metadata)

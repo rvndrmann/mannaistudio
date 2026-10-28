@@ -58,6 +58,8 @@ import { isVideoReferencePath } from "@/lib/studio/media-reference";
 import { calculateCreditCost, getUserCredits, type CreditQuality } from "@/lib/studio/credits";
 import { readGenerationResponse } from "@/lib/studio/generation-response";
 import { requestProjectImage } from "@/lib/studio/image-request";
+import { sendWithStyleCheck } from "@/components/studio/StyleConflictDialog";
+import { CLAYMATION_STYLE, CLAYMATION_STYLE_LABEL, sameVisualStyle, visualStyleName } from "@/lib/studio/visual-style";
 import { projectStoryboardImageModel } from "@/lib/studio/project-image-model";
 import { blockedByCredits, resolveGenerationSource } from "@/lib/byok/generation-source";
 import { useProviderBillingPolicy } from "@/lib/byok/use-connected-providers";
@@ -1077,11 +1079,11 @@ export default function WorkspacePage({
       }
     }
     try {
-      const response = await fetch(`/api/studio/projects/${projectId}/director/proposals/${proposalId}`, {
+      const response = await sendWithStyleCheck(projectId, (styleConflict) => fetch(`/api/studio/projects/${projectId}/director/proposals/${proposalId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(overrides ? { decision, overrides } : { decision }),
-      });
+        body: JSON.stringify({ decision, ...(overrides ? { overrides } : {}), ...(styleConflict ? { styleConflict } : {}) }),
+      }));
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || "Could not update proposal");
       notifyCreditBalanceChanged(typeof json.creditBalance === "number" ? json.creditBalance : undefined);
@@ -2963,7 +2965,22 @@ function BasicSettingsModal({
   const confirmSettings = async () => {
     setSaving(true);
     try {
+      // Every shot records its own style, so a new project style is offered to
+      // the existing shots once, here. A shot given its own style on purpose
+      // is not asked about and keeps it.
+      const storedStyle = (metaSettings?.visualStyle as string) || data.project.default_style || "";
+      let applyStyleToShots = true;
+      if (!sameVisualStyle(storedStyle, visualStyle)) {
+        const { following, overridden } = await save({ action: "countStyleFollowers" }) as { following: number; overridden: number };
+        if (following > 0) {
+          const name = visualStyleName(visualStyle);
+          applyStyleToShots = window.confirm(overridden
+            ? `Apply ${name} to the ${following} existing shot${following === 1 ? "" : "s"} that follow the project style? ${overridden} shot${overridden === 1 ? " keeps its" : "s keep their"} own style.`
+            : `Apply ${name} to all ${following} existing shot${following === 1 ? "" : "s"}?`);
+        }
+      }
       await save({
+        applyStyleToShots,
         action: "saveProjectSettings",
         settings: {
           productVideo,
@@ -3005,6 +3022,7 @@ function BasicSettingsModal({
     { id: "Anime - Chibi Cute", label: "Anime - Chibi Cute", hot: false, img: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80" },
     { id: "Anime - Makoto Shinkai", label: "Anime - Makoto Shinkai", hot: false, img: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=400&q=80" },
     { id: "Anime - Ghibli", label: "Anime - Ghibli", hot: false, img: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=80" },
+    { id: CLAYMATION_STYLE, label: CLAYMATION_STYLE_LABEL, hot: false, img: "/visual-styles/claymation.svg" },
   ];
   const activeWorkflows = (data.directorWorkflows?.length ? data.directorWorkflows : defaultDirectorWorkflows).filter((item) => item.status !== "paused");
   const workflowIcons = [LayoutPanelTop, Share2, Film, Zap];
@@ -3250,7 +3268,8 @@ function BasicSettingsModal({
             <label className="block text-xs font-bold text-zinc-400 mb-2">Visual Style</label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {visualStyles.map((style) => {
-                const isSelected = visualStyle === style.id;
+                // "photorealistic" (the database default) is the Photorealistic card.
+                const isSelected = sameVisualStyle(visualStyle, style.id);
                 return (
                   <button
                     key={style.id}
@@ -6000,7 +6019,7 @@ function ShotMediaWorkspace({
         await reload(true);
       } else {
         setGenerationStatus("Submitting video generation job…");
-        const response = await fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, restylePresetId: isRestyle ? restylePresetId : undefined, referenceImages: isGenjutsu ? Array.from(new Set([...references, ...videoReferenceImages])) : videoReferenceImages, referenceVideos: videoReferencePaths, referenceAudios: isGenjutsu ? [] : audioReferencePaths, excludedReferenceImages: Array.from(new Set([...Array.from(referenceExclusions), ...(videoInputMode === "multi_image" && !isGenjutsu ? hiddenAssetReferences([...characterEntityIds, ...mentionedEntityIds], references) : [])])), characterEntityIds, mentionedEntityIds, generationMode: videoInputMode, startFrame: videoInputMode === "keyframe" ? startFrame : null, endFrame: videoInputMode === "keyframe" ? endFrame : null, aspectRatio, resolution, quality, audioEnabled, durationSeconds }) });
+        const response = await sendWithStyleCheck(projectId, (styleConflict) => fetch(`/api/studio/projects/${projectId}/videos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shotId: media.shot.id, prompt, model, restylePresetId: isRestyle ? restylePresetId : undefined, referenceImages: isGenjutsu ? Array.from(new Set([...references, ...videoReferenceImages])) : videoReferenceImages, referenceVideos: videoReferencePaths, referenceAudios: isGenjutsu ? [] : audioReferencePaths, excludedReferenceImages: Array.from(new Set([...Array.from(referenceExclusions), ...(videoInputMode === "multi_image" && !isGenjutsu ? hiddenAssetReferences([...characterEntityIds, ...mentionedEntityIds], references) : [])])), characterEntityIds, mentionedEntityIds, generationMode: videoInputMode, startFrame: videoInputMode === "keyframe" ? startFrame : null, endFrame: videoInputMode === "keyframe" ? endFrame : null, aspectRatio, resolution, quality, audioEnabled, durationSeconds, ...(styleConflict ? { styleConflict } : {}) }) }));
         const body = await readGenerationResponse(response);
         if (!response.ok) {
           const errorMsg = body.error || "Video generation failed";

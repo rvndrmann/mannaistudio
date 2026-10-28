@@ -6,6 +6,7 @@ import { getUserCredits } from "./credits"
 import { stripIdentityDescriptionsFromPrompts } from "./prompt-sanitizer"
 import { isImageGenerationModel, projectDirectorVideoModel } from "./generation-models"
 import { projectStoryboardImageModel } from "./project-image-model"
+import { assertProposalStyle } from "./style-conflict"
 import { resolveShotSeconds } from "./shot-duration"
 
 // Read from the registry rather than written out again. A second copy of this
@@ -407,7 +408,18 @@ function mergeProposalPayload(payload: unknown, overrides: Record<string, unknow
   return merged
 }
 
-export async function decideDirectorProposal(context: AuthenticatedProjectContext, proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>) {
+/**
+ * @param styleConflict "keep" when the user has seen that this generation asks
+ *   for claymation on a photorealistic project and chose to send it anyway.
+ */
+export async function decideDirectorProposal(context: AuthenticatedProjectContext, proposalId: string, decision: "approved" | "rejected", overrides?: Record<string, unknown>, styleConflict?: "keep") {
+  if (decision === "approved") {
+    // Read before the approval is recorded, so a held proposal can still be
+    // approved once the user has answered.
+    const { data: pending } = await context.supabase
+      .from("creator_action_proposals").select("action_type,payload").eq("id", proposalId).eq("project_id", context.project.id).maybeSingle()
+    if (pending) await assertProposalStyle(context, pending.action_type, mergeProposalPayload(pending.payload, overrides), styleConflict)
+  }
   const { data: proposal, error } = await context.supabase.rpc("creator_decide_action_proposal", { p_proposal_id: proposalId, p_decision: decision })
   if (error || !proposal) {
     // The RPC only says "proposal unavailable". Read the record to say which of

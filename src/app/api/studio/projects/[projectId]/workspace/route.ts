@@ -9,6 +9,9 @@ import { assertShotPromptShape, normalizeShotColumns } from "@/lib/studio/shot-w
 import { normalizeEntityColumns } from "@/lib/studio/entity-writes"
 import { defaultAutopilotBudget, isAutopilotMode, writeAutopilotSettings } from "@/lib/studio/autopilot"
 import { parseFinalCutSave } from "@/lib/studio/final-cut"
+import { projectVisualStyle } from "@/lib/studio/entity-image-workflow"
+import { adoptClaymationIfAsked, carryStyleToShots, countStyleFollowers, setProjectVisualStyle } from "@/lib/studio/project-style"
+import { CLAYMATION_STYLE, isClaymationStyle } from "@/lib/studio/visual-style"
 
 async function context(projectId: string) {
   const supabase = await createClient()
@@ -23,7 +26,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const { projectId } = await params; const { supabase, user } = await context(projectId); const body = await request.json()
     if (body.action === "saveScript") {
-      const { data, error } = await supabase.from("creator_episodes").update({ script_content: body.content, script_updated_at: new Date().toISOString(), status: "draft" }).eq("id", body.episodeId).eq("project_id", projectId).select().single(); if (error) throw error; return NextResponse.json(data)
+      const { data, error } = await supabase.from("creator_episodes").update({ script_content: body.content, script_updated_at: new Date().toISOString(), status: "draft" }).eq("id", body.episodeId).eq("project_id", projectId).select().single(); if (error) throw error
+      // A claymation script on a new project sets the project to claymation. Never fails the save.
+      await adoptClaymationIfAsked(supabase, projectId, typeof body.content === "string" ? body.content : JSON.stringify(body.content ?? "")).catch((cause) => console.warn("Could not adopt the script's visual style:", cause))
+      return NextResponse.json(data)
     }
     if (body.action === "createEpisode") {
       const { data: latest } = await supabase.from("creator_episodes").select("order_index").eq("project_id", projectId).order("order_index", { ascending: false }).limit(1)
@@ -180,6 +186,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (error) throw error
       return NextResponse.json(data)
     }
+    // What a Visual style change would reach, asked before the change is saved.
+    if (body.action === "countStyleFollowers") {
+      return NextResponse.json(await countStyleFollowers(supabase, projectId))
+    }
+    // The answer to a held generation: switch the project to the style its
+    // prompt asked for. Shots that follow the project follow it there.
+    if (body.action === "setVisualStyle") {
+      if (!isClaymationStyle(body.style)) throw new Error("Unknown visual style")
+      return NextResponse.json(await setProjectVisualStyle(supabase, projectId, CLAYMATION_STYLE, body.applyToShots !== false))
+    }
     if (body.action === "saveProjectSettings") {
       const productVideo = readProductVideo({ basic_settings: body.settings })
       if (productVideo.enabled) {
@@ -197,7 +213,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const selectedAspect = body.settings.aspectRatio || body.settings.canvasSpec?.split(" · ")[0] || "9:16"
       const selectedStyle = body.settings.visualStyle || "Realistic - 3D CG"
       const projectName = typeof body.settings.projectName === "string" ? body.settings.projectName.trim().slice(0, 160) : ""
-      const { data: projectRecord } = await supabase.from("creator_projects").select("metadata").eq("id", projectId).single()
+      const { data: projectRecord } = await supabase.from("creator_projects").select("default_style,metadata").eq("id", projectId).single()
+      const previousStyle = projectVisualStyle(projectRecord || {})
       const currentMeta = (projectRecord?.metadata as Record<string, unknown>) || {}
       const currentEpisodeWorkflows = (currentMeta.episode_workflows as Record<string, unknown> | undefined) || {}
       const workflowId = typeof body.settings.workflow === "string" ? body.settings.workflow : currentMeta.default_workflow_id
@@ -217,6 +234,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
       const { data, error } = await supabase.from("creator_projects").update(updates).eq("id", projectId).select().single()
       if (error) throw error
+      // The dialog asked whether existing shots take the new style. Not asked
+      // (an older page) means they follow, which is how every shot already
+      // rendered: generation reads the project style.
+      await carryStyleToShots(supabase, projectId, previousStyle, selectedStyle, body.applyStyleToShots !== false)
 
       // Update default aspect ratio for all shots in the project
       const { data: episodes } = await supabase.from("creator_episodes").select("id").eq("project_id", projectId)

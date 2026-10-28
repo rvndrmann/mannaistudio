@@ -5,6 +5,7 @@ import { createStudioProjectInputSchema, isMissingProductionModeSchema } from "@
 
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import { hasCreatorStudioEntitlement } from "@/lib/studio/entitlement"
+import { adoptClaymationIfAsked } from "@/lib/studio/project-style"
 
 const STUDIO_SUBSCRIPTION_REQUIRED = "Subscribe to AI Director Hub Pro to create Studio projects."
 
@@ -142,6 +143,10 @@ export async function POST(request: NextRequest) {
 
     const { data: session, error: sessionError } = await db.from("creator_chat_sessions").insert({ episode_id: episode.id, user_id: user.id, title: "New Chat" }).select().single()
     if (sessionError) throw sessionError
+
+    // A brief that asks for claymation is a claymation project from the start.
+    const adopted = await adoptClaymationIfAsked(db, project.id, body.name, body.description).catch(() => null)
+    if (adopted) project = { ...project, default_style: adopted.style }
 
     return NextResponse.json({ project, episodeId: episode.id, sessionId: session.id, compatibilityWarning })
   } catch (error) {

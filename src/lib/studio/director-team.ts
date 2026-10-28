@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { z } from "zod"
 import type { DirectorToolName } from "./tool-registry"
 import { promptAgentInstructions } from "./prompt-agent-instructions"
+import { CLAYMATION_AGENT_INSTRUCTIONS, isClaymationStyle } from "./visual-style"
 
 /**
  * The Director's agent team. Each agent is a named role with its own
@@ -223,6 +224,25 @@ export function teamRoster(team: DirectorTeam, activeKey: DirectorAgentKey | nul
     "THE REST OF THE TEAM. Hand over with hand_off_to_agent when the work is theirs and they should answer the user; ask them with ask_agent when you only need something they would know and the work stays yours.",
     ...others.map((key) => `- ${key} — ${team[key].name}: ${team[key].skills}`),
   ].join("\n")
+}
+
+/** The agents whose work is prompts a model renders, and so has to be in the project's medium. */
+const promptWritingAgents: DirectorAgentKey[] = ["character_asset", "storyboard", "video_prompt"]
+
+/**
+ * The team as it should brief itself on this project. On a claymation project
+ * the three prompt-writing agents carry the claymation rules after their own
+ * instructions, so a frame is written as clay before the style block is ever
+ * appended to it — without touching the instructions saved in admin, which
+ * every other project shares.
+ */
+export function teamForVisualStyle(team: DirectorTeam, style: string): DirectorTeam {
+  if (!isClaymationStyle(style)) return team
+  const styled = { ...team }
+  for (const key of promptWritingAgents) {
+    styled[key] = { ...team[key], instructions: `${team[key].instructions}\n\n${CLAYMATION_AGENT_INSTRUCTIONS}` }
+  }
+  return styled
 }
 
 export function agentBriefFor(team: DirectorTeam, key: DirectorAgentKey): string {

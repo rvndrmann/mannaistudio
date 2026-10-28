@@ -33,6 +33,8 @@ import { metadataAcceptingEntityArt, metadataAcceptingKeyframe } from "./accept-
 import { buildGenerationTargetSnapshot } from "./generation-target"
 import { scriptContentSchema, normalizeScriptContent } from "./script"
 import { buildEntityReferenceImagePrompt, projectVisualStyle } from "./entity-image-workflow"
+import { adoptClaymationIfAsked } from "./project-style"
+import { sameVisualStyle } from "./visual-style"
 import { composeLookDirectives, projectStyleDna, styleBlockForEntityType } from "./style-dna"
 
 export type ToolRisk = "read" | "write" | "costly" | "destructive"
@@ -284,7 +286,10 @@ export const updateCreativeBriefTool = defineDirectorTool({
       .select("creative_brief")
       .single()
     if (error) throw error
-    return data
+    // The brief's style is advisory text; generation reads the Visual style.
+    // A brief asking for claymation on a new project sets that too.
+    const adopted = await adoptClaymationIfAsked(context.supabase, context.project.id, JSON.stringify(creativeBrief)).catch(() => null)
+    return adopted ? { ...data, visualStyle: adopted.style } : data
   },
 })
 
@@ -1129,7 +1134,10 @@ export const updateScriptTool = defineDirectorTool({
       .select("*")
       .single()
     if (error) throw error
-    return data
+    // A claymation script on a new project sets the project to claymation, so
+    // the Director's first frames are not drawn under the live-action block.
+    const adopted = await adoptClaymationIfAsked(context.supabase, context.project.id, JSON.stringify(input.content)).catch(() => null)
+    return adopted ? { ...data, visualStyle: adopted.style } : data
   },
 })
 
@@ -1197,10 +1205,17 @@ export const updateShotTool = defineDirectorTool({
     // frame, and the master prompt it may have been extracted from is a whole
     // scene in named sections. The two are not to be confused.
     assertShotPromptShape(input.patch)
-    const currentMetadata = "video_prompt" in input.patch
+    const currentMetadata = "video_prompt" in input.patch || input.patch.style !== undefined
       ? (await context.supabase.from("creator_shots").select("metadata").eq("id", input.shotId).maybeSingle()).data?.metadata
       : undefined
     const columns = normalizeShotColumns(input.patch, currentMetadata)
+    // A style written on one shot is a deliberate override: that shot keeps it
+    // when the project style changes. Setting it back to the project's own
+    // style hands the shot back to the project.
+    if (input.patch.style !== undefined) {
+      const base = (columns.metadata ?? currentMetadata ?? {}) as Record<string, unknown>
+      columns.metadata = { ...base, style_override: !sameVisualStyle(input.patch.style, projectVisualStyle(context.project)) }
+    }
     const { data, error } = await context.supabase
       .from("creator_shots")
       .update(columns)

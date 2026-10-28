@@ -10,7 +10,9 @@ import type { AuthenticatedProjectContext } from "./server-context"
 import type { DirectorTimelineBlock } from "./timeline"
 import { defaultDirectorRuntimeSettings, runtimeInstructions, type DirectorRuntimeSettings } from "./director-runtime-settings"
 import { buildVisionUserContent, collectRequestedMedia, type DirectorVisionAttachment } from "./director-vision"
-import { activeAgentInstructions, agentBriefFor, agentForStage, agentForTool, fetchDirectorTeam, type DirectorAgentKey, type DirectorTeam } from "./director-team"
+import { activeAgentInstructions, agentBriefFor, agentForStage, agentForTool, fetchDirectorTeam, teamForVisualStyle, type DirectorAgentKey, type DirectorTeam } from "./director-team"
+import { projectVisualStyle } from "./entity-image-workflow"
+import { CLAYMATION_AGENT_INSTRUCTIONS, isClaymationStyle } from "./visual-style"
 import { addWorkflowStep, createWorkflowRun, finishWorkflowRun } from "./workflow-runs"
 import { directorRecovery } from "./recovery"
 import { serializeToolOutput } from "./tool-result-budget"
@@ -280,7 +282,7 @@ export async function runDirectorAgent(input: {
   let reachedStepLimit = false
   // The named agent team is the single source of specialist guidance. It travels
   // on every run, so behavior never depends on keywords in the user's message.
-  const team = input.team || await fetchDirectorTeam(input.context.supabase)
+  const team = teamForVisualStyle(input.team || await fetchDirectorTeam(input.context.supabase), projectVisualStyle(input.context.project))
   // The turn opens as the specialist whose stage the workspace is actually on,
   // read from the database rather than from the user's wording. It is a
   // starting point: hand_off_to_agent moves it, and the model decides when.
@@ -304,12 +306,16 @@ export async function runDirectorAgent(input: {
   // Rebuilt each step because the agent holding the turn can change mid-loop,
   // and its brief and its tools change with it — the same shape the brand chat
   // already uses for its handovers.
+  // The photographic authoring brief (skin pores, vellus hair, hard light for
+  // skin) is for photographic projects; clay has none of those.
+  const claymation = isClaymationStyle(projectVisualStyle(input.context.project))
   const instructionsFor = () => [
     activeAgentInstructions(team, activeAgent),
+    claymation && !activeAgent ? CLAYMATION_AGENT_INSTRUCTIONS : "",
     runtimeInstructions(runtimeSettings),
     "Executable workspace proposals must be created by calling the appropriate tool; never represent an executable proposal only as assistant text. Tool calls that require approval create the UI approval card and do not apply the change until the user approves it.",
     input.instructions,
-    IMAGE_REALISM_AUTHORING_INSTRUCTIONS,
+    claymation ? "" : IMAGE_REALISM_AUTHORING_INSTRUCTIONS,
     ENTITY_REFERENCE_AUTHORING_INSTRUCTIONS,
     `Current episode ID: ${input.episodeId || "No episode selected"}`,
     `Current project ID: ${input.context.project.id}`,

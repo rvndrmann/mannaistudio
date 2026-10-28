@@ -3,6 +3,7 @@ import { studioErrorStatus } from "@/lib/studio/server-context"
 import { validateExternalRequest } from "@/lib/studio/external-auth"
 import { createStudioProjectInputSchema } from "@/lib/studio/domain"
 import { enforceStudioRateLimit } from "@/lib/studio/rate-limit"
+import { adoptClaymationIfAsked } from "@/lib/studio/project-style"
 
 export async function GET(request: NextRequest) {
   try {
@@ -65,7 +66,12 @@ export async function POST(request: NextRequest) {
       p_mode: parsed.data.production_mode || "legacy", p_type: parsed.data.project_type || "unspecified",
     })
     if (error || !data) throw error || new Error("Could not create project")
-    return NextResponse.json(data, { status: 201 })
+    // A brief that asks for claymation is a claymation project from the start.
+    const created = data as { project?: { id?: string } & Record<string, unknown> }
+    const adopted = created.project?.id
+      ? await adoptClaymationIfAsked(external.supabase, created.project.id, parsed.data.name, parsed.data.description).catch(() => null)
+      : null
+    return NextResponse.json(adopted && created.project ? { ...created, project: { ...created.project, default_style: adopted.style }, visualStyle: adopted.style } : data, { status: 201 })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not create project" }, { status: studioErrorStatus(error) })
   }

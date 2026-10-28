@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client"
 import { rendersOnEdgeFunction } from "./image-render-host"
+import { sendWithStyleCheck } from "@/components/studio/StyleConflictDialog"
 
 /**
  * Sends one image generation to whichever host can finish it.
@@ -21,6 +22,10 @@ import { rendersOnEdgeFunction } from "./image-render-host"
  * one day by someone who has never heard of any of this.
  */
 export async function requestProjectImage(projectId: string, body: Record<string, unknown>): Promise<Response> {
+  return sendWithStyleCheck(projectId, (styleConflict) => sendProjectImage(projectId, styleConflict ? { ...body, styleConflict } : body))
+}
+
+async function sendProjectImage(projectId: string, body: Record<string, unknown>): Promise<Response> {
   const model = typeof body.model === "string" ? body.model : ""
   const localDevelopment = typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname)
   if (localDevelopment || !rendersOnEdgeFunction(model)) {

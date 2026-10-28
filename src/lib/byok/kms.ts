@@ -39,7 +39,7 @@ type ServiceAccount = { client_email: string; private_key: string; project_id?: 
 function serviceAccount(): ServiceAccount {
   const raw = env("GOOGLE_KMS_SERVICE_ACCOUNT_JSON")
   if (!raw) {
-    throw new Error(
+    throw new PlatformKeyServiceError(
       "Cloud KMS has no credentials on this server. Set GOOGLE_KMS_SERVICE_ACCOUNT_JSON to the service account key.",
     )
   }
@@ -49,10 +49,10 @@ function serviceAccount(): ServiceAccount {
   } catch {
     // The message names the variable and nothing else. A parse error that
     // echoed the value would put a private key in the logs.
-    throw new Error("GOOGLE_KMS_SERVICE_ACCOUNT_JSON is not valid JSON")
+    throw new PlatformKeyServiceError("GOOGLE_KMS_SERVICE_ACCOUNT_JSON is not valid JSON")
   }
   if (!parsed.client_email || !parsed.private_key) {
-    throw new Error("GOOGLE_KMS_SERVICE_ACCOUNT_JSON is missing client_email or private_key")
+    throw new PlatformKeyServiceError("GOOGLE_KMS_SERVICE_ACCOUNT_JSON is missing client_email or private_key")
   }
   return parsed as ServiceAccount
 }
@@ -132,10 +132,10 @@ async function accessToken(): Promise<string> {
   if (!response.ok) {
     // The body can name the problem (a clock skew, a disabled account) without
     // containing anything secret — the assertion is not echoed back.
-    throw new Error(`Cloud KMS sign-in failed (${response.status}): ${(await response.text()).slice(0, 300)}`)
+    throw new PlatformKeyServiceError(`Cloud KMS sign-in failed (${response.status}): ${(await response.text()).slice(0, 300)}`)
   }
   const token = await response.json() as { access_token?: string; expires_in?: number }
-  if (!token.access_token) throw new Error("Cloud KMS sign-in returned no access token")
+  if (!token.access_token) throw new PlatformKeyServiceError("Cloud KMS sign-in returned no access token")
   cachedToken = {
     value: token.access_token,
     expiresAt: Date.now() + (token.expires_in ?? 3600) * 1000,
@@ -143,17 +143,38 @@ async function accessToken(): Promise<string> {
   return cachedToken.value
 }
 
+/**
+ * A failure of the platform's own key service.
+ *
+ * Every error in this file is about our deployment — the KMS key, its service
+ * account, the Google Cloud project's billing — never about the customer's
+ * provider key, which it only unwraps. Without saying so, "Billing is disabled
+ * for project 635295637422" read as the customer's billing and sent them to
+ * check an OpenAI key that was fine. The detail is kept for whoever operates the
+ * deployment; the lead tells the customer it is not theirs to fix.
+ */
+export const PLATFORM_KEY_SERVICE_LEAD = "Platform error: AI Director Hub's key service failed while handling your saved API key. This is on our side, not a problem with your key or your provider account, and nothing needs changing there."
+
+export class PlatformKeyServiceError extends Error {
+  readonly status = 503
+  readonly platform = true
+  constructor(detail: string) {
+    super(`${PLATFORM_KEY_SERVICE_LEAD} Details: ${detail}`)
+    this.name = "PlatformKeyServiceError"
+  }
+}
+
 /** Turns a KMS failure into something that names the missing setting. */
 function describeKmsFailure(status: number, body: string): Error {
   if (status === 401 || status === 403) {
-    return new Error(
+    return new PlatformKeyServiceError(
       "The KMS service account cannot use this key. Grant it roles/cloudkms.cryptoKeyEncrypterDecrypter on the configured key.",
     )
   }
   if (status === 404) {
-    return new Error("The configured KMS key was not found. Check GOOGLE_KMS_PROJECT_ID, LOCATION, KEY_RING and KEY_NAME.")
+    return new PlatformKeyServiceError("The configured KMS key was not found. Check GOOGLE_KMS_PROJECT_ID, LOCATION, KEY_RING and KEY_NAME.")
   }
-  return new Error(`Cloud KMS request failed (${status}): ${body.slice(0, 300)}`)
+  return new PlatformKeyServiceError(`Cloud KMS request failed (${status}): ${body.slice(0, 300)}`)
 }
 
 /**
@@ -168,11 +189,11 @@ function describeKmsFailure(status: number, body: string): Error {
 function cryptoKeyName() {
   const key = env("GOOGLE_KMS_KEY_NAME")?.trim()
   if (!key) {
-    throw new Error("BYOK is not configured: GOOGLE_KMS_KEY_NAME is missing from the server environment.")
+    throw new PlatformKeyServiceError("BYOK is not configured: GOOGLE_KMS_KEY_NAME is missing from the server environment.")
   }
   if (key.startsWith("projects/")) {
     if (!/^projects\/[^/]+\/locations\/[^/]+\/keyRings\/[^/]+\/cryptoKeys\/[^/]+$/.test(key)) {
-      throw new Error("GOOGLE_KMS_KEY_NAME looks like a resource path but is not a complete one.")
+      throw new PlatformKeyServiceError("GOOGLE_KMS_KEY_NAME looks like a resource path but is not a complete one.")
     }
     return key
   }
@@ -186,7 +207,7 @@ function cryptoKeyName() {
     !ring && "GOOGLE_KMS_KEY_RING",
   ].filter(Boolean)
   if (missing.length) {
-    throw new Error(`BYOK is not configured: ${missing.join(", ")} missing from the server environment.`)
+    throw new PlatformKeyServiceError(`BYOK is not configured: ${missing.join(", ")} missing from the server environment.`)
   }
   return `projects/${project}/locations/${location}/keyRings/${ring}/cryptoKeys/${key}`
 }
@@ -227,7 +248,7 @@ export function kmsKeyWrapper(): KeyWrapper {
   return {
     async wrap(dek) {
       const result = await kmsCall("encrypt", { plaintext: toBase64(new Uint8Array(dek)) })
-      if (!result.ciphertext) throw new Error("KMS returned no ciphertext for the data key")
+      if (!result.ciphertext) throw new PlatformKeyServiceError("KMS returned no ciphertext for the data key")
       return {
         wrapped: Buffer.from(fromBase64(result.ciphertext)),
         // Which key version wrapped it, so a rotation can find the rows that
@@ -237,7 +258,7 @@ export function kmsKeyWrapper(): KeyWrapper {
     },
     async unwrap(wrapped) {
       const result = await kmsCall("decrypt", { ciphertext: toBase64(new Uint8Array(wrapped)) })
-      if (!result.plaintext) throw new Error("KMS returned no plaintext for the wrapped data key")
+      if (!result.plaintext) throw new PlatformKeyServiceError("KMS returned no plaintext for the wrapped data key")
       return Buffer.from(fromBase64(result.plaintext))
     },
   }

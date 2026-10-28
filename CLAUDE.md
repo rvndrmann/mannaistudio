@@ -285,6 +285,34 @@ if its upstream text moves, so bumping UPSTREAM cannot silently drop the bridge.
 - Upstream's service worker is disabled (it would claim the whole origin), and
   `editor/` is excluded from middleware, tsc and eslint.
 
+## Visual style: Claymation
+
+`claymation` is a Visual style (label "Claymation (stop-motion)"), stored like
+the others in `default_style` and `basic_settings.visualStyle`. All of it is in
+`src/lib/studio/visual-style.ts`; the blocks are the founder's, word for word.
+
+- **Prompts:** images get the claymation Image block in place of "Strict
+  live-action photorealism" and "Photographic treatment"; videos get the Video
+  block (`composeLookDirectives(..., "video")`). Photorealistic output is
+  unchanged (snapshots).
+- **Shots:** generation reads the project style unless a shot has
+  `metadata.style_override` (set by `update_shot` with a style). Changing the
+  style in Basic Settings asks "Apply Claymation to all N existing shots?"; no
+  pins them to the old style (`src/lib/studio/project-style.ts`).
+- **Auto-pick:** a project with no shots, still on photorealistic, switches to
+  claymation when its name/description, brief, script or first Director message
+  says claymation, stop-motion, plasticine, clay puppet or googly eyes.
+- **Guard:** a photorealistic generation whose prompt or entities say those
+  words returns `409 style_conflict` before any charge; the UI asks Switch /
+  Keep photorealistic (`StyleConflictDialog`). Proposals are checked before the
+  approval is recorded. Connector: `studio_set_visual_style`, and
+  `styleConflict: "keep"` on `studio_decide_proposal`.
+- **Agents:** on claymation the Character & Asset, Storyboard and Video Prompt
+  agents get the claymation rules at runtime and the photographic authoring
+  brief is dropped. The admin-saved instructions are not edited.
+- **KMS errors** are `PlatformKeyServiceError` ("Platform error: …") and the
+  connector reports them as platform failures, not as the user's key.
+
 ## MCP bridge (control the studio from an MCP client)
 
 `mcp/server.mjs` — a dependency-free stdio MCP server registered in `.mcp.json`.

@@ -14,6 +14,9 @@ import { hasByokSubscription } from "@/lib/byok/credential-service"
 
 type Job = Record<string, unknown>
 
+/** Errors from our own deployment — its key service, its Google Cloud project — whatever words they use. */
+const platformProblem = /\bPlatform error:|Cloud KMS|\bKMS (?:service account|key|returned)|GOOGLE_KMS_|BYOK is not configured/i
+
 const keyProblem = /\b(401|403|unauthori[sz]ed|forbidden|invalid[\s_-]*(api[\s_-]*)?key|api[\s_-]*key|credential|authenticat|permission|quota|insufficient|billing|balance|not configured|no longer connected)\b/i
 
 /**
@@ -27,7 +30,12 @@ export function describeJobFailure(job: Job) {
   const provider = typeof job.provider === "string" ? job.provider : ""
   const ownKey = job.billing_mode === "byok"
   const error = typeof job.error === "string" && job.error.trim() ? job.error.trim() : "The provider reported a failure without a reason."
-  const advice = ownKey
+  // Checked first: the platform's own errors use the same words as a key
+  // problem ("billing is disabled"), and that is exactly how a Cloud KMS outage
+  // sent a customer off to check an OpenAI key that was fine.
+  const advice = platformProblem.test(error)
+    ? `This is a platform error on AI Director Hub's side, not a problem with your ${provider ? `${provider} ` : ""}API key or your provider account, so there is nothing to change there. The job never reached ${provider || "the provider"}${ownKey ? ", so your key was not charged" : ", and credits taken for it are refunded"}. Try again later; if it keeps failing, tell AI Director Hub support.`
+    : ownKey
     ? keyProblem.test(error)
       ? `This ran on your own ${provider} API key, and the error points at the key or the account behind it. Check or replace the key at Creator Studio → API keys, and confirm the provider account has funds.`
       : `This ran on your own ${provider} API key, so no studio credits were taken.`
@@ -41,6 +49,7 @@ export function describeJobFailure(job: Job) {
     provider,
     target: job.shot_id ? { shotId: job.shot_id } : job.entity_id ? { entityId: job.entity_id } : null,
     ranOn: ownKey ? `your own ${provider} key` : "studio credits",
+    ...(platformProblem.test(error) ? { platformError: true } : {}),
     error,
     advice,
     creditsRefunded: job.credits_refunded ?? 0,

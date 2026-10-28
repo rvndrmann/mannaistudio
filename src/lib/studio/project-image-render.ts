@@ -20,6 +20,7 @@ import { buildEntityMentionContext, canonicalizeEntityMentions, entityPrimaryRef
 import { openAIImageQuality, projectImageQuality, projectVisualStyle } from "@/lib/studio/entity-image-workflow"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 import { cameraBlockForEntityType, projectCameraDefaults, resolveCameraSettings } from "@/lib/studio/camera-settings"
+import { assertStyleMatchesPrompt, resolveShotStyle, StyleConflictError, styleConflictBody } from "@/lib/studio/visual-style"
 import { projectStyleDna, resolveStyleDna, styleBlockForEntityType, styleDnaSchema } from "@/lib/studio/style-dna"
 import { recordExistingAsset } from "@/lib/studio/byteplus-assets"
 import { VERIFIED_ASSET } from "@/lib/studio/asset-verification"
@@ -106,6 +107,7 @@ export function imageGenerationErrorResponse(error: unknown): { body: Record<str
   if (error instanceof ImageGenerationFailure) {
     return { body: { error: error.message, jobId: error.jobId }, status: error.status }
   }
+  if (error instanceof StyleConflictError) return { body: styleConflictBody(error), status: error.status }
   return { body: { error: studioErrorMessage(error, "Image generation failed"), jobId: null }, status: studioErrorStatus(error) }
 }
 
@@ -139,6 +141,9 @@ export const imageRequestSchema = z.object({
   // says"; explicit null means this image deliberately has no look, which is
   // not the same thing and must not fall back to the project's.
   styleDna: styleDnaSchema.nullish(),
+  // "keep": the user saw that this prompt asks for claymation on a
+  // photorealistic project and chose to send it as it is.
+  styleConflict: z.enum(["keep"]).optional(),
   // A draw-to-edit request: the image the user drew on, the flattened picture
   // actually sent, and the marks themselves. Stored so the edit can be
   // reopened and adjusted instead of redrawn — and so a wrong result can be
@@ -200,11 +205,11 @@ export async function renderProjectImage(
     let shotData: Record<string, unknown> | null = null
     let assetData: Record<string, unknown> | null = null
     if (input.target === "asset") {
-      const { data } = await context.supabase.from("creator_entities").select("id, type, reference_images, primary_reference_image, metadata").eq("id", input.targetId).eq("project_id", projectId).maybeSingle()
+      const { data } = await context.supabase.from("creator_entities").select("id, type, description, reference_images, primary_reference_image, metadata").eq("id", input.targetId).eq("project_id", projectId).maybeSingle()
       if (!data) throw new ImageRequestError("Asset not found", 404)
       assetData = data
     } else {
-      const { data } = await context.supabase.from("creator_shots").select("id, episode_id, aspect_ratio, metadata, referenced_entities, keyframe_image").eq("id", input.targetId).maybeSingle()
+      const { data } = await context.supabase.from("creator_shots").select("id, episode_id, aspect_ratio, style, metadata, referenced_entities, keyframe_image").eq("id", input.targetId).maybeSingle()
       if (!data) throw new ImageRequestError("Shot not found", 404)
       shotData = data
       const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", data.episode_id).eq("project_id", projectId).maybeSingle()
@@ -222,6 +227,14 @@ export async function renderProjectImage(
     if ((mentionedEntities || []).length !== new Set(input.mentionedEntityIds).size) {
       throw new ImageRequestError("One or more mentioned entities do not belong to this project.", 400)
     }
+    const style = resolveShotStyle(projectVisualStyle(context.project), shotData)
+    // Before anything is charged: a clay prompt on a photorealistic project
+    // would have the live-action block overrule it.
+    assertStyleMatchesPrompt(style, [
+      input.prompt,
+      typeof assetData?.description === "string" ? assetData.description : null,
+      ...(mentionedEntities || []).map((entity) => entity.description as string | null),
+    ], input.styleConflict)
 
     // The project's Basic Settings quality is the default for every image;
     // a caller that names one explicitly still wins.
@@ -279,7 +292,6 @@ export async function renderProjectImage(
     const mentionContext = buildEntityMentionContext((mentionedEntities || []) as MentionableEntity[], {
       wardrobe: input.target === "asset" ? "open" : "locked",
     })
-    const style = projectVisualStyle(context.project)
     // A draw-to-edit request is an edit of one frame, not a new photograph, so
     // it takes neither the camera package nor the look block — both read to an
     // edit model as permission to re-render everything.

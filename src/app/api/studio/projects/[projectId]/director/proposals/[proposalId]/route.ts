@@ -6,6 +6,7 @@ import { requireProjectFromRequest } from "@/lib/studio/external-auth"
 import { decideDirectorProposal } from "@/lib/studio/tool-service"
 import { enforceStudioRateLimit, StudioRateLimitError } from "@/lib/studio/rate-limit"
 import { describeError } from "@/lib/studio/errors"
+import { StyleConflictError, styleConflictBody } from "@/lib/studio/visual-style"
 import "@/lib/studio/next-background"
 
 // An approval starts the render it approves, and that render is kept alive
@@ -19,6 +20,8 @@ export const maxDuration = 300
 const decisionSchema = z.object({
   decision: z.enum(["approved", "rejected"]),
   overrides: z.record(z.string(), z.unknown()).optional(),
+  // The user's answer to a held style conflict: send it as it is.
+  styleConflict: z.enum(["keep"]).optional(),
 }).strict()
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string; proposalId: string }> }) {
@@ -28,9 +31,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const flags = await fetchStudioFeatureFlags(context.supabase)
     if (!flags.ai_director_tools_enabled) return NextResponse.json({ error: "AI Director tools are not enabled" }, { status: 404 })
     await enforceStudioRateLimit(context.supabase, "director_approvals", 20, 60, context.user.id)
-    const { decision, overrides } = decisionSchema.parse(await request.json())
-    return NextResponse.json(await decideDirectorProposal(context, proposalId, decision, overrides))
+    const { decision, overrides, styleConflict } = decisionSchema.parse(await request.json())
+    return NextResponse.json(await decideDirectorProposal(context, proposalId, decision, overrides, styleConflict))
   } catch (error) {
+    if (error instanceof StyleConflictError) return NextResponse.json(styleConflictBody(error), { status: error.status })
     if (error instanceof ZodError) return NextResponse.json({ error: "Invalid proposal decision", issues: error.flatten() }, { status: 400 })
     // Supabase rejects with a PostgrestError, which is a plain object rather
     // than an Error. Reporting only "Proposal decision failed" for those hid

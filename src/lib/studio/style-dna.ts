@@ -15,6 +15,7 @@
 
 import { z } from "zod"
 import { visualStyleDirective } from "./entity-image-workflow"
+import { CLAYMATION_STYLE_LINE, CLAYMATION_VIDEO_DIRECTIVE, isClaymationStyle } from "./visual-style"
 
 const list = (max: number) => z.array(z.string().trim().max(160)).max(max).default([]).catch([])
 const line = z.string().trim().max(400).default("").catch("")
@@ -189,12 +190,17 @@ export function styleDnaDirective(dna: StyleDna | null | undefined, block: Style
  * and its directive — so the DNA is spliced in here rather than at six separate
  * call sites, and the precedence rule lives in one place.
  */
-export function composeLookDirectives(style: string, dna: StyleDna | null | undefined, block: StyleBlock): string[] {
+export function composeLookDirectives(style: string, dna: StyleDna | null | undefined, block: StyleBlock, medium: "image" | "video" = "image"): string[] {
   const look = styleDnaDirective(dna, block)
   if (dna && !isEmptyStyleDna(dna) && dna.overrideProjectStyle) {
     // The reference is the medium. Emitting the project's style clause here
     // would contradict the DNA in the same prompt rather than refine it.
     return [look].filter(Boolean)
+  }
+  // Claymation is the one style whose clip needs different words from its
+  // frame: a still describes the clay, a clip has to describe how clay moves.
+  if (isClaymationStyle(style)) {
+    return [CLAYMATION_STYLE_LINE, medium === "video" ? CLAYMATION_VIDEO_DIRECTIVE : visualStyleDirective(style), look].filter(Boolean)
   }
   return [`Required project style: ${style}.`, visualStyleDirective(style), look].filter(Boolean)
 }

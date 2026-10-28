@@ -1,5 +1,6 @@
 import type { MentionableEntity } from "./entity-mentions"
 import { clampOpenAIImageQuality, type OpenAIImageQuality } from "./image-quality"
+import { CLAYMATION_IMAGE_DIRECTIVE, CLAYMATION_NO_GRID, CLAYMATION_REFERENCE_GRID, isClaymationStyle, projectStyleLine } from "./visual-style"
 
 /**
  * The prompt and settings side of entity reference art.
@@ -13,6 +14,7 @@ import { clampOpenAIImageQuality, type OpenAIImageQuality } from "./image-qualit
 
 export function visualStyleDirective(style: string) {
   const normalized = style.trim().toLowerCase()
+  if (isClaymationStyle(normalized)) return CLAYMATION_IMAGE_DIRECTIVE
   if (normalized.includes("photoreal")) {
     return "Strict live-action photorealism: a real human or real physical object photographed with natural skin/material texture, realistic anatomy and proportions, cinematic photographic lighting, authentic lens depth, and high-end film still detail. No anime, illustration, painting, cartoon, comic, stylized drawing, 3D render, CG look, doll-like face, game art, collage, grid, typography, labels, captions, or UI."
   }
@@ -106,7 +108,7 @@ export function buildEntityReferenceImagePrompt(entity: MentionableEntity, style
   return [
     subject,
     entity.description?.trim() ? `Canonical description: ${entity.description.trim()}` : "Preserve the canonical identity implied by the entity name.",
-    ...(lookDirectives?.length ? lookDirectives : [`Required project style: ${style || "cinematic"}.`, visualStyleDirective(style)]).map(line => entity.type === "character" ? line.replace("collage, grid, ", "") : entity.type !== "scene" ? line.replace("typography, labels, captions, or UI", "unrelated captions, overlays, or UI; preserve required product lettering") : line),
+    ...(lookDirectives?.length ? lookDirectives : [projectStyleLine(style || "cinematic"), visualStyleDirective(style)]).map(line => entity.type === "character" ? line.replace("collage, grid, ", "").replace(CLAYMATION_NO_GRID, CLAYMATION_REFERENCE_GRID) : entity.type !== "scene" ? line.replace("typography, labels, captions, or UI", "unrelated captions, overlays, or UI; preserve required product lettering") : line),
     // The multi-view layout is wanted; rendered text is not. Image models set
     // labels and captions badly, and they contaminate the reference when it is
     // fed back in as a visual input.

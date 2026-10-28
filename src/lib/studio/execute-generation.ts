@@ -13,6 +13,7 @@ import type { VideoGenerationModelId, ImageGenerationModelId } from "./generatio
 import { buildEntityMentionContext, canonicalizeEntityMentions, chosenReferences, entityPrimaryReference, findShotCastEntityIds, type MentionableEntity } from "./entity-mentions"
 import type { SeedanceSubject } from "./seedance-mentions"
 import { openAIImageQuality, projectImageQuality, projectVisualStyle } from "./entity-image-workflow"
+import { resolveShotStyle } from "./visual-style"
 import { projectStyleDna } from "./style-dna"
 import { stripIdentityDescriptions } from "./prompt-sanitizer"
 import { resolveRegisteredAsset } from "./byteplus-assets"
@@ -181,7 +182,6 @@ export async function executeGenerationJobs(
         // as before, which is what leaves the credit-paid path untouched.
         const runJob = async () => {
         try {
-          const style = projectVisualStyle(context.project)
           const projectDefaultAspect = typeof context.project.default_aspect === "string" ? context.project.default_aspect : null
           const settings = jobRenderSettings(job as { settings?: unknown; provider_request?: unknown })
           const imageQuality = ["Low", "Medium", "High", "Ultra", "Max"].includes(String(settings.quality)) ? settings.quality as ReturnType<typeof projectImageQuality> : projectImageQuality(context.project)
@@ -197,8 +197,9 @@ export async function executeGenerationJobs(
           // it here is what makes generation reference exactly what the user can
           // see listed against that shot.
           const { data: castShot } = job.shot_id
-            ? await context.supabase.from("creator_shots").select("referenced_entities,metadata").eq("id", job.shot_id).maybeSingle()
+            ? await context.supabase.from("creator_shots").select("referenced_entities,style,metadata").eq("id", job.shot_id).maybeSingle()
             : { data: null }
+          const style = resolveShotStyle(projectVisualStyle(context.project), castShot)
           const shotCastIds = Array.isArray(castShot?.referenced_entities) ? castShot.referenced_entities as string[] : []
           const curated = Boolean((castShot?.metadata as { cast_curated?: boolean } | null)?.cast_curated)
           const declaredIds = Array.from(new Set([

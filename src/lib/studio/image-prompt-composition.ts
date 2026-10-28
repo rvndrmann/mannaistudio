@@ -1,5 +1,6 @@
 import { applyCameraSettings, type CameraSettings } from "./camera-settings"
 import { composeLookDirectives, type StyleDna, type StyleBlock } from "./style-dna"
+import { CLAYMATION_IMAGE_TREATMENT, CLAYMATION_NO_GRID, CLAYMATION_REFERENCE_GRID, isClaymationStyle } from "./visual-style"
 
 /** Supplemental rules override house defaults, never the user's explicit direction. */
 export const IMAGE_REALISM_AUTHORING_INSTRUCTIONS = `PHOTOGRAPHIC IMAGE AUTHORING — applies only to photographic image requests.
@@ -31,7 +32,7 @@ export function isPhotographicRequest(prompt: string, style?: string, dna?: Styl
     ? `${dna.subject.realism} ${dna.subject.overarchingStyle}`
     : style || ""
   const stylized = /\b(anime|animation|animated|cartoon|illustration|painting|pixar|ghibli|chibi|3d|CG)\b/i
-  if (medium && stylized.test(medium)) return false
+  if (medium && (stylized.test(medium) || isClaymationStyle(medium))) return false
   // Explicit style in the user's request can intentionally depart from the project default.
   if (explicitStylizedDirection(prompt)) return false
   return /photoreal|live.action|photograph|\bphoto\b|\brealistic\b/i.test(medium || prompt)
@@ -89,8 +90,12 @@ function photographicTreatment(base: string, options: ImagePromptOptions): strin
 export function composeImagePrompt(options: ImagePromptOptions): string {
   const original = options.prompt.trim()
   const photographic = isPhotographicRequest(original, options.style, options.styleDna)
+  // The claymation treatment stands where the photographic one would. A look
+  // reference that has been made the medium overrules the project style, so it
+  // overrules this too.
+  const claymation = isClaymationStyle(options.style) && !options.styleDna?.overrideProjectStyle
   // Remove only our own earlier layer; quoted product/brand text is never globally rewritten.
-  let base = original.replace(/\n*Photographic treatment: [\s\S]*? Explicit camera, lighting, reference and user choices take precedence over these defaults\./g, "").trim()
+  let base = original.replace(/\n*(?:Photographic|Claymation) treatment: [\s\S]*? Explicit camera, lighting, reference and user choices take precedence over these defaults\./g, "").trim()
   if (options.entityContext && base.endsWith(options.entityContext)) base = base.slice(0, -options.entityContext.length).trim()
   const cameraSuffix = options.camera ? applyCameraSettings("", options.camera, { opticsOnly: true }) : ""
   const framed = options.camera && !options.drawEdit && !base.includes(cameraSuffix)
@@ -102,11 +107,12 @@ export function composeImagePrompt(options: ImagePromptOptions): string {
   // Relax only generated house prohibitions, never an explicit user negative.
   const compatibleLooks = looks.map(line => line
     .replace(referenceGrid ? /collage, grid, /g : /$^/, "")
+    .replace(referenceGrid ? CLAYMATION_NO_GRID : /$^/, CLAYMATION_REFERENCE_GRID)
     .replace(packaging ? /typography, labels, captions, or UI/g : /$^/, "unrelated captions, overlays, or UI; preserve required product lettering"))
   const composition = options.aspectRatio && !original.includes(`Required composition: ${options.aspectRatio}.`)
     ? `Required composition: ${options.aspectRatio}.` : ""
   return [framed, composition, ...compatibleLooks.filter(line => !base.includes(line)),
-    photographic && !options.drawEdit ? photographicTreatment(base, options) : "",
+    options.drawEdit ? "" : claymation ? CLAYMATION_IMAGE_TREATMENT : photographic ? photographicTreatment(base, options) : "",
     options.entityContext && !base.includes(options.entityContext) ? options.entityContext : "",
   ].filter(Boolean).join("\n\n")
 }

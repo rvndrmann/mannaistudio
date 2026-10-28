@@ -22,6 +22,7 @@ import { isStalledVideoJob } from "@/lib/studio/stalled-jobs"
 import { buildEntityMentionContext, entityPrimaryReference, type MentionableEntity } from "@/lib/studio/entity-mentions"
 import { projectVisualStyle } from "@/lib/studio/entity-image-workflow"
 import { composeLookDirectives, projectStyleDna } from "@/lib/studio/style-dna"
+import { assertStyleMatchesPrompt, resolveShotStyle, StyleConflictError, styleConflictBody } from "@/lib/studio/visual-style"
 import { stripIdentityDescriptions } from "@/lib/studio/prompt-sanitizer"
 import { recordExistingAsset, resolveRegisteredAsset } from "@/lib/studio/byteplus-assets"
 import { parseSeedanceMissingAssetError, parseSeedanceRejectedReference, purgeStaleBytePlusAsset, seedanceReferenceAssetUri, seedanceCopyrightRefusal } from "@/lib/studio/seedance-reference-error"
@@ -50,10 +51,13 @@ const submitSchema = z.object({
   // Chains this shot to the one before it by passing that shot's finished video
   // as a reference, which is how continuity carries across a sequence.
   continueFromPreviousShot: z.boolean().default(false),
+  // "keep": the user saw that this prompt asks for claymation on a
+  // photorealistic project and chose to send it as it is.
+  styleConflict: z.enum(["keep"]).optional(),
 }).strict()
 
 async function verifyShot(context: Awaited<ReturnType<typeof requireAuthenticatedProject>>, projectId: string, shotId: string) {
-  const { data: shot } = await context.supabase.from("creator_shots").select("id, episode_id, order_index, duration_seconds, aspect_ratio, resolution, keyframe_image, metadata, referenced_entities").eq("id", shotId).maybeSingle()
+  const { data: shot } = await context.supabase.from("creator_shots").select("id, episode_id, order_index, duration_seconds, aspect_ratio, resolution, keyframe_image, style, metadata, referenced_entities").eq("id", shotId).maybeSingle()
   if (!shot) return null
   const { data: episode } = await context.supabase.from("creator_episodes").select("id").eq("id", shot.episode_id).eq("project_id", projectId).maybeSingle()
   return episode ? shot : null
@@ -155,6 +159,10 @@ export async function submitProjectVideo(context: Awaited<ReturnType<typeof requ
     if ((resolvedEntities || []).length !== resolvedEntityIds.length) {
       return reply({ error: "One or more referenced entities do not belong to this project." }, { status: 400 })
     }
+    const style = resolveShotStyle(projectVisualStyle(context.project), shot)
+    // Before anything is charged: a clay prompt on a photorealistic project
+    // would have the live-action block overrule it.
+    assertStyleMatchesPrompt(style, [input.prompt, ...(resolvedEntities || []).map((entity) => entity.description as string | null)], input.styleConflict)
 
     // Validate the full request before reserving credits.
     const platformCost = calculateCreditCost(input.model, "video", input.durationSeconds, { resolution: input.resolution, aspectRatio: input.aspectRatio, quality: input.quality })
@@ -442,8 +450,7 @@ export async function submitProjectVideo(context: Awaited<ReturnType<typeof requ
       }
     }
     const mentionContext = buildEntityMentionContext((resolvedEntities || []) as MentionableEntity[])
-    const style = projectVisualStyle(context.project)
-    const resolvedPrompt = isGenjutsuModel(input.model) ? input.prompt : [stripIdentityDescriptions(input.prompt), ...(input.referenceAudios.length ? ["Use the attached audio references for the soundtrack, speech delivery, and timing of this shot."] : []), ...composeLookDirectives(style, projectStyleDna(context.project), "shot"), mentionContext].filter(Boolean).join("\n\n")
+    const resolvedPrompt = isGenjutsuModel(input.model) ? input.prompt : [stripIdentityDescriptions(input.prompt), ...(input.referenceAudios.length ? ["Use the attached audio references for the soundtrack, speech delivery, and timing of this shot."] : []), ...composeLookDirectives(style, projectStyleDna(context.project), "shot", "video"), mentionContext].filter(Boolean).join("\n\n")
     const displayRatio = input.aspectRatio || shot.aspect_ratio || "9:16"
     const providerRatio = provider === "byteplus" ? bytePlusVideoRatio(displayRatio, videoReferences.length > 0) : displayRatio
     let sourceVideoInfo: Awaited<ReturnType<typeof readSourceVideoDuration>> | null = null
@@ -685,6 +692,7 @@ export async function submitProjectVideo(context: Awaited<ReturnType<typeof requ
         console.error("Could not refund failed video generation", refundError)
       }
     }
+    if (error instanceof StyleConflictError) return reply(styleConflictBody(error), { status: error.status })
     if (error instanceof ZodError) return reply({ error: "Invalid video request", issues: error.flatten() }, { status: 400 })
     return reply({ jobId: savedAttempt?.id, error: studioErrorMessage(error, "Video generation failed") }, { status: error instanceof HiggsfieldProviderError || error instanceof BytePlusProviderError || error instanceof FalProviderError || error instanceof GoogleProviderError ? error.status : studioErrorStatus(error) })
   }
