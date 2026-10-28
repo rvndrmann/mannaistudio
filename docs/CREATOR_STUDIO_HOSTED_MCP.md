@@ -72,6 +72,7 @@ A job already running is not cancelled by disconnecting.
 | `studio_storyboard` | `projects:read` |
 | `studio_pending_work` | `projects:read` |
 | `studio_view_media` | `projects:read` |
+| `studio_show_storyboard` | `projects:read` |
 | `studio_api_keys` | `projects:read` |
 | `studio_list_models` | `projects:read` |
 | `studio_chat` | `director:chat` |
@@ -90,6 +91,23 @@ pipeline. It can consume chat credits, as stated on the consent page. Costly
 proposal approval uses the existing decision route; clients are instructed to
 show the proposal and cost before asking for authorization. Existing project
 autopilot settings continue to govern Director behavior.
+
+## Showing media in the chat
+
+`studio_show_storyboard` and `studio_view_media` carry an MCP Apps view
+(`_meta.ui.resourceUri` → `ui://creator-studio/storyboard-gallery.html`,
+`src/lib/studio/mcp/storyboard-widget.ts`). Clients that support MCP Apps
+(claude.ai, Claude Desktop) draw it from the result's `structuredContent`: the
+shot grid with frame/clip toggles and inline playback, cast art, and the final
+cut; `studio_view_media` plays a single video or audio file. Other clients read
+the text content as before, which for the gallery is shot titles and storage
+paths, never signed links.
+
+- Links are signed in one `createSignedUrls` call, only under the caller's own
+  prefix (`storyboard-gallery.ts`), and expire after an hour. A view whose
+  links have expired calls its tool again once through the host to refresh.
+- The page is self-contained and its CSP admits media from the Supabase origin
+  (`NEXT_PUBLIC_SUPABASE_URL`) only; it makes no network requests itself.
 
 ## Account isolation
 

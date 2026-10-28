@@ -51,7 +51,8 @@ beforeEach(() => {
         maybeSingle: async () => ({ data: table === "creator_episodes" && (!filters.id || filters.id === episode) ? { id: episode } : null, error: null }) }
       return q
     }
-    return { user: { id: owner }, project: { id: projectId, user_id: owner }, supabase: { from } }
+    const storage = { from: () => ({ createSignedUrls: async (paths: string[]) => ({ data: paths.map((path) => ({ path, signedUrl: `https://files.example/${path}?sig`, error: null })), error: null }) }) }
+    return { user: { id: owner }, project: { id: projectId, user_id: owner }, supabase: { from, storage } }
   })
   mocks.project.mockResolvedValue(Response.json({ project: { id: aliceProject }, activeEpisode: { id: episode }, shots: [], entities: [] }))
   mocks.chat.mockImplementation(async (request: Request) => Response.json({ account: token(request), received: await request.json() }))
@@ -126,8 +127,42 @@ describe("hosted MCP with the real SDK HTTP client", () => {
     const video = await alice.callTool({ name: "studio_view_media", arguments: { projectId: aliceProject, path: "alice/p/clip.mp4" } })
     expect(JSON.stringify(video)).toContain("https://files.example/alice/p/clip.mp4")
     expect(JSON.stringify(video)).not.toContain('"type":"image"')
+    expect((video as { structuredContent?: unknown }).structuredContent).toMatchObject({ view: "media", kind: "video", url: "https://files.example/alice/p/clip.mp4" })
     expect(download).not.toHaveBeenCalled()
     download.mockRestore()
+  })
+  it("draws the storyboard as a gallery, signing only the caller's own files", async () => {
+    mocks.project.mockResolvedValue(Response.json({
+      project: { id: aliceProject, name: "Clay ad", default_aspect: "9:16" },
+      activeEpisode: { id: episode, name: "Episode 1", final_cut: { path: "alice/p/final.mp4", filename: "cut.mp4" } },
+      shots: [
+        { order_index: 1, title: "Second", keyframe_image: "alice/p/two.png", video_url: null, video_status: "none" },
+        { order_index: 0, title: "First", keyframe_image: "alice/p/one.png", video_url: "alice/p/one.mp4", video_status: "completed", duration_seconds: 5 },
+        { order_index: 2, title: "Planted", keyframe_image: "bob/p/secret.png" },
+      ],
+      entities: [{ id: "e1", name: "Pug", kind: "character", reference_images: ["alice/p/pug.png"] }],
+    }))
+    const alice = await connect("alice")
+    const tool = (await alice.listTools()).tools.find((item) => item.name === "studio_show_storyboard")
+    expect(tool?._meta).toMatchObject({ ui: { resourceUri: "ui://creator-studio/storyboard-gallery.html" } })
+    const shown = await alice.callTool({ name: "studio_show_storyboard", arguments: { projectId: aliceProject } }) as { content: Array<{ text: string }>; structuredContent: Record<string, any> }
+    const gallery = shown.structuredContent
+    expect(gallery.view).toBe("storyboard")
+    expect(gallery.shots.map((shot: { number: number; title: string }) => [shot.number, shot.title])).toEqual([[1, "First"], [2, "Second"], [3, "Planted"]])
+    expect(gallery.shots[0]).toMatchObject({ image: "https://files.example/alice/p/one.png?sig", video: "https://files.example/alice/p/one.mp4?sig", durationSeconds: 5 })
+    // Another account's path in a shot is never signed.
+    expect(gallery.shots[2].image).toBeNull()
+    expect(gallery.cast[0]).toMatchObject({ name: "Pug", image: "https://files.example/alice/p/pug.png?sig" })
+    expect(gallery.finalCut).toMatchObject({ url: "https://files.example/alice/p/final.mp4?sig", filename: "cut.mp4" })
+    expect(gallery.refresh).toEqual({ tool: "studio_show_storyboard", arguments: { projectId: aliceProject } })
+    // The model gets paths, not signed links.
+    expect(shown.content[0].text).toContain("alice/p/one.png")
+    expect(shown.content[0].text).not.toContain("?sig")
+    const page = await alice.readResource({ uri: "ui://creator-studio/storyboard-gallery.html" })
+    expect(page.contents[0]).toMatchObject({ mimeType: "text/html;profile=mcp-app" })
+    expect(String((page.contents[0] as { text: string }).text)).toContain("ui/initialize")
+    const foreign = await alice.callTool({ name: "studio_show_storyboard", arguments: { projectId: bobProject } })
+    expect(foreign.isError).toBe(true)
   })
   it("moves unfinished jobs forward when pending work is read, and still answers if that fails", async () => {
     mocks.project.mockImplementation(async () => Response.json({ actionProposals: [], production: { generationJobs: [{ id: "job", status: "completed" }], spend: { episode: 4 } } }))
@@ -156,9 +191,9 @@ describe("hosted MCP with the real SDK HTTP client", () => {
     // tool nobody is offered.
     expect(names).toEqual([
       "studio_add_characters_and_assets", "studio_add_shots", "studio_api_keys", "studio_attach_media", "studio_chat", "studio_create_project", "studio_decide_proposal", "studio_generate",
-      "studio_list_models", "studio_list_projects", "studio_pending_work", "studio_set_project_models", "studio_set_prompts", "studio_set_visual_style", "studio_storyboard", "studio_upload_media", "studio_view_media", "studio_write_script",
+      "studio_list_models", "studio_list_projects", "studio_pending_work", "studio_set_project_models", "studio_set_prompts", "studio_set_visual_style", "studio_show_storyboard", "studio_storyboard", "studio_upload_media", "studio_view_media", "studio_write_script",
     ])
-    expect(alice.getServerVersion()).toMatchObject({ name: "creator-studio", version: "1.6.0" })
+    expect(alice.getServerVersion()).toMatchObject({ name: "creator-studio", version: "1.7.0" })
   })
   it("exposes only consented tools and refuses a foreign browser Origin", async () => {
     const reader = await connect("read-only")
