@@ -3022,7 +3022,7 @@ function BasicSettingsModal({
     { id: "Anime - Chibi Cute", label: "Anime - Chibi Cute", hot: false, img: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80" },
     { id: "Anime - Makoto Shinkai", label: "Anime - Makoto Shinkai", hot: false, img: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=400&q=80" },
     { id: "Anime - Ghibli", label: "Anime - Ghibli", hot: false, img: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=80" },
-    { id: CLAYMATION_STYLE, label: CLAYMATION_STYLE_LABEL, hot: false, img: "/visual-styles/claymation.svg" },
+    { id: CLAYMATION_STYLE, label: CLAYMATION_STYLE_LABEL, hot: false, img: "/visual-styles/claymation.webp" },
   ];
   const activeWorkflows = (data.directorWorkflows?.length ? data.directorWorkflows : defaultDirectorWorkflows).filter((item) => item.status !== "paused");
   const workflowIcons = [LayoutPanelTop, Share2, Film, Zap];
