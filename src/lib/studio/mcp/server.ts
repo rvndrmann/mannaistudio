@@ -64,7 +64,7 @@ const mediaKind = (path: string) => {
  * of date: new tools were live on the server and missing from every session.
  * A test pins the tool list to this number, so the two cannot drift apart.
  */
-export const MCP_TOOLSET_VERSION = "1.8.0"
+export const MCP_TOOLSET_VERSION = "1.9.0"
 
 /** One server per HTTP request: credentials never live in a singleton or env. */
 export function createAccountMcpServer(token: string, scopes: string[]) {
@@ -185,11 +185,11 @@ export function createAccountMcpServer(token: string, scopes: string[]) {
     const models = await describeModels(context, mcpOrigin()).catch(() => null)
     return { ...saved, ...(models?.warning ? { warning: models.warning } : {}) }
   })
-  register("studio_set_visual_style", `Set a project's Visual style, the look every image and video is rendered in: the studio appends that style's block to each prompt. Options: ${VISUAL_STYLE_OPTIONS.join(", ")}. "${CLAYMATION_STYLE}" is stop-motion clay puppets. Shots that follow the project take the new style unless applyToShots is false; a shot given its own style keeps it. Use it when a generation comes back held because its prompt and the project style disagree and the user chooses to switch.`, "projects:write", {
-    projectId: uuid, style: z.enum(VISUAL_STYLE_OPTIONS), applyToShots: z.boolean().default(true),
-  }, false, async ({ projectId, style, applyToShots }) => {
+  register("studio_set_visual_style", `Set a project's Visual style, the look every image and video is rendered in: the studio appends that style's block to each prompt. Options: ${VISUAL_STYLE_OPTIONS.join(", ")}. "${CLAYMATION_STYLE}" is stop-motion clay puppets. Shots that follow the project take the new style unless applyToShots is false; a shot given its own style keeps it, unless releasePinnedShots is true, which also moves shots pinned to photorealistic onto the new style. Use it when a generation comes back held because its prompt asks for claymation and the user chooses to switch: then pass releasePinnedShots true, because the held shot may be pinned to photorealistic on a project that is already claymation.`, "projects:write", {
+    projectId: uuid, style: z.enum(VISUAL_STYLE_OPTIONS), applyToShots: z.boolean().default(true), releasePinnedShots: z.boolean().default(false),
+  }, false, async ({ projectId, style, applyToShots, releasePinnedShots }) => {
     const context = await contextFor(projectId, "projects:write")
-    return setProjectVisualStyle(context.supabase, projectId, style, applyToShots)
+    return setProjectVisualStyle(context.supabase, projectId, style, applyToShots, releasePinnedShots)
   })
   // Own-prompts mode, start to finish. Each of these writes what the user gave
   // and nothing more; none of them calls a chat model, so they work for an
@@ -254,7 +254,7 @@ export function createAccountMcpServer(token: string, scopes: string[]) {
   })
   register("studio_decide_proposal", "Approve or reject a proposal in your account. Approval can spend credits. Only approve after the user authorizes the displayed proposal and cost.", "director:proposals", {
     projectId: uuid, proposalId: uuid, decision: z.enum(["approved", "rejected"]),
-    styleConflict: z.enum(["keep"]).optional().describe("Only after an approval came back held because the prompt asks for claymation on a photorealistic project, and the user chose to keep photorealistic. To switch instead, call studio_set_visual_style and approve again without this."),
+    styleConflict: z.enum(["keep"]).optional().describe("Only after an approval came back held because the prompt asks for claymation on a photorealistic project, and the user chose to keep photorealistic. To switch instead, call studio_set_visual_style with releasePinnedShots true and approve again without this."),
   }, false, async ({ projectId, proposalId, decision, styleConflict }) => {
     const context = await contextFor(projectId, "director:proposals")
     const { data, error } = await context.supabase.from("creator_action_proposals").select("id")

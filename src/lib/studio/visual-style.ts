@@ -99,7 +99,9 @@ export function asksForClaymation(...texts: Array<string | null | undefined>): b
 
 export const STYLE_CONFLICT_CODE = "style_conflict"
 
-export const STYLE_CONFLICT_MESSAGE = "This prompt asks for claymation but the project style is Photorealistic. Switch the project to Claymation?"
+// Not "the project style": a shot pinned to Photorealistic is held on a
+// Claymation project too, and the user was told the project was the problem.
+export const STYLE_CONFLICT_MESSAGE = "This prompt asks for claymation but it would render as Photorealistic. Switch the project and its shots to Claymation?"
 
 /**
  * A generation held back because its words and the project style disagree.

@@ -51,10 +51,29 @@ export async function carryStyleToShots(supabase: SupabaseClient, projectId: str
 }
 
 /**
- * Sets a project's Visual style where every generation reads it — default_style
- * and basic_settings.visualStyle — and carries it to the shots.
+ * Lets shots pinned to Photorealistic follow the project again.
+ *
+ * The answer to a held generation. Switching the project alone leaves pinned
+ * shots where they were, so on a project already on Claymation — every shot
+ * pinned when someone declined to apply the change — "Switch" changed nothing
+ * and the same render was held again.
  */
-export async function setProjectVisualStyle(supabase: SupabaseClient, projectId: string, style: string, follow = true) {
+export async function releasePhotorealPins(supabase: SupabaseClient, projectId: string, style: string) {
+  const pinned = (await projectShots(supabase, projectId)).filter((shot) => overridden(shot) && isPhotorealStyle(shot.style || ""))
+  for (const shot of pinned) {
+    const { style_override: _released, ...metadata } = shot.metadata || {}
+    const { error } = await supabase.from("creator_shots").update({ style, metadata }).eq("id", shot.id)
+    if (error) throw error
+  }
+  return pinned.length
+}
+
+/**
+ * Sets a project's Visual style where every generation reads it — default_style
+ * and basic_settings.visualStyle — and carries it to the shots. With
+ * `releasePins`, shots pinned to Photorealistic follow it too.
+ */
+export async function setProjectVisualStyle(supabase: SupabaseClient, projectId: string, style: string, follow = true, releasePins = false) {
   const { data: project, error: readError } = await supabase.from("creator_projects").select("default_style,metadata").eq("id", projectId).single()
   if (readError) throw readError
   const previousStyle = projectVisualStyle(project)
@@ -65,7 +84,8 @@ export async function setProjectVisualStyle(supabase: SupabaseClient, projectId:
     .eq("id", projectId)
   if (error) throw error
   const shots = await carryStyleToShots(supabase, projectId, previousStyle, style, follow)
-  return { previousStyle, style, ...shots }
+  const released = releasePins ? await releasePhotorealPins(supabase, projectId, style) : 0
+  return { previousStyle, style, ...shots, released }
 }
 
 /**

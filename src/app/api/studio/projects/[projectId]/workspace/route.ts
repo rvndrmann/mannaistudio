@@ -191,10 +191,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json(await countStyleFollowers(supabase, projectId))
     }
     // The answer to a held generation: switch the project to the style its
-    // prompt asked for. Shots that follow the project follow it there.
+    // prompt asked for. Shots that follow the project follow it there, and
+    // shots pinned to Photorealistic are released, or the render that was
+    // held would be held again.
     if (body.action === "setVisualStyle") {
       if (!isClaymationStyle(body.style)) throw new Error("Unknown visual style")
-      return NextResponse.json(await setProjectVisualStyle(supabase, projectId, CLAYMATION_STYLE, body.applyToShots !== false))
+      const follow = body.applyToShots !== false
+      return NextResponse.json(await setProjectVisualStyle(supabase, projectId, CLAYMATION_STYLE, follow, follow))
     }
     if (body.action === "saveProjectSettings") {
       const productVideo = readProductVideo({ basic_settings: body.settings })
