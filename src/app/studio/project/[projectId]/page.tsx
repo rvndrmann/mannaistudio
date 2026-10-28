@@ -6392,6 +6392,47 @@ function ShotMediaWorkspace({
     }
   };
 
+  // The director's own clip or frame, used as the shot's media as it stands —
+  // no generation, no credits. It lands under the owner's prefix like every
+  // other studio file, so the editor, exports and managed publishing read it
+  // exactly as they read a generated take.
+  const uploadAsShotMedia = async (file?: File) => {
+    if (!file) return;
+    const kind: "image" | "video" = isImage ? "image" : "video";
+    if (!file.type.startsWith(`${kind}/`)) { setGenerationError(`Choose ${isImage ? "an image" : "a video"} file.`); return; }
+    setBusy(true);
+    setGenerationError(null);
+    setGenerationStatus(`Uploading ${kind}…`);
+    try {
+      const userId = (await createClient().auth.getUser()).data.user?.id;
+      if (!userId) throw new Error(`Please sign in before uploading a ${kind}.`);
+      const path = `${userId}/${projectId}/shot-upload-${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+      const { error } = await createClient().storage.from("creator-studio-media").upload(path, file, { contentType: file.type });
+      if (error) throw error;
+      await save({ action: "updateShotChosenMedia", shotId: media.shot.id, mediaType: kind, mediaUrl: path });
+      if (isImage) media.shot.keyframe_image = path;
+      else media.shot.video_url = path;
+      // Shown as its own entry in the history, so it can be compared with
+      // generated takes and re-chosen like any of them.
+      const uploadId = `upload-${crypto.randomUUID()}`;
+      setGenHistory((current) => [{
+        id: uploadId, type: kind, status: "completed", prompt: "Uploaded file", model: "", quality: null,
+        aspectRatio, resolution: null, durationSeconds: null, referenceImages: [], rawReferenceImages: [],
+        videoUrl: path, error: null, createdAt: Date.now(), completedAt: new Date().toISOString(), generationMode: null,
+        startFrame: null, endFrame: null, recordedFrames: false, videoReferencePaths: [],
+        cameraSettingsUsed: null, styleDnaUsed: null, styleReferenceImages: [],
+      }, ...current]);
+      setActiveGenId(uploadId);
+      setGenerationStatus(`Your ${kind} is now this shot's ${isImage ? "frame" : "video"} ✓`);
+      await reload(true);
+    } catch (err) {
+      setGenerationStatus(null);
+      setGenerationError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
   const [drawing, setDrawing] = useState(false);
 
@@ -6634,6 +6675,11 @@ function ShotMediaWorkspace({
               </button>
             )}
 
+            <label className={`flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/5 ${busy ? "pointer-events-none opacity-40" : ""}`} title={`Use your own ${isImage ? "image" : "video"} for this shot`}>
+              <Upload className="h-3.5 w-3.5" />
+              Upload {isImage ? "image" : "video"}
+              <input type="file" accept={isImage ? "image/*" : "video/*"} className="hidden" disabled={busy} onChange={(e) => { void uploadAsShotMedia(e.target.files?.[0]); e.currentTarget.value = ""; }} />
+            </label>
             <button onClick={addCurrentSourceAsReference} disabled={!previewSource} className="rounded-lg px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40">
               Use as reference
             </button>
@@ -6694,7 +6740,15 @@ function ShotMediaWorkspace({
                 />
               ) : (
                 <div className={`grid place-items-center text-center text-zinc-500 p-8 ${aspectRatio === "9:16" ? "aspect-[9/16] h-[55vh] max-h-[580px]" : "aspect-[16/9] w-full max-w-[640px]"}`}>
-                  Click &ldquo;Generate video&rdquo; below<br />to create your first output.
+                  <div className="flex flex-col items-center gap-4">
+                    <p>Click &ldquo;Generate {isImage ? "image" : "video"}&rdquo; below<br />to create your first output.</p>
+                    <span className="text-xs text-zinc-600">or</span>
+                    <label className={`flex cursor-pointer items-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/20 ${busy ? "pointer-events-none opacity-40" : ""}`}>
+                      <Upload className="h-4 w-4" />
+                      Upload your own {isImage ? "image" : "video"}
+                      <input type="file" accept={isImage ? "image/*" : "video/*"} className="hidden" disabled={busy} onChange={(e) => { void uploadAsShotMedia(e.target.files?.[0]); e.currentTarget.value = ""; }} />
+                    </label>
+                  </div>
                 </div>
               )}
               {/* Show prompt, model used, and reference images for active selected generation */}
