@@ -15,20 +15,20 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 export const STORYBOARD_WIDGET_URI = "ui://creator-studio/storyboard-gallery.html"
 const MCP_APP_MIME = "text/html;profile=mcp-app"
 
-/** Key in a tool result's `_meta` that carries what the view draws. */
-export const STORYBOARD_VIEW_META_KEY = "creator-studio/view"
-
 /** Tool `_meta` that tells the host to render the gallery. Both keys, for hosts on the older spelling. */
 export const storyboardWidgetToolMeta = { ui: { resourceUri: STORYBOARD_WIDGET_URI }, "ui/resourceUri": STORYBOARD_WIDGET_URI }
 
 /**
- * Where the page may load images and video from. Signed URLs live on the
- * Supabase project's origin; nothing else is allowed in, and the page makes no
- * network requests of its own.
+ * Where the page may load images and video from: the studio, whose
+ * `/api/mcp/media` redirects each gallery file to its signed URL on the
+ * Supabase origin, and Supabase itself (the redirect target, and
+ * `studio_view_media`'s single signed link). The page makes no network
+ * requests of its own.
  */
 function mediaOrigins() {
-  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL
-  try { return raw ? [new URL(raw).origin] : [] } catch { return [] }
+  return [process.env.STUDIO_MCP_PUBLIC_URL, process.env.NEXT_PUBLIC_SUPABASE_URL].flatMap((raw) => {
+    try { return raw ? [new URL(raw).origin] : [] } catch { return [] }
+  })
 }
 
 export function registerStoryboardWidget(server: McpServer) {
@@ -121,7 +121,7 @@ dialog img, dialog video { max-width: 94vw; max-height: 86vh; display: block; bo
   });
 
   function show(result) {
-    var content = result && ((result._meta && result._meta["creator-studio/view"]) || result.structuredContent);
+    var content = result && result.structuredContent;
     if (result && result.isError) { app.innerHTML = ""; app.appendChild(note(textOf(result) || "The studio could not load this.")); return; }
     if (!content || !content.view) { app.innerHTML = ""; app.appendChild(note("Nothing to show.")); return; }
     // The server names the call that made this view, for hosts that send
@@ -169,7 +169,12 @@ dialog img, dialog video { max-width: 94vw; max-height: 86vh; display: block; bo
       .then(function () { setTimeout(function () { refreshing = false; }, 30000); });
   }
 
-  function mediaBox(kind, url, label, emptyText) {
+  // Gallery media are storage paths loaded through the studio's media route;
+  // a single file from studio_view_media is already a URL.
+  function src(path) { return path && data.mediaBase ? data.mediaBase + encodeURIComponent(path) : path; }
+
+  function mediaBox(kind, path, label, emptyText) {
+    var url = src(path);
     var box = el("div", { class: "media" });
     if (!url) { box.appendChild(el("div", { class: "empty", text: emptyText })); }
     else if (kind === "video") {
@@ -234,8 +239,8 @@ dialog img, dialog video { max-width: 94vw; max-height: 86vh; display: block; bo
       ]),
       data.studioUrl ? el("div", { class: "bar" }, [el("button", { type: "button", text: "Open in studio", onclick: function () { openLink(data.studioUrl); } })]) : null,
     ]));
-    if (data.finalCut && data.finalCut.url) {
-      var video = el("video", { src: data.finalCut.url, controls: "", preload: "metadata", playsinline: "" });
+    if (data.finalCut && data.finalCut.path) {
+      var video = el("video", { src: src(data.finalCut.path), controls: "", preload: "metadata", playsinline: "" });
       video.addEventListener("error", expired);
       app.appendChild(el("h2", { text: "Final cut" }));
       app.appendChild(el("div", { class: "final" }, [video]));

@@ -33,7 +33,7 @@ async function connect(access: string) {
   return client
 }
 beforeEach(() => {
-  vi.clearAllMocks(); vi.stubEnv("STUDIO_MCP_PUBLIC_URL", "https://studio.example")
+  vi.clearAllMocks(); vi.stubEnv("STUDIO_MCP_PUBLIC_URL", "https://studio.example"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-key")
   mocks.validate.mockImplementation(async (request: Request) => {
     const access = token(request)
     if (access === "revoked") throw new StudioAccessError("Invalid MCP connection", 401)
@@ -51,8 +51,7 @@ beforeEach(() => {
         maybeSingle: async () => ({ data: table === "creator_episodes" && (!filters.id || filters.id === episode) ? { id: episode } : null, error: null }) }
       return q
     }
-    const storage = { from: () => ({ createSignedUrls: async (paths: string[]) => ({ data: paths.map((path) => ({ path, signedUrl: `https://files.example/${path}?sig`, error: null })), error: null }) }) }
-    return { user: { id: owner }, project: { id: projectId, user_id: owner }, supabase: { from, storage } }
+    return { user: { id: owner }, project: { id: projectId, user_id: owner }, supabase: { from } }
   })
   mocks.project.mockResolvedValue(Response.json({ project: { id: aliceProject }, activeEpisode: { id: episode }, shots: [], entities: [] }))
   mocks.chat.mockImplementation(async (request: Request) => Response.json({ account: token(request), received: await request.json() }))
@@ -127,40 +126,33 @@ describe("hosted MCP with the real SDK HTTP client", () => {
     const video = await alice.callTool({ name: "studio_view_media", arguments: { projectId: aliceProject, path: "alice/p/clip.mp4" } })
     expect(JSON.stringify(video)).toContain("https://files.example/alice/p/clip.mp4")
     expect(JSON.stringify(video)).not.toContain('"type":"image"')
-    expect((video as { _meta?: Record<string, unknown> })._meta?.["creator-studio/view"]).toMatchObject({ view: "media", kind: "video", url: "https://files.example/alice/p/clip.mp4" })
+    expect((video as { structuredContent?: unknown }).structuredContent).toMatchObject({ view: "media", kind: "video", url: "https://files.example/alice/p/clip.mp4" })
     expect(download).not.toHaveBeenCalled()
     download.mockRestore()
   })
-  it("draws the storyboard as a gallery, signing only the caller's own files", async () => {
+  it("draws the storyboard as a gallery of paths behind one short media pass", async () => {
     mocks.project.mockResolvedValue(Response.json({
       project: { id: aliceProject, name: "Clay ad", default_aspect: "9:16" },
       activeEpisode: { id: episode, name: "Episode 1", final_cut: { path: "alice/p/final.mp4", filename: "cut.mp4" } },
       shots: [
         { order_index: 1, title: "Second", keyframe_image: "alice/p/two.png", video_url: null, video_status: "none" },
         { order_index: 0, title: "First", keyframe_image: "alice/p/one.png", video_url: "alice/p/one.mp4", video_status: "completed", duration_seconds: 5 },
-        { order_index: 2, title: "Planted", keyframe_image: "bob/p/secret.png" },
       ],
       entities: [{ id: "e1", name: "Pug", kind: "character", reference_images: ["alice/p/pug.png"] }],
     }))
     const alice = await connect("alice")
     const tool = (await alice.listTools()).tools.find((item) => item.name === "studio_show_storyboard")
     expect(tool?._meta).toMatchObject({ ui: { resourceUri: "ui://creator-studio/storyboard-gallery.html" } })
-    const shown = await alice.callTool({ name: "studio_show_storyboard", arguments: { projectId: aliceProject } }) as { content: Array<{ text: string }>; structuredContent?: unknown; _meta: Record<string, any> }
-    const gallery = shown._meta["creator-studio/view"]
-    // Signed links go to the view only; a client that shows the model
-    // structuredContent must not be handed them.
-    expect(shown.structuredContent).toBeUndefined()
+    const shown = await alice.callTool({ name: "studio_show_storyboard", arguments: { projectId: aliceProject } }) as { content: Array<{ text: string }>; structuredContent: Record<string, any> }
+    // Hosts hand structuredContent to the view; Claude's Code tab drops _meta.
+    const gallery = shown.structuredContent
     expect(gallery.view).toBe("storyboard")
-    expect(gallery.shots.map((shot: { number: number; title: string }) => [shot.number, shot.title])).toEqual([[1, "First"], [2, "Second"], [3, "Planted"]])
-    expect(gallery.shots[0]).toMatchObject({ image: "https://files.example/alice/p/one.png?sig", video: "https://files.example/alice/p/one.mp4?sig", durationSeconds: 5 })
-    // Another account's path in a shot is never signed.
-    expect(gallery.shots[2].image).toBeNull()
-    expect(gallery.cast[0]).toMatchObject({ name: "Pug", image: "https://files.example/alice/p/pug.png?sig" })
-    expect(gallery.finalCut).toMatchObject({ url: "https://files.example/alice/p/final.mp4?sig", filename: "cut.mp4" })
+    expect(gallery.shots.map((shot: { number: number; title: string }) => [shot.number, shot.title])).toEqual([[1, "First"], [2, "Second"]])
+    expect(gallery.shots[0]).toMatchObject({ image: "alice/p/one.png", video: "alice/p/one.mp4", durationSeconds: 5 })
+    expect(gallery.cast[0]).toMatchObject({ name: "Pug", image: "alice/p/pug.png" })
+    expect(gallery.finalCut).toMatchObject({ path: "alice/p/final.mp4", filename: "cut.mp4" })
+    expect(gallery.mediaBase).toMatch(/^https:\/\/studio\.example\/api\/mcp\/media\?pass=[\w-]+\.[\w-]+&path=$/)
     expect(gallery.refresh).toEqual({ tool: "studio_show_storyboard", arguments: { projectId: aliceProject } })
-    // The model gets paths, not signed links.
-    expect(shown.content[0].text).toContain("alice/p/one.png")
-    expect(shown.content[0].text).not.toContain("?sig")
     const page = await alice.readResource({ uri: "ui://creator-studio/storyboard-gallery.html" })
     expect(page.contents[0]).toMatchObject({ mimeType: "text/html;profile=mcp-app" })
     expect(String((page.contents[0] as { text: string }).text)).toContain("ui/initialize")

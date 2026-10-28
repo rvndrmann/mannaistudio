@@ -97,20 +97,22 @@ autopilot settings continue to govern Director behavior.
 `studio_show_storyboard` and `studio_view_media` carry an MCP Apps view
 (`_meta.ui.resourceUri` → `ui://creator-studio/storyboard-gallery.html`,
 `src/lib/studio/mcp/storyboard-widget.ts`). Clients that support MCP Apps
-(claude.ai, Claude Desktop) draw it from the result's
-`_meta["creator-studio/view"]`, which hosts give the view and not the model
-(as `structuredContent` the signed links reached the model in clients without
-MCP Apps): the
-shot grid with frame/clip toggles and inline playback, cast art, and the final
-cut; `studio_view_media` plays a single video or audio file. Other clients read
-the text content as before, which for the gallery is shot titles and storage
-paths, never signed links.
+(claude.ai, Claude Desktop, Claude's Code tab) draw it from the result's
+`structuredContent`: the shot grid with frame/clip toggles and inline playback,
+cast art, and the final cut; `studio_view_media` plays a single video or audio
+file.
 
-- Links are signed in one `createSignedUrls` call, only under the caller's own
-  prefix (`storyboard-gallery.ts`), and expire after an hour. A view whose
-  links have expired calls its tool again once through the host to refresh.
-- The page is self-contained and its CSP admits media from the Supabase origin
-  (`NEXT_PUBLIC_SUPABASE_URL`) only; it makes no network requests itself.
+- Hosts may show `structuredContent` to the model as well, so the gallery
+  carries storage paths and one `mediaBase`, not a signed URL per file (that was
+  ~30 KB per call). `_meta` would hide it from the model, but the Code tab does
+  not pass `_meta` to the view.
+- `mediaBase` is `/api/mcp/media?pass=…&path=`. The pass is an HMAC over
+  (user, expiry) keyed from the service role key, valid for an hour
+  (`media-pass.ts`). The route signs a path only under the pass holder's own
+  prefix and redirects to it. A view whose media fail to load calls its tool
+  again once through the host to get a fresh pass.
+- The page is self-contained; its CSP admits media from the studio origin and
+  the Supabase origin only, and it makes no network requests itself.
 
 ## Account isolation
 
