@@ -97,7 +97,10 @@ autopilot settings continue to govern Director behavior.
 `studio_show_storyboard` and `studio_view_media` carry an MCP Apps view
 (`_meta.ui.resourceUri` → `ui://creator-studio/storyboard-gallery.html`,
 `src/lib/studio/mcp/storyboard-widget.ts`). Clients that support MCP Apps
-(claude.ai, Claude Desktop) draw it from the result's `structuredContent`: the
+(claude.ai, Claude Desktop) draw it from the result's
+`_meta["creator-studio/view"]`, which hosts give the view and not the model
+(as `structuredContent` the signed links reached the model in clients without
+MCP Apps): the
 shot grid with frame/clip toggles and inline playback, cast art, and the final
 cut; `studio_view_media` plays a single video or audio file. Other clients read
 the text content as before, which for the gallery is shot titles and storage

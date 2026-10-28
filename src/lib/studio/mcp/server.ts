@@ -20,7 +20,7 @@ import { setProjectVisualStyle } from "@/lib/studio/project-style"
 import { CLAYMATION_STYLE, VISUAL_STYLE_OPTIONS } from "@/lib/studio/visual-style"
 import { describeKeys, describeModels, estimateGeneration, failedJobs, summarizeJob } from "./reporting"
 import { projectCharacterImageModel } from "@/lib/studio/project-image-model"
-import { registerStoryboardWidget, storyboardWidgetToolMeta } from "./storyboard-widget"
+import { registerStoryboardWidget, STORYBOARD_VIEW_META_KEY, storyboardWidgetToolMeta } from "./storyboard-widget"
 import { buildStoryboardGallery } from "./storyboard-gallery"
 import { attachOwnMedia, createOwnEntities, createOwnShots, importOwnMedia, ownAttachSchema, ownEntitiesSchema, ownUploadSchema, ownGenerationSchema, ownPromptsSchema, ownScriptSchema, ownShotsSchema, proposeOwnGeneration, saveOwnPrompts, saveOwnScript } from "@/lib/studio/own-prompts"
 
@@ -35,13 +35,16 @@ const INLINE_IMAGE_LIMIT = 4 * 1024 * 1024
 
 /**
  * A tool result that is already in MCP's shape, passed through untouched.
- * `structuredContent` is what the storyboard gallery draws; the model reads
- * `content`.
+ *
+ * `view` is what the storyboard gallery draws, signed links included. It rides
+ * in the result's `_meta`, which hosts hand to the view but not to the model:
+ * as `structuredContent` it reached the model in full in clients without MCP
+ * Apps, tens of kilobytes of expiring links per call.
  */
 class ToolContent {
   constructor(
     readonly content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }>,
-    readonly structuredContent?: Record<string, unknown>,
+    readonly view?: Record<string, unknown>,
   ) {}
 }
 
@@ -86,7 +89,7 @@ export function createAccountMcpServer(token: string, scopes: string[]) {
     const callback = async (input: unknown) => {
       try {
         const value = await run(input as z.output<z.ZodObject<T>>)
-        return value instanceof ToolContent ? { content: value.content, ...(value.structuredContent ? { structuredContent: value.structuredContent } : {}) } : result(value)
+        return value instanceof ToolContent ? { content: value.content, ...(value.view ? { _meta: { [STORYBOARD_VIEW_META_KEY]: value.view } } : {}) } : result(value)
       }
       catch (error) { return { ...result({ error: error instanceof Error ? error.message : "Studio request failed" }), isError: true } }
     }

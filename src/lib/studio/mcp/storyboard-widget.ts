@@ -15,6 +15,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 export const STORYBOARD_WIDGET_URI = "ui://creator-studio/storyboard-gallery.html"
 const MCP_APP_MIME = "text/html;profile=mcp-app"
 
+/** Key in a tool result's `_meta` that carries what the view draws. */
+export const STORYBOARD_VIEW_META_KEY = "creator-studio/view"
+
 /** Tool `_meta` that tells the host to render the gallery. Both keys, for hosts on the older spelling. */
 export const storyboardWidgetToolMeta = { ui: { resourceUri: STORYBOARD_WIDGET_URI }, "ui/resourceUri": STORYBOARD_WIDGET_URI }
 
@@ -118,7 +121,7 @@ dialog img, dialog video { max-width: 94vw; max-height: 86vh; display: block; bo
   });
 
   function show(result) {
-    var content = result && result.structuredContent;
+    var content = result && ((result._meta && result._meta["creator-studio/view"]) || result.structuredContent);
     if (result && result.isError) { app.innerHTML = ""; app.appendChild(note(textOf(result) || "The studio could not load this.")); return; }
     if (!content || !content.view) { app.innerHTML = ""; app.appendChild(note("Nothing to show.")); return; }
     // The server names the call that made this view, for hosts that send

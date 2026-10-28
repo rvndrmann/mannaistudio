@@ -127,7 +127,7 @@ describe("hosted MCP with the real SDK HTTP client", () => {
     const video = await alice.callTool({ name: "studio_view_media", arguments: { projectId: aliceProject, path: "alice/p/clip.mp4" } })
     expect(JSON.stringify(video)).toContain("https://files.example/alice/p/clip.mp4")
     expect(JSON.stringify(video)).not.toContain('"type":"image"')
-    expect((video as { structuredContent?: unknown }).structuredContent).toMatchObject({ view: "media", kind: "video", url: "https://files.example/alice/p/clip.mp4" })
+    expect((video as { _meta?: Record<string, unknown> })._meta?.["creator-studio/view"]).toMatchObject({ view: "media", kind: "video", url: "https://files.example/alice/p/clip.mp4" })
     expect(download).not.toHaveBeenCalled()
     download.mockRestore()
   })
@@ -145,8 +145,11 @@ describe("hosted MCP with the real SDK HTTP client", () => {
     const alice = await connect("alice")
     const tool = (await alice.listTools()).tools.find((item) => item.name === "studio_show_storyboard")
     expect(tool?._meta).toMatchObject({ ui: { resourceUri: "ui://creator-studio/storyboard-gallery.html" } })
-    const shown = await alice.callTool({ name: "studio_show_storyboard", arguments: { projectId: aliceProject } }) as { content: Array<{ text: string }>; structuredContent: Record<string, any> }
-    const gallery = shown.structuredContent
+    const shown = await alice.callTool({ name: "studio_show_storyboard", arguments: { projectId: aliceProject } }) as { content: Array<{ text: string }>; structuredContent?: unknown; _meta: Record<string, any> }
+    const gallery = shown._meta["creator-studio/view"]
+    // Signed links go to the view only; a client that shows the model
+    // structuredContent must not be handed them.
+    expect(shown.structuredContent).toBeUndefined()
     expect(gallery.view).toBe("storyboard")
     expect(gallery.shots.map((shot: { number: number; title: string }) => [shot.number, shot.title])).toEqual([[1, "First"], [2, "Second"], [3, "Planted"]])
     expect(gallery.shots[0]).toMatchObject({ image: "https://files.example/alice/p/one.png?sig", video: "https://files.example/alice/p/one.mp4?sig", durationSeconds: 5 })
