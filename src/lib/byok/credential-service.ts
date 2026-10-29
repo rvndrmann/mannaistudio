@@ -37,11 +37,15 @@ function vault() {
 }
 
 /** Admins can test their own keys; other users need a paid subscription. */
-export async function hasByokSubscription(userId: string): Promise<boolean> {
-  const { data: admin, error: adminError } = await vault()
+export async function isAdminUser(userId: string): Promise<boolean> {
+  const { data: admin, error } = await vault()
     .from("admin_users").select("id").eq("id", userId).maybeSingle()
-  if (adminError) throw adminError
-  if (admin?.id === userId) return true
+  if (error) throw error
+  return admin?.id === userId
+}
+
+export async function hasByokSubscription(userId: string): Promise<boolean> {
+  if (await isAdminUser(userId)) return true
   const policy = await getByokSubscriptionPolicy(userId)
   if (policy.required) return policy.active
   const { data, error } = await vault()
@@ -117,6 +121,8 @@ export async function listCredentials(userId: string): Promise<CredentialSummary
 /** Whether this user has a usable credential for a provider. No secret involved. */
 export async function hasCredential(userId: string, provider: ByokProvider): Promise<boolean> {
   if (await byokPaused()) return false
+  // Admins run on platform credits, never on a KMS-stored key.
+  if (await isAdminUser(userId)) return false
   if (!byokIsConfigured() || !(await hasByokSubscription(userId))) return false
   const { data, error } = await vault().rpc("byok_has_credential", { p_user: userId, p_provider: provider })
   if (error) throw error
@@ -184,6 +190,7 @@ export async function withCredential<T>(
   use: (parts: CredentialParts) => Promise<T>,
 ): Promise<T | null> {
   if (await byokPaused()) return null
+  if (await isAdminUser(input.userId)) return null
   if (!byokIsConfigured() || !(await hasByokSubscription(input.userId))) return null
   const { data: rows, error } = await vault().rpc("byok_read_credential", { p_user: input.userId, p_provider: input.provider })
   if (error) throw error

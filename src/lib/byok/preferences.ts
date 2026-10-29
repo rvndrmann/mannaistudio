@@ -1,6 +1,7 @@
 import { hasPlatformCreditAccess } from "@/lib/studio/credit-access"
 import "server-only"
 import { getByokSubscriptionPolicy } from "./subscription-policy"
+import { isAdminUser } from "./credential-service"
 import { createServiceClient } from "@/lib/supabase/service"
 
 /**
@@ -18,6 +19,8 @@ import { createServiceClient } from "@/lib/supabase/service"
 const OWN_KEYS_ONLY = "byok_own_keys_only"
 
 export async function ownKeysOnly(userId: string): Promise<boolean> {
+  // Admins always run on platform credits.
+  if (await isAdminUser(userId)) return false
   if (!await hasPlatformCreditAccess(userId)) return true
   if ((await getByokSubscriptionPolicy(userId)).required) return true
   const { data, error } = await createServiceClient()
