@@ -4,6 +4,7 @@ import Link from "next/link"
 import { ArrowRight } from "lucide-react"
 import Footer from "@/components/Footer"
 import Navbar from "@/components/Navbar"
+import CreatorStudioOffer from "@/components/courses/CreatorStudioOffer"
 import { FreeCourseCta, ProCta } from "@/components/home/academy/cta"
 import { courseMetaLine, fetchCatalogCourses } from "@/lib/course-catalog"
 import { createPublicClient } from "@/lib/proof"
@@ -66,6 +67,8 @@ export default async function CoursesPage() {
             })}
           </div>
         )}
+
+        <div className="mt-14"><CreatorStudioOffer placement="catalog-studio" /></div>
       </section>
       <Footer />
     </main>

@@ -6,6 +6,7 @@ import { ArrowRight } from "lucide-react"
 import { fbTrack } from "@/lib/fbpixel"
 import { FREE_COURSE_PATH, PRO_CTA_LABEL, PRO_PATH } from "@/lib/course-catalog"
 import { cn } from "@/lib/utils"
+import { PRO_PRICE_INR } from "@/lib/display-currency"
 
 /**
  * The two things this page asks a visitor to do, and the events that count them.
@@ -15,7 +16,7 @@ import { cn } from "@/lib/utils"
  * construction rather than by checking eleven links.
  */
 
-const proEvent = { content_name: "AI Director Hub Pro", content_category: "subscription", value: 799, currency: "INR" }
+const proEvent = { content_name: "AI Director Hub Pro", content_category: "subscription", value: PRO_PRICE_INR, currency: "INR" }
 
 export function ProCta({ className, placement, children }: { className?: string; placement: string; children?: ReactNode }) {
   return (

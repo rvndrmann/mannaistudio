@@ -15,6 +15,7 @@ import { fbTrack } from "@/lib/fbpixel"
 import { claimOnce } from "@/lib/track-once"
 import { readProgress, writeProgress } from "@/lib/course-progress"
 import CourseDigitalProducts from "@/components/courses/CourseDigitalProducts"
+import CreatorStudioOffer from "@/components/courses/CreatorStudioOffer"
 import { defaultBillingSettings, fetchBillingSettings, hasAllCoursesAccess, hasPremiumAccess, isAdminUser } from "@/lib/membership"
 // @ts-ignore
 import confetti from "canvas-confetti"
@@ -459,6 +460,8 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                         {checkoutError&&<p role="alert" className="rounded-lg border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-200">{checkoutError}</p>}
 
                         <CourseDigitalProducts courseId={course.id} />
+
+                        <CreatorStudioOffer placement="course-detail" />
 
                         <div className="glass-card rounded-2xl border-white/10 p-5 sm:p-6">
                             <div className="mb-5 flex items-center justify-between gap-3">

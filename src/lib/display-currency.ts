@@ -10,7 +10,7 @@ import { formatInr, formatUsd, usdFromInr } from "./currency"
  */
 
 /** AI Director Hub Pro, per month. The Razorpay plan is what is charged. */
-export const PRO_PRICE_INR = 799
+export const PRO_PRICE_INR = 189
 
 export { formatInr, usdFromInr }
 export const formatUsdFromInr = formatUsd

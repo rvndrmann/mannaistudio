@@ -10,6 +10,7 @@ import { isAdminUser } from "@/lib/membership"
 import { fbTrack } from "@/lib/fbpixel"
 import { FREE_COURSE_PATH, PRO_PATH } from "@/lib/course-catalog"
 import { cn } from "@/lib/utils"
+import { PRO_PRICE_INR } from "@/lib/display-currency"
 
 /**
  * The navigation for the course-and-studio site.
@@ -87,7 +88,7 @@ export default function AcademyNavbar({ offerText = "", signedInHint = false, hi
     { name: "Billing", href: "/billing" },
     ...(isAdmin ? [{ name: "Admin", href: "/admin" }] : []),
   ]
-  const trackPro = () => fbTrack("InitiateCheckout", { content_name: "AI Director Hub Pro", content_category: "subscription", value: 799, currency: "INR", placement: "nav" })
+  const trackPro = () => fbTrack("InitiateCheckout", { content_name: "AI Director Hub Pro", content_category: "subscription", value: PRO_PRICE_INR, currency: "INR", placement: "nav" })
 
   return (
     <nav className="material-chrome fixed left-0 right-0 top-0 z-50">
